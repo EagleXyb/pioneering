@@ -1,28 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+const API_BASE_URL = 'http://localhost:3000';
+
 const Admin: React.FC = () => {
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState('');
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [configId, setConfigId] = useState<number | null>(null);
 
-  // 页面加载时读取已保存的配置
   useEffect(() => {
-    const savedConfig = localStorage.getItem('aiConfig');
-    if (savedConfig) {
-      const config = JSON.parse(savedConfig);
-      setApiKey(config.apiKey || '');
-      setProvider(config.provider || '');
-      setModel(config.model || '');
-      setPrompt(config.prompt || '');
-    }
+    fetchConfig();
   }, []);
-  
-  const handleSave = () => {
-    // 验证必填项
+
+  const fetchConfig = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai-config`);
+      if (response.ok) {
+        const configs = await response.json();
+        if (configs.length > 0) {
+          const config = configs[0];
+          setConfigId(config.id);
+          setApiKey(config.apiKey || '');
+          setProvider(config.provider || '');
+          setModel(config.model || '');
+          setPrompt(config.prompt || '');
+          localStorage.setItem('aiConfig', JSON.stringify(config));
+        }
+      }
+    } catch (error) {
+      const savedConfig = localStorage.getItem('aiConfig');
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig);
+        setApiKey(config.apiKey || '');
+        setProvider(config.provider || '');
+        setModel(config.model || '');
+        setPrompt(config.prompt || '');
+      }
+    }
+  };
+
+  const handleSave = async () => {
     if (!apiKey.trim()) {
       alert('请填写 API Key');
       return;
@@ -41,39 +62,45 @@ const Admin: React.FC = () => {
     }
 
     setSaveStatus('saving');
-    
-    const config = { 
-      apiKey: apiKey.trim(), 
-      provider, 
-      model, 
-      prompt: prompt.trim() 
+
+    const configData = {
+      apiKey: apiKey.trim(),
+      provider,
+      model,
+      prompt: prompt.trim(),
     };
-    
-    // 保存配置到 localStorage
-    localStorage.setItem('aiConfig', JSON.stringify(config));
-    
-    setTimeout(() => {
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configData),
+      });
+
+      if (response.ok) {
+        const savedConfig = await response.json();
+        setConfigId(savedConfig.id);
+        localStorage.setItem('aiConfig', JSON.stringify(savedConfig));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setSaveStatus('error');
+        alert('保存失败，请重试');
+      }
+    } catch (error) {
+      setSaveStatus('error');
+      localStorage.setItem('aiConfig', JSON.stringify(configData));
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
-    }, 500);
-  };
-  
-  const handleModify = () => {
-    const savedConfig = localStorage.getItem('aiConfig');
-    if (savedConfig) {
-      const config = JSON.parse(savedConfig);
-      setApiKey(config.apiKey || '');
-      setProvider(config.provider || '');
-      setModel(config.model || '');
-      setPrompt(config.prompt || '');
-      alert('配置已加载，请修改后重新保存');
-    } else {
-      alert('暂无保存的配置');
     }
   };
-  
-  const handleTest = () => {
-    // 验证必填项
+
+  const handleModify = async () => {
+    await fetchConfig();
+    alert('配置已加载，请修改后重新保存');
+  };
+
+  const handleTest = async () => {
     if (!apiKey.trim()) {
       alert('请填写 API Key');
       return;
@@ -91,22 +118,28 @@ const Admin: React.FC = () => {
       return;
     }
 
-    // 保存当前表单信息
-    const config = { 
-      apiKey: apiKey.trim(), 
-      provider, 
-      model, 
-      prompt: prompt.trim() 
+    const config = {
+      apiKey: apiKey.trim(),
+      provider,
+      model,
+      prompt: prompt.trim(),
     };
+
+    try {
+      await fetch(`${API_BASE_URL}/ai-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+    } catch (error) {
+    }
+
     localStorage.setItem('aiConfig', JSON.stringify(config));
-    
-    // 跳转到测试页面
     navigate('/test-config');
   };
-  
+
   return (
     <div className="admin-container">
-      {/* 导航栏 */}
       <nav className="nav">
         <div className="nav-content">
           <Link to="/" className="nav-back">
@@ -120,10 +153,8 @@ const Admin: React.FC = () => {
         </div>
       </nav>
 
-      {/* 内容区域 */}
       <main className="main">
         <div className="main-content">
-          {/* Hero 区域 */}
           <section className="hero">
             <h2 className="hero-title">AI 配置管理</h2>
             <p className="hero-description">
@@ -131,11 +162,10 @@ const Admin: React.FC = () => {
             </p>
           </section>
 
-          {/* 表单区域 */}
           <section className="form-section">
             <div className="form-card">
               <h3 className="form-title">基础配置</h3>
-              
+
               <div className="form-group">
                 <label htmlFor="apiKey" className="form-label">
                   API Key
@@ -149,7 +179,7 @@ const Admin: React.FC = () => {
                   placeholder="请输入您的 API Key"
                   className="form-input"
                 />
-                <p className="form-hint">您的 API Key 将被安全存储在本地</p>
+                <p className="form-hint">您的 API Key 将被安全存储在数据库中</p>
               </div>
 
               <div className="form-row">
@@ -225,7 +255,7 @@ const Admin: React.FC = () => {
 
             <div className="form-card">
               <h3 className="form-title">高级配置</h3>
-              
+
               <div className="form-group">
                 <label htmlFor="prompt" className="form-label">
                   系统提示词
@@ -243,10 +273,9 @@ const Admin: React.FC = () => {
               </div>
             </div>
 
-            {/* 操作按钮 */}
             <div className="form-actions">
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={handleSave}
                 disabled={saveStatus === 'saving'}
               >
@@ -264,6 +293,13 @@ const Admin: React.FC = () => {
                     </svg>
                     已保存
                   </>
+                ) : saveStatus === 'error' ? (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M4 4L16 16M16 4L4 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    保存失败
+                  </>
                 ) : (
                   <>
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -273,15 +309,15 @@ const Admin: React.FC = () => {
                   </>
                 )}
               </button>
-              
-              <button className="btn-secondary" onClick={handleModify}>
+
+              <button className="btn-primary" onClick={handleModify}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                   <path d="M14 2H6C4.89543 2 4 2.89543 4 4V16C4 17.1046 4.89543 18 6 18H14C15.1046 18 16 17.1046 16 16V4C16 2.89543 15.1046 2 14 2Z" stroke="currentColor" strokeWidth="2"/>
                   <path d="M8 6H12M8 10H12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
                 加载配置
               </button>
-              
+
               <button className="btn-accent" onClick={handleTest}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                   <path d="M10 2L12 6L16 6.5L13 9.5L14 14L10 11.5L6 14L7 9.5L4 6.5L8 6L10 2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
@@ -293,7 +329,6 @@ const Admin: React.FC = () => {
         </div>
       </main>
 
-      {/* 页脚 */}
       <footer className="footer">
         <div className="footer-content">
           <p className="footer-text">© 2024 IAC Incubator. 保留所有权利。</p>
@@ -308,7 +343,6 @@ const Admin: React.FC = () => {
           flex-direction: column;
         }
 
-        /* 导航栏 */
         .nav {
           position: sticky;
           top: 0;
@@ -331,39 +365,34 @@ const Admin: React.FC = () => {
         .nav-back {
           display: flex;
           align-items: center;
-          gap: var(--spacing-xs);
+          gap: var(--spacing-sm);
           color: var(--accent-blue);
           text-decoration: none;
-          font-size: 14px;
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: var(--radius-sm);
-          transition: background var(--transition-fast);
+          font-size: 15px;
+          transition: opacity var(--transition-fast);
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          opacity: 0.7;
           text-decoration: none;
         }
 
         .nav-title {
-          font-size: 17px;
+          font-size: 18px;
           font-weight: 600;
           color: var(--text-primary);
         }
 
-        /* 主内容 */
         .main {
           flex: 1;
           padding: var(--spacing-3xl) var(--spacing-xl);
-          background: var(--gradient-hero);
         }
 
         .main-content {
-          max-width: 980px;
+          max-width: 800px;
           margin: 0 auto;
         }
 
-        /* Hero */
         .hero {
           text-align: center;
           margin-bottom: var(--spacing-3xl);
@@ -372,19 +401,17 @@ const Admin: React.FC = () => {
         .hero-title {
           font-size: 40px;
           font-weight: 600;
-          letter-spacing: -0.002em;
-          line-height: 1.1;
           color: var(--text-primary);
           margin-bottom: var(--spacing-md);
         }
 
         .hero-description {
-          font-size: 19px;
-          line-height: 1.4211;
+          font-size: 17px;
           color: var(--text-secondary);
+          max-width: 500px;
+          margin: 0 auto;
         }
 
-        /* 表单 */
         .form-section {
           display: flex;
           flex-direction: column;
@@ -393,37 +420,31 @@ const Admin: React.FC = () => {
 
         .form-card {
           background: var(--bg-primary);
-          padding: var(--spacing-2xl);
-          border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-sm);
           border: 1px solid var(--border-light);
+          border-radius: var(--radius-lg);
+          padding: var(--spacing-xl);
+          box-shadow: var(--shadow-sm);
         }
 
         .form-title {
           font-size: 21px;
           font-weight: 600;
           color: var(--text-primary);
-          margin-bottom: var(--spacing-xl);
+          margin-bottom: var(--spacing-lg);
         }
 
         .form-group {
-          margin-bottom: var(--spacing-xl);
+          margin-bottom: var(--spacing-lg);
         }
 
-        .form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: var(--spacing-lg);
-        }
-
-        .form-row .form-group {
+        .form-group:last-child {
           margin-bottom: 0;
         }
 
         .form-label {
           display: block;
           font-size: 14px;
-          font-weight: 600;
+          font-weight: 500;
           color: var(--text-primary);
           margin-bottom: var(--spacing-sm);
         }
@@ -437,12 +458,12 @@ const Admin: React.FC = () => {
         .form-select,
         .form-textarea {
           width: 100%;
-          padding: 10px 14px;
-          background: var(--bg-primary);
+          padding: 12px 16px;
           border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
+          border-radius: var(--radius-md);
           font-size: 15px;
           color: var(--text-primary);
+          background: var(--bg-primary);
           transition: all var(--transition-fast);
         }
 
@@ -456,37 +477,49 @@ const Admin: React.FC = () => {
 
         .form-textarea {
           resize: vertical;
-          font-family: var(--font-sans);
-          line-height: 1.46668;
+          min-height: 120px;
         }
 
         .form-hint {
           font-size: 13px;
-          color: var(--text-secondary);
+          color: var(--text-tertiary);
           margin-top: var(--spacing-xs);
         }
 
-        /* 按钮 */
+        .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: var(--spacing-lg);
+        }
+
+        @media (max-width: 640px) {
+          .form-row {
+            grid-template-columns: 1fr;
+          }
+        }
+
         .form-actions {
           display: flex;
           gap: var(--spacing-md);
           justify-content: center;
-          margin-top: var(--spacing-xl);
+          flex-wrap: wrap;
         }
 
         .btn-primary,
         .btn-secondary,
         .btn-accent {
-          display: flex;
+          display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: var(--spacing-sm);
-          padding: 10px 24px;
-          border-radius: var(--radius-sm);
+          padding: 12px 24px;
+          border-radius: var(--radius-md);
           font-size: 15px;
           font-weight: 500;
           cursor: pointer;
+          transition: all var(--transition-fast);
           border: none;
-          transition: all var(--transition-base);
+          text-decoration: none;
         }
 
         .btn-primary {
@@ -494,32 +527,23 @@ const Admin: React.FC = () => {
           color: white;
         }
 
-        .btn-primary:hover:not(:disabled) {
+        .btn-primary:hover {
           background: var(--accent-blue-hover);
-          transform: scale(1.02);
         }
 
         .btn-primary:disabled {
-          opacity: 0.7;
+          opacity: 0.6;
           cursor: not-allowed;
-        }
-
-        .spinner {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
         }
 
         .btn-secondary {
           background: var(--bg-secondary);
           color: var(--text-primary);
+          border: 1px solid var(--border);
         }
 
         .btn-secondary:hover {
-          background: var(--border-light);
+          background: var(--bg-tertiary);
         }
 
         .btn-accent {
@@ -528,15 +552,13 @@ const Admin: React.FC = () => {
         }
 
         .btn-accent:hover {
-          transform: scale(1.02);
-          box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+          opacity: 0.9;
         }
 
-        /* 页脚 */
         .footer {
           padding: var(--spacing-xl);
-          background: var(--bg-secondary);
           border-top: 1px solid var(--border-light);
+          margin-top: auto;
         }
 
         .footer-content {
@@ -546,71 +568,17 @@ const Admin: React.FC = () => {
         }
 
         .footer-text {
-          font-size: 12px;
-          color: var(--text-secondary);
+          font-size: 13px;
+          color: var(--text-tertiary);
         }
 
-        /* 响应式 */
-        @media (max-width: 1024px) {
-          .main {
-            padding: var(--spacing-2xl) var(--spacing-lg);
-          }
-
-          .hero-title {
-            font-size: 32px;
-          }
+        .spinner {
+          animation: spin 1s linear infinite;
         }
 
-        @media (max-width: 768px) {
-          .nav-content {
-            padding: 0 var(--spacing-md);
-          }
-
-          .main {
-            padding: var(--spacing-xl) var(--spacing-md);
-          }
-
-          .hero-title {
-            font-size: 28px;
-          }
-
-          .hero-description {
-            font-size: 17px;
-          }
-
-          .form-row {
-            grid-template-columns: 1fr;
-          }
-
-          .form-actions {
-            flex-direction: column;
-          }
-
-          .btn-primary,
-          .btn-secondary,
-          .btn-accent {
-            width: 100%;
-            justify-content: center;
-          }
-        }
-
-        /* 暗色主题适配 */
-        @media (prefers-color-scheme: dark) {
-          .nav {
-            background: rgba(29, 29, 31, 0.8);
-          }
-
-          .form-card {
-            background: var(--bg-secondary);
-            border-color: var(--border);
-          }
-
-          .form-input,
-          .form-select,
-          .form-textarea {
-            background: var(--bg-primary);
-            border-color: var(--border);
-          }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
