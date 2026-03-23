@@ -9,26 +9,27 @@ import TestConfig from './pages/TestConfig'
 import Profile from './pages/Profile'
 import BasicAssessment from './pages/BasicAssessment'
 import Login from './pages/Login'
+import { UserProvider } from './contexts/UserContext'
 import './App.css'
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/assessment" element={<Assessment />} />
-        <Route path="/training" element={<Training />} />
-        <Route path="/incubation" element={<Incubation />} />
-        <Route path="/experience" element={<Experience />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route path="/test-config" element={<TestConfig />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/basic-assessment" element={<BasicAssessment />} />
-      </Routes>
-    </Router>
-
-
+    <UserProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/assessment" element={<Assessment />} />
+          <Route path="/training" element={<Training />} />
+          <Route path="/incubation" element={<Incubation />} />
+          <Route path="/experience" element={<Experience />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/test-config" element={<TestConfig />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/basic-assessment" element={<BasicAssessment />} />
+        </Routes>
+      </Router>
+    </UserProvider>
   )
 }
 

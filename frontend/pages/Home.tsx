@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 
 const Home: React.FC = () => {
+  const { userState } = useUser();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -118,18 +120,42 @@ const Home: React.FC = () => {
                   className="avatar-button"
                   onClick={() => setShowDropdown(!showDropdown)}
                 >
-                  <div className="avatar-small">
-                    张
-                  </div>
+                  {userState.avatar ? (
+                    <img 
+                      src={userState.avatar} 
+                      alt="用户头像" 
+                      className="avatar-small-image"
+                      onError={(e) => {
+                        console.error('头像加载失败');
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="avatar-small">
+                      {userState.name.charAt(0)}
+                    </div>
+                  )}
                 </button>
                 
                 {showDropdown && (
                   <div className="dropdown-menu">
                     <div className="dropdown-header">
-                      <div className="avatar-medium">张</div>
+                      {userState.avatar ? (
+                        <img 
+                          src={userState.avatar} 
+                          alt="用户头像" 
+                          className="avatar-medium-image"
+                          onError={(e) => {
+                            console.error('头像加载失败');
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="avatar-medium">{userState.name.charAt(0)}</div>
+                      )}
                       <div className="user-info">
-                        <div className="user-name">张三</div>
-                        <div className="user-email">zhangsan@example.com</div>
+                        <div className="user-name">{userState.name}</div>
+                        <div className="user-email">{userState.email}</div>
                       </div>
                     </div>
                     
@@ -831,6 +857,20 @@ const Home: React.FC = () => {
           font-size: 16px;
           font-weight: 600;
           color: white;
+        }
+
+        .avatar-small-image {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
+        .avatar-medium-image {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          object-fit: cover;
         }
 
         .dropdown-menu {

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 
 const API_BASE = 'http://localhost:3000/api';
 
@@ -36,10 +37,12 @@ const defaultProfile: ProfileData = {
 };
 
 const Profile: React.FC = () => {
+  const { userState, setAvatar, setName } = useUser();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<ProfileData>(defaultProfile);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -79,6 +82,7 @@ const Profile: React.FC = () => {
       });
       if (response.ok) {
         setIsEditing(false);
+        setName(userInfo.name); // 更新全局用户名
         await fetchProfile();
       } else {
         setError('保存失败，请重试');
@@ -87,6 +91,63 @@ const Profile: React.FC = () => {
       console.error('保存个人信息失败:', err);
       setError('保存失败，请检查网络连接');
     }
+  };
+
+  const handleAvatarClick = () => {
+    if (isEditing) {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 检查文件类型
+      if (!file.type.startsWith('image/')) {
+        alert('请选择图片文件');
+        return;
+      }
+
+      // 检查文件大小 (限制为 8MB)
+      if (file.size > 8 * 1024 * 1024) {
+        alert('图片大小不能超过 8MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      
+      reader.onerror = () => {
+        alert('读取图片失败，请重试');
+      };
+      
+      reader.onload = (event) => {
+        try {
+          const avatarUrl = event.target?.result as string;
+          
+          if (!avatarUrl) {
+            alert('读取图片失败');
+            return;
+          }
+
+          // 检查 base64 字符串长度（localStorage 限制约 5-10MB）
+          if (avatarUrl.length > 10 * 1024 * 1024) {
+            alert('图片文件过大，请选择更小的图片');
+            return;
+          }
+
+          setAvatar(avatarUrl);
+          console.log('头像上传成功');
+        } catch (error) {
+          console.error('保存头像失败:', error);
+          alert('保存头像失败，请重试');
+        }
+      };
+      
+      reader.readAsDataURL(file);
+    }
+    
+    // 清空 input，允许重复选择同一文件
+    e.target.value = '';
   };
 
   if (isLoading) {
@@ -142,17 +203,36 @@ const Profile: React.FC = () => {
 
           <section className="profile-header">
             <div className="avatar-section">
-              <div className="avatar">
-                <div className="avatar-placeholder">
-                  {userInfo.name.charAt(0)}
-                </div>
+              <div className="avatar" onClick={handleAvatarClick} style={{ cursor: isEditing ? 'pointer' : 'default' }}>
+                {userState.avatar ? (
+                  <img 
+                    src={userState.avatar} 
+                    alt="用户头像" 
+                    className="avatar-image"
+                    onError={(e) => {
+                      console.error('头像加载失败');
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="avatar-placeholder">
+                    {userInfo.name.charAt(0)}
+                  </div>
+                )}
                 {isEditing && (
-                  <button className="avatar-edit">
+                  <button className="avatar-edit" type="button">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                       <path d="M11.5 2.5L13.5 4.5L5 13H3V11L11.5 2.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
                     </svg>
                   </button>
                 )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  style={{ display: 'none' }}
+                />
               </div>
               <div className="user-basic">
                 {isEditing ? (
@@ -407,6 +487,13 @@ const Profile: React.FC = () => {
           position: relative;
           width: 120px;
           height: 120px;
+        }
+
+        .avatar-image {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          object-fit: cover;
         }
 
         .avatar-placeholder {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 
 const API_BASE_URL = 'http://localhost:3000';
 
@@ -15,6 +16,7 @@ interface NavItem {
 }
 
 const Admin: React.FC = () => {
+  const { userState } = useUser();
   const [activeSection, setActiveSection] = useState<NavSection>('model');
   const [activePromptModule, setActivePromptModule] = useState<PromptModule>('perception');
   const [apiKey, setApiKey] = useState('');
@@ -680,6 +682,31 @@ const Admin: React.FC = () => {
   };
 
   const [activeNavItem, setActiveNavItem] = useState<string>('config');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const languageDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭下拉菜单
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+      if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target as Node)) {
+        setShowLanguageDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 模拟登出
+  const handleLogout = () => {
+    setShowDropdown(false);
+    // 实际项目中这里应该清除登录状态
+  };
 
   const handleNavItemClick = (section: NavSection, itemKey: string) => {
     setActiveSection(section);
@@ -717,14 +744,114 @@ const Admin: React.FC = () => {
           </div>
           
           <div className="user-section">
-            <div className="language-switcher">
-              <button className="language-btn">中文</button>
+            <div className="language-switcher" ref={languageDropdownRef}>
+              <button 
+                className="language-btn"
+                onMouseEnter={() => setShowLanguageDropdown(true)}
+                title="语言"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+              </button>
+              
+              {showLanguageDropdown && (
+                <div 
+                  className="language-dropdown"
+                  onMouseEnter={() => setShowLanguageDropdown(true)}
+                  onMouseLeave={() => setShowLanguageDropdown(false)}
+                >
+                  <button className="language-option">中文简体</button>
+                  <button className="language-option">English</button>
+                </div>
+              )}
             </div>
-            <div className="user-avatar">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
+            <div className="user-avatar" ref={dropdownRef}>
+              <button 
+                className="avatar-button" 
+                onClick={() => setShowDropdown(!showDropdown)}
+              >
+                {userState.avatar ? (
+                  <img 
+                    src={userState.avatar} 
+                    alt="用户头像" 
+                    className="avatar-small-image"
+                    onError={(e) => {
+                      console.error('头像加载失败');
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="avatar-small">
+                    {userState.name.charAt(0)}
+                  </div>
+                )}
+              </button>
+              
+              {showDropdown && (
+                <div className="dropdown-menu">
+                  <div className="dropdown-header">
+                    {userState.avatar ? (
+                      <img 
+                        src={userState.avatar} 
+                        alt="用户头像" 
+                        className="avatar-medium-image"
+                        onError={(e) => {
+                          console.error('头像加载失败');
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="avatar-medium">{userState.name.charAt(0)}</div>
+                    )}
+                    <div className="user-info">
+                      <div className="user-name">{userState.name}</div>
+                      <div className="user-email">{userState.email}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="dropdown-divider"></div>
+                  
+                  <a 
+                    href="/profile" 
+                    className="dropdown-item"
+                    onClick={() => setShowDropdown(false)}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" strokeWidth="1.5"/>
+                    </svg>
+                    <span>个人中心</span>
+                  </a>
+                  
+                  <a 
+                    href="/admin" 
+                    className="dropdown-item"
+                    onClick={() => setShowDropdown(false)}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M2 6h12M6 2v12" stroke="currentColor" strokeWidth="1.5"/>
+                    </svg>
+                    <span>后台管理</span>
+                  </a>
+                  
+                  <div className="dropdown-divider"></div>
+                  
+                  <button 
+                    className="dropdown-item dropdown-item-logout"
+                    onClick={handleLogout}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M6 2H3v12h3" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M10 7l3-3-3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>退出登录</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -863,7 +990,8 @@ const Admin: React.FC = () => {
         .user-section {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 16px;
+          margin-right: 10px;
         }
 
         .language-switcher {
@@ -880,11 +1008,65 @@ const Admin: React.FC = () => {
           transition: all 0.2s ease;
         }
 
+        .language-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          padding: 0;
+          background: transparent;
+          border: none;
+          border-radius: 50%;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          color: #6b7280;
+        }
+
         .language-btn:hover {
-          background: #e5e7eb;
+          background: #f3f4f6;
+          color: #374151;
+        }
+
+        .language-switcher {
+          position: relative;
+        }
+
+        .language-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 50%;
+          transform: translateX(50%);
+          margin-top: 8px;
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+          width: 100px;
+          z-index: 1000;
+        }
+
+        .language-option {
+          display: block;
+          width: 100%;
+          padding: 8px 12px;
+          text-align: center;
+          border: none;
+          background: none;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .language-option:hover {
+          background: #f3f4f6;
         }
 
         .user-avatar {
+          position: relative;
+        }
+
+        .avatar-button {
           width: 32px;
           height: 32px;
           border-radius: 50%;
@@ -892,15 +1074,127 @@ const Admin: React.FC = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #6b7280;
           cursor: pointer;
           transition: all 0.2s ease;
           border: 1px solid #e5e7eb;
+          border: none;
+          padding: 0;
         }
 
-        .user-avatar:hover {
+        .avatar-button:hover {
           background: #e5e7eb;
           color: #374151;
+        }
+
+        .avatar-small {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: #43e97b;
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .avatar-medium {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: #43e97b;
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 16px;
+        }
+
+        .avatar-small-image {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
+        .avatar-medium-image {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
+        .dropdown-menu {
+          position: absolute;
+          top: 100%;
+          right: 8px;
+          margin-top: 8px;
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+          min-width: 240px;
+          z-index: 1000;
+        }
+
+        .dropdown-header {
+          padding: 16px;
+          border-bottom: 1px solid #e5e7eb;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .user-info {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .user-name {
+          font-size: 14px;
+          font-weight: 600;
+          color: #1f2937;
+          margin-bottom: 4px;
+        }
+
+        .user-email {
+          font-size: 12px;
+          color: #6b7280;
+        }
+
+        .dropdown-divider {
+          height: 1px;
+          background: #e5e7eb;
+        }
+
+        .dropdown-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 16px;
+          text-decoration: none;
+          color: #374151;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .dropdown-item:hover {
+          background: #f3f4f6;
+        }
+
+        .dropdown-item-logout {
+          color: #ef4444;
+          border: none;
+          background: none;
+          width: 100%;
+          text-align: left;
+        }
+
+        .dropdown-item-logout:hover {
+          background: #fee2e2;
         }
 
         .content-wrapper {
@@ -1129,10 +1423,15 @@ const Admin: React.FC = () => {
         }
 
         .panel-title {
-          font-size: 20px;
+          font-size: 16px;
           font-weight: 600;
           color: #374151;
           margin-bottom: 8px;
+          width: 1000px;
+          height: 22px;
+          line-height: 22px;
+          padding: 0px;
+          border-radius: 0px;
         }
 
         .panel-description {
@@ -1189,6 +1488,10 @@ const Admin: React.FC = () => {
           resize: vertical;
           min-height: 150px;
           font-family: inherit;
+          height: 320px;
+          width: 950px;
+          border-radius: 8px;
+          color: #1D1D1F;
         }
 
         .form-hint {
