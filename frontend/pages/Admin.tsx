@@ -824,6 +824,10 @@ const Admin: React.FC = () => {
           font-size: 18px;
         }
 
+        .brand-logo:hover {
+          text-decoration: none;
+        }
+
         .brand-logo svg {
           color: #43e97b;
         }
@@ -853,6 +857,7 @@ const Admin: React.FC = () => {
         .nav-link:hover {
           color: #374151;
           background-color: #f3f4f6;
+          text-decoration: none;
         }
 
         .user-section {
@@ -1054,15 +1059,15 @@ const Admin: React.FC = () => {
         .content-header {
           height: 56px;
           padding: 0 24px;
-          background: rgba(255, 255, 255, 0.8);
-          backdrop-filter: saturate(180%) blur(20px);
+          background: white;
           border-bottom: 1px solid var(--border-light);
           display: flex;
           align-items: center;
           justify-content: space-between;
           position: sticky;
-          top: 0;
+          top: 60px;
           z-index: 50;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
 
         .breadcrumb {
