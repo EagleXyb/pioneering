@@ -54,9 +54,15 @@ export class ProfileService {
   }
 
   async updateAvatar(email: string, avatar: string) {
-    return this.prisma.profile.update({
-      where: { email },
-      data: { avatar },
+    const existing = await this.prisma.profile.findUnique({ where: { email } });
+    if (existing) {
+      return this.prisma.profile.update({
+        where: { email },
+        data: { avatar },
+      });
+    }
+    return this.prisma.profile.create({
+      data: { email, avatar, name: '用户', skills: [] },
     });
   }
 
