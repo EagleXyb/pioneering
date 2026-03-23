@@ -4,6 +4,7 @@ interface UserState {
   avatar: string | null;
   name: string;
   email: string;
+  isLoggedIn: boolean;
 }
 
 interface UserContextType {
@@ -11,13 +12,17 @@ interface UserContextType {
   setAvatar: (avatar: string | null) => void;
   setName: (name: string) => void;
   setEmail: (email: string) => void;
-  syncAvatarFromDatabase: () => Promise<void>;
+  setIsLoggedIn: (isLoggedIn: boolean) => void;
+  login: (email: string, name?: string) => Promise<void>;
+  logout: () => void;
+  syncUserInfo: () => Promise<void>;
 }
 
 const defaultUserState: UserState = {
   avatar: null,
   name: '张三',
   email: 'zhangsan@example.com',
+  isLoggedIn: false,
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -25,11 +30,14 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userState, setUserState] = useState<UserState>(() => {
     try {
-      // 从 localStorage 读取保存的用户信息
       const savedState = localStorage.getItem('userState');
       if (savedState) {
         const parsed = JSON.parse(savedState);
-        return parsed;
+        return {
+          ...defaultUserState,
+          ...parsed,
+          avatar: null,
+        };
       }
       return defaultUserState;
     } catch (error) {
@@ -38,35 +46,56 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   });
 
-  // 保存到 localStorage
   useEffect(() => {
     try {
-      const serialized = JSON.stringify(userState);
-      localStorage.setItem('userState', serialized);
+      const { avatar, ...stateToSave } = userState;
+      localStorage.setItem('userState', JSON.stringify(stateToSave));
     } catch (error) {
       console.error('保存用户状态失败:', error);
-      // 如果存储失败，尝试清除旧数据
-      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-        console.warn('localStorage 空间不足，清除头像数据');
-        const { avatar, ...rest } = userState;
-        localStorage.setItem('userState', JSON.stringify(rest));
-      }
     }
   }, [userState]);
 
-  // 从数据库同步头像
-  const syncAvatarFromDatabase = async () => {
+  useEffect(() => {
+    if (userState.isLoggedIn && userState.email) {
+      syncUserInfo();
+    }
+  }, [userState.isLoggedIn, userState.email]);
+
+  const syncUserInfo = async () => {
+    if (!userState.email) return;
+    
     try {
-      const response = await fetch('http://localhost:3000/api/profile/email/zhangsan@example.com');
+      const response = await fetch(`http://localhost:3000/api/profile/email/${userState.email}`);
       if (response.ok) {
         const data = await response.json();
-        if (data && data.avatar) {
-          setUserState(prev => ({ ...prev, avatar: data.avatar }));
+        if (data) {
+          setUserState(prev => ({
+            ...prev,
+            avatar: data.avatar || null,
+            name: data.name || prev.name,
+          }));
         }
       }
     } catch (error) {
-      console.error('同步头像失败:', error);
+      console.error('同步用户信息失败:', error);
     }
+  };
+
+  const login = async (email: string, name?: string) => {
+    setUserState(prev => ({
+      ...prev,
+      email,
+      name: name || prev.name,
+      isLoggedIn: true,
+    }));
+  };
+
+  const logout = () => {
+    setUserState(prev => ({
+      ...prev,
+      isLoggedIn: false,
+      avatar: null,
+    }));
   };
 
   const setAvatar = (avatar: string | null) => {
@@ -85,8 +114,21 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUserState(prev => ({ ...prev, email }));
   };
 
+  const setIsLoggedIn = (isLoggedIn: boolean) => {
+    setUserState(prev => ({ ...prev, isLoggedIn }));
+  };
+
   return (
-    <UserContext.Provider value={{ userState, setAvatar, setName, setEmail, syncAvatarFromDatabase }}>
+    <UserContext.Provider value={{ 
+      userState, 
+      setAvatar, 
+      setName, 
+      setEmail, 
+      setIsLoggedIn,
+      login,
+      logout,
+      syncUserInfo 
+    }}>
       {children}
     </UserContext.Provider>
   );

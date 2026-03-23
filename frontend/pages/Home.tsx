@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 
 const Home: React.FC = () => {
-  const { userState } = useUser();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { userState, login, logout } = useUser();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
@@ -18,7 +17,6 @@ const Home: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -30,13 +28,11 @@ const Home: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 模拟登出
   const handleLogout = () => {
-    setIsLoggedIn(false);
+    logout();
     setShowDropdown(false);
   };
 
-  // 登录弹框相关
   const handleOpenLogin = () => {
     setShowLoginModal(true);
     document.body.style.overflow = 'hidden';
@@ -88,11 +84,11 @@ const Home: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (validateForm()) {
       console.log(isLogin ? '登录成功' : '注册成功', formData);
-      setIsLoggedIn(true);
+      await login(formData.email, formData.username || undefined);
       handleCloseLogin();
     }
   };
@@ -105,7 +101,6 @@ const Home: React.FC = () => {
 
   return (
     <div className="home-container">
-      {/* 导航栏 */}
       <nav className="nav">
         <div className="nav-content">
           <div className="nav-logo">
@@ -114,7 +109,7 @@ const Home: React.FC = () => {
           </div>
           
           <div className="nav-right">
-            {isLoggedIn ? (
+            {userState.isLoggedIn ? (
               <div className="user-menu" ref={dropdownRef}>
                 <button 
                   className="avatar-button"

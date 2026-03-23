@@ -18,7 +18,7 @@ model Profile {
   position  String?
   joinDate  DateTime @default(now())
   skills    String[]  @default([])
-  avatar    String?  // 存储头像的base64编码
+  avatar    String?  // 存储头像文件路径/URL
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

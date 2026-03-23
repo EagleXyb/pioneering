@@ -45,14 +45,18 @@ const Profile: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    if (userState.isLoggedIn && userState.email) {
+      fetchProfile();
+    } else {
+      setIsLoading(false);
+    }
+  }, [userState.isLoggedIn, userState.email]);
 
   const fetchProfile = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE}/profile/email/zhangsan@example.com`);
+      const response = await fetch(`${API_BASE}/profile/email/${userState.email}`);
       if (response.ok) {
         const data = await response.json();
         if (data) {
@@ -62,9 +66,11 @@ const Profile: React.FC = () => {
             skills: data.skills || defaultProfile.skills,
             achievements: defaultProfile.achievements,
           });
-          // 从数据库加载头像并同步到全局状态
           if (data.avatar) {
             setAvatar(data.avatar);
+          }
+          if (data.name) {
+            setName(data.name);
           }
         }
       }
@@ -106,63 +112,39 @@ const Profile: React.FC = () => {
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // 检查文件类型
       if (!file.type.startsWith('image/')) {
         alert('请选择图片文件');
         return;
       }
 
-      // 检查文件大小 (限制为 8MB)
-      if (file.size > 8 * 1024 * 1024) {
-        alert('图片大小不能超过 8MB');
+      if (file.size > 10 * 1024 * 1024) {
+        alert('图片大小不能超过 10MB');
         return;
       }
 
-      const reader = new FileReader();
-      
-      reader.onerror = () => {
-        alert('读取图片失败，请重试');
-      };
-      
-      reader.onload = async (event) => {
-        try {
-          const avatarData = event.target?.result as string;
-          
-          if (!avatarData) {
-            alert('读取图片失败');
-            return;
-          }
+      const formData = new FormData();
+      formData.append('avatar', file);
 
-          // 检查 base64 字符串长度（数据库限制）
-          if (avatarData.length > 10 * 1024 * 1024) {
-            alert('图片文件过大，请选择更小的图片');
-            return;
-          }
+      try {
+        const response = await fetch(`${API_BASE}/profile/avatar/${userState.email}`, {
+          method: 'POST',
+          body: formData,
+        });
 
-          // 上传到数据库
-          const response = await fetch(`${API_BASE}/profile/avatar/zhangsan@example.com`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ avatar: avatarData }),
-          });
-
-          if (response.ok) {
-            // 同时更新全局状态
-            setAvatar(avatarData);
-            console.log('头像上传成功');
-          } else {
-            alert('头像保存失败，请重试');
-          }
-        } catch (error) {
-          console.error('保存头像失败:', error);
-          alert('保存头像失败，请检查网络连接');
+        if (response.ok) {
+          const data = await response.json();
+          setAvatar(data.avatar);
+          console.log('头像上传成功');
+        } else {
+          const errorData = await response.json();
+          alert(errorData.message || '头像保存失败，请重试');
         }
-      };
-      
-      reader.readAsDataURL(file);
+      } catch (error) {
+        console.error('保存头像失败:', error);
+        alert('保存头像失败，请检查网络连接');
+      }
     }
     
-    // 清空 input，允许重复选择同一文件
     e.target.value = '';
   };
 
@@ -183,6 +165,32 @@ const Profile: React.FC = () => {
         <main className="main">
           <div className="main-content" style={{ textAlign: 'center', padding: '100px 0' }}>
             <p>加载中...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!userState.isLoggedIn) {
+    return (
+      <div className="profile-container">
+        <nav className="nav">
+          <div className="nav-content">
+            <Link to="/" className="nav-back">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              <span>返回首页</span>
+            </Link>
+            <h1 className="nav-title">个人信息</h1>
+          </div>
+        </nav>
+        <main className="main">
+          <div className="main-content" style={{ textAlign: 'center', padding: '100px 0' }}>
+            <p>请先登录</p>
+            <Link to="/" style={{ color: '#0071E3', textDecoration: 'none', marginTop: '16px', display: 'inline-block' }}>
+              返回首页登录
+            </Link>
           </div>
         </main>
       </div>
