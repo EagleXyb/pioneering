@@ -36,6 +36,11 @@ const Incubation: React.FC = () => {
           <p className={`hero-description ${isVisible ? 'animate-in' : ''}`}>
             基于创新训练模型的超智套餐，让企业和个人都能灵活选择，实现创新Tokens自由，以更低成本响应的创新需求！
           </p>
+          <div className={`hero-cta ${isVisible ? 'animate-in' : ''}`}>
+            <Link to="/experience" className="cta-button">
+              立即体验
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -388,6 +393,35 @@ const Incubation: React.FC = () => {
         .hero-description.animate-in {
           animation: fadeInUp 0.6s ease forwards;
           animation-delay: 0.3s;
+        }
+
+        .hero-cta {
+          margin-top: var(--spacing-xl);
+          opacity: 0;
+          transform: translateY(20px);
+        }
+
+        .hero-cta.animate-in {
+          animation: fadeInUp 0.6s ease forwards;
+          animation-delay: 0.4s;
+        }
+
+        .cta-button {
+          display: inline-block;
+          padding: 16px 32px;
+          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          color: white;
+          border-radius: var(--radius-md);
+          font-size: 16px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 14px 0 rgba(67, 233, 123, 0.4);
+        }
+
+        .cta-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px 0 rgba(67, 233, 123, 0.5);
         }
 
         @keyframes fadeInUp {
