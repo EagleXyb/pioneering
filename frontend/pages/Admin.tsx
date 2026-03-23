@@ -1052,7 +1052,7 @@ const Admin: React.FC = () => {
           display: flex;
           flex-direction: column;
           min-height: calc(100vh - 60px);
-          margin-top: 60px;
+          margin-top: 0;
           background: #f9fafb;
         }
 
