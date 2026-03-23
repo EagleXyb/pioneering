@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ParseIntPipe } from '@nestjs/common';
 import { ProfileService } from './profile.service';
 import { CreateProfileDto, UpdateProfileDto } from './dto/profile.dto';
 
@@ -32,6 +32,11 @@ export class ProfileController {
     @Body() updateProfileDto: UpdateProfileDto,
   ) {
     return this.profileService.update(id, updateProfileDto);
+  }
+
+  @Patch('avatar/:email')
+  updateAvatar(@Param('email') email: string, @Body() body: { avatar: string }) {
+    return this.profileService.updateAvatar(email, body.avatar);
   }
 
   @Post('upsert')

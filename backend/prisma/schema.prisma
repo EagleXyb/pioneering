@@ -18,6 +18,7 @@ model Profile {
   position  String?
   joinDate  DateTime @default(now())
   skills    String[]
+  avatar    String?  // 存储头像的base64编码
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

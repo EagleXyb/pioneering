@@ -53,6 +53,13 @@ export class ProfileService {
     });
   }
 
+  async updateAvatar(email: string, avatar: string) {
+    return this.prisma.profile.update({
+      where: { email },
+      data: { avatar },
+    });
+  }
+
   async remove(id: number) {
     const profile = await this.prisma.profile.findUnique({
       where: { id },

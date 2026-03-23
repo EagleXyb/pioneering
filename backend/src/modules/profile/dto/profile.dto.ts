@@ -7,6 +7,7 @@ export class CreateProfileDto {
   company?: string;
   position?: string;
   skills?: string[];
+  avatar?: string; // 头像base64编码
 }
 
 export class UpdateProfileDto {
@@ -18,4 +19,5 @@ export class UpdateProfileDto {
   company?: string;
   position?: string;
   skills?: string[];
+  avatar?: string; // 头像base64编码
 }

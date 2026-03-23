@@ -62,6 +62,10 @@ const Profile: React.FC = () => {
             skills: data.skills || defaultProfile.skills,
             achievements: defaultProfile.achievements,
           });
+          // 从数据库加载头像并同步到全局状态
+          if (data.avatar) {
+            setAvatar(data.avatar);
+          }
         }
       }
     } catch (err) {
@@ -99,7 +103,7 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // 检查文件类型
@@ -120,26 +124,38 @@ const Profile: React.FC = () => {
         alert('读取图片失败，请重试');
       };
       
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         try {
-          const avatarUrl = event.target?.result as string;
+          const avatarData = event.target?.result as string;
           
-          if (!avatarUrl) {
+          if (!avatarData) {
             alert('读取图片失败');
             return;
           }
 
-          // 检查 base64 字符串长度（localStorage 限制约 5-10MB）
-          if (avatarUrl.length > 10 * 1024 * 1024) {
+          // 检查 base64 字符串长度（数据库限制）
+          if (avatarData.length > 10 * 1024 * 1024) {
             alert('图片文件过大，请选择更小的图片');
             return;
           }
 
-          setAvatar(avatarUrl);
-          console.log('头像上传成功');
+          // 上传到数据库
+          const response = await fetch(`${API_BASE}/profile/avatar/zhangsan@example.com`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatar: avatarData }),
+          });
+
+          if (response.ok) {
+            // 同时更新全局状态
+            setAvatar(avatarData);
+            console.log('头像上传成功');
+          } else {
+            alert('头像保存失败，请重试');
+          }
         } catch (error) {
           console.error('保存头像失败:', error);
-          alert('保存头像失败，请重试');
+          alert('保存头像失败，请检查网络连接');
         }
       };
       

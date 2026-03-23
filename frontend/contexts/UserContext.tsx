@@ -11,6 +11,7 @@ interface UserContextType {
   setAvatar: (avatar: string | null) => void;
   setName: (name: string) => void;
   setEmail: (email: string) => void;
+  syncAvatarFromDatabase: () => Promise<void>;
 }
 
 const defaultUserState: UserState = {
@@ -53,6 +54,21 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [userState]);
 
+  // 从数据库同步头像
+  const syncAvatarFromDatabase = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/profile/email/zhangsan@example.com');
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.avatar) {
+          setUserState(prev => ({ ...prev, avatar: data.avatar }));
+        }
+      }
+    } catch (error) {
+      console.error('同步头像失败:', error);
+    }
+  };
+
   const setAvatar = (avatar: string | null) => {
     try {
       setUserState(prev => ({ ...prev, avatar }));
@@ -70,7 +86,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <UserContext.Provider value={{ userState, setAvatar, setName, setEmail }}>
+    <UserContext.Provider value={{ userState, setAvatar, setName, setEmail, syncAvatarFromDatabase }}>
       {children}
     </UserContext.Provider>
   );
