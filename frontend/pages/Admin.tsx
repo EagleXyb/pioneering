@@ -904,7 +904,7 @@ const Admin: React.FC = () => {
         }
 
         .sidebar {
-          width: 240px;
+          width: 215px;
           background: white;
           border-right: 1px solid #e5e7eb;
           display: flex;
@@ -940,6 +940,8 @@ const Admin: React.FC = () => {
           flex: 1;
           overflow-y: auto;
           padding: 16px 0;
+          width: 215px;
+          height: 816px;
         }
 
         .nav-section {
@@ -948,11 +950,11 @@ const Admin: React.FC = () => {
 
         .nav-section-title {
           padding: 8px 20px;
-          font-size: 11px;
+          font-size: 14px;
           font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          color: var(--text-secondary);
+          line-height: 13px;
+          letter-spacing: 1px;
+          color: rgb(134, 134, 139);
         }
 
         .nav-items {
@@ -973,9 +975,10 @@ const Admin: React.FC = () => {
           font-size: 14px;
           text-align: left;
           transition: all 0.2s ease;
-          border-radius: 8px;
-          margin: 0 8px;
-          width: auto;
+          border-radius: 3px;
+          margin: 0 auto;
+          width: calc(100% - 16px);
+          max-width: 180px;
         }
 
         .nav-item:hover {
@@ -1040,7 +1043,7 @@ const Admin: React.FC = () => {
 
         .main-content {
           flex: 1;
-          margin-left: 240px;
+          margin-left: 215px;
           display: flex;
           flex-direction: column;
           min-height: calc(100vh - 60px);
