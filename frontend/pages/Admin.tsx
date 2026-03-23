@@ -3,12 +3,20 @@ import { Link } from 'react-router-dom';
 
 const API_BASE_URL = 'http://localhost:3000';
 
-type Step = 'config' | 'test' | 'save' | 'prompt';
+type NavSection = 'model' | 'prompt' | 'security';
+type PromptModule = 'perception' | 'retrieval' | 'generation' | 'evaluation';
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
+interface NavItem {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+}
+
 const Admin: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<Step>('config');
+  const [activeSection, setActiveSection] = useState<NavSection>('model');
+  const [activePromptModule, setActivePromptModule] = useState<PromptModule>('perception');
   const [apiKey, setApiKey] = useState('');
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
@@ -18,12 +26,137 @@ const Admin: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [isConnectionValid, setIsConnectionValid] = useState(false);
   const [configId, setConfigId] = useState<number | null>(null);
+  const [prompts, setPrompts] = useState<Record<PromptModule, string>>({
+    perception: '',
+    retrieval: '',
+    generation: '',
+    evaluation: '',
+  });
 
-  const steps: { key: Step; label: string; number: number }[] = [
-    { key: 'config', label: '配置参数', number: 1 },
-    { key: 'test', label: '测试连接', number: 2 },
-    { key: 'save', label: '保存配置', number: 3 },
-    { key: 'prompt', label: '设置提示词', number: 4 },
+  const navSections: { key: NavSection; label: string; items: NavItem[] }[] = [
+    {
+      key: 'model',
+      label: '模型管理',
+      items: [
+        {
+          key: 'config',
+          label: 'API Key 配置',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'provider',
+          label: '服务商管理',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'model-list',
+          label: '模型列表',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/>
+              <line x1="3" y1="12" x2="3.01" y2="12"/>
+              <line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          ),
+        },
+      ],
+    },
+    {
+      key: 'prompt',
+      label: 'Prompt 管理',
+      items: [
+        {
+          key: 'perception',
+          label: '问题感知模块',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 16v-4"/>
+              <path d="M12 8h.01"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'retrieval',
+          label: '知识检索模块',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'generation',
+          label: '创意生成模块',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'evaluation',
+          label: '评估反馈模块',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          ),
+        },
+      ],
+    },
+    {
+      key: 'security',
+      label: '安全管理',
+      items: [
+        {
+          key: 'access-log',
+          label: '访问日志',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'api-monitor',
+          label: 'API 监控',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+          ),
+        },
+        {
+          key: 'rate-limit',
+          label: '限流配置',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          ),
+        },
+      ],
+    },
   ];
 
   useEffect(() => {
@@ -44,7 +177,6 @@ const Admin: React.FC = () => {
           if (config.lastTestTime && config.lastTestResult) {
             setIsConnectionValid(true);
             setTestResult({ message: config.lastTestResult, responseTime: 0 });
-            setCurrentStep('prompt');
           }
           localStorage.setItem('aiConfig', JSON.stringify(config));
         }
@@ -63,22 +195,6 @@ const Admin: React.FC = () => {
 
   const isConfigValid = () => {
     return apiKey.trim() && provider && model;
-  };
-
-  const handleNextStep = () => {
-    const stepOrder: Step[] = ['config', 'test', 'save', 'prompt'];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    if (currentIndex < stepOrder.length - 1) {
-      setCurrentStep(stepOrder[currentIndex + 1]);
-    }
-  };
-
-  const handlePrevStep = () => {
-    const stepOrder: Step[] = ['config', 'test', 'save', 'prompt'];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    if (currentIndex > 0) {
-      setCurrentStep(stepOrder[currentIndex - 1]);
-    }
   };
 
   const handleTestConnection = async () => {
@@ -148,7 +264,7 @@ const Admin: React.FC = () => {
         setConfigId(savedConfig.id);
         localStorage.setItem('aiConfig', JSON.stringify(savedConfig));
         setSaveStatus('saved');
-        handleNextStep();
+        alert('配置保存成功！');
       } else {
         setSaveStatus('error');
         alert('保存失败，请重试');
@@ -159,9 +275,10 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleSavePrompt = async () => {
-    if (!prompt.trim()) {
-      alert('请填写系统提示词');
+  const handleSavePrompt = async (module: PromptModule) => {
+    const promptText = prompts[module];
+    if (!promptText.trim()) {
+      alert('请填写提示词内容');
       return;
     }
 
@@ -171,7 +288,7 @@ const Admin: React.FC = () => {
       apiKey: apiKey.trim(),
       provider,
       model,
-      prompt: prompt.trim(),
+      prompt: promptText.trim(),
       lastTestInput: '连接测试',
       lastTestResult: testResult?.message || '',
       lastTestTime: new Date().toISOString(),
@@ -189,7 +306,7 @@ const Admin: React.FC = () => {
         setConfigId(savedConfig.id);
         localStorage.setItem('aiConfig', JSON.stringify(savedConfig));
         setSaveStatus('saved');
-        alert('配置保存成功！');
+        alert(`${getModuleName(module)}提示词保存成功！`);
       } else {
         setSaveStatus('error');
         alert('保存失败，请重试');
@@ -200,42 +317,25 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleReset = () => {
-    setCurrentStep('config');
-    setIsConnectionValid(false);
-    setTestStatus('idle');
-    setTestResult(null);
+  const getModuleName = (module: PromptModule): string => {
+    const names: Record<PromptModule, string> = {
+      perception: '问题感知模块',
+      retrieval: '知识检索模块',
+      generation: '创意生成模块',
+      evaluation: '评估反馈模块',
+    };
+    return names[module];
   };
 
-  const renderStepIndicator = () => (
-    <div className="step-indicator">
-      {steps.map((step, index) => {
-        const isActive = step.key === currentStep;
-        const isCompleted = steps.findIndex(s => s.key === currentStep) > index;
-        return (
-          <div key={step.key} className={`step-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}>
-            <div className="step-circle">
-              {isCompleted ? (
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                  <path d="M16 5L8 13L4 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              ) : (
-                step.number
-              )}
-            </div>
-            <span className="step-label">{step.label}</span>
-            {index < steps.length - 1 && <div className="step-line" />}
-          </div>
-        );
-      })}
-    </div>
-  );
+  const handlePromptChange = (module: PromptModule, value: string) => {
+    setPrompts((prev) => ({ ...prev, [module]: value }));
+  };
 
-  const renderConfigStep = () => (
-    <div className="step-content">
-      <div className="step-header">
-        <h3>步骤 1：配置核心参数</h3>
-        <p>请填写 AI 服务商的连接信息</p>
+  const renderModelConfig = () => (
+    <div className="content-panel">
+      <div className="panel-header">
+        <h2 className="panel-title">API Key 配置</h2>
+        <p className="panel-description">配置 AI 服务商的连接信息</p>
       </div>
       <div className="form-card">
         <div className="form-group">
@@ -321,441 +421,727 @@ const Admin: React.FC = () => {
             </select>
           </div>
         </div>
-      </div>
-      <div className="step-actions">
-        <button
-          className="btn-primary"
-          onClick={handleNextStep}
-          disabled={!isConfigValid()}
-        >
-          下一步：测试连接
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M7 4L13 10L7 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderTestStep = () => (
-    <div className="step-content">
-      <div className="step-header">
-        <h3>步骤 2：测试连接有效性</h3>
-        <p>验证与大模型的连接是否正常</p>
-      </div>
-      <div className="form-card">
-        <div className="config-summary">
-          <div className="summary-item">
-            <span className="summary-label">服务商</span>
-            <span className="summary-value">{provider}</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">模型</span>
-            <span className="summary-value">{model}</span>
-          </div>
+        <div className="form-actions">
+          <button
+            className="btn-secondary"
+            onClick={handleTestConnection}
+            disabled={!isConfigValid() || testStatus === 'testing'}
+          >
+            {testStatus === 'testing' ? '测试中...' : '测试连接'}
+          </button>
+          <button
+            className="btn-primary"
+            onClick={handleSaveConfig}
+            disabled={!isConfigValid() || saveStatus === 'saving'}
+          >
+            {saveStatus === 'saving' ? '保存中...' : '保存配置'}
+          </button>
         </div>
-        <div className="test-area">
-          {testStatus === 'idle' && (
-            <div className="test-placeholder">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              <p>点击下方按钮开始测试连接</p>
-            </div>
-          )}
-          {testStatus === 'testing' && (
-            <div className="test-loading">
-              <svg className="spinner" width="48" height="48" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="50" strokeLinecap="round"/>
-              </svg>
-              <p>正在测试连接...</p>
-            </div>
-          )}
-          {testStatus === 'success' && testResult && (
-            <div className="test-result success">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+      </div>
+      {testResult && (
+        <div className={`test-result ${testStatus}`}>
+          {testStatus === 'success' ? (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
                 <path d="M8 12L11 15L16 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
               <div className="result-info">
-                <h4>连接成功！</h4>
-                <p>响应内容：{testResult.message}</p>
+                <h4>连接成功</h4>
+                <p>{testResult.message}</p>
                 {testResult.responseTime && <p className="response-time">响应时间：{testResult.responseTime}ms</p>}
               </div>
-            </div>
-          )}
-          {testStatus === 'error' && testResult && (
-            <div className="test-result error">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+            </>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
                 <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
               <div className="result-info">
                 <h4>连接失败</h4>
                 <p>{testResult.error || '请检查配置信息是否正确'}</p>
               </div>
-            </div>
+            </>
           )}
         </div>
+      )}
+    </div>
+  );
+
+  const renderProviderManagement = () => (
+    <div className="content-panel">
+      <div className="panel-header">
+        <h2 className="panel-title">服务商管理</h2>
+        <p className="panel-description">管理系统支持的服务商</p>
       </div>
-      <div className="step-actions">
-        <button className="btn-secondary" onClick={handlePrevStep}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          上一步
-        </button>
-        <button
-          className="btn-primary"
-          onClick={handleTestConnection}
-          disabled={testStatus === 'testing'}
-        >
-          {testStatus === 'testing' ? '测试中...' : '测试连接'}
-        </button>
-        {testStatus === 'success' && (
-          <button className="btn-primary" onClick={handleNextStep}>
-            下一步：保存配置
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M7 4L13 10L7 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        )}
-        {testStatus === 'error' && (
-          <button className="btn-accent" onClick={handlePrevStep}>
-            返回修改配置
-          </button>
-        )}
+      <div className="provider-grid">
+        {[
+          { id: 'deepseek', name: 'DeepSeek', models: 3, status: 'active' },
+          { id: 'glm', name: 'GLM', models: 3, status: 'active' },
+          { id: 'minimax', name: 'MiniMax', models: 2, status: 'active' },
+          { id: 'kimi', name: 'Kimi', models: 2, status: 'active' },
+          { id: 'qwen', name: 'Qwen', models: 3, status: 'active' },
+        ].map((provider) => (
+          <div key={provider.id} className="provider-card">
+            <div className="provider-header">
+              <div className="provider-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                </svg>
+              </div>
+              <span className={`status-badge ${provider.status}`}>{provider.status === 'active' ? '已启用' : '已禁用'}</span>
+            </div>
+            <h3 className="provider-name">{provider.name}</h3>
+            <p className="provider-models">{provider.models} 个模型</p>
+            <div className="provider-actions">
+              <button className="btn-small">配置</button>
+              <button className="btn-small btn-outline">详情</button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 
-  const renderSaveStep = () => (
-    <div className="step-content">
-      <div className="step-header">
-        <h3>步骤 3：保存配置</h3>
-        <p>连接测试成功后，保存配置信息到数据库</p>
+  const renderModelList = () => (
+    <div className="content-panel">
+      <div className="panel-header">
+        <h2 className="panel-title">模型列表</h2>
+        <p className="panel-description">查看所有可用的 AI 模型</p>
       </div>
-      <div className="form-card">
-        <div className="save-confirm">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-            <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          <h4>确认保存配置</h4>
-          <div className="confirm-details">
-            <p><strong>服务商：</strong>{provider}</p>
-            <p><strong>模型：</strong>{model}</p>
+      <div className="model-table">
+        <table>
+          <thead>
+            <tr>
+              <th>服务商</th>
+              <th>模型名称</th>
+              <th>模型 ID</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { provider: 'DeepSeek', name: 'DeepSeek Chat', id: 'deepseek-chat', status: 'active' },
+              { provider: 'DeepSeek', name: 'DeepSeek Coder', id: 'deepseek-coder', status: 'active' },
+              { provider: 'GLM', name: 'GLM-4', id: 'glm-4', status: 'active' },
+              { provider: 'GLM', name: 'GLM-4V', id: 'glm-4v', status: 'active' },
+              { provider: 'MiniMax', name: 'ABAB-6', id: 'abab-6', status: 'active' },
+              { provider: 'Kimi', name: 'Kimi-2', id: 'kimi-2', status: 'active' },
+              { provider: 'Qwen', name: 'Qwen-2.5', id: 'qwen-2.5', status: 'active' },
+            ].map((model, index) => (
+              <tr key={index}>
+                <td>{model.provider}</td>
+                <td>{model.name}</td>
+                <td className="model-id">{model.id}</td>
+                <td><span className={`status-badge ${model.status}`}>{model.status === 'active' ? '启用' : '禁用'}</span></td>
+                <td>
+                  <button className="btn-small">测试</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderPromptModule = (module: PromptModule) => {
+    const moduleInfo: Record<PromptModule, { title: string; description: string; placeholder: string }> = {
+      perception: {
+        title: '问题感知模块',
+        description: '定义 AI 如何感知和理解用户提出的问题',
+        placeholder: '例如：你是一位专业的问题分析专家，负责深入理解用户提出的每一个问题...',
+      },
+      retrieval: {
+        title: '知识检索模块',
+        description: '定义 AI 如何从知识库中检索相关信息',
+        placeholder: '例如：你是一位知识检索专家，擅长从海量信息中找到最相关的知识...',
+      },
+      generation: {
+        title: '创意生成模块',
+        description: '定义 AI 如何生成创新性的想法和方案',
+        placeholder: '例如：你是一位创新思维专家，擅长打破常规思维，产生独特的创意...',
+      },
+      evaluation: {
+        title: '评估反馈模块',
+        description: '定义 AI 如何评估创意并提供反馈',
+        placeholder: '例如：你是一位专业的创新评估专家，负责评估创业项目的创新能力和潜力...',
+      },
+    };
+
+    const info = moduleInfo[module];
+
+    return (
+      <div className="content-panel">
+        <div className="panel-header">
+          <h2 className="panel-title">{info.title}</h2>
+          <p className="panel-description">{info.description}</p>
+        </div>
+        <div className="form-card">
+          <div className="form-group">
+            <label className="form-label">
+              提示词内容
+              <span className="label-required">*</span>
+            </label>
+            <textarea
+              value={prompts[module]}
+              onChange={(e) => handlePromptChange(module, e.target.value)}
+              placeholder={info.placeholder}
+              rows={10}
+              className="form-textarea"
+            />
+            <p className="form-hint">提示词将影响 AI 的响应风格和专业程度，建议根据具体业务场景进行定制</p>
+          </div>
+          <div className="form-actions">
+            <button className="btn-primary" onClick={() => handleSavePrompt(module)}>
+              保存提示词
+            </button>
+            <button className="btn-secondary" onClick={() => handlePromptChange(module, '')}>
+              重置
+            </button>
           </div>
         </div>
       </div>
-      <div className="step-actions">
-        <button className="btn-secondary" onClick={handlePrevStep}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          上一步
-        </button>
-        <button
-          className="btn-primary"
-          onClick={handleSaveConfig}
-          disabled={saveStatus === 'saving'}
-        >
-          {saveStatus === 'saving' ? '保存中...' : '保存配置'}
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
-  const renderPromptStep = () => (
-    <div className="step-content">
-      <div className="step-header">
-        <h3>步骤 4：设置系统提示词</h3>
-        <p>定义 AI 的角色和行为，帮助其更好地完成创新评估任务</p>
-      </div>
-      <div className="form-card">
-        <div className="form-group">
-          <label htmlFor="prompt" className="form-label">
-            系统提示词
-            <span className="label-required">*</span>
-          </label>
-          <textarea
-            id="prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="例如：你是一位专业的创新评估专家，负责评估创业项目的创新能力和潜力..."
-            rows={8}
-            className="form-textarea"
-          />
-          <p className="form-hint">提示词将影响 AI 的响应风格和专业程度</p>
+  const renderSecuritySection = (itemKey: string) => {
+    const content: Record<string, { title: string; description: string; icon: React.ReactNode }> = {
+      'access-log': {
+        title: '访问日志',
+        description: '查看所有 API 访问记录',
+        icon: (
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        ),
+      },
+      'api-monitor': {
+        title: 'API 监控',
+        description: '实时监控 API 调用情况',
+        icon: (
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        ),
+      },
+      'rate-limit': {
+        title: '限流配置',
+        description: '配置 API 调用频率限制',
+        icon: (
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        ),
+      },
+    };
+
+    const info = content[itemKey] || content['access-log'];
+
+    return (
+      <div className="content-panel">
+        <div className="panel-header">
+          <h2 className="panel-title">{info.title}</h2>
+          <p className="panel-description">{info.description}</p>
+        </div>
+        <div className="coming-soon">
+          <div className="coming-soon-icon">{info.icon}</div>
+          <h3>功能开发中</h3>
+          <p>该功能正在紧张开发中，敬请期待...</p>
         </div>
       </div>
-      <div className="step-actions">
-        <button className="btn-secondary" onClick={handlePrevStep}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          上一步
-        </button>
-        <button
-          className="btn-primary"
-          onClick={handleSavePrompt}
-          disabled={!prompt.trim() || saveStatus === 'saving'}
-        >
-          {saveStatus === 'saving' ? '保存中...' : '完成配置'}
-        </button>
-        <button className="btn-accent" onClick={handleReset}>
-          重新配置
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
-  const renderCurrentStep = () => {
-    switch (currentStep) {
-      case 'config': return renderConfigStep();
-      case 'test': return renderTestStep();
-      case 'save': return renderSaveStep();
-      case 'prompt': return renderPromptStep();
-      default: return renderConfigStep();
+  const renderContent = () => {
+    if (activeSection === 'model') {
+      switch (activePromptModule) {
+        case 'config': return renderModelConfig();
+        case 'provider': return renderProviderManagement();
+        case 'model-list': return renderModelList();
+        default: return renderModelConfig();
+      }
+    }
+
+    if (activeSection === 'prompt') {
+      return renderPromptModule(activePromptModule);
+    }
+
+    if (activeSection === 'security') {
+      return renderSecuritySection(activePromptModule);
+    }
+
+    return renderModelConfig();
+  };
+
+  const [activeNavItem, setActiveNavItem] = useState<string>('config');
+
+  const handleNavItemClick = (section: NavSection, itemKey: string) => {
+    setActiveSection(section);
+    setActiveNavItem(itemKey);
+    if (section === 'prompt' || section === 'security') {
+      setActivePromptModule(itemKey as PromptModule);
     }
   };
 
   return (
-    <div className="admin-container">
-      <nav className="nav">
-        <div className="nav-content">
-          <Link to="/" className="nav-back">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            <span>返回首页</span>
-          </Link>
-          <h1 className="nav-title">后台管理</h1>
-          <div style={{ width: '80px' }}></div>
+    <div className="admin-layout">
+      <header className="global-nav">
+        <div className="global-nav-content">
+          <div className="nav-left">
+            <div className="brand-section">
+              <Link to="/" className="brand-logo">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor"/>
+                  <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+                <span>IAC Incubator</span>
+              </Link>
+            </div>
+            
+            <nav className="main-nav">
+              <ul className="nav-links">
+                <li><Link to="/assessment" className="nav-link">创新能力测评</Link></li>
+                <li><Link to="/training" className="nav-link">创新能力训练</Link></li>
+                <li><Link to="/incubation" className="nav-link">创新方案孵化</Link></li>
+                <li><Link to="/" className="nav-link">案例中心</Link></li>
+                <li><Link to="/" className="nav-link">开发文档</Link></li>
+              </ul>
+            </nav>
+          </div>
+          
+          <div className="user-section">
+            <div className="language-switcher">
+              <button className="language-btn">中文</button>
+            </div>
+            <div className="user-avatar">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+          </div>
         </div>
-      </nav>
+      </header>
+      
+      <aside className="sidebar">
+        <nav className="sidebar-nav">
+          {navSections.map((section) => (
+            <div key={section.key} className="nav-section">
+              <h3 className="nav-section-title">{section.label}</h3>
+              <ul className="nav-items">
+                {section.items.map((item) => (
+                  <li key={item.key}>
+                    <button
+                      className={`nav-item ${activeSection === section.key && activeNavItem === item.key ? 'active' : ''}`}
+                      onClick={() => handleNavItemClick(section.key, item.key)}
+                    >
+                      <span className="nav-icon">{item.icon}</span>
+                      <span className="nav-label">{item.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </aside>
 
-      <main className="main">
-        <div className="main-content">
-          <section className="hero">
-            <h2 className="hero-title">AI 配置管理</h2>
-            <p className="hero-description">
-              配置并测试您的 AI 服务连接
-            </p>
-          </section>
+      <main className="main-content">
+        <header className="content-header">
+          <div className="breadcrumb">
+            <span className="current">
+              {activeSection === 'model' && (activeNavItem === 'config' ? 'API Key 配置' : activeNavItem === 'provider' ? '服务商管理' : '模型列表')}
+              {activeSection === 'prompt' && getModuleName(activePromptModule)}
+              {activeSection === 'security' && (activeNavItem === 'access-log' ? '访问日志' : activeNavItem === 'api-monitor' ? 'API 监控' : '限流配置')}
+            </span>
+          </div>
 
-          {renderStepIndicator()}
+        </header>
 
-          <section className="form-section">
-            {renderCurrentStep()}
-          </section>
+        <div className="content-body">
+          {renderContent()}
         </div>
       </main>
 
-      <footer className="footer">
-        <div className="footer-content">
-          <p className="footer-text">© 2024 IAC Incubator. 保留所有权利。</p>
-        </div>
-      </footer>
-
       <style>{`
-        .admin-container {
-          min-height: 100vh;
-          background: var(--bg-primary);
+        .admin-layout {
           display: flex;
           flex-direction: column;
+          min-height: 100vh;
+          background: var(--bg-primary);
         }
 
-        .nav {
+        .global-nav {
+          height: 60px;
+          background: white;
+          border-bottom: 1px solid #e5e7eb;
           position: sticky;
           top: 0;
-          z-index: 100;
-          background: rgba(255, 255, 255, 0.8);
-          backdrop-filter: saturate(180%) blur(20px);
-          border-bottom: 1px solid var(--border-light);
+          z-index: 200;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
 
-        .nav-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 var(--spacing-xl);
-          height: 52px;
+        .global-nav-content {
+          width: 100%;
+          margin: 0;
+          padding: 0 20px;
+          height: 100%;
           display: flex;
           align-items: center;
           justify-content: space-between;
         }
 
-        .nav-back {
+        .nav-left {
           display: flex;
           align-items: center;
-          gap: var(--spacing-sm);
-          color: var(--accent-blue);
-          text-decoration: none;
-          font-size: 15px;
-          transition: opacity var(--transition-fast);
+          gap: 40px;
         }
 
-        .nav-back:hover {
-          opacity: 0.7;
-          text-decoration: none;
+        .nav-left {
+          display: flex;
+          align-items: center;
+          gap: 40px;
         }
 
-        .nav-title {
+        .brand-section {
+          flex: 0 0 auto;
+        }
+
+        .brand-logo {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          text-decoration: none;
+          color: var(--text-primary);
+          font-weight: 600;
           font-size: 18px;
-          font-weight: 600;
-          color: var(--text-primary);
         }
 
-        .main {
-          flex: 1;
-          padding: var(--spacing-3xl) var(--spacing-xl);
+        .brand-logo svg {
+          color: #43e97b;
         }
 
-        .main-content {
-          max-width: 800px;
-          margin: 0 auto;
+        .main-nav {
+          flex: 0 0 auto;
         }
 
-        .hero {
-          text-align: center;
-          margin-bottom: var(--spacing-3xl);
-        }
-
-        .hero-title {
-          font-size: 40px;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin-bottom: var(--spacing-md);
-        }
-
-        .hero-description {
-          font-size: 17px;
-          color: var(--text-secondary);
-          max-width: 500px;
-          margin: 0 auto;
-        }
-
-        .step-indicator {
+        .nav-links {
           display: flex;
-          justify-content: center;
-          align-items: center;
-          margin-bottom: var(--spacing-3xl);
-          padding: 0 var(--spacing-xl);
+          gap: 24px;
+          list-style: none;
+          padding: 0;
+          margin: 0;
         }
 
-        .step-item {
+        .nav-link {
+          text-decoration: none;
+          color: #6b7280;
+          font-size: 14px;
+          font-weight: 500;
+          padding: 8px 12px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+        }
+
+        .nav-link:hover {
+          color: #374151;
+          background-color: #f3f4f6;
+        }
+
+        .user-section {
           display: flex;
           align-items: center;
+          gap: 12px;
+        }
+
+        .language-switcher {
           position: relative;
         }
 
-        .step-circle {
-          width: 36px;
-          height: 36px;
+        .language-btn {
+          padding: 6px 12px;
+          background: #f3f4f6;
+          border: 1px solid #e5e7eb;
+          border-radius: 6px;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .language-btn:hover {
+          background: #e5e7eb;
+        }
+
+        .user-avatar {
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
-          background: var(--bg-secondary);
-          border: 2px solid var(--border);
+          background: #f3f4f6;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
-          font-weight: 600;
-          color: var(--text-tertiary);
-          transition: all var(--transition-fast);
+          color: #6b7280;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: 1px solid #e5e7eb;
         }
 
-        .step-item.active .step-circle {
-          background: var(--accent-blue);
-          border-color: var(--accent-blue);
-          color: white;
+        .user-avatar:hover {
+          background: #e5e7eb;
+          color: #374151;
         }
 
-        .step-item.completed .step-circle {
-          background: #22c55e;
-          border-color: #22c55e;
-          color: white;
+        .content-wrapper {
+          display: flex;
+          flex: 1;
         }
 
-        .step-label {
-          margin-left: var(--spacing-sm);
-          font-size: 14px;
-          color: var(--text-tertiary);
-          white-space: nowrap;
-        }
-
-        .step-item.active .step-label {
-          color: var(--accent-blue);
-          font-weight: 600;
-        }
-
-        .step-item.completed .step-label {
-          color: #22c55e;
-        }
-
-        .step-line {
-          width: 60px;
-          height: 2px;
-          background: var(--border);
-          margin: 0 var(--spacing-md);
-        }
-
-        .step-item.completed + .step-item .step-line,
-        .step-item.completed .step-line {
-          background: #22c55e;
-        }
-
-        @media (max-width: 640px) {
-          .step-label {
-            display: none;
-          }
-          .step-line {
-            width: 40px;
-          }
-        }
-
-        .form-section {
+        .sidebar {
+          width: 240px;
+          background: white;
+          border-right: 1px solid #e5e7eb;
           display: flex;
           flex-direction: column;
-          gap: var(--spacing-xl);
+          position: fixed;
+          top: 60px;
+          left: 0;
+          bottom: 0;
+          z-index: 100;
+          box-shadow: 1px 0 3px rgba(0, 0, 0, 0.05);
         }
 
-        .step-content {
+        .sidebar-header {
+          padding: 16px 20px;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .logo {
           display: flex;
-          flex-direction: column;
-          gap: var(--spacing-xl);
-        }
-
-        .step-header {
-          text-align: center;
-        }
-
-        .step-header h3 {
-          font-size: 24px;
+          align-items: center;
+          gap: 10px;
+          text-decoration: none;
+          color: #374151;
           font-weight: 600;
-          color: var(--text-primary);
-          margin-bottom: var(--spacing-sm);
+          font-size: 16px;
         }
 
-        .step-header p {
-          font-size: 15px;
+        .logo svg {
+          color: #43e97b;
+        }
+
+        .sidebar-nav {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px 0;
+        }
+
+        .nav-section {
+          margin-bottom: 24px;
+        }
+
+        .nav-section-title {
+          padding: 8px 20px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
           color: var(--text-secondary);
         }
 
+        .nav-items {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+
+        .nav-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 16px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #6b7280;
+          font-size: 14px;
+          text-align: left;
+          transition: all 0.2s ease;
+          border-radius: 8px;
+          margin: 0 8px;
+          width: auto;
+        }
+
+        .nav-item:hover {
+          background: #f3f4f6;
+          color: #374151;
+        }
+
+        .nav-item.active {
+          background: #f0fdf4;
+          color: #15803d;
+        }
+
+        .nav-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+        }
+
+        .nav-label {
+          flex: 1;
+        }
+
+        .sidebar-footer {
+          padding: 16px 20px;
+          border-top: 1px solid var(--border-light);
+        }
+
+        .user-info {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .user-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: var(--border-light);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-secondary);
+        }
+
+        .user-details {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .user-name {
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+
+        .user-role {
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+
+        .main-content {
+          flex: 1;
+          margin-left: 240px;
+          display: flex;
+          flex-direction: column;
+          min-height: calc(100vh - 60px);
+          margin-top: 60px;
+          background: #f9fafb;
+        }
+
+        .content-header {
+          height: 56px;
+          padding: 0 24px;
+          background: rgba(255, 255, 255, 0.8);
+          backdrop-filter: saturate(180%) blur(20px);
+          border-bottom: 1px solid var(--border-light);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          position: sticky;
+          top: 0;
+          z-index: 50;
+        }
+
+        .breadcrumb {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          color: var(--text-secondary);
+        }
+
+        .breadcrumb .current {
+          color: var(--text-primary);
+          font-weight: 500;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .btn-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          border: none;
+          background: var(--border-light);
+          color: var(--text-secondary);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .btn-icon:hover {
+          background: var(--border);
+          color: var(--text-primary);
+        }
+
+        .content-body {
+          flex: 1;
+          padding: 20px;
+          overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+
+        .content-body::-webkit-scrollbar {
+          display: none;
+        }
+
+        .content-panel {
+          max-width: 1000px;
+        }
+
+        .panel-header {
+          margin-bottom: 20px;
+        }
+
+        .panel-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 8px;
+        }
+
+        .panel-description {
+          font-size: 14px;
+          color: #6b7280;
+        }
+
         .form-card {
-          background: var(--bg-primary);
-          border: 1px solid var(--border-light);
-          border-radius: var(--radius-lg);
-          padding: var(--spacing-xl);
-          box-shadow: var(--shadow-sm);
+          background: white;
+          border-radius: 8px;
+          padding: 24px;
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
 
         .form-group {
-          margin-bottom: var(--spacing-lg);
-        }
-
-        .form-group:last-child {
-          margin-bottom: 0;
+          margin-bottom: 20px;
         }
 
         .form-label {
@@ -763,11 +1149,11 @@ const Admin: React.FC = () => {
           font-size: 14px;
           font-weight: 500;
           color: var(--text-primary);
-          margin-bottom: var(--spacing-sm);
+          margin-bottom: 8px;
         }
 
         .label-required {
-          color: var(--accent-pink);
+          color: #e74c3c;
           margin-left: 4px;
         }
 
@@ -776,250 +1162,318 @@ const Admin: React.FC = () => {
         .form-textarea {
           width: 100%;
           padding: 12px 16px;
+          font-size: 14px;
           border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          font-size: 15px;
-          color: var(--text-primary);
+          border-radius: 8px;
           background: var(--bg-primary);
-          transition: all var(--transition-fast);
+          color: var(--text-primary);
+          transition: border-color 0.2s ease;
         }
 
         .form-input:focus,
         .form-select:focus,
         .form-textarea:focus {
           outline: none;
-          border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          border-color: #43e97b;
         }
 
         .form-textarea {
           resize: vertical;
           min-height: 150px;
+          font-family: inherit;
         }
 
         .form-hint {
-          font-size: 13px;
-          color: var(--text-tertiary);
-          margin-top: var(--spacing-xs);
+          margin-top: 8px;
+          font-size: 12px;
+          color: var(--text-secondary);
         }
 
         .form-row {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: var(--spacing-lg);
+          gap: 16px;
         }
 
-        @media (max-width: 640px) {
-          .form-row {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .step-actions {
+        .form-actions {
           display: flex;
-          gap: var(--spacing-md);
-          justify-content: center;
-          flex-wrap: wrap;
-        }
-
-        .btn-primary,
-        .btn-secondary,
-        .btn-accent {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: var(--spacing-sm);
-          padding: 12px 24px;
-          border-radius: var(--radius-md);
-          font-size: 15px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-          border: none;
-          text-decoration: none;
+          gap: 12px;
+          margin-top: 24px;
         }
 
         .btn-primary {
-          background: var(--accent-blue);
+          padding: 12px 24px;
+          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
           color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 8px rgba(67, 233, 123, 0.3);
         }
 
         .btn-primary:hover {
-          background: var(--accent-blue-hover);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(67, 233, 123, 0.4);
         }
 
         .btn-primary:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+          transform: none;
         }
 
         .btn-secondary {
-          background: var(--bg-secondary);
+          padding: 12px 24px;
+          background: var(--bg-primary);
           color: var(--text-primary);
           border: 1px solid var(--border);
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
         }
 
         .btn-secondary:hover {
-          background: var(--bg-tertiary);
+          background: var(--border-light);
         }
 
-        .btn-accent {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-        }
-
-        .btn-accent:hover {
-          opacity: 0.9;
-        }
-
-        .config-summary {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: var(--spacing-md);
-          margin-bottom: var(--spacing-lg);
-        }
-
-        .summary-item {
-          background: var(--bg-secondary);
-          padding: var(--spacing-md);
-          border-radius: var(--radius-md);
-        }
-
-        .summary-label {
-          display: block;
-          font-size: 12px;
-          color: var(--text-tertiary);
-          margin-bottom: var(--spacing-xs);
-        }
-
-        .summary-value {
-          font-size: 15px;
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-
-        .test-area {
-          min-height: 200px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .test-placeholder,
-        .test-loading {
-          text-align: center;
-          color: var(--text-tertiary);
-        }
-
-        .test-placeholder svg,
-        .test-loading svg {
-          margin-bottom: var(--spacing-md);
-          opacity: 0.5;
+        .btn-secondary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .test-result {
+          margin-top: 20px;
+          padding: 16px;
+          border-radius: 8px;
           display: flex;
           align-items: flex-start;
-          gap: var(--spacing-lg);
-          padding: var(--spacing-lg);
-          border-radius: var(--radius-md);
-          width: 100%;
+          gap: 12px;
         }
 
         .test-result.success {
-          background: rgba(34, 197, 94, 0.1);
-          border: 1px solid rgba(34, 197, 94, 0.3);
-          color: #166534;
-        }
-
-        .test-result.success > svg {
-          color: #22c55e;
+          background: rgba(67, 233, 123, 0.1);
+          border: 1px solid rgba(67, 233, 123, 0.3);
+          color: #27ae60;
         }
 
         .test-result.error {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          color: #991b1b;
-        }
-
-        .test-result.error > svg {
-          color: #ef4444;
+          background: rgba(231, 76, 60, 0.1);
+          border: 1px solid rgba(231, 76, 60, 0.3);
+          color: #e74c3c;
         }
 
         .result-info h4 {
-          font-size: 18px;
+          font-size: 16px;
           font-weight: 600;
-          margin-bottom: var(--spacing-sm);
+          margin-bottom: 4px;
         }
 
         .result-info p {
           font-size: 14px;
-          margin-bottom: var(--spacing-xs);
+          margin: 0;
+          color: var(--text-secondary);
         }
 
         .response-time {
+          margin-top: 8px !important;
+          font-size: 12px !important;
+        }
+
+        .provider-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          gap: 16px;
+        }
+
+        .provider-card {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-light);
+          border-radius: 12px;
+          padding: 20px;
+          transition: all 0.3s ease;
+        }
+
+        .provider-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        }
+
+        .provider-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 16px;
+        }
+
+        .provider-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+        }
+
+        .status-badge {
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .status-badge.active {
+          background: rgba(67, 233, 123, 0.1);
+          color: #27ae60;
+        }
+
+        .status-badge.inactive {
+          background: rgba(149, 165, 166, 0.1);
+          color: #95a5a6;
+        }
+
+        .provider-name {
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: 4px;
+        }
+
+        .provider-models {
+          font-size: 13px;
+          color: var(--text-secondary);
+          margin-bottom: 16px;
+        }
+
+        .provider-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .btn-small {
+          padding: 6px 12px;
           font-size: 12px;
-          opacity: 0.8;
+          font-weight: 500;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          background: var(--border-light);
+          color: var(--text-primary);
         }
 
-        .save-confirm {
+        .btn-small:hover {
+          background: var(--border);
+        }
+
+        .btn-small.btn-outline {
+          background: transparent;
+          border: 1px solid var(--border);
+        }
+
+        .model-table {
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          border: 1px solid var(--border-light);
+          overflow: hidden;
+        }
+
+        .model-table table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .model-table th {
+          text-align: left;
+          padding: 14px 16px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: var(--text-secondary);
+          background: var(--bg-primary);
+          border-bottom: 1px solid var(--border-light);
+        }
+
+        .model-table td {
+          padding: 14px 16px;
+          font-size: 14px;
+          color: var(--text-primary);
+          border-bottom: 1px solid var(--border-light);
+        }
+
+        .model-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        .model-table tr:hover td {
+          background: var(--bg-primary);
+        }
+
+        .model-id {
+          font-family: monospace;
+          font-size: 13px !important;
+          color: var(--text-secondary) !important;
+        }
+
+        .coming-soon {
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          border: 1px solid var(--border-light);
+          padding: 60px 40px;
           text-align: center;
-          padding: var(--spacing-xl);
         }
 
-        .save-confirm > svg {
-          color: #22c55e;
-          margin-bottom: var(--spacing-lg);
+        .coming-soon-icon {
+          color: var(--border);
+          margin-bottom: 24px;
         }
 
-        .save-confirm h4 {
+        .coming-soon h3 {
           font-size: 20px;
           font-weight: 600;
           color: var(--text-primary);
-          margin-bottom: var(--spacing-lg);
+          margin-bottom: 8px;
         }
 
-        .confirm-details {
-          background: var(--bg-secondary);
-          padding: var(--spacing-lg);
-          border-radius: var(--radius-md);
-          text-align: left;
-        }
-
-        .confirm-details p {
-          margin-bottom: var(--spacing-sm);
+        .coming-soon p {
           font-size: 14px;
           color: var(--text-secondary);
         }
 
-        .confirm-details p:last-child {
-          margin-bottom: 0;
+        @media (max-width: 1024px) {
+          .sidebar {
+            width: 220px;
+          }
+
+          .main-content {
+            margin-left: 220px;
+          }
+
+          .form-row {
+            grid-template-columns: 1fr;
+          }
         }
 
-        .footer {
-          padding: var(--spacing-xl);
-          border-top: 1px solid var(--border-light);
-          margin-top: auto;
-        }
+        @media (max-width: 768px) {
+          .sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+          }
 
-        .footer-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          text-align: center;
-        }
+          .sidebar.open {
+            transform: translateX(0);
+          }
 
-        .footer-text {
-          font-size: 13px;
-          color: var(--text-tertiary);
-        }
-
-        .spinner {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+          .main-content {
+            margin-left: 0;
+          }
         }
       `}</style>
     </div>
