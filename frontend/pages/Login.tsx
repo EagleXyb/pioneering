@@ -361,7 +361,7 @@ const Login: React.FC = () => {
           height: 44px;
           padding: 0 var(--spacing-md);
           border: 1px solid var(--border);
-          border-radius: var(--radius-md);
+          border-radius: 3px;
           font-size: 15px;
           transition: all var(--transition-fast);
           background: var(--bg-primary);
@@ -423,7 +423,7 @@ const Login: React.FC = () => {
           background: var(--accent-blue);
           color: white;
           border: none;
-          border-radius: var(--radius-sm);
+          border-radius: 3px;
           font-size: 17px;
           font-weight: 500;
           cursor: pointer;

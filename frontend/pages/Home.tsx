@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 
@@ -507,11 +507,12 @@ const Home: React.FC = () => {
 
         .login-button {
           display: inline-block;
+          width: 122px;
           padding: 8px 20px;
           background: rgba(36, 144, 248, 0.08);
           color: var(--accent-blue);
           border: none;
-          border-radius: 12px;
+          border-radius: 3px;
           font-size: 14px;
           font-weight: 500;
           cursor: pointer;
@@ -1037,10 +1038,11 @@ const Home: React.FC = () => {
 
         .btn-primary {
           display: inline-block;
+          width: 130px;
           background: var(--accent-blue);
           color: white;
           padding: 12px 24px;
-          border-radius: var(--radius-full);
+          border-radius: 3px;
           font-size: 17px;
           font-weight: 500;
           text-decoration: none;

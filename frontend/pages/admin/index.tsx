@@ -614,7 +614,8 @@ const Admin: React.FC = () => {
         }
 
         .btn-primary {
-          padding: 12px 24px;
+          width: 120px;
+          height: 41px;
           background: #2490f8;
           color: white;
           border: none;
@@ -638,7 +639,8 @@ const Admin: React.FC = () => {
         }
 
         .btn-secondary {
-          padding: 12px 24px;
+          width: 120px;
+          height: 41px;
           background: var(--bg-primary);
           color: var(--text-primary);
           border: 1px solid var(--border);
