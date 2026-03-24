@@ -2,8 +2,9 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { AiConfigModule } from './modules/ai-config/ai-config.module';
+import { GlobalPromptModule } from './modules/global-prompt/global-prompt.module';
 
 @Module({
-  imports: [PrismaModule, ProfileModule, AiConfigModule],
+  imports: [PrismaModule, ProfileModule, AiConfigModule, GlobalPromptModule],
 })
 export class AppModule {}

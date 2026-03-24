@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -215,7 +215,7 @@ const BasicAssessment: React.FC = () => {
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           text-decoration: none;
         }
 
@@ -246,8 +246,8 @@ const BasicAssessment: React.FC = () => {
         .hero-badge {
           display: inline-block;
           padding: 6px 16px;
-          background: rgba(102, 126, 234, 0.1);
-          color: #667eea;
+          background: rgba(36, 144, 248, 0.1);
+          color: #2490f8;
           border-radius: var(--radius-full);
           font-size: 12px;
           font-weight: 600;

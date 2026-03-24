@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const Training: React.FC = () => {
@@ -44,9 +44,9 @@ const Training: React.FC = () => {
         <div className="courses-content">
           <div className="course-grid">
             <div className="course-card">
-              <div className="course-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(79, 172, 254, 0.4) 0%, transparent 60%)' }}></div>
+              <div className="course-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(36, 144, 248, 0.4) 0%, transparent 60%)' }}></div>
               <div className="course-header">
-                <div className="course-icon" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
+                <div className="course-icon" style={{ background: '#2490f8' }}>
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M12 19l7-7 3 3-7 7-3-3z"/>
                     <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
@@ -238,7 +238,7 @@ const Training: React.FC = () => {
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           text-decoration: none;
         }
 
@@ -263,7 +263,7 @@ const Training: React.FC = () => {
           transform: translateX(-50%);
           width: 100%;
           height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(79, 172, 254, 0.15) 0%, transparent 60%);
+          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.15) 0%, transparent 60%);
           pointer-events: none;
         }
 
@@ -279,8 +279,8 @@ const Training: React.FC = () => {
           align-items: center;
           gap: 8px;
           padding: 6px 16px;
-          background: rgba(79, 172, 254, 0.1);
-          color: #4facfe;
+          background: rgba(36, 144, 248, 0.1);
+          color: #2490f8;
           border-radius: var(--radius-full);
           font-size: 13px;
           font-weight: 600;
@@ -406,7 +406,7 @@ const Training: React.FC = () => {
 
         .course-level {
           padding: 4px 12px;
-          background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+          background: #2490f8;
           color: white;
           border-radius: var(--radius-full);
           font-size: 12px;
@@ -451,7 +451,7 @@ const Training: React.FC = () => {
         .course-btn {
           width: 100%;
           padding: 12px;
-          background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+          background: #2490f8;
           color: white;
           border: none;
           border-radius: var(--radius-md);
@@ -459,14 +459,14 @@ const Training: React.FC = () => {
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          box-shadow: 0 4px 14px 0 rgba(79, 172, 254, 0.4);
+          box-shadow: 0 4px 14px 0 rgba(36, 144, 248, 0.4);
           position: relative;
           z-index: 1;
         }
 
         .course-btn:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px 0 rgba(79, 172, 254, 0.5);
+          box-shadow: 0 6px 20px 0 rgba(36, 144, 248, 0.5);
         }
 
         .features {
@@ -499,7 +499,7 @@ const Training: React.FC = () => {
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+          background: #2490f8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -606,7 +606,7 @@ const Training: React.FC = () => {
           }
 
           .hero-badge {
-            background: rgba(79, 172, 254, 0.15);
+            background: rgba(36, 144, 248, 0.15);
           }
         }
       `}</style>

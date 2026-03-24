@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import llmService from '../services/llmService';
 
@@ -467,7 +467,7 @@ const TestConfig: React.FC = () => {
         .hero-badge {
           display: inline-block;
           padding: 6px 16px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #2490f8;
           color: white;
           border-radius: var(--radius-full);
           font-size: 13px;
@@ -570,7 +570,7 @@ const TestConfig: React.FC = () => {
         .form-textarea:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .form-textarea {
@@ -692,7 +692,7 @@ const TestConfig: React.FC = () => {
         .test-textarea:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .test-btn {

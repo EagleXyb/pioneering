@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 
@@ -188,7 +188,7 @@ const Profile: React.FC = () => {
         <main className="main">
           <div className="main-content" style={{ textAlign: 'center', padding: '100px 0' }}>
             <p>请先登录</p>
-            <Link to="/" style={{ color: '#0071E3', textDecoration: 'none', marginTop: '16px', display: 'inline-block' }}>
+            <Link to="/" style={{ color: '#2490f8', textDecoration: 'none', marginTop: '16px', display: 'inline-block' }}>
               返回首页登录
             </Link>
           </div>
@@ -461,7 +461,7 @@ const Profile: React.FC = () => {
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           text-decoration: none;
         }
 
@@ -483,7 +483,7 @@ const Profile: React.FC = () => {
         }
 
         .nav-action:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
         }
 
         .main {
@@ -524,7 +524,7 @@ const Profile: React.FC = () => {
           width: 100%;
           height: 100%;
           border-radius: 50%;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #2490f8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -682,7 +682,7 @@ const Profile: React.FC = () => {
         .info-input:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .bio-text {
@@ -707,7 +707,7 @@ const Profile: React.FC = () => {
         .bio-textarea:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .skills-container {
@@ -721,7 +721,7 @@ const Profile: React.FC = () => {
           align-items: center;
           gap: 6px;
           padding: 6px 12px;
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           color: var(--accent-blue);
           border-radius: 16px;
           font-size: 14px;
@@ -789,9 +789,9 @@ const Profile: React.FC = () => {
         }
 
         .btn-save:hover {
-          background: #005fcc;
+          background: #1a7de6;
           transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3);
+          box-shadow: 0 4px 12px rgba(36, 144, 248, 0.3);
         }
 
         .footer {

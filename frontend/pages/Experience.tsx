@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const Experience: React.FC = () => {
@@ -44,7 +44,7 @@ const Experience: React.FC = () => {
           <h2 className="tools-title">体验工具</h2>
           <div className="tools-grid">
             <div className="tool-card">
-              <div className="tool-icon" style={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' }}>
+              <div className="tool-icon" style={{ background: '#2490f8' }}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                   <path d="M2 17l10 5 10-5"/>
@@ -59,7 +59,7 @@ const Experience: React.FC = () => {
             </div>
 
             <div className="tool-card">
-              <div className="tool-icon" style={{ background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)' }}>
+              <div className="tool-icon" style={{ background: '#2490f8' }}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
@@ -202,7 +202,7 @@ const Experience: React.FC = () => {
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           text-decoration: none;
         }
 
@@ -227,7 +227,7 @@ const Experience: React.FC = () => {
           transform: translateX(-50%);
           width: 100%;
           height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(67, 233, 123, 0.15) 0%, transparent 60%);
+          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.15) 0%, transparent 60%);
           pointer-events: none;
         }
 
@@ -243,8 +243,8 @@ const Experience: React.FC = () => {
           align-items: center;
           gap: 8px;
           padding: 6px 16px;
-          background: rgba(67, 233, 123, 0.1);
-          color: #43e97b;
+          background: rgba(36, 144, 248, 0.1);
+          color: #2490f8;
           border-radius: var(--radius-full);
           font-size: 13px;
           font-weight: 600;
@@ -420,7 +420,7 @@ const Experience: React.FC = () => {
           width: 48px;
           height: 48px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          background: #2490f8;
           color: white;
           display: flex;
           align-items: center;
@@ -541,7 +541,7 @@ const Experience: React.FC = () => {
           }
 
           .hero-badge {
-            background: rgba(67, 233, 123, 0.15);
+            background: rgba(36, 144, 248, 0.15);
           }
         }
       `}</style>

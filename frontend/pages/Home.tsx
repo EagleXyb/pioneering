@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 
@@ -236,9 +236,9 @@ const Home: React.FC = () => {
 
             <div className="feature-grid">
               <Link to="/assessment" className="feature-card">
-                <div className="card-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(255, 107, 107, 0.3) 0%, transparent 50%)' }}></div>
+                <div className="card-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(36, 144, 248, 0.3) 0%, transparent 50%)' }}></div>
                 <div className="card-header">
-                  <div className="feature-icon" style={{ background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)' }}>
+                  <div className="feature-icon" style={{ background: '#2490f8' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
                     </svg>
@@ -251,9 +251,9 @@ const Home: React.FC = () => {
               </Link>
 
               <Link to="/training" className="feature-card">
-                <div className="card-glow" style={{ background: 'radial-gradient(circle at 100% 0%, rgba(79, 172, 254, 0.3) 0%, transparent 50%)' }}></div>
+                <div className="card-glow" style={{ background: 'radial-gradient(circle at 100% 0%, rgba(36, 144, 248, 0.3) 0%, transparent 50%)' }}></div>
                 <div className="card-header">
-                  <div className="feature-icon" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
+                  <div className="feature-icon" style={{ background: '#2490f8' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="10"/>
                       <polygon points="10 8 16 12 10 16 10 8"/>
@@ -267,9 +267,9 @@ const Home: React.FC = () => {
               </Link>
 
               <Link to="/incubation" className="feature-card">
-                <div className="card-glow" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(67, 233, 123, 0.3) 0%, transparent 50%)' }}></div>
+                <div className="card-glow" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.3) 0%, transparent 50%)' }}></div>
                 <div className="card-header">
-                  <div className="feature-icon" style={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' }}>
+                  <div className="feature-icon" style={{ background: '#2490f8' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                     </svg>
@@ -508,7 +508,7 @@ const Home: React.FC = () => {
         .login-button {
           display: inline-block;
           padding: 8px 20px;
-          background: rgba(0, 113, 227, 0.08);
+          background: rgba(36, 144, 248, 0.08);
           color: var(--accent-blue);
           border: none;
           border-radius: 12px;
@@ -520,7 +520,7 @@ const Home: React.FC = () => {
         }
 
         .login-button:hover {
-          background: rgba(0, 113, 227, 0.15);
+          background: rgba(36, 144, 248, 0.15);
         }
 
         /* 登录弹框样式 */
@@ -596,7 +596,7 @@ const Home: React.FC = () => {
         /* 左侧品牌区域 */
         .modal-brand {
           width: 400px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #2490f8;
           padding: 48px;
           display: flex;
           align-items: center;
@@ -694,7 +694,7 @@ const Home: React.FC = () => {
         .form-group input:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .form-group input.error {
@@ -817,7 +817,7 @@ const Home: React.FC = () => {
         }
 
         .social-button.wechat svg {
-          color: #07C160;
+          color: #2490f8;
         }
 
         .social-button.github svg {
@@ -838,14 +838,14 @@ const Home: React.FC = () => {
         }
 
         .avatar-button:hover {
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .avatar-small {
           width: 36px;
           height: 36px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #2490f8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -905,7 +905,7 @@ const Home: React.FC = () => {
           width: 48px;
           height: 48px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #2490f8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -958,7 +958,7 @@ const Home: React.FC = () => {
         }
 
         .dropdown-item:hover {
-          background: rgba(0, 113, 227, 0.05);
+          background: rgba(36, 144, 248, 0.05);
           text-decoration: none;
         }
 
@@ -990,7 +990,7 @@ const Home: React.FC = () => {
           transform: translateX(-50%);
           width: 100%;
           height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(0, 113, 227, 0.08) 0%, transparent 70%);
+          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.08) 0%, transparent 70%);
           pointer-events: none;
         }
 
@@ -1371,7 +1371,7 @@ const Home: React.FC = () => {
           }
 
           .dropdown-item:hover {
-            background: rgba(0, 113, 227, 0.1);
+            background: rgba(36, 144, 248, 0.1);
           }
 
           .feature-card {

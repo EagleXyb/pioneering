@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const Login: React.FC = () => {
@@ -259,7 +259,7 @@ const Login: React.FC = () => {
           transform: translateX(-50%);
           width: 100%;
           height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(0, 113, 227, 0.08) 0%, transparent 70%);
+          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.08) 0%, transparent 70%);
           pointer-events: none;
         }
 
@@ -270,7 +270,7 @@ const Login: React.FC = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, var(--accent-blue) 0%, #0056b3 100%);
+          background: #2490f8;
           position: relative;
           z-index: 1;
         }
@@ -370,7 +370,7 @@ const Login: React.FC = () => {
         .form-group input:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
         }
 
         .form-group input.error {
@@ -499,7 +499,7 @@ const Login: React.FC = () => {
         }
 
         .social-button.wechat svg {
-          color: #07C160;
+          color: #2490f8;
         }
 
         .social-button.github svg {

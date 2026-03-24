@@ -34,6 +34,20 @@ model AIConfig {
   lastTestTime     DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@unique([provider, model])
+}
+
+model GlobalPrompt {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique               // 全局Prompt业务标识（如 "system_default"）
+  templateContent String                         // Prompt模板内容（支持变量占位符）
+  version         Int      @default(1)            // 版本号，每次内容变更自增
+  status          String   @default("offline")    // online | offline，同一name仅允许一个online
+  approvalStatus  String   @default("pending")    // pending | approved | rejected
+  createdBy       String                         // 创建者标识
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("global_prompt")
 }

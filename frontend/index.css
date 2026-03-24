@@ -12,8 +12,10 @@
   --border-light: #e8e8ed;
   
   /* 强调色 */
-  --accent-blue: #0071e3;
-  --accent-blue-hover: #0077ed;
+  --accent-blue: #2490f8;
+  --accent-blue-hover: #1a7de6;
+  --accent-blue-light: #5ba3fa;
+  --accent-blue-dark: #1a6fd4;
   --accent-purple: #bf5af2;
   --accent-pink: #ff375f;
   --accent-orange: #ff9f0a;

@@ -1,4 +1,4 @@
-// 后台管理主入口 - 组装所有模块
+﻿// 后台管理主入口 - 组装所有模块
 
 import React, { useState } from 'react';
 import { NavSection, PromptModule } from './types';
@@ -154,7 +154,7 @@ const Admin: React.FC = () => {
         .brand-icon {
           display: flex;
           align-items: center;
-          color: #43e97b;
+          color: #2490f8;
         }
 
         .main-nav {
@@ -273,7 +273,7 @@ const Admin: React.FC = () => {
           width: 32px;
           height: 32px;
           border-radius: 50%;
-          background: #43e97b;
+          background: #2490f8;
           color: white;
           display: flex;
           align-items: center;
@@ -286,7 +286,7 @@ const Admin: React.FC = () => {
           width: 40px;
           height: 40px;
           border-radius: 50%;
-          background: #43e97b;
+          background: #2490f8;
           color: white;
           display: flex;
           align-items: center;
@@ -445,8 +445,9 @@ const Admin: React.FC = () => {
         }
 
         .nav-item.active {
-          background: #f0fdf4;
-          color: #15803d;
+          background: rgba(36, 144, 248, 0.08);
+          color: #2490f8;
+          font-weight: 500;
         }
 
         .nav-icon {
@@ -591,7 +592,7 @@ const Admin: React.FC = () => {
         .form-select:focus,
         .form-textarea:focus {
           outline: none;
-          border-color: #43e97b;
+          border-color: #2490f8;
         }
 
         .form-hint {
@@ -614,7 +615,7 @@ const Admin: React.FC = () => {
 
         .btn-primary {
           padding: 12px 24px;
-          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          background: #2490f8;
           color: white;
           border: none;
           border-radius: 8px;
@@ -622,12 +623,12 @@ const Admin: React.FC = () => {
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          box-shadow: 0 2px 8px rgba(67, 233, 123, 0.3);
+          box-shadow: 0 2px 8px rgba(36, 144, 248, 0.3);
         }
 
         .btn-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(67, 233, 123, 0.4);
+          box-shadow: 0 4px 12px rgba(36, 144, 248, 0.4);
         }
 
         .btn-primary:disabled {
@@ -667,9 +668,9 @@ const Admin: React.FC = () => {
         }
 
         .test-result.success {
-          background: rgba(67, 233, 123, 0.1);
-          border: 1px solid rgba(67, 233, 123, 0.3);
-          color: #27ae60;
+          background: rgba(36, 144, 248, 0.1);
+          border: 1px solid rgba(36, 144, 248, 0.3);
+          color: #2490f8;
         }
 
         .test-result.error {
@@ -717,7 +718,7 @@ const Admin: React.FC = () => {
         .provider-card:hover {
           transform: translateY(-4px);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-          border-color: #43e97b;
+          border-color: #2490f8;
         }
 
         .provider-header {
@@ -732,7 +733,7 @@ const Admin: React.FC = () => {
           width: 48px;
           height: 48px;
           border-radius: 12px;
-          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          background: #2490f8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -747,8 +748,8 @@ const Admin: React.FC = () => {
         }
 
         .status-badge.active {
-          background: rgba(67, 233, 123, 0.1);
-          color: #27ae60;
+          background: rgba(36, 144, 248, 0.1);
+          color: #2490f8;
         }
 
         .status-badge.inactive {
@@ -787,17 +788,29 @@ const Admin: React.FC = () => {
           border: none;
           cursor: pointer;
           transition: all 0.2s ease;
-          background: var(--border-light);
-          color: var(--text-primary);
+          background: #2490f8;
+          color: white;
+          box-shadow: 0 1px 4px rgba(36, 144, 248, 0.3);
         }
 
         .btn-small:hover {
-          background: var(--border);
+          opacity: 0.9;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(36, 144, 248, 0.4);
         }
 
         .btn-small.btn-outline {
           background: transparent;
-          border: 1px solid var(--border);
+          border: 1px solid #2490f8;
+          color: #1a7de6;
+          box-shadow: none;
+        }
+
+        .btn-small.btn-outline:hover {
+          background: rgba(36, 144, 248, 0.08);
+          opacity: 1;
+          transform: none;
+          box-shadow: none;
         }
 
         .model-table {

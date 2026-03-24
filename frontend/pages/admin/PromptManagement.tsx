@@ -133,7 +133,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ prompts, onPromptChange
         </div>
         <div className="header-actions">
           <button className="btn-action">按钮 1</button>
-          <button className="btn-action">按钮 2</button>
+          <button className="btn-primary">提交发布</button>
         </div>
       </div>
       <div className="settings-layout" ref={containerRef}>

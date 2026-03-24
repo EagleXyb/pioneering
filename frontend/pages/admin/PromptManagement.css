@@ -1,4 +1,4 @@
-/* PromptManagement 模块样式 */
+﻿/* PromptManagement 模块样式 */
 
 /* Prompt 编辑器容器 */
 .prompt-management .content-panel {
@@ -128,9 +128,10 @@
   gap: 8px;
 }
 
+/* 全局设置内的 action 按钮（统一绿色渐变品牌样式） */
 .prompt-management .global-settings .btn-action {
   padding: 8px 16px;
-  background: #3b82f6;
+  background: #2490f8;
   color: white;
   border: none;
   border-radius: 6px;
@@ -138,10 +139,19 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(36, 144, 248, 0.3);
 }
 
 .prompt-management .global-settings .btn-action:hover {
-  background: #2563eb;
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(36, 144, 248, 0.4);
+}
+
+.prompt-management .global-settings .btn-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* 左右布局 */
@@ -228,7 +238,7 @@
 
 .prompt-management .settings-right .form-input:focus {
   outline: none;
-  border-color: #43e97b;
+  border-color: #2490f8;
   background: white;
 }
 
@@ -257,8 +267,8 @@
 /* form-card 获取焦点时的样式 */
 .prompt-management .settings-left .form-card:focus-within,
 .prompt-management .prompt-module-editor .form-card:focus-within {
-  border-color: #43e97b;
-  box-shadow: 0 0 0 3px rgba(67, 233, 123, 0.1);
+  border-color: #2490f8;
+  box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
 }
 
 /* 全屏模式文本域 */

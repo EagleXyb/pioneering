@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const Incubation: React.FC = () => {
@@ -48,9 +48,9 @@ const Incubation: React.FC = () => {
         <div className="stages-content">
           <div className="stages-grid">
             <div className="stage-card">
-              <div className="stage-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(67, 233, 123, 0.4) 0%, transparent 60%)' }}></div>
+              <div className="stage-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(36, 144, 248, 0.4) 0%, transparent 60%)' }}></div>
               <div className="stage-number">01</div>
-              <div className="stage-icon" style={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' }}>
+              <div className="stage-icon" style={{ background: '#2490f8' }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10"/>
                   <path d="M8 12h8"/>
@@ -69,9 +69,9 @@ const Incubation: React.FC = () => {
             </div>
 
             <div className="stage-card">
-              <div className="stage-glow" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(52, 152, 219, 0.4) 0%, transparent 60%)' }}></div>
+              <div className="stage-glow" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(26, 125, 230, 0.4) 0%, transparent 60%)' }}></div>
               <div className="stage-number">02</div>
-              <div className="stage-icon" style={{ background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)' }}>
+              <div className="stage-icon" style={{ background: '#2490f8' }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
                   <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
@@ -309,7 +309,7 @@ const Incubation: React.FC = () => {
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           text-decoration: none;
         }
 
@@ -334,7 +334,7 @@ const Incubation: React.FC = () => {
           transform: translateX(-50%);
           width: 100%;
           height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(67, 233, 123, 0.15) 0%, transparent 60%);
+          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.15) 0%, transparent 60%);
           pointer-events: none;
         }
 
@@ -350,8 +350,8 @@ const Incubation: React.FC = () => {
           align-items: center;
           gap: 8px;
           padding: 6px 16px;
-          background: rgba(67, 233, 123, 0.1);
-          color: #43e97b;
+          background: rgba(36, 144, 248, 0.1);
+          color: #2490f8;
           border-radius: var(--radius-full);
           font-size: 13px;
           font-weight: 600;
@@ -409,19 +409,19 @@ const Incubation: React.FC = () => {
         .cta-button {
           display: inline-block;
           padding: 16px 32px;
-          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          background: #2490f8;
           color: white;
           border-radius: var(--radius-md);
           font-size: 16px;
           font-weight: 600;
           text-decoration: none;
           transition: all 0.3s ease;
-          box-shadow: 0 4px 14px 0 rgba(67, 233, 123, 0.4);
+          box-shadow: 0 4px 14px 0 rgba(36, 144, 248, 0.4);
         }
 
         .cta-button:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px 0 rgba(67, 233, 123, 0.5);
+          box-shadow: 0 6px 20px 0 rgba(36, 144, 248, 0.5);
         }
 
         @keyframes fadeInUp {
@@ -587,7 +587,7 @@ const Incubation: React.FC = () => {
         }
 
         .pricing-card.featured {
-          border-color: #43e97b;
+          border-color: #2490f8;
           transform: scale(1.05);
         }
 
@@ -600,7 +600,7 @@ const Incubation: React.FC = () => {
           top: -12px;
           left: 50%;
           transform: translateX(-50%);
-          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          background: #2490f8;
           color: white;
           padding: 4px 16px;
           border-radius: var(--radius-full);
@@ -659,7 +659,7 @@ const Incubation: React.FC = () => {
         }
 
         .pricing-features li svg {
-          color: #43e97b;
+          color: #2490f8;
           flex-shrink: 0;
         }
 
@@ -681,15 +681,15 @@ const Incubation: React.FC = () => {
         }
 
         .pricing-btn.featured {
-          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          background: #2490f8;
           color: white;
           border: none;
-          box-shadow: 0 4px 14px 0 rgba(67, 233, 123, 0.4);
+          box-shadow: 0 4px 14px 0 rgba(36, 144, 248, 0.4);
         }
 
         .pricing-btn.featured:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px 0 rgba(67, 233, 123, 0.5);
+          box-shadow: 0 6px 20px 0 rgba(36, 144, 248, 0.5);
         }
 
         .footer {
@@ -776,7 +776,7 @@ const Incubation: React.FC = () => {
           }
 
           .hero-badge {
-            background: rgba(67, 233, 123, 0.15);
+            background: rgba(36, 144, 248, 0.15);
           }
         }
       `}</style>

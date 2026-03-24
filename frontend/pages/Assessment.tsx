@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const Assessment: React.FC = () => {
@@ -49,9 +49,9 @@ const Assessment: React.FC = () => {
         <div className="process-content">
           <div className="steps">
             <div className="step-card" onClick={handleBasicAssessment} style={{ cursor: 'pointer' }}>
-              <div className="step-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(255, 107, 107, 0.4) 0%, transparent 60%)' }}></div>
+              <div className="step-glow" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(36, 144, 248, 0.4) 0%, transparent 60%)' }}></div>
               <div className="step-header">
-                <div className="step-icon" style={{ background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)' }}>
+                <div className="step-icon" style={{ background: '#2490f8' }}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                     <polyline points="2 17 12 22 22 17"/>
@@ -67,9 +67,9 @@ const Assessment: React.FC = () => {
             </div>
 
             <div className="step-card">
-              <div className="step-glow" style={{ background: 'radial-gradient(circle at 100% 0%, rgba(79, 172, 254, 0.4) 0%, transparent 60%)' }}></div>
+              <div className="step-glow" style={{ background: 'radial-gradient(circle at 100% 0%, rgba(36, 144, 248, 0.4) 0%, transparent 60%)' }}></div>
               <div className="step-header">
-                <div className="step-icon" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
+                <div className="step-icon" style={{ background: '#2490f8' }}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12 6 12 12 16 14"/>
@@ -84,9 +84,9 @@ const Assessment: React.FC = () => {
             </div>
 
             <div className="step-card">
-              <div className="step-glow" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(67, 233, 123, 0.4) 0%, transparent 60%)' }}></div>
+              <div className="step-glow" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.4) 0%, transparent 60%)' }}></div>
               <div className="step-header">
-                <div className="step-icon" style={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' }}>
+                <div className="step-icon" style={{ background: '#2490f8' }}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     <path d="M9 12h6M12 9v6"/>
@@ -202,7 +202,7 @@ const Assessment: React.FC = () => {
         }
 
         .nav-back:hover {
-          background: rgba(0, 113, 227, 0.1);
+          background: rgba(36, 144, 248, 0.1);
           text-decoration: none;
         }
 
@@ -227,7 +227,7 @@ const Assessment: React.FC = () => {
           transform: translateX(-50%);
           width: 100%;
           height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(255, 107, 107, 0.15) 0%, transparent 60%);
+          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.15) 0%, transparent 60%);
           pointer-events: none;
         }
 
@@ -243,8 +243,8 @@ const Assessment: React.FC = () => {
           align-items: center;
           gap: 8px;
           padding: 6px 16px;
-          background: rgba(255, 107, 107, 0.1);
-          color: #ff6b6b;
+          background: rgba(36, 144, 248, 0.1);
+          color: #1a7de6;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
@@ -404,7 +404,7 @@ const Assessment: React.FC = () => {
           align-items: center;
           gap: var(--spacing-sm);
           padding: 14px 36px;
-          background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+          background: #2490f8;
           color: white;
           border: none;
           border-radius: 8px;
@@ -412,12 +412,12 @@ const Assessment: React.FC = () => {
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          box-shadow: 0 4px 14px 0 rgba(255, 107, 107, 0.4);
+          box-shadow: 0 4px 14px 0 rgba(36, 144, 248, 0.4);
         }
 
         .btn-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px 0 rgba(255, 107, 107, 0.5);
+          box-shadow: 0 6px 20px 0 rgba(36, 144, 248, 0.5);
         }
 
         .btn-primary svg {
@@ -458,7 +458,7 @@ const Assessment: React.FC = () => {
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+          background: #2490f8;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -580,7 +580,7 @@ const Assessment: React.FC = () => {
           }
 
           .hero-badge {
-            background: rgba(255, 107, 107, 0.15);
+            background: rgba(36, 144, 248, 0.15);
           }
         }
       `}</style>
