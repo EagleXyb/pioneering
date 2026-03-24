@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const Login: React.FC = () => {
@@ -423,7 +423,7 @@ const Login: React.FC = () => {
           background: var(--accent-blue);
           color: white;
           border: none;
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 17px;
           font-weight: 500;
           cursor: pointer;
@@ -485,7 +485,7 @@ const Login: React.FC = () => {
           gap: var(--spacing-sm);
           height: 44px;
           border: 1px solid var(--border);
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           background: var(--bg-primary);
           font-size: 15px;
           color: var(--text-primary);

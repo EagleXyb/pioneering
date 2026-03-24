@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const Training: React.FC = () => {
@@ -454,7 +454,7 @@ const Training: React.FC = () => {
           background: #2490f8;
           color: white;
           border: none;
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 15px;
           font-weight: 600;
           cursor: pointer;

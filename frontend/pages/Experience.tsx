@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const Experience: React.FC = () => {
@@ -370,7 +370,7 @@ const Experience: React.FC = () => {
           background: var(--bg-secondary);
           color: var(--text-primary);
           border: 2px solid var(--border);
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 16px;
           font-weight: 600;
           cursor: pointer;

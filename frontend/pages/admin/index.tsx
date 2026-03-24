@@ -1,4 +1,4 @@
-﻿// 后台管理主入口 - 组装所有模块
+// 后台管理主入口 - 组装所有模块
 
 import React, { useState } from 'react';
 import { NavSection, PromptModule } from './types';
@@ -425,7 +425,7 @@ const Admin: React.FC = () => {
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 10px 16px;
+          padding: 9px 16px;
           background: none;
           border: none;
           cursor: pointer;
@@ -433,7 +433,7 @@ const Admin: React.FC = () => {
           font-size: 14px;
           text-align: left;
           transition: all 0.2s ease;
-          border-radius: 3px;
+          border-radius: 4px;
           margin: 0 auto;
           width: calc(100% - 16px);
           max-width: 180px;
@@ -618,7 +618,7 @@ const Admin: React.FC = () => {
           background: #2490f8;
           color: white;
           border: none;
-          border-radius: 8px;
+          border-radius: 4px;
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
@@ -642,7 +642,7 @@ const Admin: React.FC = () => {
           background: var(--bg-primary);
           color: var(--text-primary);
           border: 1px solid var(--border);
-          border-radius: 8px;
+          border-radius: 4px;
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
@@ -784,7 +784,7 @@ const Admin: React.FC = () => {
           padding: 6px 12px;
           font-size: 12px;
           font-weight: 500;
-          border-radius: 6px;
+          border-radius: 4px;
           border: none;
           cursor: pointer;
           transition: all 0.2s ease;

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 const Incubation: React.FC = () => {
@@ -411,7 +411,7 @@ const Incubation: React.FC = () => {
           padding: 16px 32px;
           background: #2490f8;
           color: white;
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 16px;
           font-weight: 600;
           text-decoration: none;
@@ -669,7 +669,7 @@ const Incubation: React.FC = () => {
           background: var(--bg-secondary);
           color: var(--text-primary);
           border: 2px solid var(--border);
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 16px;
           font-weight: 600;
           cursor: pointer;

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import llmService from '../services/llmService';
 
@@ -525,7 +525,7 @@ const TestConfig: React.FC = () => {
           background: var(--bg-secondary);
           color: var(--text-primary);
           border: 1px solid var(--border);
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 14px;
           cursor: pointer;
           transition: all var(--transition-fast);
@@ -603,7 +603,7 @@ const TestConfig: React.FC = () => {
           justify-content: center;
           gap: var(--spacing-sm);
           padding: 12px 24px;
-          border-radius: var(--radius-md);
+          border-radius: var(--radius-sm);
           font-size: 15px;
           font-weight: 500;
           cursor: pointer;
