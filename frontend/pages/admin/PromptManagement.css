@@ -121,6 +121,80 @@
 
 .prompt-management .global-settings .header-left {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.prompt-management .global-settings .header-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+.prompt-management .global-settings .header-content h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #1f2937;
+  white-space: nowrap;
+}
+
+.prompt-management .global-settings .header-meta {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.prompt-management .global-settings .prompt-status {
+  display: flex;
+  align-items: center;
+}
+
+.prompt-management .global-settings .status-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.prompt-management .global-settings .status-badge.committed {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.prompt-management .global-settings .status-badge.uncommitted {
+  background: #fde68a;
+  color: #d97706;
+  border-radius: 4px;
+}
+
+.prompt-management .global-settings .back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.prompt-management .global-settings .back-button:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.prompt-management .global-settings .back-button:active {
+  transform: scale(0.95);
 }
 
 .prompt-management .global-settings .header-actions {
@@ -373,12 +447,28 @@
   color: #6b7280;
 }
 
-.prompt-management .form-card {
+.prompt-list .form-card {
   background: white;
   border-radius: 8px;
   padding: 0 20px 20px 20px;
   border: 1px solid #e5e7eb;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.prompt-list .prompt-table {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+
+.prompt-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.prompt-list tbody {
 }
 
 .prompt-management .form-group {
@@ -428,8 +518,8 @@
 .prompt-list .prompt-table {
   width: 100%;
   overflow-x: auto;
-  border-radius: 8px;
   border: 1px solid #e5e7eb;
+  border-radius: 8px;
   background: white;
 }
 
@@ -440,17 +530,17 @@
 
 .prompt-list th {
   text-align: left;
-  padding: 12px 16px;
+  padding: 10px 16px;
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #374151;
   white-space: nowrap;
 }
 
 .prompt-list td {
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid #e5e7eb;
   font-size: 14px;
   color: #374151;
@@ -463,6 +553,37 @@
 
 .prompt-list tr:hover {
   background: #f9fafb;
+}
+
+.prompt-list .empty-cell {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.prompt-list .empty-icon {
+  margin-bottom: 16px;
+  color: #d1d5db;
+}
+
+.prompt-list .sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.prompt-list .sortable:hover {
+  color: #2490f8;
+}
+
+.prompt-list .sortable svg {
+  vertical-align: middle;
+  color: #9ca3af;
+}
+
+.prompt-list .sortable:hover svg {
+  color: #2490f8;
 }
 
 /* 状态徽章 */
@@ -575,24 +696,20 @@
 
 /* 空状态 */
 .prompt-list .empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #6b7280;
+  padding: 40px 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
 }
 
-.prompt-list .empty-state svg {
-  color: #d1d5db;
-  margin-bottom: 16px;
+.prompt-list .empty-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
 }
 
-.prompt-list .empty-state h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 8px;
-}
-
-.prompt-list .empty-state p {
+.prompt-list .empty-text {
   font-size: 14px;
   color: #6b7280;
 }

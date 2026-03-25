@@ -1,9 +1,12 @@
 // Prompt 列表页面
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useGlobalPrompt } from './useGlobalPrompt';
 import type { GlobalPrompt, PromptListProps } from './types';
 import '../PromptManagement.css';
+
+type SortDirection = 'asc' | 'desc' | null;
+type SortField = 'updatedAt' | 'createdAt' | null;
 
 export const PromptList: React.FC<PromptListProps> = ({
   onEdit,
@@ -17,10 +20,42 @@ export const PromptList: React.FC<PromptListProps> = ({
     prompts,
     loading,
     error,
+    fetchPrompts,
     handleOnline: apiHandleOnline,
     handleOffline: apiHandleOffline,
     handleDelete: apiHandleDelete,
   } = useGlobalPrompt();
+
+  const [sortField, setSortField] = useState<SortField>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+
+  // 处理排序
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // 如果点击的是当前排序字段，切换排序方向
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // 如果点击的是新的排序字段，设置为升序
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // 排序数据
+  const sortedPrompts = [...prompts].sort((a, b) => {
+    if (!sortField) return 0;
+    
+    const aValue = a[sortField];
+    const bValue = b[sortField];
+    
+    if (aValue < bValue) {
+      return sortDirection === 'asc' ? -1 : 1;
+    }
+    if (aValue > bValue) {
+      return sortDirection === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
 
   // 处理上线操作
   const handleOnline = async (id: number) => {
@@ -43,26 +78,28 @@ export const PromptList: React.FC<PromptListProps> = ({
     }
   };
 
-  // 渲染状态徽章
-  const renderStatusBadge = (status: string) => {
-    if (status === 'online') {
-      return <span className="status-badge online">在线</span>;
-    } else if (status === 'offline') {
-      return <span className="status-badge offline">离线</span>;
-    }
-    return <span className="status-badge">{status}</span>;
+  // 处理重试
+  const handleRetry = () => {
+    fetchPrompts();
   };
 
-  // 渲染审批状态徽章
-  const renderApprovalBadge = (status: string) => {
-    if (status === 'approved') {
-      return <span className="approval-badge approved">已审批</span>;
-    } else if (status === 'pending') {
-      return <span className="approval-badge pending">待审批</span>;
-    } else if (status === 'rejected') {
-      return <span className="approval-badge rejected">已驳回</span>;
+  // 渲染排序图标
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) return null;
+    
+    if (sortDirection === 'asc') {
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '4px' }}>
+          <polyline points="18 15 12 9 6 15" />
+        </svg>
+      );
+    } else {
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '4px' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      );
     }
-    return <span className="approval-badge">{status}</span>;
   };
 
   if (loading) {
@@ -77,7 +114,7 @@ export const PromptList: React.FC<PromptListProps> = ({
     return (
       <div className="prompt-list error">
         <div className="error-message">{error}</div>
-        <button className="btn-primary" onClick={() => window.location.reload()}>重试</button>
+        <button className="btn-primary" onClick={handleRetry}>重试</button>
       </div>
     );
   }
@@ -85,46 +122,57 @@ export const PromptList: React.FC<PromptListProps> = ({
   return (
     <div className="prompt-list">
       <div className="form-card">
-        {prompts.length === 0 ? (
-          <div className="empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-            <h3>暂无Prompt</h3>
-            <p>点击上方按钮创建第一个Prompt</p>
-          </div>
-        ) : (
-          <div className="prompt-table">
-            <table>
-              <thead>
+        <div className="prompt-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Prompt Key</th>
+                <th>Prompt 名称</th>
+                <th>Prompt 描述</th>
+                <th>最新版本</th>
+                <th>提交人</th>
+                <th className="sortable" onClick={() => handleSort('updatedAt')}>
+                  提交时间 {renderSortIcon('updatedAt')}
+                </th>
+                <th>创建人</th>
+                <th className="sortable" onClick={() => handleSort('createdAt')}>
+                  创建时间 {renderSortIcon('createdAt')}
+                </th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedPrompts.length === 0 ? (
                 <tr>
-                  <th>名称</th>
-                  <th>版本</th>
-                  <th>状态</th>
-                  <th>审批状态</th>
-                  <th>创建者</th>
-                  <th>更新时间</th>
-                  <th>操作</th>
+                  <td colSpan="10" className="empty-cell">
+                    <div className="empty-icon">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                      </svg>
+                    </div>
+                    <div className="empty-text">暂无内容</div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {prompts.map((prompt) => (
+              ) : (
+                sortedPrompts.map((prompt) => (
                   <tr key={prompt.id}>
-                    <td className="prompt-name">{prompt.name}</td>
-                    <td className="prompt-version">v{prompt.version}</td>
-                    <td>{renderStatusBadge(prompt.status)}</td>
-                    <td>{renderApprovalBadge(prompt.approvalStatus)}</td>
-                    <td className="prompt-creator">{prompt.createdBy}</td>
-                    <td className="prompt-time">
-                      {new Date(prompt.updatedAt).toLocaleString()}
-                    </td>
+                    <td>{prompt.id}</td>
+                    <td>{prompt.name}</td>
+                    <td>{prompt.templateContent?.substring(0, 50)}...</td>
+                    <td>v{prompt.version}</td>
+                    <td>{prompt.createdBy}</td>
+                    <td>{new Date(prompt.updatedAt).toLocaleString()}</td>
+                    <td>{prompt.createdBy}</td>
+                    <td>{new Date(prompt.createdAt).toLocaleString()}</td>
+                    <td>-</td>
                     <td className="prompt-actions">
                       <button 
                         className="action-btn view" 
                         onClick={() => onView(prompt)}
-                        title="查看"
+                        title="详情"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -141,28 +189,6 @@ export const PromptList: React.FC<PromptListProps> = ({
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                       </button>
-                      {prompt.status === 'offline' ? (
-                        <button 
-                          className="action-btn online" 
-                          onClick={() => handleOnline(prompt.id)}
-                          title="上线"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                          </svg>
-                        </button>
-                      ) : (
-                        <button 
-                          className="action-btn offline" 
-                          onClick={() => handleOffline(prompt.id)}
-                          title="下线"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
-                        </button>
-                      )}
                       <button 
                         className="action-btn delete" 
                         onClick={() => handleDelete(prompt.id)}
@@ -175,11 +201,11 @@ export const PromptList: React.FC<PromptListProps> = ({
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

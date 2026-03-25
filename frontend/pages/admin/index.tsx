@@ -475,15 +475,13 @@ const Admin: React.FC = () => {
         .content-header {
           height: 56px;
           padding: 0 24px;
-          background: white;
-          border-bottom: 1px solid var(--border-light);
+          background: #f9fafb;
           display: flex;
           align-items: center;
           justify-content: space-between;
           position: sticky;
           top: 60px;
           z-index: 50;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
 
         .breadcrumb {
@@ -538,7 +536,6 @@ const Admin: React.FC = () => {
           font-weight: 600;
           color: #374151;
           margin-bottom: 8px;
-          width: 1000px;
           height: 22px;
           line-height: 22px;
           padding: 0px;

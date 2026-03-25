@@ -168,28 +168,33 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
         <>
           <div className="panel-header">
             <div className="header-left">
-              <h2 className="panel-title">
-                {currentPromptInfo ? `编辑: ${currentPromptInfo.name}` : '全局设置'}
-              </h2>
-              <p className="panel-description">
-                {currentPromptInfo
-                  ? `${currentPromptInfo.description || '配置全局提示词和系统参数'}`
-                  : '配置全局提示词和系统参数'
-                }
-              </p>
-              {currentPromptInfo && (
-                <div style={{ marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>
-                  PromptKey: <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px' }}>{currentPromptInfo.promptKey}</code>
-                </div>
-              )}
+              <button className="back-button" onClick={() => setShowList(true)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="header-content">
+                <h2 className="panel-title">
+                  {currentPromptInfo ? currentPromptInfo.name : '全局设置'}
+                </h2>
+                {currentPromptInfo && (
+                  <div className="header-meta">
+                    <div className="prompt-status">
+                      <span className={`status-badge ${prompts['global-settings'] && prompts['global-settings'].trim() ? 'committed' : 'uncommitted'}`}>
+                        {prompts['global-settings'] && prompts['global-settings'].trim() ? '已提交' : '未提交'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="header-actions">
               <button className="btn-primary" onClick={handleCreate}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
-                新建Prompt
+                提交发布
               </button>
             </div>
           </div>
