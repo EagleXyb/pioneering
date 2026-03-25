@@ -121,9 +121,46 @@ export function usePromptManagement() {
   const [activeModule, setActiveModule] = useState<PromptModule>('perception');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // 用于跟踪当前编辑的全局Prompt ID（用于更新操作）
+  const [editingGlobalPromptId, setEditingGlobalPromptId] = useState<number | null>(null);
 
   const handlePromptChange = (module: PromptModule, value: string) => {
     setPrompts((prev) => ({ ...prev, [module]: value }));
+  };
+
+  // 当模块切换时，重置编辑状态
+  const handleModuleChange = (module: PromptModule) => {
+    setActiveModule(module);
+    // 切换模块时重置编辑的GlobalPrompt ID，确保不会误更新
+    if (module !== 'global-settings') {
+      setEditingGlobalPromptId(null);
+    }
+  };
+
+  // 加载在线的全局Prompt（用于编辑已有Prompt）
+  const loadOnlineGlobalPrompt = async () => {
+    try {
+      const { globalPromptApi } = await import('./globalPrompt/api');
+      const onlinePrompt = await globalPromptApi.getOnlinePrompt();
+      
+      if (onlinePrompt) {
+        // 加载到编辑器中
+        setPrompts(prev => ({
+          ...prev,
+          'global-settings': onlinePrompt.templateContent,
+        }));
+        // 设置编辑ID，后续保存时使用更新操作
+        setEditingGlobalPromptId(onlinePrompt.id);
+        console.log(`已加载在线Prompt: ${onlinePrompt.name} (ID: ${onlinePrompt.id})`);
+        return onlinePrompt;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('加载在线Prompt失败:', error);
+      return null;
+    }
   };
 
   const handleSavePrompt = async (
@@ -141,37 +178,78 @@ export function usePromptManagement() {
 
     setSaveStatus('saving');
 
-    const configData: AIConfig = {
-      apiKey: apiKey.trim(),
-      provider,
-      model,
-      prompt: promptText.trim(),
-      lastTestInput: '连接测试',
-      lastTestResult: testResult?.message || '',
-      lastTestTime: new Date().toISOString(),
-    };
-
-    const saved = await adminApi.saveConfig(configData);
-
-    if (saved) {
-      configCache.set(configData);
-      setSaveStatus('saved');
-      alert(`${getModuleName(module)}提示词保存成功！`);
+    // 🔧 修复：全局Prompt保存到GlobalPrompt表，而不是AIConfig表
+    if (module === 'global-settings') {
+      try {
+        // 动态导入 globalPromptApi，避免循环依赖
+        const { globalPromptApi } = await import('./globalPrompt/api');
+        
+        // 如果有正在编辑的ID，则更新；否则创建新的
+        if (editingGlobalPromptId) {
+          // 更新现有Prompt
+          const updatedPrompt = await globalPromptApi.updatePrompt(editingGlobalPromptId, {
+            templateContent: promptText.trim(),
+            createdBy: 'admin', // 可以从用户上下文获取
+          });
+          
+          setSaveStatus('saved');
+          alert(`${getModuleName(module)}更新成功！版本: v${updatedPrompt.version}`);
+        } else {
+          // 创建新Prompt
+          const newPrompt = await globalPromptApi.createPrompt({
+            name: `global_prompt_${Date.now()}`, // 生成唯一名称
+            templateContent: promptText.trim(),
+            createdBy: 'admin', // 可以从用户上下文获取
+          });
+          
+          // 保存新创建的ID，下次保存时使用更新操作
+          setEditingGlobalPromptId(newPrompt.id);
+          setSaveStatus('saved');
+          alert(`${getModuleName(module)}创建成功！`);
+        }
+      } catch (error) {
+        setSaveStatus('error');
+        const errorMsg = error instanceof Error ? error.message : '保存失败，请重试';
+        alert(errorMsg);
+        console.error('保存全局Prompt失败:', error);
+      }
     } else {
-      setSaveStatus('error');
-      alert('保存失败，请重试');
+      // 其他模块的prompt保存到AIConfig表（保持原有逻辑）
+      const configData: AIConfig = {
+        apiKey: apiKey.trim(),
+        provider,
+        model,
+        prompt: promptText.trim(),
+        lastTestInput: '连接测试',
+        lastTestResult: testResult?.message || '',
+        lastTestTime: new Date().toISOString(),
+      };
+
+      const saved = await adminApi.saveConfig(configData);
+
+      if (saved) {
+        configCache.set(configData);
+        setSaveStatus('saved');
+        alert(`${getModuleName(module)}提示词保存成功！`);
+      } else {
+        setSaveStatus('error');
+        alert('保存失败，请重试');
+      }
     }
   };
 
   return {
     prompts,
     activeModule,
-    setActiveModule,
+    setActiveModule: handleModuleChange,
     saveStatus,
     isFullscreen,
     setIsFullscreen,
     handlePromptChange,
     handleSavePrompt,
+    editingGlobalPromptId,
+    setEditingGlobalPromptId,
+    loadOnlineGlobalPrompt,
   };
 }
 

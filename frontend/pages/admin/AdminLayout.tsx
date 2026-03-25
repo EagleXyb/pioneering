@@ -139,16 +139,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       ],
     },
     {
-      key: 'prompt',
-      label: 'Prompt 管理',
-      items: [
-        { key: 'global-settings', label: '全局设置', icon: <Icons.Settings /> },
-        { key: 'perception', label: '问题感知模块', icon: <Icons.Info /> },
-        { key: 'retrieval', label: '知识检索模块', icon: <Icons.Search /> },
-        { key: 'generation', label: '创意生成模块', icon: <Icons.Layers /> },
-        { key: 'evaluation', label: '评估反馈模块', icon: <Icons.CheckCircle /> },
-      ],
-    },
+          key: 'prompt',
+          label: 'Prompt 管理',
+          items: [
+            { key: 'global-settings', label: '全局设置', icon: <Icons.Settings /> },
+            { key: 'perception', label: '问题感知模块', icon: <Icons.Info /> },
+            { key: 'retrieval', label: '知识检索模块', icon: <Icons.Search /> },
+            { key: 'generation', label: '创意生成模块', icon: <Icons.Layers /> },
+            { key: 'evaluation', label: '评估反馈模块', icon: <Icons.CheckCircle /> },
+          ],
+        },
     {
       key: 'security',
       label: '安全管理',

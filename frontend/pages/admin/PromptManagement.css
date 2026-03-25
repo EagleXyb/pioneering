@@ -388,3 +388,466 @@
 .prompt-management .form-group:last-child {
   margin-bottom: 0;
 }
+
+/* ==================== Prompt 列表页面样式 ==================== */
+
+/* Prompt 列表容器 */
+.prompt-list {
+  width: 100%;
+}
+
+/* 列表头部 */
+.prompt-list .list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.prompt-list .header-left h2 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.prompt-list .header-left p {
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.prompt-list .header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* 表格样式 */
+.prompt-list .prompt-table {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+
+.prompt-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.prompt-list th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.prompt-list td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.prompt-list tr:last-child td {
+  border-bottom: none;
+}
+
+.prompt-list tr:hover {
+  background: #f9fafb;
+}
+
+/* 状态徽章 */
+.prompt-list .status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.prompt-list .status-badge.online {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.prompt-list .status-badge.offline {
+  background: #fde68a;
+  color: #d97706;
+}
+
+/* 审批状态徽章 */
+.prompt-list .approval-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.prompt-list .approval-badge.approved {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.prompt-list .approval-badge.pending {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.prompt-list .approval-badge.rejected {
+  background: #fecaca;
+  color: #dc2626;
+}
+
+/* 操作按钮 */
+.prompt-list .prompt-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.prompt-list .action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #6b7280;
+}
+
+.prompt-list .action-btn.view {
+  background: #f3f4f6;
+}
+
+.prompt-list .action-btn.view:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.prompt-list .action-btn.edit {
+  background: #eff6ff;
+  color: #2490f8;
+}
+
+.prompt-list .action-btn.edit:hover {
+  background: #dbeafe;
+}
+
+.prompt-list .action-btn.online {
+  background: #ecfdf5;
+  color: #10b981;
+}
+
+.prompt-list .action-btn.online:hover {
+  background: #d1fae5;
+}
+
+.prompt-list .action-btn.offline {
+  background: #fef3c7;
+  color: #f59e0b;
+}
+
+.prompt-list .action-btn.offline:hover {
+  background: #fde68a;
+}
+
+.prompt-list .action-btn.delete {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.prompt-list .action-btn.delete:hover {
+  background: #fecaca;
+}
+
+/* 空状态 */
+.prompt-list .empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.prompt-list .empty-state svg {
+  color: #d1d5db;
+  margin-bottom: 16px;
+}
+
+.prompt-list .empty-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.prompt-list .empty-state p {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* 加载状态 */
+.prompt-list .loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #6b7280;
+  font-size: 16px;
+}
+
+/* 错误状态 */
+.prompt-list .error {
+  text-align: center;
+  padding: 60px 20px;
+  color: #ef4444;
+}
+
+.prompt-list .error-message {
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .prompt-list .list-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .prompt-list .header-actions {
+    width: 100%;
+  }
+  
+  .prompt-list .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .prompt-list .prompt-table {
+    font-size: 13px;
+  }
+  
+  .prompt-list th,
+  .prompt-list td {
+    padding: 8px 12px;
+  }
+  
+  .prompt-list .prompt-actions {
+    gap: 4px;
+  }
+  
+  .prompt-list .action-btn {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .prompt-list .action-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* ==================== 模态框样式 ==================== */
+
+/* 模态框遮罩层 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 模态框内容 */
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 模态框头部 */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.modal-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+/* 模态框主体 */
+.modal-body {
+  padding: 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.modal-body .form-group {
+  margin-bottom: 20px;
+}
+
+.modal-body .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.modal-body .form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.modal-body .form-input,
+.modal-body .form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  color: #1f2937;
+  transition: all 0.2s ease;
+}
+
+.modal-body .form-input:focus,
+.modal-body .form-textarea:focus {
+  outline: none;
+  border-color: #2490f8;
+  box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
+}
+
+.modal-body .form-textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+}
+
+.modal-body .form-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.modal-body .form-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+/* 模态框底部 */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.modal-footer .btn-secondary {
+  padding: 8px 20px;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modal-footer .btn-secondary:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.modal-footer .btn-primary {
+  padding: 8px 20px;
+  background: #2490f8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(36, 144, 248, 0.3);
+}
+
+.modal-footer .btn-primary:hover {
+  background: #1a7de6;
+  box-shadow: 0 4px 12px rgba(36, 144, 248, 0.4);
+}
