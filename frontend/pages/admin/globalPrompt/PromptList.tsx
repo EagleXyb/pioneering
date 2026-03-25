@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useGlobalPrompt } from './useGlobalPrompt';
 import type { GlobalPrompt, PromptListProps } from './types';
-import '../PromptManagement.css';
+import './PromptList.css';
 
 type SortDirection = 'asc' | 'desc' | null;
 type SortField = 'updatedAt' | 'createdAt' | null;
@@ -145,7 +145,7 @@ export const PromptList: React.FC<PromptListProps> = ({
             <tbody>
               {sortedPrompts.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="empty-cell">
+                  <td colSpan={10} className="empty-cell">
                     <div className="empty-icon">
                       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
                         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>

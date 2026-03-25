@@ -24,5 +24,4 @@ export interface GenerationEditorProps {
   onContentChange: (value: string) => void;
   onSave: () => void;
   onToggleFullscreen: () => void;
-  onReset: () => void;
 }

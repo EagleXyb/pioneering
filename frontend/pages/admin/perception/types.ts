@@ -24,5 +24,4 @@ export interface PerceptionEditorProps {
   onContentChange: (value: string) => void;
   onSave: () => void;
   onToggleFullscreen: () => void;
-  onReset: () => void;
 }

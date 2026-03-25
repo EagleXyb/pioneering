@@ -10,7 +10,6 @@ import type { CreatePromptFormData } from './types';
 interface GlobalSettingsProps {
   prompts: Record<PromptModule, string>;
   onPromptChange: (module: PromptModule, value: string) => void;
-  onReset: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
 }
@@ -18,7 +17,6 @@ interface GlobalSettingsProps {
 export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
   prompts,
   onPromptChange,
-  onReset,
   isFullscreen,
   onToggleFullscreen,
 }) => {

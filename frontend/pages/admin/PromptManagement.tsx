@@ -19,7 +19,6 @@ interface PromptManagementProps {
   onPromptChange: (module: PromptModule, value: string) => void;
   onSavePrompt: (module: PromptModule) => void;
   onToggleFullscreen: () => void;
-  onReset: (module: PromptModule) => void;
 }
 
 export const PromptManagement: React.FC<PromptManagementProps> = ({
@@ -30,9 +29,7 @@ export const PromptManagement: React.FC<PromptManagementProps> = ({
   onPromptChange,
   onSavePrompt,
   onToggleFullscreen,
-  onReset,
 }) => {
-  // 根据 activeModule 渲染对应的内容
   switch (activeModule) {
     case 'global-settings':
       return (
@@ -40,7 +37,6 @@ export const PromptManagement: React.FC<PromptManagementProps> = ({
           <GlobalSettings
             prompts={prompts}
             onPromptChange={onPromptChange}
-            onReset={() => onReset('global-settings')}
             isFullscreen={isFullscreen}
             onToggleFullscreen={onToggleFullscreen}
           />
@@ -57,7 +53,6 @@ export const PromptManagement: React.FC<PromptManagementProps> = ({
             onContentChange={(value) => onPromptChange('perception', value)}
             onSave={() => onSavePrompt('perception')}
             onToggleFullscreen={onToggleFullscreen}
-            onReset={() => onReset('perception')}
           />
         </div>
       );
@@ -72,7 +67,6 @@ export const PromptManagement: React.FC<PromptManagementProps> = ({
             onContentChange={(value) => onPromptChange('retrieval', value)}
             onSave={() => onSavePrompt('retrieval')}
             onToggleFullscreen={onToggleFullscreen}
-            onReset={() => onReset('retrieval')}
           />
         </div>
       );
@@ -87,7 +81,6 @@ export const PromptManagement: React.FC<PromptManagementProps> = ({
             onContentChange={(value) => onPromptChange('generation', value)}
             onSave={() => onSavePrompt('generation')}
             onToggleFullscreen={onToggleFullscreen}
-            onReset={() => onReset('generation')}
           />
         </div>
       );
@@ -102,7 +95,6 @@ export const PromptManagement: React.FC<PromptManagementProps> = ({
             onContentChange={(value) => onPromptChange('evaluation', value)}
             onSave={() => onSavePrompt('evaluation')}
             onToggleFullscreen={onToggleFullscreen}
-            onReset={() => onReset('evaluation')}
           />
         </div>
       );

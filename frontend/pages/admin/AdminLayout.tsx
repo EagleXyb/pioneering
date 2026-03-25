@@ -110,8 +110,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const { userState } = useUser();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    model: true,
+    prompt: true,
+    security: true,
+  });
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const languageDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  const toggleSection = (sectionKey: string) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  };
 
   // 点击外部关闭下拉菜单
   useEffect(() => {
@@ -310,20 +322,37 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         <nav className="sidebar-nav">
           {navSections.map((section) => (
             <div key={section.key} className="nav-section">
-              <h3 className="nav-section-title">{section.label}</h3>
-              <ul className="nav-items">
-                {section.items.map((item) => (
-                  <li key={item.key}>
-                    <button
-                      className={`nav-item ${activeSection === section.key && activeNavItem === item.key ? 'active' : ''}`}
-                      onClick={() => onNavItemClick(section.key, item.key)}
-                    >
-                      <span className="nav-icon">{item.icon}</span>
-                      <span className="nav-label">{item.label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <button
+                className="nav-section-header"
+                onClick={() => toggleSection(section.key)}
+              >
+                <h3 className="nav-section-title">{section.label}</h3>
+                <svg
+                  className={`nav-section-chevron ${expandedSections[section.key] ? 'expanded' : ''}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {expandedSections[section.key] && (
+                <ul className="nav-items">
+                  {section.items.map((item) => (
+                    <li key={item.key}>
+                      <button
+                        className={`nav-item ${activeSection === section.key && activeNavItem === item.key ? 'active' : ''}`}
+                        onClick={() => onNavItemClick(section.key, item.key)}
+                      >
+                        <span className="nav-label">{item.label}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
         </nav>

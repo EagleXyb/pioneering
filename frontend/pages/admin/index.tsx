@@ -77,7 +77,6 @@ const Admin: React.FC = () => {
           onPromptChange={handlePromptChange}
           onSavePrompt={(module) => handleSavePrompt(module, apiKey, provider, model, testResult)}
           onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
-          onReset={(module) => handlePromptChange(module, '')}
         />
       );
     }
@@ -406,13 +405,38 @@ const Admin: React.FC = () => {
           margin-bottom: 24px;
         }
 
-        .nav-section-title {
+        .nav-section-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
           padding: 8px 20px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .nav-section-header:hover {
+          background: #f3f4f6;
+        }
+
+        .nav-section-title {
           font-size: 14px;
           font-weight: 600;
           line-height: 13px;
           letter-spacing: 1px;
           color: rgb(134, 134, 139);
+          margin: 0;
+        }
+
+        .nav-section-chevron {
+          color: #9ca3af;
+          transition: transform 0.2s ease;
+        }
+
+        .nav-section-chevron.expanded {
+          transform: rotate(180deg);
         }
 
         .nav-items {
@@ -499,7 +523,7 @@ const Admin: React.FC = () => {
 
         .content-body {
           flex: 1;
-          padding: 20px;
+          padding: 20px 20px 20px 32px;
           overflow-y: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
@@ -528,18 +552,35 @@ const Admin: React.FC = () => {
         }
 
         .panel-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           margin-bottom: 20px;
+          padding: 16px;
+          border: 1px solid #e5e7eb;
+          border-radius: 5px;
+          background: white;
+        }
+
+        .header-left {
+          display: flex;
+          align-items: center;
         }
 
         .panel-title {
           font-size: 16px;
           font-weight: 600;
           color: #374151;
-          margin-bottom: 8px;
+          margin: 0;
           height: 22px;
           line-height: 22px;
           padding: 0px;
           border-radius: 0px;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
         }
 
         .panel-description {
