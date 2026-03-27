@@ -85,6 +85,15 @@ const Admin: React.FC = () => {
       return <SecurityManagement activeSection={activeNavItem} />;
     }
 
+    if (activeSection === 'users') {
+      return (
+        <div style={{ padding: '20px' }}>
+          <h2>用户管理</h2>
+          <p>用户列表功能开发中...</p>
+        </div>
+      );
+    }
+
     return null;
   };
 

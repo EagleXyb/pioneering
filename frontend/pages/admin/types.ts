@@ -1,7 +1,7 @@
 // 共享类型定义
 
 // 导航相关
-export type NavSection = 'model' | 'prompt' | 'security';
+export type NavSection = 'model' | 'prompt' | 'users' | 'security';
 export type PromptModule = 'perception' | 'retrieval' | 'generation' | 'evaluation' | 'global-settings';
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';

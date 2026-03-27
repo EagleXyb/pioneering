@@ -85,6 +85,14 @@ const Icons = {
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
     </svg>
   ),
+  Users: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  ),
   Logo: () => (
     <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
       <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor"/>
@@ -113,6 +121,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     model: true,
     prompt: true,
+    users: true,
     security: true,
   });
   const dropdownRef = React.useRef<HTMLDivElement>(null);
@@ -162,6 +171,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           ],
         },
     {
+      key: 'users',
+      label: '用户管理',
+      items: [
+        { key: 'user-list', label: '用户列表', icon: <Icons.Users /> },
+      ],
+    },
+    {
       key: 'security',
       label: '安全管理',
       items: [
@@ -192,6 +208,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       if (activeNavItem === 'access-log') return '访问日志';
       if (activeNavItem === 'api-monitor') return 'API 监控';
       if (activeNavItem === 'rate-limit') return '限流配置';
+    }
+    if (activeSection === 'users') {
+      if (activeNavItem === 'user-list') return '用户列表';
     }
     return '';
   };
