@@ -1,244 +1,211 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
+  const { login } = useUser();
+  const [loginTab, setLoginTab] = useState('account');
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
-    confirmPassword: '',
   });
-  const [rememberMe, setRememberMe] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // 从localStorage加载保存的登录信息
-  useEffect(() => {
-    if (isLogin) {
-      console.log('加载保存的登录信息');
-      const savedEmail = localStorage.getItem('loginEmail');
-      const savedPassword = localStorage.getItem('loginPassword');
-      console.log('从localStorage读取:', { savedEmail, savedPassword });
-      if (savedEmail && savedPassword) {
-        setFormData(prev => ({
-          ...prev,
-          email: savedEmail,
-          password: savedPassword
-        }));
-        setRememberMe(true);
-        console.log('成功加载保存的登录信息');
-      }
-    }
-  }, [isLogin]); // 依赖isLogin，当从注册模式切换到登录模式时也执行
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setRememberMe(checked);
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-      // 清除对应字段的错误
-      if (errors[name]) {
-        setErrors(prev => ({ ...prev, [name]: '' }));
-      }
-    }
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.email) {
-      newErrors.email = '请输入邮箱地址';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = '请输入有效的邮箱地址';
-    }
-
-    if (!formData.password) {
-      newErrors.password = '请输入密码';
-    } else if (formData.password.length < 6) {
-      newErrors.password = '密码至少需要6个字符';
-    }
-
-    if (!isLogin) {
-      if (!formData.username) {
-        newErrors.username = '请输入用户名';
-      }
-      if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = '两次输入的密码不一致';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
-    if (validateForm()) {
-      // 模拟登录/注册成功
-      console.log(isLogin ? '登录成功' : '注册成功', formData);
-      
-      // 处理记住我功能
-      if (isLogin) {
-        console.log('处理记住我功能:', { rememberMe, email: formData.email, password: formData.password });
-        if (rememberMe) {
-          // 保存登录信息到localStorage
-          localStorage.setItem('loginEmail', formData.email);
-          localStorage.setItem('loginPassword', formData.password);
-          console.log('登录信息已保存到localStorage');
-        } else {
-          // 清除保存的登录信息
-          localStorage.removeItem('loginEmail');
-          localStorage.removeItem('loginPassword');
-          console.log('已清除localStorage中的登录信息');
-        }
-      }
-      
-      navigate('/');
-    }
-  };
-
-  const switchMode = () => {
-    setIsLogin(!isLogin);
-    setErrors({});
-    setRememberMe(false);
-    setFormData({
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-    });
+    await login(formData.email || formData.username, formData.username || undefined);
+    navigate('/');
   };
 
   return (
     <div className="login-container">
-      {/* 左侧品牌区域 */}
-      <div className="login-brand">
-        <div className="brand-content">
-          <h2>激发创新潜能</h2>
-          <h2>孵化未来梦想</h2>
-        </div>
-      </div>
-
-      {/* 右侧登录区域 */}
-      <div className="login-card">
-        {/* Logo */}
+      {/* 顶部Logo */}
+      <div className="login-top-nav">
         <Link to="/" className="login-logo">
           <span className="logo-icon">💡</span>
           <span className="logo-text">IAC Incubator</span>
         </Link>
-
-        {/* 标题 */}
-        <div className="login-header">
-          <h1>{isLogin ? '欢迎回来' : '创建账户'}</h1>
-          <p>{isLogin ? '登录您的账户继续探索' : '注册账户开启创新之旅'}</p>
+        <div className="login-nav-right">
+          <button className="lang-button">简体中文 ▼</button>
         </div>
+      </div>
 
-        {/* 表单 */}
-        <form onSubmit={handleSubmit} className="login-form">
-          {!isLogin && (
-            <div className="form-group">
-              <label htmlFor="username">用户名</label>
-              <input
-                type="text"
-                id="username"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                placeholder="请输入用户名"
-                className={errors.username ? 'error' : ''}
-              />
-              {errors.username && <span className="error-message">{errors.username}</span>}
-            </div>
-          )}
-
-          <div className="form-group">
-            <label htmlFor="email">邮箱</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="请输入邮箱地址"
-              className={errors.email ? 'error' : ''}
-            />
-            {errors.email && <span className="error-message">{errors.email}</span>}
+      <div className="login-content">
+        {/* 左侧品牌区域 */}
+        <div className="login-left">
+          <div className="brand-header">
+            <h1 className="brand-title">
+              ArkClaw <span className="brand-highlight">立即订阅</span>
+            </h1>
+            <p className="brand-subtitle">7*24小时在线的专属智能伙伴</p>
+          </div>
+          
+          <div className="brand-mascot">
+            <span className="mascot-emoji">🦀</span>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="password">密码</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="请输入密码"
-              className={errors.password ? 'error' : ''}
-            />
-            {errors.password && <span className="error-message">{errors.password}</span>}
+          <div className="feature-grid">
+            <div className="feature-card">
+              <div className="feature-icon">🖥️</div>
+              <h3>零门槛免运维</h3>
+              <p>开箱即用免部署，7×24小时在线，50+技能，做80%工作生活学习一站搞定</p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">👥</div>
+              <h3>多位智能伙伴协同</h3>
+              <p>支持多位智能伙伴共享Tokens能力，可联动Coding Plan共享额度</p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">🛡️</div>
+              <h3>官方托管安全合规</h3>
+              <p>环境隔离、无公网IP、NAT出网，大模型防火墙捕挡风险，AI安全体系开箱即用</p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">✈️</div>
+              <h3>飞书原生协同</h3>
+              <p>飞书原生深度集成，无缝打通字节生态，免配置权限，一站式满足全场景办公</p>
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧登录区域 */}
+        <div className="login-right">
+          <div className="login-card">
+            <h2 className="card-title">欢迎来到 IAC Incubator</h2>
+
+            {/* 登录选项卡 */}
+            <div className="login-tabs">
+              <button 
+                className={`tab-button ${loginTab === 'account' ? 'active' : ''}`}
+                onClick={() => setLoginTab('account')}
+              >
+                账号登录
+              </button>
+              <button 
+                className={`tab-button ${loginTab === 'phone' ? 'active' : ''}`}
+                onClick={() => setLoginTab('phone')}
+              >
+                手机号登录
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="login-form">
+              {loginTab === 'account' ? (
+                <>
+                  <div className="form-group">
+                    <input
+                      type="text"
+                      name="username"
+                      value={formData.username}
+                      onChange={handleChange}
+                      placeholder="请输入账号/账号ID"
+                    />
+                  </div>
+
+                  <div className="form-group password-group">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      placeholder="请输入登录密码"
+                    />
+                    <button 
+                      type="button" 
+                      className="toggle-password"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="form-hint">
+                    <span>登录即为您已阅读并同意Incubator</span>
+                    <a href="#" className="hint-link">服务条款</a>
+                    <span>和</span>
+                    <a href="#" className="hint-link">隐私政策</a>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <input
+                      type="text"
+                      placeholder="请输入手机号"
+                    />
+                  </div>
+                  <div className="form-group code-group">
+                    <input
+                      type="text"
+                      placeholder="请输入验证码"
+                    />
+                    <button type="button" className="get-code-btn">获取验证码</button>
+                  </div>
+                </>
+              )}
+
+              <button type="submit" className="submit-button">
+                {loginTab === 'account' ? '登录' : '登录 / 注册'}
+              </button>
+            </form>
+
+            <div className="login-links">
+              <a href="#" className="login-link">忘记账号</a>
+              <span className="link-divider">|</span>
+              <a href="#" className="login-link">忘记密码</a>
+              <span className="link-divider">|</span>
+              <a href="#" className="login-link">IAM子用户登录</a>
+              <span className="link-divider">|</span>
+              <a href="#" className="login-link">企业联邦登录</a>
+            </div>
+
+            <div className="divider">
+              <span>其他登录方式</span>
+            </div>
+
+            <div className="social-buttons">
+              <button type="button" className="social-button">
+                <span className="social-icon">👤</span>
+              </button>
+              <button type="button" className="social-button">
+                <span className="social-icon">🦋</span>
+              </button>
+            </div>
+
+            <div className="register-prompt">
+              <span>没有账号？</span>
+              <Link to="#" className="register-link">现在就注册</Link>
+            </div>
           </div>
 
-          {!isLogin && (
-            <div className="form-group">
-              <label htmlFor="confirmPassword">确认密码</label>
-              <input
-                type="password"
-                id="confirmPassword"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                placeholder="请再次输入密码"
-                className={errors.confirmPassword ? 'error' : ''}
-              />
-              {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
-            </div>
-          )}
-
-          {isLogin && (
-            <div className="form-options">
-              <label className="checkbox-label">
-                <input type="checkbox" name="rememberMe" checked={rememberMe} onChange={handleChange} />
-                <span>记住我</span>
-              </label>
-              <Link to="/forgot-password" className="forgot-link">忘记密码？</Link>
-            </div>
-          )}
-
-          <button type="submit" className="submit-button">
-            {isLogin ? '登录' : '注册'}
-          </button>
-        </form>
-
-        {/* 切换登录/注册 */}
-        <div className="switch-mode">
-          <span>{isLogin ? '还没有账户？' : '已有账户？'}</span>
-          <button onClick={switchMode} className="switch-button">
-            {isLogin ? '立即注册' : '立即登录'}
-          </button>
-        </div>
-
-        {/* 第三方登录 */}
-        <div className="divider">
-          <span>或</span>
-        </div>
-
-        <div className="social-buttons">
-          <button className="social-button wechat">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-              <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 01.213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 00.167-.054l1.903-1.114a.864.864 0 01.717-.098 10.16 10.16 0 002.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 01-1.162 1.178A1.17 1.17 0 014.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 01-1.162 1.178 1.17 1.17 0 01-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 01.598.082l1.584.926a.272.272 0 00.14.045c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.49.49 0 01.176-.553c1.527-1.122 2.5-2.79 2.5-4.635 0-3.122-2.965-5.984-7.058-6.107zm-2.082 3.056c.535 0 .969.44.969.982a.976.976 0 01-.969.983.976.976 0 01-.969-.983c0-.542.434-.982.97-.982zm4.168 0c.535 0 .969.44.969.982a.976.976 0 01-.969.983.976.976 0 01-.969-.983c0-.542.434-.982.969-.982z"/>
-            </svg>
-            <span>微信登录</span>
-          </button>
-          <button className="social-button github">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-            </svg>
-            <span>GitHub 登录</span>
-          </button>
+          <div className="footer-text">
+            <p>© 版权所有 北京火山引擎科技有限公司2026</p>
+            <p className="footer-links">
+              <a href="#">京公网安备 11010802032137号</a>
+              <span>|</span>
+              <a href="#">京ICP备20180137号-3</a>
+              <span>|</span>
+              <a href="#">增值电信业务经营许可证：</a>
+              <a href="#">京ICP证02002419</a>
+            </p>
+          </div>
         </div>
       </div>
 
@@ -246,55 +213,52 @@ const Login: React.FC = () => {
         .login-container {
           min-height: 100vh;
           display: flex;
-          align-items: stretch;
-          background: var(--gradient-hero);
+          flex-direction: column;
+          background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 35%, #e8f0ff 65%, #f5f8ff 100%);
           position: relative;
+          overflow: hidden;
         }
 
         .login-container::before {
           content: '';
           position: absolute;
-          top: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 100%;
-          height: 100%;
-          background: radial-gradient(circle at 50% 0%, rgba(36, 144, 248, 0.08) 0%, transparent 70%);
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: 
+            radial-gradient(circle at 20% 80%, rgba(36, 144, 248, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(36, 144, 248, 0.06) 0%, transparent 50%),
+            radial-gradient(circle at 40% 40%, rgba(100, 149, 237, 0.04) 0%, transparent 40%);
+          animation: float 25s ease-in-out infinite;
           pointer-events: none;
         }
 
-        /* 左侧品牌区域 */
-        .login-brand {
-          width: 480px;
-          min-height: 100vh;
+        .login-container::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232490f8' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+          opacity: 0.6;
+          pointer-events: none;
+        }
+
+        @keyframes float {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          25% { transform: translate(2%, 3%) rotate(1deg); }
+          50% { transform: translate(-1%, 2%) rotate(0deg); }
+          75% { transform: translate(3%, -2%) rotate(-1deg); }
+        }
+
+        /* 顶部导航 */
+        .login-top-nav {
           display: flex;
+          justify-content: space-between;
           align-items: center;
-          justify-content: center;
-          background: #2490f8;
-          position: relative;
-          z-index: 1;
-        }
-
-        .brand-content {
-          text-align: center;
-          color: white;
-        }
-
-        .brand-content h2 {
-          font-size: 36px;
-          font-weight: 600;
-          margin: 12px 0;
-          letter-spacing: 2px;
-        }
-
-        /* 右侧登录区域 */
-        .login-card {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: var(--spacing-2xl);
+          padding: 24px 48px;
           position: relative;
           z-index: 1;
         }
@@ -302,160 +266,337 @@ const Login: React.FC = () => {
         .login-logo {
           display: flex;
           align-items: center;
-          justify-content: center;
           gap: var(--spacing-sm);
-          margin-bottom: var(--spacing-2xl);
           text-decoration: none;
         }
 
         .logo-icon {
-          font-size: 32px;
+          font-size: 24px;
         }
 
         .logo-text {
-          font-size: 24px;
+          font-size: 21px;
           font-weight: 600;
           color: var(--text-primary);
         }
 
-        .login-header {
-          text-align: center;
-          margin-bottom: var(--spacing-xl);
+        .login-nav-right {
+          display: flex;
+          align-items: center;
         }
 
-        .login-header h1 {
-          font-size: 28px;
+        .lang-button {
+          background: none;
+          border: none;
+          color: #64748b;
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        /* 主内容区域 */
+        .login-content {
+          flex: 1;
+          display: flex;
+          max-width: 1400px;
+          width: 100%;
+          margin: 0 auto;
+          padding: 40px 48px;
+          gap: 80px;
+          position: relative;
+          z-index: 1;
+        }
+
+        /* 左侧品牌区域 */
+        .login-left {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          padding-top: 40px;
+        }
+
+        .brand-header {
+          margin-bottom: 32px;
+        }
+
+        .brand-title {
+          font-size: 40px;
+          font-weight: 700;
+          color: #1f2937;
+          margin: 0 0 12px 0;
+        }
+
+        .brand-highlight {
+          color: #ff6b35;
+        }
+
+        .brand-subtitle {
+          font-size: 18px;
+          color: #64748b;
+          margin: 0;
+        }
+
+        .brand-mascot {
+          display: flex;
+          justify-content: center;
+          margin: 24px 0;
+        }
+
+        .mascot-emoji {
+          font-size: 80px;
+        }
+
+        .feature-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+          margin-top: 24px;
+        }
+
+        .feature-card {
+          background: rgba(255, 255, 255, 0.8);
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 20px;
+          backdrop-filter: blur(10px);
+        }
+
+        .feature-icon {
+          font-size: 24px;
+          margin-bottom: 12px;
+        }
+
+        .feature-card h3 {
+          font-size: 16px;
           font-weight: 600;
-          margin-bottom: var(--spacing-sm);
+          color: #1f2937;
+          margin: 0 0 8px 0;
         }
 
-        .login-header p {
-          font-size: 15px;
-          color: var(--text-secondary);
+        .feature-card p {
+          font-size: 13px;
+          color: #64748b;
+          margin: 0;
+          line-height: 1.6;
+        }
+
+        /* 右侧登录区域 */
+        .login-right {
+          width: 440px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .login-card {
+          background: white;
+          border-radius: 10px;
+          padding: 40px 36px;
+          width: 450px;
+          max-width: 100%;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .card-title {
+          font-size: 22px;
+          font-weight: 600;
+          color: #1f2937;
+          margin: 0 0 28px 0;
+          text-align: left;
+          letter-spacing: -0.02em;
+        }
+
+        /* 登录选项卡 */
+        .login-tabs {
+          display: flex;
+          justify-content: flex-start;
+          gap: 40px;
+          margin-bottom: 24px;
+        }
+
+        .tab-button {
+          background: none;
+          border: none;
+          font-size: 16px;
+          font-weight: 500;
+          color: #64748b;
+          cursor: pointer;
+          padding: 10px 0;
+          position: relative;
+          transition: all 0.2s;
+        }
+
+        .tab-button:hover {
+          color: #1f2937;
+        }
+
+        .tab-button.active {
+          color: var(--accent-blue);
+          font-weight: 600;
+        }
+
+        .tab-button.active::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          height: 3px;
+          background: var(--accent-blue);
+          border-radius: 2px;
         }
 
         .login-form {
           display: flex;
           flex-direction: column;
-          gap: var(--spacing-md);
-          width: 300px;
-          letter-spacing: normal;
-          text-align: left;
+          gap: 16px;
         }
 
         .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: var(--spacing-xs);
-          width: 100%;
-        }
-
-        .form-group label {
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--text-primary);
+          position: relative;
         }
 
         .form-group input {
           width: 100%;
-          height: 44px;
-          padding: 0 var(--spacing-md);
-          border: 1px solid var(--border);
+          height: 40px;
+          padding: 0 16px;
+          border: 1px solid #e2e8f0;
           border-radius: 3px;
-          font-size: 15px;
-          transition: all var(--transition-fast);
-          background: var(--bg-primary);
+          font-size: 18px;
+          background: #ffffff;
+          transition: all 0.2s;
+          box-sizing: border-box;
         }
 
         .form-group input:focus {
           outline: none;
           border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
-        }
-
-        .form-group input.error {
-          border-color: var(--accent-pink);
+          background: white;
         }
 
         .form-group input::placeholder {
-          color: var(--text-tertiary);
-        }
-
-        .error-message {
+          color: #94a3b8;
           font-size: 13px;
-          color: var(--accent-pink);
         }
 
-        .form-options {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: var(--spacing-xs);
+        .password-group {
+          position: relative;
         }
 
-        .checkbox-label {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-xs);
-          font-size: 14px;
-          color: var(--text-secondary);
+        .toggle-password {
+          position: absolute;
+          right: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
           cursor: pointer;
+          padding: 8px 10px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          color: #94a3b8;
         }
 
-        .checkbox-label input {
-          width: 16px;
-          height: 16px;
-          cursor: pointer;
+        .toggle-password:hover {
+          background: rgba(0, 0, 0, 0.05);
+          color: #64748b;
         }
 
-        .forgot-link {
-          font-size: 14px;
+        .toggle-password:active {
+          transform: translateY(-50%) scale(0.95);
+        }
+
+        .code-group {
+          display: flex;
+          gap: 10px;
+        }
+
+        .code-group input {
+          flex: 1;
+        }
+
+        .get-code-btn {
+          white-space: nowrap;
+          padding: 0 20px;
+          height: 40px;
+          border: 1px solid var(--accent-blue);
+          background: white;
           color: var(--accent-blue);
+          border-radius: 3px;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
         }
 
-        .forgot-link:hover {
-          text-decoration: underline;
+        .get-code-btn:hover {
+          background: rgba(36, 144, 248, 0.05);
+        }
+
+        .form-hint {
+          font-size: 12px;
+          color: #64748b;
+          text-align: left;
+          margin-top: -2px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .hint-link {
+          color: var(--accent-blue);
+          text-decoration: none;
+          font-weight: 500;
         }
 
         .submit-button {
-          width: 420px;
-          height: 48px;
+          height: 40px;
           background: var(--accent-blue);
           color: white;
           border: none;
           border-radius: 3px;
-          font-size: 17px;
+          font-size: 14px;
           font-weight: 500;
           cursor: pointer;
-          transition: all var(--transition-fast);
-          margin-top: var(--spacing-sm);
+          transition: all 0.2s;
+          margin-top: 16px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .submit-button:hover {
           background: var(--accent-blue-hover);
         }
 
-        .switch-mode {
-          text-align: center;
-          margin-top: var(--spacing-lg);
-          font-size: 14px;
-          color: var(--text-secondary);
+        .login-links {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 12px;
+          margin-top: 20px;
+          flex-wrap: wrap;
         }
 
-        .switch-button {
+        .login-link {
+          font-size: 13px;
+          color: #64748b;
+          text-decoration: none;
+        }
+
+        .login-link:hover {
           color: var(--accent-blue);
-          font-weight: 500;
-          margin-left: var(--spacing-xs);
         }
 
-        .switch-button:hover {
-          text-decoration: underline;
+        .link-divider {
+          color: #e2e8f0;
+          font-size: 13px;
         }
 
         .divider {
           display: flex;
           align-items: center;
-          margin: var(--spacing-xl) 0;
+          margin: 28px 0;
         }
 
         .divider::before,
@@ -463,99 +604,125 @@ const Login: React.FC = () => {
           content: '';
           flex: 1;
           height: 1px;
-          background: var(--border-light);
+          background: #e2e8f0;
         }
 
         .divider span {
-          padding: 0 var(--spacing-md);
-          font-size: 13px;
-          color: var(--text-tertiary);
+          padding: 0 20px;
+          font-size: 12px;
+          color: #94a3b8;
         }
 
         .social-buttons {
           display: flex;
-          flex-direction: column;
-          gap: var(--spacing-sm);
+          justify-content: center;
+          gap: 16px;
         }
 
         .social-button {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          border: 2px solid #e2e8f0;
+          background: white;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: var(--spacing-sm);
-          height: 44px;
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          background: var(--bg-primary);
-          font-size: 15px;
-          color: var(--text-primary);
           cursor: pointer;
-          transition: all var(--transition-fast);
+          transition: all 0.2s;
         }
 
         .social-button:hover {
-          background: var(--bg-secondary);
-          border-color: var(--border);
+          background: #f8fafc;
+          border-color: var(--accent-blue);
         }
 
-        .social-button.wechat svg {
-          color: #2490f8;
+        .social-icon {
+          font-size: 22px;
         }
 
-        .social-button.github svg {
-          color: var(--text-primary);
+        .register-prompt {
+          text-align: center;
+          margin-top: 24px;
+          font-size: 14px;
         }
 
-        /* 暗色主题适配 */
-        @media (prefers-color-scheme: dark) {
-          .login-card {
-            background: var(--bg-primary);
-          }
+        .register-prompt span {
+          color: #64748b;
+        }
 
-          .form-group input {
-            background: var(--bg-secondary);
-            border-color: var(--border);
-          }
+        .register-link {
+          color: var(--accent-blue);
+          text-decoration: none;
+          font-weight: 600;
+        }
 
-          .social-button {
-            background: var(--bg-secondary);
-            border-color: var(--border);
-          }
+        .register-link:hover {
+          text-decoration: underline;
+        }
 
-          .social-button:hover {
-            background: var(--bg-tertiary);
-          }
+        .footer-text {
+          margin-top: 32px;
+          text-align: center;
+        }
+
+        .footer-text p {
+          font-size: 12px;
+          color: #94a3b8;
+          margin: 4px 0;
+        }
+
+        .footer-links {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .footer-links a {
+          color: #94a3b8;
+          text-decoration: none;
+          font-size: 12px;
+        }
+
+        .footer-links span {
+          color: #cbd5e1;
         }
 
         /* 响应式 */
+        @media (max-width: 1200px) {
+          .login-content {
+            gap: 40px;
+          }
+
+          .feature-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
         @media (max-width: 960px) {
-          .login-brand {
+          .login-left {
             display: none;
           }
 
-          .login-card {
+          .login-right {
             width: 100%;
+            max-width: 440px;
           }
         }
 
         @media (max-width: 480px) {
+          .login-top-nav {
+            padding: 16px 20px;
+          }
+
+          .login-content {
+            padding: 20px;
+          }
+
           .login-card {
-            padding: var(--spacing-xl);
-          }
-
-          .login-form,
-          .form-group,
-          .form-group input,
-          .submit-button {
-            width: 100%;
-          }
-
-          .login-header h1 {
-            font-size: 24px;
-          }
-
-          .logo-text {
-            font-size: 20px;
+            padding: 24px;
           }
         }
       `}</style>

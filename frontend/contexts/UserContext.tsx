@@ -67,13 +67,20 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await fetch(`http://localhost:3000/api/profile/email/${userState.email}`);
       if (response.ok) {
-        const data = await response.json();
-        if (data) {
-          setUserState(prev => ({
-            ...prev,
-            avatar: data.avatar || null,
-            name: data.name || prev.name,
-          }));
+        const text = await response.text();
+        if (text) {
+          try {
+            const data = JSON.parse(text);
+            if (data) {
+              setUserState(prev => ({
+                ...prev,
+                avatar: data.avatar || null,
+                name: data.name || prev.name,
+              }));
+            }
+          } catch (parseError) {
+            console.warn('解析用户信息失败:', parseError);
+          }
         }
       }
     } catch (error) {
