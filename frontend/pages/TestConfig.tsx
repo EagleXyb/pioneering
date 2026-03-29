@@ -435,6 +435,8 @@ const TestConfig: React.FC = () => {
           color: var(--accent-blue);
           text-decoration: none;
           font-size: 15px;
+          padding: var(--spacing-sm) var(--spacing-md);
+          border-radius: 3px;
           transition: opacity var(--transition-fast);
         }
 

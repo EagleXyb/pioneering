@@ -485,7 +485,7 @@ const Login: React.FC = () => {
 
         .toggle-password {
           position: absolute;
-          right: 16px;
+          right: 3px;
           top: 50%;
           transform: translateY(-50%);
           background: none;

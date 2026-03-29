@@ -304,7 +304,7 @@ const Incubation: React.FC = () => {
           text-decoration: none;
           font-size: 14px;
           padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: var(--radius-sm);
+          border-radius: 3px;
           transition: background var(--transition-fast);
         }
 
@@ -407,8 +407,12 @@ const Incubation: React.FC = () => {
         }
 
         .cta-button {
-          display: inline-block;
-          padding: 16px 32px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 150px;
+          height: 50px;
+          padding: 0;
           background: #2490f8;
           color: white;
           border-radius: var(--radius-sm);

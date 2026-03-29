@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const Assessment: React.FC = () => {
@@ -197,7 +197,7 @@ const Assessment: React.FC = () => {
           text-decoration: none;
           font-size: 14px;
           padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: 8px;
+          border-radius: 3px;
           transition: background var(--transition-fast);
         }
 
