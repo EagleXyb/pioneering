@@ -462,7 +462,7 @@ const Login: React.FC = () => {
           padding: 0 16px;
           border: 1px solid #e2e8f0;
           border-radius: 3px;
-          font-size: 18px;
+          font-size: 14px;
           background: #ffffff;
           transition: all 0.2s;
           box-sizing: border-box;

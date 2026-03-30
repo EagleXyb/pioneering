@@ -15,11 +15,12 @@ export class GlobalPromptService {
    */
   async create(dto: CreateGlobalPromptDto) {
     this.logger.log(`创建全局Prompt: ${dto.name}`);
-    
-    // 验证输入数据
-    if (!dto.name || !dto.templateContent || !dto.createdBy) {
-      throw new BadRequestException('name、templateContent和createdBy为必填字段');
+
+    if (!dto.name || !dto.createdBy) {
+      throw new BadRequestException('name和createdBy为必填字段');
     }
+
+    const templateContent = dto.templateContent || '';
 
     // 检查名称是否已存在
     const existing = await this.prisma.globalPrompt.findUnique({
@@ -34,7 +35,7 @@ export class GlobalPromptService {
       const prompt = await this.prisma.globalPrompt.create({
         data: {
           name: dto.name,
-          templateContent: dto.templateContent,
+          templateContent: templateContent,
           createdBy: dto.createdBy,
         },
       });
@@ -130,6 +131,24 @@ export class GlobalPromptService {
     
     const prompt = await this.findOne(id);
 
+    // 如果修改了名称，直接更新，不限制状态
+    if (dto.name !== undefined) {
+      try {
+        const updatedPrompt = await this.prisma.globalPrompt.update({
+          where: { id },
+          data: {
+            name: dto.name,
+            ...(dto.createdBy && { createdBy: dto.createdBy }),
+          },
+        });
+        this.logger.log(`全局Prompt名称更新成功: ${id}`);
+        return updatedPrompt;
+      } catch (error) {
+        this.logger.error(`更新全局Prompt名称失败: ${error.message}`);
+        throw error;
+      }
+    }
+
     // 如果修改了模板内容，需要校验当前状态
     if (dto.templateContent !== undefined) {
       if (prompt.status === 'online') {
@@ -151,7 +170,6 @@ export class GlobalPromptService {
           data: {
             templateContent: dto.templateContent,
             version: newVersion,
-            // 修改内容后重置审批状态为 pending
             approvalStatus: 'pending',
             ...(dto.createdBy && { createdBy: dto.createdBy }),
           },

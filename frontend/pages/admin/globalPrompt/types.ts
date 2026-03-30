@@ -28,6 +28,7 @@ export interface CreatePromptFormData {
 }
 
 export interface UpdatePromptData {
+  name?: string;
   templateContent?: string;
   status?: 'online' | 'offline';
   approvalStatus?: 'pending' | 'approved' | 'rejected';
@@ -67,4 +68,8 @@ export interface UseGlobalPromptReturn {
   handleUpdate: (id: number, data: UpdatePromptData) => Promise<GlobalPrompt | null>;
   handleUpdateStatus: (id: number, status: 'online' | 'offline') => Promise<GlobalPrompt | null>;
   handleUpdateApproval: (id: number, approvalStatus: 'pending' | 'approved' | 'rejected') => Promise<GlobalPrompt | null>;
+  currentEditingPrompt: GlobalPrompt | null;
+  isEditing: boolean;
+  enterEditMode: (prompt: GlobalPrompt) => void;
+  exitEditMode: () => void;
 }

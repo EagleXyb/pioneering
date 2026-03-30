@@ -13,6 +13,8 @@ export function useGlobalPrompt(): UseGlobalPromptReturn {
   const [prompts, setPrompts] = useState<GlobalPrompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentEditingPrompt, setCurrentEditingPrompt] = useState<GlobalPrompt | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // 加载Prompt列表
   const fetchPrompts = useCallback(async () => {
@@ -126,6 +128,18 @@ export function useGlobalPrompt(): UseGlobalPromptReturn {
     }
   }, []);
 
+  // 进入编辑模式
+  const enterEditMode = useCallback((prompt: GlobalPrompt) => {
+    setCurrentEditingPrompt(prompt);
+    setIsEditing(true);
+  }, []);
+
+  // 退出编辑模式
+  const exitEditMode = useCallback(() => {
+    setCurrentEditingPrompt(null);
+    setIsEditing(false);
+  }, []);
+
   // 初始加载
   useEffect(() => {
     fetchPrompts();
@@ -143,5 +157,9 @@ export function useGlobalPrompt(): UseGlobalPromptReturn {
     handleUpdate,
     handleUpdateStatus,
     handleUpdateApproval,
+    currentEditingPrompt,
+    isEditing,
+    enterEditMode,
+    exitEditMode,
   };
 }

@@ -6,6 +6,7 @@ import { AdminLayout } from './AdminLayout';
 import { ModelManagement } from './ModelManagement';
 import { PromptManagement } from './PromptManagement';
 import { SecurityManagement } from './SecurityManagement';
+import { UserManagement } from './UserManagement';
 import { useAIConfig, usePromptManagement } from './hooks';
 
 const Admin: React.FC = () => {
@@ -86,12 +87,7 @@ const Admin: React.FC = () => {
     }
 
     if (activeSection === 'users') {
-      return (
-        <div style={{ padding: '20px' }}>
-          <h2>用户管理</h2>
-          <p>用户列表功能开发中...</p>
-        </div>
-      );
+      return <UserManagement />;
     }
 
     return null;

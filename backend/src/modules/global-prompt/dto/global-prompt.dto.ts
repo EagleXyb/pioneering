@@ -8,8 +8,8 @@ export class CreateGlobalPromptDto {
   name: string;
 
   @IsString()
-  @IsNotEmpty()
-  templateContent: string;
+  @IsOptional()
+  templateContent?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -17,6 +17,10 @@ export class CreateGlobalPromptDto {
 }
 
 export class UpdateGlobalPromptDto {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
   @IsString()
   @IsOptional()
   templateContent?: string;
