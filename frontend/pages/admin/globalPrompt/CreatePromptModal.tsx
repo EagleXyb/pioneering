@@ -84,7 +84,7 @@ export const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
     <div className="modal-overlay" onClick={handleCancel}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>新建Prompt</h3>
+          <h3>创建 Prompt</h3>
           <button className="modal-close-btn" onClick={handleCancel}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -96,47 +96,54 @@ export const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
         <div className="modal-body">
           <div className="form-group">
             <label className="form-label">
-              PromptKey
+              Prompt Key
               <span className="label-required">*</span>
             </label>
-            <input
-              type="text"
-              className="form-input"
-              value={formData.promptKey}
-              onChange={(e) => handleInputChange('promptKey', e.target.value)}
-              placeholder="请输入PromptKey（字母、数字、下划线、连字符）"
-              autoFocus
-            />
+            <div className="input-wrapper">
+              <input
+                type="text"
+                className="form-input"
+                value={formData.promptKey}
+                onChange={(e) => handleInputChange('promptKey', e.target.value)}
+                placeholder="请输入 Prompt key"
+                autoFocus
+              />
+              <span className="char-count">{formData.promptKey.length}/100</span>
+            </div>
             {errors.promptKey && <span className="form-error">{errors.promptKey}</span>}
-            <span className="form-hint">用于唯一标识Prompt，如：system_default_v2</span>
           </div>
 
           <div className="form-group">
             <label className="form-label">
-              Prompt名称
+              Prompt 名称
               <span className="label-required">*</span>
             </label>
-            <input
-              type="text"
-              className="form-input"
-              value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              placeholder="请输入Prompt名称"
-            />
+            <div className="input-wrapper">
+              <input
+                type="text"
+                className="form-input"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                placeholder="请输入 Prompt 名称"
+              />
+              <span className="char-count">{formData.name.length}/100</span>
+            </div>
             {errors.name && <span className="form-error">{errors.name}</span>}
           </div>
 
           <div className="form-group">
-            <label className="form-label">Prompt描述</label>
-            <textarea
-              className="form-textarea"
-              value={formData.description}
-              onChange={(e) => handleInputChange('description', e.target.value)}
-              placeholder="请输入Prompt描述（可选）"
-              rows={4}
-            />
+            <label className="form-label">Prompt 描述</label>
+            <div className="input-wrapper">
+              <textarea
+                className="form-textarea"
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                placeholder="请输入 Prompt 描述"
+                rows={4}
+              />
+              <span className="char-count">{formData.description.length}/500</span>
+            </div>
             {errors.description && <span className="form-error">{errors.description}</span>}
-            <span className="form-hint">简要描述Prompt的用途和内容</span>
           </div>
         </div>
 

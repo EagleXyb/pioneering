@@ -329,11 +329,11 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
         onConfirm={handleCreateConfirm}
       />
 
-      {showEditNameModal && (
+      {showEditNameModal && currentEditingPrompt && (
         <div className="modal-overlay" onClick={() => setShowEditNameModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>修改Prompt名称</h3>
+              <h3>修改 Prompt</h3>
               <button className="modal-close-btn" onClick={() => setShowEditNameModal(false)}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -343,26 +343,51 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
             <div className="modal-body">
               <div className="form-group">
                 <label className="form-label">
-                  Prompt 名称
+                  Prompt Key
                   <span className="label-required">*</span>
                 </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="请输入Prompt名称"
-                  maxLength={100}
-                  autoFocus
-                />
+                <div className="input-wrapper">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={currentEditingPrompt.promptKey || ''}
+                    disabled
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Prompt 名称</label>
+                <div className="input-wrapper">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="请输入 Prompt 名称"
+                    maxLength={100}
+                    autoFocus
+                  />
+                  <span className="char-count">{newName.length}/100</span>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Prompt 描述</label>
+                <div className="input-wrapper">
+                  <textarea
+                    className="form-textarea"
+                    value={currentEditingPrompt.description || ''}
+                    disabled
+                    rows={3}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowEditNameModal(false)}>
                 取消
               </button>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={async () => {
                   if (!newName.trim()) {
                     alert('请输入Prompt名称');
