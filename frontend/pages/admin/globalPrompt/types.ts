@@ -3,6 +3,8 @@
 export interface GlobalPrompt {
   id: number;
   name: string;
+  promptKey?: string;
+  description?: string;
   templateContent: string;
   version: number;
   status: 'online' | 'offline';
