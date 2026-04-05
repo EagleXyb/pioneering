@@ -188,25 +188,49 @@ export class AiConfigService implements OnModuleInit {
 
   private async callMiniMax(model: string, apiKey: string, messages: any[]): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
-      const response = await fetch('https://api.minimax.chat/v1/text/chatcompletion', {
+      const minimaxModel = model.includes('MiniMax-') ? model : `MiniMax-${model}`;
+      const response = await fetch('https://api.minimaxi.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify({ model, messages, temperature: 0.7 })
+        body: JSON.stringify({
+          model: minimaxModel,
+          messages,
+          temperature: 0.7
+        })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return { success: false, error: `MiniMax API错误: ${response.status} - ${JSON.stringify(errorData)}` };
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        return { success: false, error: `MiniMax API响应格式错误: ${responseText.substring(0, 200)}` };
       }
 
-      const data = await response.json();
-      if (data.choices && data.choices.length > 0) {
-        return { success: true, message: data.choices[0].message.content };
+      if (!response.ok) {
+        const errorMsg = data.error?.message || data.message || data.base_resp?.status_msg || `HTTP ${response.status}`;
+        return { success: false, error: `MiniMax API错误: ${errorMsg}` };
       }
-      return { success: false, error: 'MiniMax API响应格式未知' };
+
+      if (data.choices && data.choices.length > 0 && data.choices[0].message?.content) {
+        let content = data.choices[0].message.content;
+        content = content.replace(/<think[\s\S]*?<\/think>/g, '').trim();
+        return { success: true, message: content };
+      } else if (data.text) {
+        let content = data.text;
+        content = content.replace(/<think[\s\S]*?<\/think>/g, '').trim();
+        return { success: true, message: content };
+      } else if (data.output?.text) {
+        let content = data.output.text;
+        content = content.replace(/<think[\s\S]*?<\/think>/g, '').trim();
+        return { success: true, message: content };
+      } else if (data.base_resp?.status_code !== 0) {
+        return { success: false, error: `MiniMax API错误: ${data.base_resp?.status_msg || '未知错误'}` };
+      }
+      return { success: false, error: `MiniMax API响应格式未知: ${JSON.stringify(data).substring(0, 200)}` };
     } catch (error) {
       return { success: false, error: `MiniMax API请求异常: ${error instanceof Error ? error.message : '未知错误'}` };
     }
@@ -248,7 +272,10 @@ export class AiConfigService implements OnModuleInit {
   async update(id: number, updateAiConfigDto: UpdateAiConfigDto) {
     return this.prisma.aIConfig.update({
       where: { id },
-      data: updateAiConfigDto as Prisma.AIConfigUpdateInput,
+      data: {
+        ...updateAiConfigDto,
+        lastTestTime: updateAiConfigDto.lastTestTime ? new Date(updateAiConfigDto.lastTestTime) : undefined,
+      } as Prisma.AIConfigUpdateInput,
     });
   }
 
@@ -264,7 +291,10 @@ export class AiConfigService implements OnModuleInit {
       });
     }
     return this.prisma.aIConfig.create({
-      data: createAiConfigDto as Prisma.AIConfigCreateInput,
+      data: {
+        ...createAiConfigDto,
+        lastTestTime: createAiConfigDto.lastTestTime ? new Date(createAiConfigDto.lastTestTime) : null,
+      } as Prisma.AIConfigCreateInput,
     });
   }
 

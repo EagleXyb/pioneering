@@ -74,13 +74,17 @@ export function useAIConfig() {
 
     setSaveStatus('saving');
 
+    const lastTestResultStr = typeof testResult?.message === 'string' 
+      ? testResult.message 
+      : String(testResult?.message || '');
+
     const configData: AIConfig = {
       apiKey: apiKey.trim(),
       provider,
       model,
       prompt,
       lastTestInput: '连接测试',
-      lastTestResult: testResult?.message || '',
+      lastTestResult: lastTestResultStr,
       lastTestTime: new Date().toISOString(),
     };
 
@@ -88,7 +92,12 @@ export function useAIConfig() {
 
     if (saved) {
       setConfigId(saved.id);
-      configCache.set(configData);
+      configCache.set({
+        apiKey: apiKey.trim(),
+        provider,
+        model,
+        prompt,
+      });
       setSaveStatus('saved');
       alert('配置保存成功！');
     } else {

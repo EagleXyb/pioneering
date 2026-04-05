@@ -135,8 +135,8 @@ const renderApiKeyConfig: React.FC<ApiKeyConfigProps> = ({
             )}
             {provider === 'minimax' && (
               <>
-                <option value="abab-5.5">ABAB-5.5</option>
-                <option value="abab-6">ABAB-6</option>
+                <option value="MiniMax-M2.5">MiniMax-M2.5</option>
+                <option value="MiniMax-M2.7">MiniMax-M2.7</option>
               </>
             )}
             {provider === 'kimi' && (
@@ -158,14 +158,14 @@ const renderApiKeyConfig: React.FC<ApiKeyConfigProps> = ({
       <div className="form-actions">
         <button
           className="btn-secondary"
-          onClick={onTestConnection}
+          onClick={() => onTestConnection()}
           disabled={!isConfigValid() || testStatus === 'testing'}
         >
           {testStatus === 'testing' ? '测试中...' : '测试连接'}
         </button>
         <button
           className="btn-primary"
-          onClick={onSaveConfig}
+          onClick={() => onSaveConfig()}
           disabled={!isConfigValid() || saveStatus === 'saving'}
         >
           {saveStatus === 'saving' ? '保存中...' : '保存配置'}
