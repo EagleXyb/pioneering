@@ -99,6 +99,9 @@ export class ProfileController {
 
   @Post('upsert')
   upsert(@Body() createProfileDto: CreateProfileDto) {
+    if (!createProfileDto.email) {
+      throw new BadRequestException('Email不能为空');
+    }
     return this.profileService.upsert(createProfileDto.email, createProfileDto);
   }
 

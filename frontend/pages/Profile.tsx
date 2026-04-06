@@ -83,6 +83,10 @@ const Profile: React.FC = () => {
 
   const handleSave = async () => {
     try {
+      if (!userInfo.email) {
+        setError('请先登录再保存个人信息');
+        return;
+      }
       setError(null);
       const { achievements, joinDate, ...profileData } = userInfo;
       const response = await fetch(`${API_BASE}/profile/upsert`, {
@@ -92,9 +96,11 @@ const Profile: React.FC = () => {
       });
       if (response.ok) {
         setIsEditing(false);
-        setName(userInfo.name); // 更新全局用户名
+        setName(userInfo.name);
         await fetchProfile();
       } else {
+        const errorText = await response.text();
+        console.error('保存失败:', response.status, errorText);
         setError('保存失败，请重试');
       }
     } catch (err) {
