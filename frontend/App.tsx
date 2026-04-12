@@ -9,6 +9,7 @@ import TestConfig from './pages/TestConfig'
 import Profile from './pages/Profile'
 import BasicAssessment from './pages/BasicAssessment'
 import Login from './pages/Login'
+import TrialCenter from './pages/TrialCenter'
 import { UserProvider } from './contexts/UserContext'
 import './App.css'
 
@@ -27,6 +28,7 @@ function App() {
           <Route path="/test-config" element={<TestConfig />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/basic-assessment" element={<BasicAssessment />} />
+          <Route path="/trial-center" element={<TrialCenter />} />
         </Routes>
       </Router>
     </UserProvider>

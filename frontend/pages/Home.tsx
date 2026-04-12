@@ -141,8 +141,8 @@ const Home: React.FC = () => {
             通过科学的测评体系、系统的训练方法和专业的孵化服务，助力您的创新之路
           </p>
           <div className="hero-cta">
-            <Link to="/assessment" className="btn-primary">
-              开始测评
+            <Link to="/trial-center" className="btn-primary">
+              立即体验
             </Link>
           </div>
         </div>
