@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, SquareCheckBig } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, SquareCheckBig, SquareSlash } from 'lucide-react';
 
 const TrialCenter: React.FC = () => {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ const TrialCenter: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     setIsVisible(true);
@@ -78,7 +79,7 @@ const TrialCenter: React.FC = () => {
 
   return (
     <div className="trial-center-container">
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-content">
           <div className="sidebar-header">
             <div className="sidebar-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
@@ -86,17 +87,21 @@ const TrialCenter: React.FC = () => {
               <span className="logo-text">IAC Incubator</span>
             </div>
             <div className="sidebar-header-actions">
-              <button className="sidebar-action-btn" title="收起侧边栏">
-                <PanelLeftClose size={18} strokeWidth={2} />
+              <button
+                className="sidebar-action-btn"
+                title={isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              >
+                {isSidebarCollapsed ? <PanelRightClose size={16} strokeWidth={2} /> : <PanelLeftClose size={16} strokeWidth={2} />}
               </button>
               <button className="sidebar-action-btn" title="新建任务">
-                <SquareCheckBig size={18} strokeWidth={2} />
+                <SquareCheckBig size={16} strokeWidth={2} />
               </button>
             </div>
           </div>
 
           <button className="new-task-btn-sidebar">
-            <SquareCheckBig size={18} strokeWidth={2} />
+            <SquareCheckBig size={16} strokeWidth={2} />
             新建任务
           </button>
 
@@ -217,13 +222,8 @@ const TrialCenter: React.FC = () => {
                     </svg>
                   </div>
                   <div className="toolbar-icons">
-                    <div className="toolbar-icon" title="代码块">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <path d="M9 12L7 10L9 8" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M15 12L17 10L15 8" strokeLinecap="round" strokeLinejoin="round"/>
-                        <line x1="13" y1="7" x2="11" y2="13" strokeLinecap="round"/>
-                      </svg>
+                    <div className="toolbar-icon" title="使用 / 调用命令和技能">
+                      <SquareSlash size={16} strokeWidth={1.5} />
                     </div>
                     <div className="toolbar-icon" title="上传文件">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -283,6 +283,33 @@ const TrialCenter: React.FC = () => {
           display: flex;
           flex-direction: column;
           position: relative;
+          transition: width 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+          width: 48px;
+        }
+
+        .sidebar.collapsed .sidebar-content {
+          width: 48px;
+          padding: 20px 6px 20px 6px;
+          overflow: hidden;
+        }
+
+        .sidebar.collapsed .sidebar-logo,
+        .sidebar.collapsed .new-task-btn-sidebar,
+        .sidebar.collapsed .sidebar-footer {
+          display: none;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+          justify-content: center;
+          margin-bottom: 0;
+        }
+
+        .sidebar.collapsed .sidebar-header-actions {
+          margin-right: 0;
+          flex-direction: column;
         }
 
         .sidebar-content {
@@ -292,6 +319,7 @@ const TrialCenter: React.FC = () => {
           padding: 20px 10px 20px 12px;
           background: #EEEFF2;
           width: 230px;
+          transition: width 0.3s ease, padding 0.3s ease;
         }
 
         .sidebar-header {
@@ -346,6 +374,32 @@ const TrialCenter: React.FC = () => {
           justify-content: center;
           cursor: pointer;
           transition: all 0.2s;
+          position: relative;
+        }
+
+        .sidebar-action-btn::after {
+          content: attr(title);
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          top: calc(100% + 8px);
+          background: white;
+          color: #333;
+          border: 1px solid #333;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 12px;
+          white-space: nowrap;
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.2s, visibility 0.2s;
+          z-index: 100;
+          pointer-events: none;
+        }
+
+        .sidebar-action-btn:hover::after {
+          opacity: 1;
+          visibility: visible;
         }
 
         .sidebar-action-btn:hover {
@@ -686,6 +740,31 @@ const TrialCenter: React.FC = () => {
           color: #999;
           cursor: pointer;
           transition: all 0.2s;
+          position: relative;
+        }
+
+        .toolbar-icon::after {
+          content: attr(title);
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          bottom: calc(100% + 8px);
+          background: #333;
+          color: white;
+          padding: 6px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          white-space: nowrap;
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.2s, visibility 0.2s;
+          z-index: 100;
+          pointer-events: none;
+        }
+
+        .toolbar-icon:hover::after {
+          opacity: 1;
+          visibility: visible;
         }
 
         .toolbar-icon:hover {
