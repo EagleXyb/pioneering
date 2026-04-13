@@ -202,7 +202,7 @@ const TrialCenter: React.FC = () => {
               <div className="input-area">
                 <textarea
                   className="input-textarea"
-                  placeholder="帮你整理论文综述、编写 PPT、分析 Excel 等日常工作，输出专业级工作成果。"
+                  placeholder="通过我们的互动，体验从创意生成到方案落地的全流程，感受创新的力量！"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onFocus={() => setIsInputFocused(true)}
