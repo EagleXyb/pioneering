@@ -1,20 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelRightClose, SquareCheckBig, SquareSlash } from 'lucide-react';
+import { GlobeLock, PanelLeftClose, PanelRightClose, ShipWheel, Waypoints, SquareCheckBig, SquareSlash } from 'lucide-react';
 
 const TrialCenter: React.FC = () => {
   const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(false);
   const [selectedModel, setSelectedModel] = useState('MiniMax-M2.7');
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<string>('normal');
   const [inputValue, setInputValue] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsVisible(true);
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target as Node)) {
+        setIsProjectDropdownOpen(false);
+      }
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const projectOptions = [
+    {
+      id: 'normal',
+      name: '普通模式',
+      description: '适配多元场景支持多轮对话'
+    },
+    {
+      id: 'professional',
+      name: '专业模式',
+      description: '聚焦专业领域精准交付成果'
+    },
+    {
+      id: 'task',
+      name: '任务模式',
+      description: '承接复杂任务高效推进落地'
+    }
+  ];
 
   const tools = [
   {
@@ -105,7 +147,7 @@ const TrialCenter: React.FC = () => {
             新建任务
           </button>
 
-          <div className="sidebar-footer">
+          <div className="sidebar-footer" ref={userMenuRef}>
             <div 
               className="user-info" 
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -212,14 +254,56 @@ const TrialCenter: React.FC = () => {
               </div>
               <div className="toolbar">
                 <div className="toolbar-left">
-                  <div className="project-selector">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                    </svg>
-                    <span>选择项目</span>
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                  <div className="project-selector" style={{ position: 'relative' }} ref={projectDropdownRef}>
+                    <div 
+                      className="project-selector-trigger"
+                      onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
+                    >
+                      {selectedProject === 'normal' && <Waypoints size={18} strokeWidth={1.5} />}
+                      {selectedProject === 'professional' && <GlobeLock size={18} strokeWidth={1.5} />}
+                      {selectedProject === 'task' && <ShipWheel size={18} strokeWidth={1.5} />}
+                      <span>{selectedProject === 'normal' ? '普通模式' : selectedProject === 'professional' ? '专业模式' : '任务模式'}</span>
+                      <svg 
+                        width="10" 
+                        height="10" 
+                        viewBox="0 0 10 10" 
+                        fill="none"
+                        style={{ transform: isProjectDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                      >
+                        <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    {isProjectDropdownOpen && (
+                      <div className="project-dropdown">
+                        {projectOptions.map((option) => (
+                          <div 
+                            key={option.id}
+                            className={`project-option ${selectedProject === option.id ? 'selected' : ''}`}
+                            onClick={() => {
+                              setSelectedProject(option.id);
+                              setIsProjectDropdownOpen(false);
+                            }}
+                          >
+                            <div className="project-option-icon">
+                              {option.id === 'normal' && <Waypoints size={20} strokeWidth={1.5} />}
+                              {option.id === 'professional' && <GlobeLock size={20} strokeWidth={1.5} />}
+                              {option.id === 'task' && <ShipWheel size={20} strokeWidth={1.5} />}
+                            </div>
+                            <div className="project-option-main">
+                              <div className="project-option-header">
+                                <div className="project-option-name">{option.name}</div>
+                                {selectedProject === option.id && (
+                                  <svg className="project-option-check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                  </svg>
+                                )}
+                              </div>
+                              <div className="project-option-desc">{option.description}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="toolbar-icons">
                     <div className="toolbar-icon" title="使用 / 调用命令和技能">
@@ -233,7 +317,7 @@ const TrialCenter: React.FC = () => {
                   </div>
                 </div>
                 <div className="toolbar-right">
-                  <div className="model-selector">
+                  <div className="model-selector" ref={modelDropdownRef}>
                     <div 
                       className="model-selector-trigger"
                       onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
@@ -717,10 +801,105 @@ const TrialCenter: React.FC = () => {
           font-size: 12px;
           transition: all 0.2s;
           height: 32px;
+          position: relative;
+        }
+
+        .project-selector-trigger {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+        }
+
+        .project-selector span {
+          line-height: 1;
         }
 
         .project-selector:hover {
           background: #EBEBEB;
+        }
+
+        .project-dropdown {
+          position: absolute;
+          bottom: 100%;
+          left: 0;
+          margin-bottom: 8px;
+          background: white;
+          border: 1px solid #E5E7EB;
+          border-radius: 5px;
+          box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.12);
+          min-width: 230px;
+          width: max-content;
+          max-width: 260px;
+          z-index: 10;
+          padding: 6px 0;
+        }
+
+        .project-option {
+          padding: 10px 12px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          transition: background 0.15s;
+          margin: 0;
+          border-radius: 4px;
+        }
+
+        .project-option:hover {
+          background: #F0F4FF;
+        }
+
+        .project-option.selected {
+          background: #F0F4FF;
+        }
+
+        .project-option-icon {
+          width: 28px;
+          height: 28px;
+          background: transparent;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #333;
+          flex-shrink: 0;
+        }
+
+        .project-option-main {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .project-option-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+        }
+
+        .project-option-name {
+          font-size: 14px;
+          font-weight: 500;
+          color: #6B7280;
+          white-space: nowrap;
+        }
+
+        .project-option-check {
+          color: #22C55E;
+          flex-shrink: 0;
+        }
+
+        .project-option-desc {
+          font-size: 12px;
+          color: #9CA3AF;
+          line-height: 1.4;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .toolbar-icons {
@@ -943,6 +1122,32 @@ const TrialCenter: React.FC = () => {
 
           .project-selector:hover {
             background: #48484A;
+          }
+
+          .project-dropdown {
+            background: #2C2C2E;
+            border-color: #3A3A3C;
+          }
+
+          .project-option:hover {
+            background: #3A3A3C;
+          }
+
+          .project-option.selected {
+            background: #3A3A3C;
+          }
+
+          .project-option-icon {
+            background: transparent;
+            color: #F5F5F7;
+          }
+
+          .project-option-name {
+            color: #F5F5F7;
+          }
+
+          .project-option-desc {
+            color: #98989D;
           }
 
           .toolbar-icon:hover {
