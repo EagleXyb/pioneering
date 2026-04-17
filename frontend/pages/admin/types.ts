@@ -1,6 +1,5 @@
-// 共享类型定义
+import type { ReactNode } from 'react';
 
-// 导航相关
 export type NavSection = 'model' | 'prompt' | 'users' | 'security';
 export type PromptModule = 'perception' | 'retrieval' | 'generation' | 'evaluation' | 'global-settings';
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -9,7 +8,7 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export interface NavItem {
   key: string;
   label: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }
 
 export interface NavSectionConfig {
@@ -18,7 +17,6 @@ export interface NavSectionConfig {
   items: NavItem[];
 }
 
-// AI 配置相关
 export interface AIConfig {
   id?: number;
   apiKey: string;
@@ -37,14 +35,12 @@ export interface TestResult {
   success?: boolean;
 }
 
-// Prompt 模块信息
 export interface PromptModuleInfo {
   title: string;
   description: string;
   placeholder: string;
 }
 
-// 服务商信息
 export interface ProviderInfo {
   id: string;
   name: string;
@@ -52,7 +48,6 @@ export interface ProviderInfo {
   status: 'active' | 'inactive';
 }
 
-// 模型信息
 export interface ModelInfo {
   provider: string;
   name: string;
@@ -60,7 +55,6 @@ export interface ModelInfo {
   status: 'active' | 'inactive';
 }
 
-// 状态接口
 export interface ModelManagementState {
   apiKey: string;
   provider: string;

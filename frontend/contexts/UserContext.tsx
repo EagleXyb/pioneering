@@ -1,11 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import type { UserState } from '@shared/types/user';
+import { API_ENDPOINTS } from '@shared/api/endpoints';
 
-interface UserState {
-  avatar: string | null;
-  name: string;
-  email: string;
-  isLoggedIn: boolean;
-}
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 interface UserContextType {
   userState: UserState;
@@ -65,7 +62,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!userState.email) return;
     
     try {
-      const response = await fetch(`http://localhost:3000/api/profile/email/${userState.email}`);
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.PROFILE.BY_EMAIL(userState.email)}`);
       if (response.ok) {
         const text = await response.text();
         if (text) {

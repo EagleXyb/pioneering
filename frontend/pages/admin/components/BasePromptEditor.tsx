@@ -1,7 +1,7 @@
 // 共享的Prompt编辑器基础组件
 
 import React from 'react';
-import { SaveStatus } from '../types';
+import type { SaveStatus } from '../types';
 import './BasePromptEditor.css';
 
 interface BasePromptEditorProps {

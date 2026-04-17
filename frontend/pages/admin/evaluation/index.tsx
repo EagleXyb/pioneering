@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { BasePromptEditor } from '../components/BasePromptEditor';
-import { EVALUATION_CONFIG, EvaluationEditorProps } from './types';
+import { EVALUATION_CONFIG } from './types';
+import type { EvaluationEditorProps } from './types';
 
 export const EvaluationEditor: React.FC<EvaluationEditorProps> = (props) => {
   return (
@@ -16,7 +17,6 @@ export const EvaluationEditor: React.FC<EvaluationEditorProps> = (props) => {
       onContentChange={props.onContentChange}
       onSave={props.onSave}
       onToggleFullscreen={props.onToggleFullscreen}
-      onReset={props.onReset}
     />
   );
 };

@@ -1,7 +1,7 @@
 // 模型管理模块
 
 import React from 'react';
-import { TestStatus, SaveStatus, TestResult, ProviderInfo, ModelInfo } from './types';
+import type { TestStatus, SaveStatus, TestResult, ProviderInfo, ModelInfo } from './types';
 
 interface ModelManagementProps {
   apiKey: string;

@@ -1,40 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
+import type { ProfileData } from '@shared/types/profile';
+import { DEFAULT_PROFILE } from '@shared/constants';
+import { API_ENDPOINTS } from '@shared/api/endpoints';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
-interface ProfileData {
-  id?: number;
-  name: string;
-  email: string;
-  phone: string;
-  location: string;
-  bio: string;
-  company: string;
-  position: string;
-  joinDate: string;
-  skills: string[];
-  achievements: { label: string; value: string }[];
-}
-
-const defaultProfile: ProfileData = {
-  name: '张三',
-  email: 'zhangsan@example.com',
-  phone: '138-0000-0000',
-  location: '北京市海淀区',
-  bio: '热爱创新，专注于产品设计和用户体验。致力于通过科技改变生活，让世界变得更美好。',
-  company: '创新科技有限公司',
-  position: '产品经理',
-  joinDate: '2024-01-15',
-  skills: ['产品设计', '用户体验', '创新思维', '项目管理', '数据分析'],
-  achievements: [
-    { label: '完成测评', value: '12' },
-    { label: '创新项目', value: '8' },
-    { label: '获得徽章', value: '15' },
-    { label: '积分', value: '2,580' },
-  ],
-};
+const defaultProfile: ProfileData = DEFAULT_PROFILE;
 
 const Profile: React.FC = () => {
   const { userState, setAvatar, setName } = useUser();
@@ -56,7 +29,7 @@ const Profile: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE}/profile/email/${userState.email}`);
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.BY_EMAIL(userState.email)}`);
       if (response.ok) {
         const data = await response.json();
         if (data) {
@@ -89,7 +62,7 @@ const Profile: React.FC = () => {
       }
       setError(null);
       const { achievements, joinDate, ...profileData } = userInfo;
-      const response = await fetch(`${API_BASE}/profile/upsert`, {
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.UPSERT}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profileData),
@@ -132,7 +105,7 @@ const Profile: React.FC = () => {
       formData.append('avatar', file);
 
       try {
-        const response = await fetch(`${API_BASE}/profile/avatar/${userState.email}`, {
+        const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.AVATAR(userState.email)}`, {
           method: 'POST',
           body: formData,
         });

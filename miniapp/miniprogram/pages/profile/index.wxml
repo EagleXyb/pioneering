@@ -1,0 +1,28 @@
+<view class="page">
+  <view class="profile-header">
+    <view class="avatar-wrap" bindtap="onChooseAvatar">
+      <image
+        class="avatar"
+        src="{{userInfo.avatar || '/assets/default-avatar.png'}}"
+        mode="aspectFill"
+      />
+    </view>
+    <text class="user-name">{{userInfo.name || '未登录'}}</text>
+    <text class="user-email">{{userInfo.email || ''}}</text>
+  </view>
+
+  <view class="profile-section">
+    <view class="section-item">
+      <text class="item-label">公司</text>
+      <text class="item-value">{{userInfo.company || '未设置'}}</text>
+    </view>
+    <view class="section-item">
+      <text class="item-label">职位</text>
+      <text class="item-value">{{userInfo.position || '未设置'}}</text>
+    </view>
+    <view class="section-item">
+      <text class="item-label">地区</text>
+      <text class="item-value">{{userInfo.location || '未设置'}}</text>
+    </view>
+  </view>
+</view>

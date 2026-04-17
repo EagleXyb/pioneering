@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { BasePromptEditor } from '../components/BasePromptEditor';
-import { RETRIEVAL_CONFIG, RetrievalEditorProps } from './types';
+import { RETRIEVAL_CONFIG } from './types';
+import type { RetrievalEditorProps } from './types';
 
 export const RetrievalEditor: React.FC<RetrievalEditorProps> = (props) => {
   return (
@@ -16,7 +17,6 @@ export const RetrievalEditor: React.FC<RetrievalEditorProps> = (props) => {
       onContentChange={props.onContentChange}
       onSave={props.onSave}
       onToggleFullscreen={props.onToggleFullscreen}
-      onReset={props.onReset}
     />
   );
 };

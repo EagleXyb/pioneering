@@ -1,7 +1,8 @@
 // 共享 Hooks
 
 import { useState, useEffect, useRef } from 'react';
-import { AIConfig, TestStatus, SaveStatus, TestResult, PromptModule } from './types';
+import type { AIConfig, TestStatus, SaveStatus, TestResult, PromptModule } from './types';
+import { getModuleName } from '@shared/utils';
 import { adminApi, configCache } from './api';
 
 // AI 配置相关的 hooks
@@ -280,16 +281,4 @@ export function useClickOutside<T extends HTMLElement>(
   }, [callback]);
 
   return ref;
-}
-
-// 工具函数
-export function getModuleName(module: PromptModule): string {
-  const names: Record<PromptModule, string> = {
-    perception: '问题感知模块',
-    retrieval: '知识检索模块',
-    generation: '创意生成模块',
-    evaluation: '评估反馈模块',
-    'global-settings': '全局设置',
-  };
-  return names[module];
 }

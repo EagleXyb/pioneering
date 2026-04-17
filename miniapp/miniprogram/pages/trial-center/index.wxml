@@ -1,0 +1,33 @@
+<view class="page">
+  <view class="project-selector">
+    <view
+      class="project-option {{selectedProject === item.id ? 'active' : ''}}"
+      wx:for="{{projectOptions}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="onProjectChange"
+    >
+      <text class="project-name">{{item.name}}</text>
+    </view>
+  </view>
+
+  <view class="chat-area">
+    <view class="empty-hint">
+      <text class="empty-text">选择模式，开始体验</text>
+    </view>
+  </view>
+
+  <view class="input-bar">
+    <input
+      class="input"
+      value="{{inputValue}}"
+      bindinput="onInput"
+      placeholder="输入消息..."
+      confirm-type="send"
+      bindconfirm="onSend"
+    />
+    <view class="send-btn" bindtap="onSend">
+      <text>发送</text>
+    </view>
+  </view>
+</view>

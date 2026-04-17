@@ -1,7 +1,7 @@
 // 全局设置组件
 
 import React, { useState, useRef } from 'react';
-import { PromptModule } from '../types';
+import type { PromptModule } from '../types';
 import '../PromptManagement.css';
 import { PromptList } from './PromptList';
 import { CreatePromptModal } from './CreatePromptModal';

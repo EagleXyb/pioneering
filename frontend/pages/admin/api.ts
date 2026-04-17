@@ -1,14 +1,12 @@
-// API 服务调用模块
+import type { AIConfig, TestResult } from './types';
+import { API_ENDPOINTS } from '@shared/api/endpoints';
 
-import { AIConfig, TestResult } from './types';
-
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 export const adminApi = {
-  // 获取最新配置
   async fetchConfig(): Promise<AIConfig | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}/ai-config/latest`);
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.LATEST}`);
       if (response.ok) {
         return await response.json();
       }
@@ -19,10 +17,9 @@ export const adminApi = {
     }
   },
 
-  // 测试连接
   async testConnection(config: Partial<AIConfig>): Promise<TestResult> {
     try {
-      const response = await fetch(`${API_BASE_URL}/ai-config/test`, {
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.TEST}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -41,10 +38,9 @@ export const adminApi = {
     }
   },
 
-  // 保存配置
   async saveConfig(config: AIConfig): Promise<{ id: number } | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}/ai-config/save`, {
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.SAVE}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
@@ -60,7 +56,6 @@ export const adminApi = {
   },
 };
 
-// localStorage 缓存
 export const configCache = {
   get(): AIConfig | null {
     try {

@@ -1,7 +1,7 @@
 // 后台管理主入口 - 组装所有模块
 
 import React, { useState } from 'react';
-import { NavSection, PromptModule } from './types';
+import type { NavSection, PromptModule } from './types';
 import { AdminLayout } from './AdminLayout';
 import { ModelManagement } from './ModelManagement';
 import { PromptManagement } from './PromptManagement';

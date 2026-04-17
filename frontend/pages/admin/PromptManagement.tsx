@@ -1,7 +1,7 @@
 // Prompt 管理模块
 
 import React from 'react';
-import { PromptModule, SaveStatus } from './types';
+import type { PromptModule, SaveStatus } from './types';
 import './PromptManagement.css';
 
 // 导入各模块组件

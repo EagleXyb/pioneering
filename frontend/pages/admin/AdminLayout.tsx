@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
-import { NavSection, NavSectionConfig } from './types';
+import type { NavSection, NavSectionConfig } from './types';
 
 // 图标组件
 const Icons = {

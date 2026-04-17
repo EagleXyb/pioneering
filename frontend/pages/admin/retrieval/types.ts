@@ -1,6 +1,6 @@
 // 知识检索模块类型定义
 
-import { SaveStatus } from '../types';
+import type { SaveStatus } from '../types';
 
 // 模块信息
 export interface RetrievalModuleInfo {

@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { BasePromptEditor } from '../components/BasePromptEditor';
-import { GENERATION_CONFIG, GenerationEditorProps } from './types';
+import { GENERATION_CONFIG } from './types';
+import type { GenerationEditorProps } from './types';
 
 export const GenerationEditor: React.FC<GenerationEditorProps> = (props) => {
   return (
@@ -16,7 +17,6 @@ export const GenerationEditor: React.FC<GenerationEditorProps> = (props) => {
       onContentChange={props.onContentChange}
       onSave={props.onSave}
       onToggleFullscreen={props.onToggleFullscreen}
-      onReset={props.onReset}
     />
   );
 };

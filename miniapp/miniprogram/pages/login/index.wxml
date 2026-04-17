@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="login-card">
+    <text class="title">IAC 创新孵化</text>
+    <text class="subtitle">AI驱动的创新实践平台</text>
+
+    <view class="form">
+      <input
+        class="input"
+        value="{{email}}"
+        bindinput="onEmailInput"
+        placeholder="请输入邮箱"
+        type="text"
+      />
+      <input
+        class="input"
+        value="{{name}}"
+        bindinput="onNameInput"
+        placeholder="请输入姓名"
+        type="text"
+      />
+    </view>
+
+    <button class="wx-login-btn" bindtap="onWxLogin">
+      微信一键登录
+    </button>
+  </view>
+</view>

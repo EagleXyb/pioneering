@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { BasePromptEditor } from '../components/BasePromptEditor';
-import { PERCEPTION_CONFIG, PerceptionEditorProps } from './types';
+import { PERCEPTION_CONFIG } from './types';
+import type { PerceptionEditorProps } from './types';
 
 export const PerceptionEditor: React.FC<PerceptionEditorProps> = (props) => {
   return (
@@ -16,7 +17,6 @@ export const PerceptionEditor: React.FC<PerceptionEditorProps> = (props) => {
       onContentChange={props.onContentChange}
       onSave={props.onSave}
       onToggleFullscreen={props.onToggleFullscreen}
-      onReset={props.onReset}
     />
   );
 };

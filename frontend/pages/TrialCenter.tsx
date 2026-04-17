@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GlobeLock, PanelLeftClose, PanelRightClose, ShipWheel, Waypoints, SquareCheckBig, SquareSlash } from 'lucide-react';
+import { PROJECT_OPTIONS } from '@shared/constants';
 
 const TrialCenter: React.FC = () => {
   const navigate = useNavigate();
@@ -40,23 +41,7 @@ const TrialCenter: React.FC = () => {
     };
   }, []);
 
-  const projectOptions = [
-    {
-      id: 'normal',
-      name: '普通模式',
-      description: '适配多元场景支持多轮对话'
-    },
-    {
-      id: 'professional',
-      name: '专业模式',
-      description: '聚焦专业领域精准交付成果'
-    },
-    {
-      id: 'task',
-      name: '任务模式',
-      description: '承接复杂任务高效推进落地'
-    }
-  ];
+  const projectOptions = PROJECT_OPTIONS;
 
   const tools = [
   {

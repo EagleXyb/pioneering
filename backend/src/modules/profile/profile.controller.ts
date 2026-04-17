@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -18,6 +19,7 @@ import { extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { ProfileService } from './profile.service';
 import { CreateProfileDto, UpdateProfileDto } from './dto/profile.dto';
+import type { Request } from 'express';
 
 const avatarStorage = diskStorage({
   destination: './uploads/avatars',
@@ -54,11 +56,12 @@ export class ProfileController {
   }
 
   @Get('email/:email')
-  async findByEmail(@Param('email') email: string) {
+  async findByEmail(@Param('email') email: string, @Req() req: Request) {
     const profile = await this.profileService.findByEmail(email);
     if (profile) {
       if (profile.avatar && profile.avatar.trim() !== '') {
-        profile.avatar = `http://localhost:3000${profile.avatar}`;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        profile.avatar = `${baseUrl}${profile.avatar}`;
       } else {
         profile.avatar = null;
       }
@@ -83,6 +86,7 @@ export class ProfileController {
   async uploadAvatar(
     @Param('email') email: string,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
   ) {
     if (!file) {
       throw new BadRequestException('请选择图片文件');
@@ -90,10 +94,11 @@ export class ProfileController {
     
     const avatarPath = `/uploads/avatars/${file.filename}`;
     const result = await this.profileService.updateAvatar(email, avatarPath);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
     
     return {
       ...result,
-      avatar: `http://localhost:3000${avatarPath}`,
+      avatar: `${baseUrl}${avatarPath}`,
     };
   }
 
