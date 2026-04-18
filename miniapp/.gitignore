@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# SWC cache
+.swc/
+
+# WeChat Mini Program private config
+project.private.config.json
+
+# Logs
+*.log
+npm-debug.log*

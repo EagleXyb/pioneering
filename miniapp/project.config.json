@@ -1,5 +1,5 @@
 {
-  "description": "IAC Incubator 微信小程序端",
+  "description": "IAC Incubator 微信小程序端 (Taro)",
   "packOptions": {
     "ignore": [],
     "include": []
@@ -38,5 +38,9 @@
   "editorSetting": {
     "tabIndent": "insertSpaces",
     "tabSize": 2
-  }
+  },
+  "appid": "wx1b0507b1e99d3b19",
+  "libVersion": "3.15.2",
+  "miniprogramRoot": "dist/",
+  "srcMiniprogramRoot": "dist/"
 }
