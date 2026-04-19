@@ -14,7 +14,7 @@ export default function Login() {
         setLoggedIn(true);
         setUserInfo({ name: nickName, avatar: avatarUrl });
         Taro.setStorageSync('userInfo', JSON.stringify({ name: nickName, avatar: avatarUrl }));
-        Taro.switchTab({ url: '/pages/home/index' });
+        Taro.switchTab({ url: '/pages/iac/index' });
       },
       fail: () => {
         Taro.showToast({ title: '登录取消', icon: 'none' });

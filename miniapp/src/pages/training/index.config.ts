@@ -1,3 +1,4 @@
 export default definePageConfig({
-  navigationBarTitleText: '创新训练',
+  navigationBarTitleText: '训练',
+  enablePullDownRefresh: false,
 });

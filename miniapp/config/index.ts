@@ -18,7 +18,12 @@ export default defineConfig(async (merge) => {
     outputRoot: 'dist',
     plugins: ['@tarojs/plugin-framework-react'],
     defineConstants: {},
-    copy: { patterns: [], options: {} },
+    copy: {
+      patterns: [
+        { from: 'src/assets/', to: 'dist/assets/' }
+      ],
+      options: {}
+    },
     framework: 'react',
     compiler: {
       type: 'webpack5',

@@ -13,7 +13,6 @@
     "noUnusedParameters": true,
     "strictNullChecks": true,
     "sourceMap": true,
-    "rootDir": ".",
     "jsx": "react-jsx",
     "allowJs": true,
     "resolveJsonModule": true,
@@ -22,8 +21,10 @@
       "@/*": ["./src/*"],
       "@shared/*": ["../shared/*"]
     },
-    "baseUrl": "."
+    "baseUrl": ".",
+    "skipLibCheck": true
   },
-  "include": ["./src", "./types", "./config", "../shared"],
+  "include": ["./src", "./types", "./config", "../shared/**/*"],
+  "exclude": ["node_modules", "dist", "lib"],
   "compileOnSave": false
 }
