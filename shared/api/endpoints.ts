@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
     LATEST: '/ai-config/latest',
     TEST: '/ai-config/test',
     SAVE: '/ai-config/save',
+    CHAT_STREAM: '/ai-config/chat/stream',
     BY_PROVIDER_MODEL: (provider: string, model: string) =>
       `/ai-config/provider/${provider}/model/${model}`,
   },

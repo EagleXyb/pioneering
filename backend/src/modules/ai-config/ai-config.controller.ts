@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, ConsoleLogger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, ConsoleLogger, Res, Req } from '@nestjs/common';
+import { Response, Request } from 'express';
 import { AiConfigService } from './ai-config.service';
-import { CreateAiConfigDto, UpdateAiConfigDto, TestConnectionDto } from './dto/ai-config.dto';
+import { CreateAiConfigDto, UpdateAiConfigDto, TestConnectionDto, ChatStreamDto } from './dto/ai-config.dto';
 
 @Controller('ai-config')
 export class AiConfigController {
@@ -63,5 +64,17 @@ export class AiConfigController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.aiConfigService.remove(+id);
+  }
+
+  @Post('chat/stream')
+  async chatStream(@Body() chatStreamDto: ChatStreamDto, @Res() res: Response) {
+    this.logger.log(`chatStream: messages count=${chatStreamDto.messages.length}`);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    await this.aiConfigService.streamChat(chatStreamDto.messages, res);
   }
 }

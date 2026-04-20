@@ -1,8 +1,16 @@
-// LLM API服务模块
+import { API_ENDPOINTS } from '@shared/api/endpoints';
 
-interface LLMResponse {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
   content: string;
-  error?: string;
+}
+
+export interface StreamCallbacks {
+  onChunk: (text: string) => void;
+  onDone: () => void;
+  onError: (error: string) => void;
 }
 
 export class LLMService {
@@ -17,271 +25,105 @@ export class LLMService {
     return LLMService.instance;
   }
 
-  async callLLM(config: any, testInput: string): Promise<LLMResponse> {
+  async streamChat(
+    config: { apiKey: string; provider: string; model: string; prompt: string },
+    messages: ChatMessage[],
+    callbacks: StreamCallbacks,
+    signal?: AbortSignal
+  ): Promise<void> {
     try {
-      console.log('开始调用LLM服务:', { config, testInput });
-      
-      const { apiKey, provider, model, prompt } = config;
-      const userInput = testInput || '请进行创新能力基础评估';
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.CHAT_STREAM}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+        signal,
+      });
 
-      if (!apiKey || !provider || !model) {
-        return {
-          content: '',
-          error: '配置不完整，请检查API Key、服务商和模型'
-        };
+      if (!response.ok) {
+        throw new Error(`请求失败: ${response.status}`);
       }
 
-      const response = await this.fetchLLMResponse(provider, model, apiKey, prompt, userInput);
-      console.log('LLM服务调用成功:', response);
-      return { content: response };
-    } catch (error) {
-      console.error('LLM API调用错误:', error);
-      return {
-        content: '',
-        error: error instanceof Error ? error.message : '未知错误'
-      };
-    }
-  }
+      if (!response.body) {
+        throw new Error('无法读取响应流');
+      }
 
-  private async fetchLLMResponse(
-    provider: string,
-    model: string,
-    apiKey: string,
-    systemPrompt: string,
-    userPrompt: string
-  ): Promise<string> {
-    console.log('开始获取LLM响应:', { provider, model });
-    
-    let response;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-    switch (provider) {
-      case 'deepseek':
-        response = await this.fetchDeepSeek(model, apiKey, systemPrompt, userPrompt);
-        break;
-      case 'glm':
-        response = await this.fetchGLM(model, apiKey, systemPrompt, userPrompt);
-        break;
-      case 'kimi':
-        response = await this.fetchKimi(model, apiKey, systemPrompt, userPrompt);
-        break;
-      case 'qwen':
-        response = await this.fetchQwen(model, apiKey, systemPrompt, userPrompt);
-        break;
-      case 'minimax':
-        response = await this.fetchMiniMax(model, apiKey, systemPrompt, userPrompt);
-        break;
-      default:
-        throw new Error('不支持的服务商');
-    }
+      try {
+        while (true) {
+          if (signal?.aborted) {
+            reader.cancel();
+            break;
+          }
 
-    console.log('获取LLM响应成功:', response);
-    return response;
-  }
+          const { done, value } = await reader.read();
+          if (done) break;
 
-  private async fetchDeepSeek(
-    model: string,
-    apiKey: string,
-    systemPrompt: string,
-    userPrompt: string
-  ): Promise<string> {
-    const messages: any[] = [];
-    
-    if (systemPrompt && systemPrompt.trim()) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: userPrompt });
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: 0.7
-      })
-    });
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === ':') continue;
 
-    if (!response.ok) {
-      throw new Error(`DeepSeek API请求失败: ${response.status}`);
-    }
+            if (trimmed.startsWith('data: ')) {
+              const data = trimmed.slice(6);
+              if (data === '[DONE]') {
+                callbacks.onDone();
+                return;
+              }
 
-    const data = await response.json();
-    if (data.choices && data.choices.length > 0) {
-      return data.choices[0].message.content;
-    }
-    throw new Error('DeepSeek API响应格式未知');
-  }
-
-  private async fetchGLM(
-    model: string,
-    apiKey: string,
-    systemPrompt: string,
-    userPrompt: string
-  ): Promise<string> {
-    const messages: any[] = [];
-    
-    if (systemPrompt && systemPrompt.trim()) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: userPrompt });
-
-    // 修复GLM API端点地址
-    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`GLM API请求失败: ${response.status} - ${JSON.stringify(errorData)}`);
-    }
-
-    const data = await response.json();
-    console.log('GLM API响应数据:', data);
-    
-    if (data.choices && data.choices.length > 0) {
-      return data.choices[0].message.content;
-    } else if (data.text) {
-      return data.text;
-    } else if (data.answer) {
-      return data.answer;
-    } else if (data.response) {
-      return data.response;
-    } else if (data.result) {
-      return data.result;
-    }
-    throw new Error('GLM API响应格式未知: ' + JSON.stringify(data));
-  }
-
-  private async fetchKimi(
-    model: string,
-    apiKey: string,
-    systemPrompt: string,
-    userPrompt: string
-  ): Promise<string> {
-    const messages: any[] = [];
-    
-    if (systemPrompt && systemPrompt.trim()) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: userPrompt });
-
-    const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Kimi API请求失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (data.choices && data.choices.length > 0) {
-      return data.choices[0].message.content;
-    }
-    throw new Error('Kimi API响应格式未知');
-  }
-
-  private async fetchQwen(
-    model: string,
-    apiKey: string,
-    systemPrompt: string,
-    userPrompt: string
-  ): Promise<string> {
-    const messages: any[] = [];
-    
-    if (systemPrompt && systemPrompt.trim()) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: userPrompt });
-
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        input: {
-          messages: messages
-        },
-        parameters: {
-          temperature: 0.7
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.error) {
+                  callbacks.onError(parsed.error);
+                  return;
+                }
+                if (parsed.content) {
+                  callbacks.onChunk(parsed.content);
+                }
+              } catch {
+                continue;
+              }
+            }
+          }
         }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Qwen API请求失败: ${response.status}`);
+        callbacks.onDone();
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      if (signal?.aborted) {
+        callbacks.onDone();
+        return;
+      }
+      callbacks.onError(error instanceof Error ? error.message : '未知错误');
     }
-
-    const data = await response.json();
-    if (data.output && data.output.text) {
-      return data.output.text;
-    } else if (data.output && data.output.choices && data.output.choices.length > 0) {
-      return data.output.choices[0].message.content;
-    }
-    throw new Error('Qwen API响应格式未知');
   }
 
-  private async fetchMiniMax(
-    model: string,
-    apiKey: string,
-    systemPrompt: string,
-    userPrompt: string
-  ): Promise<string> {
-    const messages: any[] = [];
-    
-    if (systemPrompt && systemPrompt.trim()) {
-      messages.push({ role: 'system', content: systemPrompt });
+  async fetchAIConfig(): Promise<{ apiKey: string; provider: string; model: string; prompt: string } | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.LATEST}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.provider && data.model) {
+          return {
+            apiKey: '',
+            provider: data.provider,
+            model: data.model,
+            prompt: data.prompt || '',
+          };
+        }
+      }
+      return null;
+    } catch {
+      return null;
     }
-    messages.push({ role: 'user', content: userPrompt });
-
-    const response = await fetch('https://api.minimax.chat/v1/text/chatcompletion', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`MiniMax API请求失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (data.choices && data.choices.length > 0) {
-      return data.choices[0].message.content;
-    }
-    throw new Error('MiniMax API响应格式未知');
   }
 }
 
-// 导出单例实例
 const llmServiceInstance = LLMService.getInstance();
 export default llmServiceInstance;

@@ -332,4 +332,206 @@ export class AiConfigService implements OnModuleInit {
       where: { id },
     });
   }
+
+  async streamChat(messages: { role: string; content: string }[], res: any) {
+    const config = await this.findLatest();
+    if (!config || !config.apiKey || !config.provider || !config.model) {
+      res.write(`data: ${JSON.stringify({ error: '配置不完整，请检查API Key、服务商和模型' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const allMessages: { role: string; content: string }[] = [];
+    if (config.prompt && config.prompt.trim()) {
+      allMessages.push({ role: 'system', content: config.prompt });
+    }
+    allMessages.push(...messages);
+
+    const { apiKey, provider, model } = config;
+
+    try {
+      switch (provider) {
+        case 'deepseek':
+          await this.streamOpenAICompatible('https://api.deepseek.com/v1/chat/completions', model, apiKey, allMessages, res);
+          break;
+        case 'glm':
+          await this.streamOpenAICompatible('https://open.bigmodel.cn/api/paas/v4/chat/completions', model, apiKey, allMessages, res);
+          break;
+        case 'kimi':
+          await this.streamOpenAICompatible('https://api.moonshot.cn/v1/chat/completions', model, apiKey, allMessages, res);
+          break;
+        case 'qwen':
+          await this.streamQwen(model, apiKey, allMessages, res);
+          break;
+        case 'minimax': {
+          const minimaxModel = model.includes('MiniMax-') ? model : `MiniMax-${model}`;
+          await this.streamOpenAICompatible('https://api.minimaxi.com/v1/chat/completions', minimaxModel, apiKey, allMessages, res);
+          break;
+        }
+        default:
+          res.write(`data: ${JSON.stringify({ error: `不支持的服务商: ${provider}` })}\n\n`);
+          res.end();
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '未知错误';
+      res.write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
+      res.end();
+    }
+  }
+
+  private async streamOpenAICompatible(
+    url: string,
+    model: string,
+    apiKey: string,
+    messages: { role: string; content: string }[],
+    res: any,
+  ) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.7,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`API请求失败: ${response.status} - ${JSON.stringify(errorData)}`);
+    }
+
+    if (!response.body) {
+      throw new Error('无法读取响应流');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === ':') continue;
+
+          if (trimmed.startsWith('data: ')) {
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              res.write('data: [DONE]\n\n');
+              res.end();
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content || '';
+              if (content) {
+                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+              }
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  private async streamQwen(
+    model: string,
+    apiKey: string,
+    messages: { role: string; content: string }[],
+    res: any,
+  ) {
+    const response = await fetch(
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'X-DashScope-SSE': 'enable',
+        },
+        body: JSON.stringify({
+          model,
+          input: { messages },
+          parameters: {
+            temperature: 0.7,
+            incremental_output: true,
+          },
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Qwen API请求失败: ${response.status} - ${JSON.stringify(errorData)}`);
+    }
+
+    if (!response.body) {
+      throw new Error('无法读取响应流');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === ':') continue;
+
+          if (trimmed.startsWith('data:')) {
+            const data = trimmed.slice(5).trim();
+            if (data === '[DONE]') {
+              res.write('data: [DONE]\n\n');
+              res.end();
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              const content =
+                parsed.output?.choices?.[0]?.message?.content ||
+                parsed.output?.text ||
+                '';
+              if (content) {
+                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+              }
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } finally {
+      reader.releaseLock();
+    }
+  }
 }

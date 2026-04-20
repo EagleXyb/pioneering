@@ -62,3 +62,20 @@ export function getModuleName(module: string): string {
   };
   return names[module] || module;
 }
+
+export function filterThinkingChain(content: string): string {
+  if (!content) return '';
+  
+  let filtered = content;
+  
+  filtered = filtered.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  
+  return filtered.trim();
+}
+
+export function extractThinkingChain(content: string): string | null {
+  if (!content) return null;
+  
+  const match = content.match(/<think>([\s\S]*?)<\/think>/i);
+  return match ? match[1].trim() : null;
+}

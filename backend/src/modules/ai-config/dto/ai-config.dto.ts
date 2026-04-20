@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsArray, ValidateNested, IsNotEmpty, IsIn } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateAiConfigDto {
   @IsString()
@@ -72,4 +73,20 @@ export class TestConnectionResultDto {
   message: string;
   responseTime?: number;
   error?: string;
+}
+
+export class ChatMessage {
+  @IsIn(['user', 'assistant', 'system'])
+  role: string;
+
+  @IsString()
+  @IsNotEmpty()
+  content: string;
+}
+
+export class ChatStreamDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChatMessage)
+  messages: ChatMessage[];
 }
