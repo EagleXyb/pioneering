@@ -36,6 +36,9 @@ const TrialCenter: React.FC = () => {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [showInputShadow, setShowInputShadow] = useState(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [aiConfig, setAiConfig] = useState<{ apiKey: string; provider: string; model: string; prompt: string } | null>(null);
   const [showThinkingFor, setShowThinkingFor] = useState<Set<string>>(new Set());
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set());
@@ -128,6 +131,12 @@ const TrialCenter: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (isInChatMode && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isInChatMode]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target as Node)) {
         setIsProjectDropdownOpen(false);
@@ -143,6 +152,14 @@ const TrialCenter: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -166,6 +183,29 @@ const TrialCenter: React.FC = () => {
     if (!container) return;
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     setShowScrollBottom(distanceFromBottom > 100);
+
+    const containerRect = container.getBoundingClientRect();
+    const messages = container.querySelectorAll('.chat-message-wrapper');
+    let hasOverlap = false;
+
+    messages.forEach((msg) => {
+      const msgRect = msg.getBoundingClientRect();
+      if (msgRect.bottom > containerRect.bottom - 100) {
+        hasOverlap = true;
+      }
+    });
+
+    setShowInputShadow(hasOverlap);
+
+    setIsScrolling(true);
+
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 1500);
   }, []);
 
   const updateMessage = useCallback((id: string, updates: Partial<DisplayMessage>) => {
@@ -492,21 +532,43 @@ const TrialCenter: React.FC = () => {
 
   const canSend = inputValue.trim().length > 0 && inputValue.trim().length <= MAX_INPUT_LENGTH && !isGenerating;
 
-  const renderMessageContent = (message: DisplayMessage) => {
-    if (message.role === 'system') {
-      return <div className="chat-message-system">{message.content}</div>;
-    }
-
-    if (message.role === 'user') {
-      return (
-        <div className="chat-message-row user-row">
-          <div className="chat-message-bubble user-bubble">
-            <div className="chat-message-text">{message.content}</div>
-          </div>
+  const renderUserMessage = (message: DisplayMessage) => {
+    return (
+      <div className="chat-message-row user-row">
+        <div className="chat-message-bubble user-bubble">
+          <div className="chat-message-text">{message.content}</div>
         </div>
-      );
-    }
+      </div>
+    );
+  };
 
+  const renderAssistantMessageActions = (message: DisplayMessage) => {
+    return (
+      <div className="chat-message-actions">
+        <button className="action-btn" onClick={() => handleCopyMessage(message.content)} title="复制">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+        </button>
+        <button className="action-btn" onClick={() => handleRetry(message.id)} title="重新生成">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M1 4v6h6"/>
+            <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
+          </svg>
+        </button>
+        <div className="action-divider"></div>
+        <button className={`action-btn ${likedMessages.has(message.id) ? 'action-btn-active' : ''}`} onClick={() => toggleLike(message.id)} title="点赞">
+          <ThumbsUp size={14} />
+        </button>
+        <button className={`action-btn ${dislikedMessages.has(message.id) ? 'action-btn-active' : ''}`} onClick={() => toggleDislike(message.id)} title="反对">
+          <ThumbsDown size={14} />
+        </button>
+      </div>
+    );
+  };
+
+  const renderAssistantMessage = (message: DisplayMessage) => {
     const thinkingContent = extractThinkingChain(message.content);
     const filteredContent = filterThinkingChain(message.content);
     const showThinking = showThinkingFor.has(message.id);
@@ -565,35 +627,22 @@ const TrialCenter: React.FC = () => {
               </button>
             </div>
           )}
-          {message.status === 'success' && message.content && (
-            <div className="chat-message-actions">
-              <button className={`action-btn ${likedMessages.has(message.id) ? 'action-btn-active' : ''}`} onClick={() => toggleLike(message.id)} title="点赞">
-                <ThumbsUp size={14} />
-              </button>
-              <button className={`action-btn ${dislikedMessages.has(message.id) ? 'action-btn-active' : ''}`} onClick={() => toggleDislike(message.id)} title="反对">
-                <ThumbsDown size={14} />
-              </button>
-              <button className={`action-btn ${bookmarkedMessages.has(message.id) ? 'action-btn-active' : ''}`} onClick={() => toggleBookmark(message.id)} title="收藏">
-                <Bookmark size={14} />
-              </button>
-              <div className="action-divider"></div>
-              <button className="action-btn" onClick={() => handleCopyMessage(message.content)} title="复制">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                </svg>
-              </button>
-              <button className="action-btn" onClick={() => handleRetry(message.id)} title="重新生成">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M1 4v6h6"/>
-                  <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
-                </svg>
-              </button>
-            </div>
-          )}
+          {message.status === 'success' && message.content && renderAssistantMessageActions(message)}
         </div>
       </div>
     );
+  };
+
+  const renderMessageContent = (message: DisplayMessage) => {
+    if (message.role === 'system') {
+      return <div className="chat-message-system">{message.content}</div>;
+    }
+
+    if (message.role === 'user') {
+      return renderUserMessage(message);
+    }
+
+    return renderAssistantMessage(message);
   };
 
   return (
@@ -726,7 +775,7 @@ const TrialCenter: React.FC = () => {
           )}
 
           {isInChatMode && (
-            <div className="chat-container" ref={chatContainerRef} onScroll={handleScroll}>
+            <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
               <div className="chat-welcome">
                 <div className="chat-welcome-icon">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
@@ -888,19 +937,22 @@ const TrialCenter: React.FC = () => {
 
       <style>{`
         .trial-center-container {
-          min-height: 100vh;
+          height: 100vh;
           display: flex;
           background: #EEF0F2;
+          overflow: hidden;
         }
 
         .sidebar {
           width: 230px;
+          height: 100vh;
           background: #E9EAEB;
           border-right: none;
           display: flex;
           flex-direction: column;
           position: relative;
           transition: width 0.3s ease;
+          overflow: hidden;
         }
 
         .sidebar.collapsed {
@@ -1168,6 +1220,8 @@ const TrialCenter: React.FC = () => {
           align-items: center;
           justify-content: center;
           background: #EEEFF2;
+          height: 100vh;
+          overflow: hidden;
         }
 
         .toast {
@@ -1319,8 +1373,8 @@ const TrialCenter: React.FC = () => {
         }
 
         .input-box.focused {
-          border-color: rgba(139, 92, 246, 0.3);
-          box-shadow: 0 2px 20px rgba(139, 92, 246, 0.12);
+          border-color: rgba(139, 92, 246, 0.6);
+          box-shadow: 0 2px 20px rgba(139, 92, 246, 0.2);
         }
 
         .input-area {
@@ -1332,13 +1386,13 @@ const TrialCenter: React.FC = () => {
 
         .input-textarea {
           width: 100%;
-          min-height: 24px;
+          min-height: 40px;
           max-height: 200px;
           border: none;
           outline: none;
           resize: none;
           font-size: 14px;
-          line-height: 1.6;
+          line-height: 1.6
           color: #333;
           font-family: inherit;
           background: transparent;
@@ -1648,6 +1702,30 @@ const TrialCenter: React.FC = () => {
           position: relative;
           scroll-behavior: smooth;
           min-height: 0;
+        }
+
+        .chat-container::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+          background: transparent;
+          border: none;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 3px;
+          border: none;
+          transition: background 0.3s ease;
+        }
+
+        .chat-container.scrolling::-webkit-scrollbar-thumb {
+          background: #D1D5DB;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb:hover {
+          background: #9CA3AF;
         }
 
         .chat-welcome {
@@ -2006,7 +2084,7 @@ const TrialCenter: React.FC = () => {
 
         .scroll-bottom-btn {
           position: sticky;
-          bottom: 16px;
+          bottom: 0px;
           left: 50%;
           transform: translateX(-50%);
           width: 32px;
@@ -2041,18 +2119,19 @@ const TrialCenter: React.FC = () => {
           display: flex;
           align-items: center;
           gap: 6px;
-          background: transparent;
+          background: #F3F4F6;
           border: none;
-          padding: 0;
-          border-radius: 4px;
+          padding: 6px 10px;
+          border-radius: 6px;
           font-size: 13px;
           color: #6B7280;
           cursor: pointer;
           margin-bottom: 8px;
-          transition: color 0.2s;
+          transition: all 0.2s;
         }
 
         .thinking-toggle-btn:hover {
+          background: #E5E7EB;
           color: #4B5563;
         }
 
