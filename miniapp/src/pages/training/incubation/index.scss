@@ -92,14 +92,20 @@ $border-radius-xl: 32rpx;
   line-height: 1.6;
 }
 
-.typing-indicator {
+.streaming-cursor {
   display: inline-block;
-  animation: blink 1s infinite;
+  color: $color-primary;
+  font-weight: 300;
+  animation: cursorBlink 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  margin-left: 2rpx;
+  font-size: 28rpx;
+  vertical-align: baseline;
+  line-height: 1;
 }
 
-@keyframes blink {
+@keyframes cursorBlink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  50% { opacity: 0; }
 }
 
 .input-bar {

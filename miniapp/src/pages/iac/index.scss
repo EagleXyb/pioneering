@@ -205,10 +205,11 @@ $color-success: #07c160;
   display: inline-block;
   color: $color-primary;
   font-weight: 300;
-  animation: cursorBlink 0.8s ease-in-out infinite;
+  animation: cursorBlink 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   margin-left: 2rpx;
   font-size: 30rpx;
   vertical-align: baseline;
+  line-height: 1;
 }
 
 @keyframes cursorBlink {

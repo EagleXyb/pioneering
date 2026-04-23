@@ -92,7 +92,8 @@ export default function Incubation() {
 
     const tick = () => {
       if (charIndex < fullText.length) {
-        charIndex++;
+        const step = Math.floor(Math.random() * 2) + 1;
+        charIndex = Math.min(charIndex + step, fullText.length);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === aiMessageId
@@ -100,7 +101,11 @@ export default function Incubation() {
               : msg
           )
         );
-        streamingTimerRef.current = setTimeout(tick, 50);
+        const isPunctuation = /[，。！？、；：""''）】》…—]/.test(fullText[charIndex - 1]);
+        const delay = isPunctuation
+          ? 80 + Math.random() * 60
+          : 25 + Math.random() * 35;
+        streamingTimerRef.current = setTimeout(tick, delay);
       } else {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -112,7 +117,7 @@ export default function Incubation() {
       }
     };
 
-    streamingTimerRef.current = setTimeout(tick, 500);
+    streamingTimerRef.current = setTimeout(tick, 400);
   };
 
   const onSend = () => {
@@ -161,7 +166,7 @@ export default function Incubation() {
                   <View className='message-bubble'>
                     <Text className='message-text'>{msg.content}</Text>
                     {msg.type === 'ai' && msg.isStreaming && (
-                      <Text className='typing-indicator'>...</Text>
+                      <Text className='streaming-cursor'>▎</Text>
                     )}
                   </View>
                 </View>

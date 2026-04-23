@@ -68,7 +68,8 @@ export function filterThinkingChain(content: string): string {
   
   let filtered = content;
   
-  filtered = filtered.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  filtered = filtered.replace(/<think[\s\S]*?<\/think>/gi, '');
+  filtered = filtered.replace(/<think[\s\S]*$/gi, '');
   
   return filtered.trim();
 }
@@ -76,6 +77,11 @@ export function filterThinkingChain(content: string): string {
 export function extractThinkingChain(content: string): string | null {
   if (!content) return null;
   
-  const match = content.match(/<think>([\s\S]*?)<\/think>/i);
-  return match ? match[1].trim() : null;
+  const closedMatch = content.match(/<think([\s\S]*?)<\/think>/i);
+  if (closedMatch) return closedMatch[1].trim();
+  
+  const openMatch = content.match(/<think([\s\S]*)$/i);
+  if (openMatch) return openMatch[1].trim();
+  
+  return null;
 }

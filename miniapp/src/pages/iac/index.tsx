@@ -105,9 +105,8 @@ export default function IAC() {
 
     const tick = () => {
       if (charIndex < fullText.length) {
-        charIndex++;
         const step = Math.floor(Math.random() * 2) + 1;
-        charIndex = Math.min(charIndex + step - 1, fullText.length);
+        charIndex = Math.min(charIndex + step, fullText.length);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === aiMessageId
@@ -115,7 +114,11 @@ export default function IAC() {
               : msg
           )
         );
-        streamingTimerRef.current = setTimeout(tick, 30 + Math.random() * 50);
+        const isPunctuation = /[，。！？、；：""''）】》…—]/.test(fullText[charIndex - 1]);
+        const delay = isPunctuation
+          ? 80 + Math.random() * 60
+          : 25 + Math.random() * 35;
+        streamingTimerRef.current = setTimeout(tick, delay);
       } else {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -345,7 +348,7 @@ export default function IAC() {
                       <View className={`message-bubble ${msg.type} ${msg.status === 'error' ? 'error' : ''}`}>
                         <Text className='message-text' selectable>{msg.content}</Text>
                         {(msg.status === 'streaming') && (
-                          <Text className='streaming-cursor'>|</Text>
+                          <Text className='streaming-cursor'>▎</Text>
                         )}
                         {msg.status === 'loading' && (
                           <View className='typing-dots'>
