@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import 'katex/dist/katex.min.css';
-import { filterThinkingChain } from '@shared/utils';
 import llmService from '../services/llmService';
 import { useChat } from './trial-center/useChat';
 import type { DisplayMessage } from './trial-center/types';
@@ -172,13 +171,12 @@ const TrialCenter: React.FC = () => {
   }, []);
 
   const handleCopyMessage = useCallback(async (content: string) => {
-    const contentToCopy = filterThinkingChain(content);
     try {
-      await navigator.clipboard.writeText(contentToCopy);
+      await navigator.clipboard.writeText(content);
       showToast('复制成功');
     } catch {
       const textarea = document.createElement('textarea');
-      textarea.value = contentToCopy;
+      textarea.value = content;
       document.body.appendChild(textarea);
       textarea.select();
       document.execCommand('copy');

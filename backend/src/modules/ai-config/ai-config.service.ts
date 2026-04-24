@@ -216,17 +216,11 @@ export class AiConfigService implements OnModuleInit {
       }
 
       if (data.choices && data.choices.length > 0 && data.choices[0].message?.content) {
-        let content = data.choices[0].message.content;
-        content = content.replace(/<think[\s\S]*?<\/think>/g, '').trim();
-        return { success: true, message: content };
+        return { success: true, message: data.choices[0].message.content };
       } else if (data.text) {
-        let content = data.text;
-        content = content.replace(/<think[\s\S]*?<\/think>/g, '').trim();
-        return { success: true, message: content };
+        return { success: true, message: data.text };
       } else if (data.output?.text) {
-        let content = data.output.text;
-        content = content.replace(/<think[\s\S]*?<\/think>/g, '').trim();
-        return { success: true, message: content };
+        return { success: true, message: data.output.text };
       } else if (data.base_resp?.status_code !== 0) {
         return { success: false, error: `MiniMax API错误: ${data.base_resp?.status_msg || '未知错误'}` };
       }
@@ -429,16 +423,25 @@ export class AiConfigService implements OnModuleInit {
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
-              res.write('data: [DONE]\n\n');
+              res.write('data: {"type":"done"}\n\n');
+              res.flush?.();
               res.end();
               return;
             }
 
             try {
               const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content || '';
+              const delta = parsed.choices?.[0]?.delta || {};
+              const reasoningContent = delta.reasoning_content || '';
+              const content = delta.content || '';
+
+              if (reasoningContent) {
+                res.write(`data: ${JSON.stringify({ type: 'thinking', content: reasoningContent })}\n\n`);
+                res.flush?.();
+              }
               if (content) {
-                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+                res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
+                res.flush?.();
               }
             } catch {
               continue;
@@ -446,7 +449,8 @@ export class AiConfigService implements OnModuleInit {
           }
         }
       }
-      res.write('data: [DONE]\n\n');
+      res.write('data: {"type":"done"}\n\n');
+      res.flush?.();
       res.end();
     } finally {
       reader.releaseLock();
@@ -508,19 +512,25 @@ export class AiConfigService implements OnModuleInit {
           if (trimmed.startsWith('data:')) {
             const data = trimmed.slice(5).trim();
             if (data === '[DONE]') {
-              res.write('data: [DONE]\n\n');
+              res.write('data: {"type":"done"}\n\n');
+              res.flush?.();
               res.end();
               return;
             }
 
             try {
               const parsed = JSON.parse(data);
-              const content =
-                parsed.output?.choices?.[0]?.message?.content ||
-                parsed.output?.text ||
-                '';
+              const choice = parsed.output?.choices?.[0];
+              const reasoningContent = choice?.message?.reasoning_content || '';
+              const content = choice?.message?.content || '';
+
+              if (reasoningContent) {
+                res.write(`data: ${JSON.stringify({ type: 'thinking', content: reasoningContent })}\n\n`);
+                res.flush?.();
+              }
               if (content) {
-                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+                res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
+                res.flush?.();
               }
             } catch {
               continue;
@@ -528,7 +538,8 @@ export class AiConfigService implements OnModuleInit {
           }
         }
       }
-      res.write('data: [DONE]\n\n');
+      res.write('data: {"type":"done"}\n\n');
+      res.flush?.();
       res.end();
     } finally {
       reader.releaseLock();

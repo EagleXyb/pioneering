@@ -60,8 +60,13 @@ export function useChat() {
         assistantMsg.id,
         config,
         contextMessages,
-        (accumulatedContent) => {
-          updateMessage(assistantMsg.id, { content: accumulatedContent, status: 'success' });
+        (accumulatedContent, thinkingContent, answerContent) => {
+          updateMessage(assistantMsg.id, {
+            content: accumulatedContent,
+            thinkingContent,
+            answerContent,
+            status: 'success',
+          });
           setIsGenerating(false);
         },
         (error, accumulatedContent) => {
@@ -123,8 +128,13 @@ export function useChat() {
         assistantMsg.id,
         config,
         contextMessages,
-        (accumulatedContent) => {
-          updateMessage(assistantMsg.id, { content: accumulatedContent, status: 'success' });
+        (accumulatedContent, thinkingContent, answerContent) => {
+          updateMessage(assistantMsg.id, {
+            content: accumulatedContent,
+            thinkingContent,
+            answerContent,
+            status: 'success',
+          });
           setIsGenerating(false);
         },
         (error, accumulatedContent) => {

@@ -4,7 +4,6 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { ThumbsUp, ThumbsDown, Lightbulb } from 'lucide-react';
-import { filterThinkingChain, extractThinkingChain } from '@shared/utils';
 import type { DisplayMessage } from './types';
 
 interface ChatMessageProps {
@@ -38,25 +37,26 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
   onCopy,
   onRetry,
 }) => {
-  const thinkingContent = extractThinkingChain(message.content);
-  const filteredContent = filterThinkingChain(message.content);
+  const thinkingContent = message.thinkingContent || '';
+  const answerContent = message.answerContent || message.content;
   const isLoading = message.status === 'loading';
-  const hasVisibleContent = filteredContent.length > 0;
+  const isThinkingInProgress = isLoading && thinkingContent.length > 0 && answerContent.length === 0;
+  const hasThinking = thinkingContent.length > 0;
+  const hasAnswer = answerContent.length > 0;
 
   return (
     <div className="chat-message-row assistant-row">
       <div className="chat-message-bubble assistant-bubble">
-        {isLoading && !hasVisibleContent && (
-          <div className="chat-skeleton">
-            <div className="skeleton-line skeleton-line-long"></div>
-            <div className="skeleton-line skeleton-line-medium"></div>
-            <div className="skeleton-line skeleton-line-short"></div>
+        {isLoading && !hasThinking && !hasAnswer && (
+          <div className="chat-thinking-animation">
+            <Lightbulb className="thinking-icon animate" />
+            <span>正在思考...</span>
           </div>
         )}
-        {thinkingContent && (
+        {hasThinking && (
           <button className="thinking-toggle-btn" onClick={onToggleThinking}>
-            <Lightbulb className={`thinking-icon ${isLoading ? 'animate' : ''}`} />
-            <span>思考过程</span>
+            <Lightbulb className={`thinking-icon ${isLoading && isThinkingInProgress ? 'animate' : ''}`} />
+            <span>{isLoading && isThinkingInProgress ? '思考中...' : '思考过程'}</span>
             <svg
               className={`thinking-arrow ${showThinking ? 'expanded' : ''}`}
               width="14"
@@ -70,15 +70,21 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
             </svg>
           </button>
         )}
-        {showThinking && thinkingContent && (
+        {showThinking && hasThinking && (
           <div className="thinking-content">{thinkingContent}</div>
         )}
-        {hasVisibleContent && (
+        {hasAnswer && (
           <div className="chat-message-markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-              {filteredContent}
+              {answerContent}
             </ReactMarkdown>
             {isLoading && <span className="chat-cursor">▊</span>}
+          </div>
+        )}
+        {isLoading && hasThinking && !hasAnswer && (
+          <div className="chat-thinking-animation">
+            <Lightbulb className="thinking-icon animate" />
+            <span>正在组织回答...</span>
           </div>
         )}
         {message.status === 'error' && (
@@ -87,9 +93,9 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
             <button className="retry-btn" onClick={() => onRetry(message.id)}>重新生成</button>
           </div>
         )}
-        {message.status === 'success' && message.content && (
+        {message.status === 'success' && (hasAnswer || hasThinking) && (
           <div className="chat-message-actions">
-            <button className="action-btn" onClick={() => onCopy(message.content)} title="复制">
+            <button className="action-btn" onClick={() => onCopy(answerContent || thinkingContent)} title="复制">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>

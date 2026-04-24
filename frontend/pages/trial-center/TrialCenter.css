@@ -1077,6 +1077,18 @@
   overflow: auto;
   line-height: 1.6;
 }
+.chat-thinking-animation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: #6B7280;
+  font-size: 13px;
+}
+.chat-thinking-animation .thinking-icon {
+  width: 18px;
+  height: 18px;
+}
 @media (max-width: 1024px) {
 .tools-grid {
     grid-template-columns: repeat(2, 1fr);

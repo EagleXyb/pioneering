@@ -8,7 +8,7 @@ export interface ChatMessage {
 }
 
 export interface StreamCallbacks {
-  onChunk: (text: string) => void;
+  onChunk: (text: string, type?: 'thinking' | 'answer') => void;
   onDone: () => void;
   onError: (error: string) => void;
 }
@@ -82,7 +82,15 @@ export class LLMService {
                   callbacks.onError(parsed.error);
                   return;
                 }
-                if (parsed.content) {
+                if (parsed.type === 'done') {
+                  callbacks.onDone();
+                  return;
+                }
+                if (parsed.type === 'thinking') {
+                  callbacks.onChunk(parsed.content, 'thinking');
+                } else if (parsed.type === 'answer') {
+                  callbacks.onChunk(parsed.content, 'answer');
+                } else if (parsed.content) {
                   callbacks.onChunk(parsed.content);
                 }
               } catch {
