@@ -258,10 +258,10 @@ const TrialCenter: React.FC = () => {
         <div className="main-wrapper">
           {!isInChatMode && (
             <div className="non-chat-content">
-              <section className="hero-section">
-                <div className="hero-content animate-in">
-                  <h2 className="hero-title">Innovation and Creation</h2>
-                  <p className="hero-subtitle">激发创新潜能，孵化未来梦想</p>
+              <section className="trial-hero-section">
+                <div className="trial-hero-content animate-in">
+                  <h2 className="trial-hero-title">Innovation and Creation</h2>
+                  <p className="trial-hero-subtitle">激发创新潜能，孵化未来梦想</p>
                 </div>
               </section>
               <section className="tools-section">
