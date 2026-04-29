@@ -120,7 +120,9 @@ export function useChat() {
 
       const config = aiConfig || { apiKey: '', provider: 'minimax', model: selectedModel, prompt: '' };
 
-      const contextMsgs = messages.slice(0, userMsgIndex).filter(m => m.role !== 'system' && m.status === 'success');
+      const contextMsgs = messages.slice(0, userMsgIndex)
+        .filter(m => m.role !== 'system' && m.status === 'success')
+        .slice(-MAX_CONTEXT_MESSAGES);
       const contextMessages: ChatMessage[] = contextMsgs.map(m => ({ role: m.role, content: m.content }));
       contextMessages.push({ role: 'user', content: userContent });
 

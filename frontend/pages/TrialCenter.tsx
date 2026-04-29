@@ -185,6 +185,17 @@ const TrialCenter: React.FC = () => {
     }
   }, [showToast]);
 
+  const handleForward = useCallback((messageId: string) => {
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg) return;
+    const content = msg.answerContent || msg.content;
+    if (navigator.share) {
+      navigator.share({ title: 'IAC Incubator', text: content }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(content).then(() => showToast('链接已复制，可粘贴转发')).catch(() => showToast('转发失败'));
+    }
+  }, [messages, showToast]);
+
   const toggleThinkingDisplay = useCallback((messageId: string) => {
     setShowThinkingFor(prev => {
       const newSet = new Set(prev);
@@ -239,6 +250,7 @@ const TrialCenter: React.FC = () => {
         onToggleDislike={() => toggleDislike(message.id)}
         onCopy={handleCopyMessage}
         onRetry={(msgId) => handleRetry(msgId, aiConfig, selectedModel)}
+        onForward={handleForward}
       />
     );
   };

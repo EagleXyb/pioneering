@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { ThumbsUp, ThumbsDown, Lightbulb, ChevronRight, ChevronDown } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, ChevronRight, ChevronDown, Share, Sparkles } from 'lucide-react';
 import type { DisplayMessage } from './types';
+import FloatingCursor from './FloatingCursor';
+import type { FloatingCursorRef } from './FloatingCursor';
+import { useFloatingCursor } from './useFloatingCursor';
 
 /**
  * 清除思考内容中可能残留的 <think...> 和 </think> 标签
@@ -26,6 +29,7 @@ interface ChatMessageProps {
   onToggleDislike: () => void;
   onCopy: (content: string) => void;
   onRetry: (messageId: string) => void;
+  onForward: (messageId: string) => void;
 }
 
 export const UserMessage: React.FC<{ message: DisplayMessage }> = ({ message }) => (
@@ -46,7 +50,10 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
   onToggleDislike,
   onCopy,
   onRetry,
+  onForward,
 }) => {
+  const markdownContainerRef = useRef<HTMLDivElement>(null);
+  const cursorRef = useRef<FloatingCursorRef>(null);
   const thinkingContent = stripThinkTags(message.thinkingContent || '');
   const answerContent = message.answerContent || message.content;
   const isLoading = message.status === 'loading';
@@ -54,18 +61,20 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
   const hasThinking = thinkingContent.length > 0;
   const hasAnswer = answerContent.length > 0;
 
+  useFloatingCursor(answerContent, isLoading, markdownContainerRef, cursorRef);
+
   return (
     <div className="chat-message-row assistant-row">
       <div className="chat-message-bubble assistant-bubble">
         {isLoading && !hasThinking && !hasAnswer && (
           <div className="chat-thinking-animation">
-            <Lightbulb className="thinking-icon animate" />
+            <Sparkles className="thinking-icon animate" />
             <span>正在思考...</span>
           </div>
         )}
         {hasThinking && (
           <button className="thinking-toggle-btn" onClick={onToggleThinking}>
-            <Lightbulb className={`thinking-icon ${isLoading && isThinkingInProgress ? 'animate' : ''}`} />
+            <Sparkles className={`thinking-icon ${isLoading && isThinkingInProgress ? 'animate' : ''}`} />
             <span>{isLoading && isThinkingInProgress ? '思考中...' : '已完成思考'}</span>
             {showThinking ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
@@ -82,16 +91,16 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
           </div>
         )}
         {hasAnswer && (
-          <div className="chat-message-markdown">
+          <div className="chat-message-markdown" ref={markdownContainerRef} style={{ position: 'relative' }}>
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
               {answerContent}
             </ReactMarkdown>
-            {isLoading && <span className="chat-cursor">▊</span>}
+            <FloatingCursor ref={cursorRef} />
           </div>
         )}
         {isLoading && hasThinking && !hasAnswer && (
           <div className="chat-thinking-animation">
-            <Lightbulb className="thinking-icon animate" />
+            <Sparkles className="thinking-icon animate" />
             <span>正在组织回答...</span>
           </div>
         )}
@@ -121,6 +130,9 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
             </button>
             <button className={`action-btn ${isDisliked ? 'action-btn-active' : ''}`} onClick={onToggleDislike} title="反对">
               <ThumbsDown size={14} />
+            </button>
+            <button className="action-btn" onClick={() => onForward(message.id)} title="分享">
+              <Share size={14} />
             </button>
           </div>
         )}

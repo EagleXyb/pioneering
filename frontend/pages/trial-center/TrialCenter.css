@@ -779,8 +779,8 @@
   margin-bottom: 0;
 }
 .chat-message-markdown pre {
-  background: #1E1E2E;
-  color: #CDD6F4;
+  background: #f9fafb;
+  color: #1F2937;
   padding: 12px 16px;
   border-radius: 6px;
   overflow-x: auto;
@@ -863,6 +863,9 @@
   margin-left: 1px;
   vertical-align: baseline;
   line-height: 1;
+}
+.floating-cursor {
+  animation: cursorBlink 1s step-end infinite;
 }
 @keyframes cursorBlink {
   0%, 100% { opacity: 1; }

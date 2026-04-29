@@ -194,7 +194,14 @@ export function useStreamChat(
             if (completedRef.current) return;
             completedRef.current = true;
 
-            const { answerBuffer, thinkBuffer } = stateRef.current;
+            let { answerBuffer, thinkBuffer } = stateRef.current;
+
+            // 处理未闭合的 think 块：将仍在 thinkBuffer 中、未被闭合的内容保留为思考内容
+            // 不会将 thinkBuffer 回退为 answerBuffer
+            if (stateRef.current.inThinkBlock || stateRef.current.pendingThinkTag) {
+              // think 块未闭合，thinkBuffer 已包含其内容，answerBuffer 保持原样
+            }
+
             cleanupStream();
             onStreamDone(
               answerBuffer || thinkBuffer,
