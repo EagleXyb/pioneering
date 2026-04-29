@@ -174,19 +174,24 @@ export function useStreamChat(
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      timeoutRef.current = setTimeout(() => {
-        // 标记已由超时处理，阻止 onDone/onError 重复处理
-        completedRef.current = true;
-        cleanupStream();
-        updateMessage(assistantMsgId, { status: 'error', error: '请求超时，请重试' });
-        setIsGenerating(false);
-      }, REQUEST_TIMEOUT);
+      const resetIdleTimeout = () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+          if (completedRef.current) return;
+          completedRef.current = true;
+          cleanupStream();
+          updateMessage(assistantMsgId, { status: 'error', error: '请求超时，请重试' });
+          setIsGenerating(false);
+        }, REQUEST_TIMEOUT);
+      };
+      resetIdleTimeout();
 
       llmService.streamChat(
         config,
         contextMessages,
         {
           onChunk: (text: string, type?: 'thinking' | 'answer') => {
+            resetIdleTimeout();
             processStreamChunk(assistantMsgId, text, type);
           },
           onDone: () => {

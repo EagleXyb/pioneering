@@ -219,5 +219,63 @@ COMMENT ON COLUMN "public"."user_session"."current_step" IS '当前执行步骤'
 -- Profile         | id (自增序列)      | 1        | 0
 -- user_session    | session_id (手动)  | 1        | 被 2 个表引用
 -- 
--- 总计: 9 张表, 7 个自增序列, 7 个索引, 2 个外键约束
+-- =====================================================
+-- 表 10: chat_conversation（聊天会话）
+-- =====================================================
+CREATE SEQUENCE IF NOT EXISTS "public"."chat_conversation_id_seq";
+
+CREATE TABLE "public"."chat_conversation" (
+  "id" int4 NOT NULL DEFAULT nextval('chat_conversation_id_seq'::regclass),
+  "title" text NOT NULL,
+  "model" text NOT NULL,
+  "createdAt" timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" timestamp(3) NOT NULL,
+  CONSTRAINT "chat_conversation_pkey" PRIMARY KEY ("id")
+);
+
+-- =====================================================
+-- 表 11: chat_message（聊天消息）
+-- =====================================================
+CREATE SEQUENCE IF NOT EXISTS "public"."chat_message_id_seq";
+
+CREATE TABLE "public"."chat_message" (
+  "id" int4 NOT NULL DEFAULT nextval('chat_message_id_seq'::regclass),
+  "conversationId" int4 NOT NULL,
+  "role" text NOT NULL,
+  "content" text NOT NULL,
+  "thinkingContent" text,
+  "answerContent" text,
+  "status" text NOT NULL,
+  "error" text,
+  "createdAt" timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "chat_message_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "idx_chat_message_conversation" ON "public"."chat_message" USING btree (
+  "conversationId" ASC NULLS LAST
+);
+
+ALTER TABLE "public"."chat_message" ADD CONSTRAINT "chat_message_conversationId_fkey"
+  FOREIGN KEY ("conversationId") REFERENCES "public"."chat_conversation" ("id")
+  ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- =====================================================
+-- 表结构汇总（更新）
+-- =====================================================
+-- 
+-- 表名               | 主键类型           | 索引数量 | 外键引用
+-- -----------------------------------------------------------------
+-- agent_log          | id (自增序列)      | 0        | 0
+-- AIConfig           | id (自增序列)      | 1        | 0
+-- creative_list      | id (自增序列)      | 1        | 1 → user_session
+-- demand_anchor      | id (自增序列)      | 1        | 1 → user_session
+-- global_prompt      | id (自增序列)      | 1        | 0
+-- innovation_case    | id (自增序列)      | 0        | 0
+-- innovation_method  | id (自增序列)      | 1        | 0
+-- Profile            | id (自增序列)      | 1        | 0
+-- user_session       | session_id (手动)  | 1        | 被 2 个表引用
+-- chat_conversation  | id (自增序列)      | 0        | 被 1 个表引用
+-- chat_message       | id (自增序列)      | 1        | 1 → chat_conversation
+-- 
+-- 总计: 11 张表, 9 个自增序列, 8 个索引, 3 个外键约束
 -- =====================================================

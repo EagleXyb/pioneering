@@ -1,17 +1,76 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelRightClose, SquareCheckBig } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquare } from 'lucide-react';
+import chatConversationService, { type ConversationItem } from '../../services/chatConversationService';
 
 interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onNewChat: () => void;
   isGenerating: boolean;
+  currentConversationId: number | null;
+  onSwitchConversation: (id: number) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse, onNewChat, isGenerating }) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  isCollapsed,
+  onToggleCollapse,
+  onNewChat,
+  isGenerating,
+  currentConversationId,
+  onSwitchConversation,
+}) => {
   const navigate = useNavigate();
-  const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const fetchConversations = useCallback(async () => {
+    try {
+      const list = await chatConversationService.getConversations();
+      setConversations(list);
+    } catch (e) {
+      console.error('获取会话列表失败:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  // 当前会话变化时刷新列表（新建、消息更新等场景）
+  useEffect(() => {
+    fetchConversations();
+  }, [currentConversationId, fetchConversations]);
+
+  const handleDelete = useCallback(async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (deletingId !== null) return;
+    setDeletingId(id);
+    try {
+      await chatConversationService.deleteConversation(id);
+      setConversations(prev => prev.filter(c => c.id !== id));
+      // 如果删除的是当前会话，触发新建
+      if (id === currentConversationId) {
+        onNewChat();
+      }
+    } catch (e) {
+      console.error('删除会话失败:', e);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [deletingId, currentConversationId, onNewChat]);
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return '今天';
+    if (diffDays === 1) return '昨天';
+    if (diffDays < 7) return `${diffDays}天前`;
+    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  };
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -39,6 +98,41 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse, onNewC
           <SquareCheckBig size={16} strokeWidth={2} />
           新建任务
         </button>
+
+        {/* 历史会话列表 */}
+        {!isCollapsed && (
+          <div className="sidebar-conversations">
+            <div className="sidebar-conversations-title">历史会话</div>
+            <div className="sidebar-conversations-list">
+              {conversations.length === 0 && (
+                <div className="sidebar-conversations-empty">暂无历史会话</div>
+              )}
+              {conversations.map(conv => (
+                <div
+                  key={conv.id}
+                  className={`sidebar-conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}
+                  onClick={() => onSwitchConversation(conv.id)}
+                >
+                  <MessageSquare size={14} className="sidebar-conversation-icon" />
+                  <div className="sidebar-conversation-info">
+                    <div className="sidebar-conversation-title">{conv.title}</div>
+                    <div className="sidebar-conversation-meta">
+                      {formatDate(conv.updatedAt)} · {conv._count.messages}条消息
+                    </div>
+                  </div>
+                  <button
+                    className="sidebar-conversation-delete"
+                    onClick={(e) => handleDelete(e, conv.id)}
+                    title="删除会话"
+                    disabled={deletingId === conv.id}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="sidebar-footer">
           <div

@@ -51,3 +51,29 @@ model GlobalPrompt {
 
   @@map("global_prompt")
 }
+
+model ChatConversation {
+  id        Int            @id @default(autoincrement())
+  title     String                             // 会话标题（取首条用户消息前20字）
+  model     String                             // 使用的模型
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  ChatMessage[]
+
+  @@map("chat_conversation")
+}
+
+model ChatMessage {
+  id              Int               @id @default(autoincrement())
+  conversationId  Int
+  role            String            // user / assistant / system
+  content         String            // 原始完整内容
+  thinkingContent String?           // 思考内容
+  answerContent   String?           // 回答内容
+  status          String            // loading / success / error
+  error           String?           // 错误信息
+  createdAt       DateTime          @default(now())
+  conversation    ChatConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("chat_message")
+}

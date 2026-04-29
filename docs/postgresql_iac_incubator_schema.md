@@ -18,6 +18,8 @@
 - [7. innovation_method（创新方法）](#7-innovation_method创新方法)
 - [8. Profile（用户资料）](#8-profile用户资料)
 - [9. user_session（用户会话）](#9-user_session用户会话)
+- [10. chat_conversation（聊天会话）](#10-chat_conversation聊天会话)
+- [11. chat_message（聊天消息）](#11-chat_message聊天消息)
 - [表关系图](#表关系图)
 - [索引汇总](#索引汇总)
 
@@ -270,6 +272,56 @@
 
 ---
 
+## 10. chat_conversation（聊天会话）
+
+**说明:** 存储试聊中心的会话信息
+
+| 字段名 | 类型 | 可空 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| id | int4 | NOT NULL | 自增序列 | 主键 |
+| title | text | NOT NULL | - | 会话标题 |
+| model | text | NOT NULL | - | 使用的模型 |
+| createdAt | timestamp(3) | NOT NULL | CURRENT_TIMESTAMP | 创建时间 |
+| updatedAt | timestamp(3) | NOT NULL | - | 更新时间 |
+
+**主键:** `id`
+
+**索引:** 无
+
+**外键:** 被 `chat_message` 引用
+
+---
+
+## 11. chat_message（聊天消息）
+
+**说明:** 存储试聊中心的对话消息
+
+| 字段名 | 类型 | 可空 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| id | int4 | NOT NULL | 自增序列 | 主键 |
+| conversationId | int4 | NOT NULL | - | 会话ID |
+| role | text | NOT NULL | - | 角色(user/assistant/system) |
+| content | text | NOT NULL | - | 原始完整内容 |
+| thinkingContent | text | - | - | 思考内容 |
+| answerContent | text | - | - | 回答内容 |
+| status | text | NOT NULL | - | 状态(loading/success/error) |
+| error | text | - | - | 错误信息 |
+| createdAt | timestamp(3) | NOT NULL | CURRENT_TIMESTAMP | 创建时间 |
+
+**主键:** `id`
+
+**索引:**
+| 索引名 | 类型 | 字段 |
+|--------|------|------|
+| idx_chat_message_conversation | INDEX | conversationId |
+
+**外键:**
+| 约束名 | 字段 | 引用表 | 引用字段 | 级联删除 |
+|--------|------|--------|----------|----------|
+| chat_message_conversationId_fkey | conversationId | chat_conversation | id | CASCADE |
+
+---
+
 ## 表关系图
 
 ```
@@ -311,8 +363,9 @@
 | innovation_method_method_code_key | innovation_method | UNIQUE | method_code |
 | Profile_email_key | Profile | UNIQUE | email |
 | idx_session_status | user_session | INDEX | current_status |
+| idx_chat_message_conversation | chat_message | INDEX | conversationId |
 
-**索引统计:** 共 7 个索引
+**索引统计:** 共 8 个索引
 
 ---
 
@@ -320,11 +373,11 @@
 
 | 类型 | 数量 |
 |------|------|
-| 表总数 | 9 |
-| 自增序列 | 7 |
+| 表总数 | 11 |
+| 自增序列 | 9 |
 | 唯一索引 | 6 |
-| 普通索引 | 1 |
-| 外键约束 | 2 |
+| 普通索引 | 2 |
+| 外键约束 | 3 |
 
 ---
 

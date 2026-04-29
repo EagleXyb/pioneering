@@ -24,4 +24,11 @@ export const API_ENDPOINTS = {
     STATUS: (id: number) => `/api/global-prompt/${id}/status`,
     APPROVAL: (id: number) => `/api/global-prompt/${id}/approval`,
   },
+  CHAT: {
+    CONVERSATIONS: '/api/chat/conversations',
+    CONVERSATION_BY_ID: (id: number) => `/api/chat/conversations/${id}`,
+    MESSAGES: (conversationId: number) => `/api/chat/conversations/${conversationId}/messages`,
+    MESSAGE_BY_ID: (conversationId: number, msgId: number) =>
+      `/api/chat/conversations/${conversationId}/messages/${msgId}`,
+  },
 } as const;

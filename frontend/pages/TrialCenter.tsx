@@ -102,6 +102,8 @@ const TrialCenter: React.FC = () => {
     handleStopGeneration,
     handleRetry,
     handleNewChat,
+    conversationId,
+    handleSwitchConversation,
   } = useChat();
 
   const isInChatMode = messages.length > 0;
@@ -263,6 +265,8 @@ const TrialCenter: React.FC = () => {
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         onNewChat={handleNewChat}
         isGenerating={isGenerating}
+        currentConversationId={conversationId}
+        onSwitchConversation={handleSwitchConversation}
       />
       <main className="trial-main-content">
         <div className="main-wrapper">
