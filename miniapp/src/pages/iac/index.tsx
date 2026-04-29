@@ -50,16 +50,19 @@ export default function IAC() {
   const [selectedProject, setSelectedProject] = useState('normal');
   const [inputValue, setInputValue] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [showModeSheet, setShowModeSheet] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [longPressMsgId, setLongPressMsgId] = useState<number | null>(null);
   const [networkHint, setNetworkHint] = useState('');
+  const [scrollTop, setScrollTop] = useState(0);
   const chatAreaRef = useRef<any>(null);
   const streamingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isVoiceRecordingRef = useRef(false);
   const isAtBottomRef = useRef(true);
 
   const getCurrentModeShortName = () => {
@@ -69,14 +72,11 @@ export default function IAC() {
   };
 
   const scrollToBottom = useCallback((immediate = false) => {
-    setTimeout(() => {
-      if (chatAreaRef.current) {
-        chatAreaRef.current.scrollTo({
-          top: chatAreaRef.current.scrollHeight,
-          duration: immediate ? 0 : 200,
-        });
-      }
-    }, immediate ? 0 : 50);
+    if (immediate) {
+      setScrollTop(Date.now());
+    } else {
+      setTimeout(() => setScrollTop(Date.now()), 50);
+    }
   }, []);
 
   useEffect(() => {
@@ -89,6 +89,9 @@ export default function IAC() {
     return () => {
       if (streamingTimerRef.current) {
         clearTimeout(streamingTimerRef.current);
+      }
+      if (voiceTimerRef.current) {
+        clearTimeout(voiceTimerRef.current);
       }
     };
   }, []);
@@ -143,7 +146,6 @@ export default function IAC() {
     if (!trimmedValue || isSending) return;
 
     setIsSending(true);
-    setShowModeDropdown(false);
     setIsExpanded(false);
     setIsVoiceMode(false);
 
@@ -212,12 +214,12 @@ export default function IAC() {
 
   const onModeSelect = (id: string) => {
     setSelectedProject(id);
-    setShowModeDropdown(false);
+    setShowModeSheet(false);
   };
 
-  const toggleModeDropdown = () => {
+  const toggleModeSheet = () => {
     if (!isSending) {
-      setShowModeDropdown((prev) => !prev);
+      setShowModeSheet(true);
       setIsExpanded(false);
     }
   };
@@ -225,7 +227,6 @@ export default function IAC() {
   const toggleExpand = () => {
     if (!isSending && !isVoiceMode) {
       setIsExpanded((prev) => !prev);
-      setShowModeDropdown(false);
     }
   };
 
@@ -244,12 +245,22 @@ export default function IAC() {
 
   const onVoiceRecordStart = (e: any) => {
     e.preventDefault();
-    Taro.vibrateShort({ type: 'light' });
-    Taro.showToast({ title: '录音中...', icon: 'none', duration: 60000 });
+    isVoiceRecordingRef.current = false;
+    voiceTimerRef.current = setTimeout(() => {
+      isVoiceRecordingRef.current = true;
+      Taro.vibrateShort({ type: 'light' });
+      Taro.showToast({ title: '录音中...', icon: 'none', duration: 60000 });
+    }, 200);
   };
 
   const onVoiceRecordEnd = (e: any) => {
     e.preventDefault();
+    if (voiceTimerRef.current) {
+      clearTimeout(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    if (!isVoiceRecordingRef.current) return;
+    isVoiceRecordingRef.current = false;
     Taro.hideToast();
     Taro.showToast({ title: '识别中...', icon: 'loading' });
     setTimeout(() => {
@@ -311,7 +322,7 @@ export default function IAC() {
         </View>
       ) : null}
 
-      <ScrollView className='chat-area' ref={chatAreaRef} scrollY onScroll={onChatScroll} lowerThreshold={200} onScrollToLower={onLoadHistory}>
+      <ScrollView className='chat-area' ref={chatAreaRef} scrollY scrollTop={scrollTop} onScroll={onChatScroll} lowerThreshold={200} onScrollToLower={onLoadHistory}>
         {messages.length === 0 ? (
           <View className='empty-state'>
             <View className='empty-icon-wrap'>
@@ -432,42 +443,14 @@ export default function IAC() {
 
           <View className='toolbar'>
             <View className='toolbar-left'>
-              <View className='mode-btn-wrapper'>
-                <View className='mode-btn' onClick={toggleModeDropdown}>
-                  <Image
-                    className='mode-icon-img'
-                    src={PROJECT_OPTIONS.find((opt) => opt.id === selectedProject)?.selectedIcon || normalModeSelectedIcon}
-                    mode='aspectFit'
-                  />
-                  <Text className='mode-label'>{getCurrentModeShortName()}</Text>
-                  <Text className='dropdown-arrow'>{showModeDropdown ? '▲' : '▼'}</Text>
-                </View>
-                {showModeDropdown && (
-                  <View className='mode-dropdown' catchMove>
-                    {PROJECT_OPTIONS.map((option) => (
-                      <View
-                        key={option.id}
-                        className={`dropdown-item ${selectedProject === option.id ? 'active' : ''}`}
-                        onClick={() => onModeSelect(option.id)}
-                      >
-                        <View className='dropdown-item-content'>
-                          <Image
-                            className='dropdown-icon-img'
-                            src={selectedProject === option.id ? option.selectedIcon : option.icon}
-                            mode='aspectFit'
-                          />
-                          <View className='dropdown-info'>
-                            <Text className='dropdown-title'>{option.name}</Text>
-                            <Text className='dropdown-desc'>{option.description}</Text>
-                          </View>
-                          {selectedProject === option.id && (
-                            <Text className='dropdown-check'>✓</Text>
-                          )}
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
+              <View className='mode-btn' onClick={toggleModeSheet}>
+                <Image
+                  className='mode-icon-img'
+                  src={PROJECT_OPTIONS.find((opt) => opt.id === selectedProject)?.selectedIcon || normalModeSelectedIcon}
+                  mode='aspectFit'
+                />
+                <Text className='mode-label'>{getCurrentModeShortName()}</Text>
+                <Text className='dropdown-arrow'>▼</Text>
               </View>
             </View>
 
@@ -518,6 +501,41 @@ export default function IAC() {
           )}
         </View>
       </View>
+
+      {showModeSheet && (
+        <View className='mode-sheet-mask' onClick={() => setShowModeSheet(false)}>
+          <View className='mode-sheet' catchMove onClick={(e) => e.stopPropagation()}>
+            <View className='mode-sheet-header'>
+              <Text className='mode-sheet-title'>选择模型</Text>
+              <View className='mode-sheet-close' onClick={() => setShowModeSheet(false)}>
+                <Text className='mode-sheet-close-text'>✕</Text>
+              </View>
+            </View>
+            <View className='mode-sheet-list'>
+              {PROJECT_OPTIONS.map((option) => (
+                <View
+                  key={option.id}
+                  className={`mode-sheet-item ${selectedProject === option.id ? 'active' : ''}`}
+                  onClick={() => onModeSelect(option.id)}
+                >
+                  <Image
+                    className='mode-sheet-icon'
+                    src={selectedProject === option.id ? option.selectedIcon : option.icon}
+                    mode='aspectFit'
+                  />
+                  <View className='mode-sheet-info'>
+                    <Text className='mode-sheet-name'>{option.name}</Text>
+                    <Text className='mode-sheet-desc'>{option.description}</Text>
+                  </View>
+                  {selectedProject === option.id && (
+                    <Text className='mode-sheet-check'>✓</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

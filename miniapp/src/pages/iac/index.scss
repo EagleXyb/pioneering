@@ -11,21 +11,19 @@ $color-bg-bubble-ai: #ffffff;
 $color-bg-input: #ffffff;
 $color-border: #e5e5ea;
 $color-error: #ff3b30;
-$color-warning: #ff9500;
-$color-success: #07c160;
 
 page {
   height: 100%;
 }
 
 .page {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
   background: $color-bg-page;
-  position: relative;
   box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
 }
 
 .network-hint {
@@ -106,7 +104,6 @@ page {
   border-radius: 40rpx;
   border: 2rpx solid $color-border;
   background: #fff;
-  transition: all 0.2s ease;
 
   &.active {
     border-color: $color-primary;
@@ -327,7 +324,7 @@ page {
 
 .scroll-bottom-btn {
   position: absolute;
-  bottom: 200rpx;
+  bottom: 180rpx;
   right: 24rpx;
   width: 72rpx;
   height: 72rpx;
@@ -355,6 +352,7 @@ page {
   background: $color-bg-page;
   padding: 12rpx 16rpx;
   padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+  position: relative;
   z-index: 100;
 }
 
@@ -391,7 +389,6 @@ page {
   background: #fafafa;
   border-radius: 16rpx;
   margin: 12rpx 24rpx;
-  transition: background 100ms ease;
 
   &:active {
     background: #ebebeb;
@@ -417,10 +414,6 @@ page {
   display: flex;
   align-items: center;
   gap: 16rpx;
-}
-
-.mode-btn-wrapper {
-  position: relative;
 }
 
 .mode-btn {
@@ -455,69 +448,117 @@ page {
   }
 }
 
-.mode-dropdown {
-  position: absolute;
-  bottom: calc(100% + 12rpx);
+.mode-sheet-mask {
+  position: fixed;
+  top: 0;
   left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.mode-sheet {
+  width: 100%;
   background: #fff;
-  border: 2rpx solid $color-border;
-  border-radius: 24rpx;
-  box-shadow: 0 12rpx 40rpx rgba(0, 0, 0, 0.12);
-  overflow: hidden;
-  min-width: 480rpx;
-  z-index: 200;
+  border-radius: 32rpx 32rpx 0 0;
+  padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
+  animation: sheetSlideUp 0.3s ease-out;
+}
 
-  .dropdown-item {
-    padding: 24rpx 24rpx;
-    border-bottom: 1rpx solid rgba(0, 0, 0, 0.05);
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
 
-    &:last-child {
-      border-bottom: none;
-    }
+.mode-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx 32rpx 24rpx;
 
-    &.active {
-      background: $color-primary-light;
-    }
+  .mode-sheet-title {
+    font-size: 32rpx;
+    color: $color-text-primary;
+    font-weight: 600;
+  }
+
+  .mode-sheet-close {
+    width: 56rpx;
+    height: 56rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
 
     &:active {
-      background: color.adjust(#fff, $lightness: -4%);
+      background: #f0f0f0;
     }
 
-    .dropdown-item-content {
-      display: flex;
-      align-items: center;
-      gap: 16rpx;
-    }
-
-    .dropdown-icon-img {
-      width: 48rpx;
-      height: 48rpx;
-    }
-
-    .dropdown-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 6rpx;
-    }
-
-    .dropdown-title {
+    .mode-sheet-close-text {
       font-size: 28rpx;
-      color: $color-text-primary;
-      font-weight: 600;
+      color: $color-text-tertiary;
     }
+  }
+}
 
-    .dropdown-desc {
-      font-size: 22rpx;
-      color: $color-text-secondary;
-      line-height: 1.4;
-    }
+.mode-sheet-list {
+  padding: 0 24rpx;
+}
 
-    .dropdown-check {
-      font-size: 32rpx;
-      color: $color-success;
-      font-weight: bold;
-    }
+.mode-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx 16rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.05);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &.active {
+    background: $color-primary-light;
+    border-radius: 16rpx;
+  }
+
+  &:active:not(.active) {
+    background: #f8f8f8;
+    border-radius: 16rpx;
+  }
+
+  .mode-sheet-icon {
+    width: 56rpx;
+    height: 56rpx;
+    border-radius: 14rpx;
+  }
+
+  .mode-sheet-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6rpx;
+  }
+
+  .mode-sheet-name {
+    font-size: 30rpx;
+    color: $color-text-primary;
+    font-weight: 600;
+  }
+
+  .mode-sheet-desc {
+    font-size: 24rpx;
+    color: $color-text-secondary;
+    line-height: 1.4;
+  }
+
+  .mode-sheet-check {
+    font-size: 36rpx;
+    color: $color-primary;
+    font-weight: bold;
   }
 }
 
@@ -529,7 +570,6 @@ page {
   align-items: center;
   justify-content: center;
   background: transparent;
-  transition: background 100ms ease, transform 100ms ease;
 
   &:active {
     background: rgba(0, 0, 0, 0.08);
@@ -539,9 +579,6 @@ page {
   .tool-icon-img {
     width: 48rpx;
     height: 48rpx;
-    opacity: 1;
-    filter: none;
-    transition: filter 100ms ease, opacity 100ms ease;
   }
 
   &.disabled {
@@ -571,10 +608,6 @@ page {
 .expand-btn {
   &.expanded {
     background: rgba(0, 0, 0, 0.12);
-
-    .expand-icon-img {
-      transition: transform 200ms ease;
-    }
   }
 
   &:active {
@@ -592,37 +625,13 @@ page {
 
   &:active {
     background: color.adjust($color-primary, $lightness: -8%);
-    transform: scale(0.95);
   }
 }
 
 .action-btn {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 88rpx;
-  min-height: 88rpx;
-
-  &.send-btn {
-    background: $color-primary;
-
-    &:active {
-      background: color.adjust($color-primary, $lightness: -8%);
-    }
-
-    &.disabled {
-      background: #c8c8cc;
-      pointer-events: none;
-    }
-
-    .send-icon {
-      width: 38rpx;
-      height: 38rpx;
-    }
-  }
 
   &.stop-btn {
     background: $color-error;
@@ -633,6 +642,7 @@ page {
 
     &:active {
       background: color.adjust($color-error, $lightness: -8%);
+      transform: scale(0.95);
     }
 
     .stop-icon-box {
@@ -697,10 +707,6 @@ page {
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  .expand-icon {
-    font-size: 44rpx;
   }
 
   .expand-icon-img {
