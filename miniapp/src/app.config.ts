@@ -27,7 +27,7 @@ export default defineAppConfig({
         pagePath: 'pages/iac/index',
         text: 'IAC',
         iconPath: 'assets/iac.png',
-        selectedIconPath: 'assets/iac- selected.png',
+        selectedIconPath: 'assets/iac-selected.png',
       },
       {
         pagePath: 'pages/case-library/index',
