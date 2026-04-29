@@ -327,10 +327,21 @@ export class AiConfigService implements OnModuleInit {
     });
   }
 
-  async streamChat(messages: { role: string; content: string }[], res: any) {
+  async streamChat(messages: { role: string; content: string }[], res: any, overrideProvider?: string, overrideModel?: string) {
     const config = await this.findLatest();
-    if (!config || !config.apiKey || !config.provider || !config.model) {
-      res.write(`data: ${JSON.stringify({ error: '配置不完整，请检查API Key、服务商和模型' })}\n\n`);
+    if (!config || !config.apiKey) {
+      res.write(`data: ${JSON.stringify({ error: '配置不完整，请检查API Key' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // 前端传入的 provider/model 优先，否则使用数据库配置
+    const provider = overrideProvider || config.provider;
+    const model = overrideModel || config.model;
+    const apiKey = config.apiKey;
+
+    if (!provider || !model) {
+      res.write(`data: ${JSON.stringify({ error: '配置不完整，请检查服务商和模型' })}\n\n`);
       res.end();
       return;
     }
@@ -340,8 +351,6 @@ export class AiConfigService implements OnModuleInit {
       allMessages.push({ role: 'system', content: config.prompt });
     }
     allMessages.push(...messages);
-
-    const { apiKey, provider, model } = config;
 
     try {
       switch (provider) {
@@ -406,6 +415,10 @@ export class AiConfigService implements OnModuleInit {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // 跟踪是否已通过 reasoning_content 输出过思考内容
+    let hasReasoningContent = false;
+    // 跟踪 think 标签解析状态（用于 content 中包含 <think/> 标签的情况）
+    let inThinkBlock = false;
 
     try {
       while (true) {
@@ -436,12 +449,24 @@ export class AiConfigService implements OnModuleInit {
               const content = delta.content || '';
 
               if (reasoningContent) {
+                hasReasoningContent = true;
                 res.write(`data: ${JSON.stringify({ type: 'thinking', content: reasoningContent })}\n\n`);
                 res.flush?.();
               }
               if (content) {
-                res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
-                res.flush?.();
+                if (hasReasoningContent) {
+                  // 已有 reasoning_content，content 就是纯回答
+                  res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
+                  res.flush?.();
+                } else {
+                  // 无 reasoning_content，content 可能包含 <think/> 标签
+                  const result = this.parseThinkTags(content, inThinkBlock);
+                  inThinkBlock = result.inThinkBlock;
+                  for (const chunk of result.chunks) {
+                    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                    res.flush?.();
+                  }
+                }
               }
             } catch {
               continue;
@@ -495,6 +520,8 @@ export class AiConfigService implements OnModuleInit {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // Qwen 推理模型思考标签解析状态
+    let inThinkBlock = false;
 
     try {
       while (true) {
@@ -524,13 +551,27 @@ export class AiConfigService implements OnModuleInit {
               const reasoningContent = choice?.message?.reasoning_content || '';
               const content = choice?.message?.content || '';
 
+              // 优先使用 reasoning_content 字段（Qwen-QWQ 等推理模型可能提供）
               if (reasoningContent) {
                 res.write(`data: ${JSON.stringify({ type: 'thinking', content: reasoningContent })}\n\n`);
                 res.flush?.();
               }
+
+              // 如果 content 中包含 <think/> 标签，需要解析分离思考内容和回答内容
               if (content) {
-                res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
-                res.flush?.();
+                if (reasoningContent) {
+                  // 已有 reasoning_content，content 就是纯回答
+                  res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
+                  res.flush?.();
+                } else {
+                  // 无 reasoning_content，content 可能包含 <think/> 标签
+                  const result = this.parseThinkTags(content, inThinkBlock);
+                  inThinkBlock = result.inThinkBlock;
+                  for (const chunk of result.chunks) {
+                    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                    res.flush?.();
+                  }
+                }
               }
             } catch {
               continue;
@@ -544,5 +585,70 @@ export class AiConfigService implements OnModuleInit {
     } finally {
       reader.releaseLock();
     }
+  }
+
+  /**
+   * 解析 content 中可能包含的 <think ...>...</think > 标签，分离思考与回答内容
+   * 返回解析后的数据块数组和更新后的 inThinkBlock 状态
+   */
+  private parseThinkTags(
+    content: string,
+    currentInThinkBlock: boolean,
+  ): { chunks: { type: string; content: string }[]; inThinkBlock: boolean } {
+    const chunks: { type: string; content: string }[] = [];
+    let inThink = currentInThinkBlock;
+    let remaining = content;
+
+    while (remaining.length > 0) {
+      if (inThink) {
+        const closeIdx = remaining.indexOf('</think');
+        if (closeIdx !== -1) {
+          const thinkPart = remaining.slice(0, closeIdx);
+          if (thinkPart) {
+            chunks.push({ type: 'thinking', content: thinkPart });
+          }
+          const tagEnd = remaining.indexOf('>', closeIdx);
+          remaining = tagEnd !== -1 ? remaining.slice(tagEnd + 1) : remaining.slice(closeIdx + '</think'.length);
+          inThink = false;
+        } else {
+          chunks.push({ type: 'thinking', content: remaining });
+          remaining = '';
+        }
+      } else {
+        const openIdx = remaining.indexOf('<think');
+        if (openIdx !== -1) {
+          const answerPart = remaining.slice(0, openIdx);
+          if (answerPart) {
+            chunks.push({ type: 'answer', content: answerPart });
+          }
+          const tagEnd = remaining.indexOf('>', openIdx);
+          remaining = tagEnd !== -1 ? remaining.slice(tagEnd + 1) : remaining.slice(openIdx + '<think'.length);
+          inThink = true;
+        } else {
+          chunks.push({ type: 'answer', content: remaining });
+          remaining = '';
+        }
+      }
+    }
+
+    return { chunks, inThinkBlock: inThink };
+  }
+
+  /**
+   * @deprecated 使用 parseThinkTags 代替
+   * 解析 Qwen content 中可能包含的 <think ...>...</think > 标签，分离思考与回答内容
+   */
+  private parseAndStreamQwenContent(
+    content: string,
+    res: any,
+    currentInThinkBlock: boolean,
+    setInThinkBlock: (v: boolean) => void,
+  ) {
+    const result = this.parseThinkTags(content, currentInThinkBlock);
+    for (const chunk of result.chunks) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      res.flush?.();
+    }
+    setInThinkBlock(result.inThinkBlock);
   }
 }

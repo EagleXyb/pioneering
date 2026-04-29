@@ -1058,12 +1058,6 @@
     transform: scale(1.1) rotate(180deg);
 }
 }
-.thinking-arrow {
-  transition: transform 0.2s ease;
-}
-.thinking-arrow.expanded {
-  transform: rotate(90deg);
-}
 .thinking-content {
   background: #F9FAFB;
   border: 1px solid #E5E7EB;
@@ -1072,10 +1066,29 @@
   margin-bottom: 12px;
   font-size: 13px;
   color: #4B5563;
-  white-space: pre-wrap;
   max-height: 460px;
   overflow: auto;
   line-height: 1.6;
+}
+.thinking-content p {
+  margin: 0 0 8px 0;
+}
+.thinking-content p:last-of-type {
+  margin-bottom: 4px;
+}
+.thinking-complete-marker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  margin-top: 10px;
+  border-top: 1px solid #E5E7EB;
+  font-size: 12px;
+  color: #22C55E;
+  font-weight: 500;
+}
+.thinking-check-icon {
+  font-size: 14px;
 }
 .chat-thinking-animation {
   display: flex;

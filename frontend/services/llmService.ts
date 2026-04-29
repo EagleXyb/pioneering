@@ -35,7 +35,7 @@ export class LLMService {
       const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.CHAT_STREAM}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, provider: config.provider, model: config.model }),
         signal,
       });
 
@@ -100,14 +100,16 @@ export class LLMService {
           }
         }
         callbacks.onDone();
+      } catch (readerError) {
+        // abort 时静默退出，上层（useStreamChat）已自行处理超时/停止逻辑
+        if (signal?.aborted) return;
+        callbacks.onError(readerError instanceof Error ? readerError.message : '流读取异常');
       } finally {
-        reader.releaseLock();
+        try { reader.releaseLock(); } catch { /* ignore */ }
       }
     } catch (error) {
-      if (signal?.aborted) {
-        callbacks.onDone();
-        return;
-      }
+      // abort 时静默退出，上层已处理
+      if (signal?.aborted) return;
       callbacks.onError(error instanceof Error ? error.message : '未知错误');
     }
   }

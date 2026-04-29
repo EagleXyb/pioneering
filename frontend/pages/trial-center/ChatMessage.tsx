@@ -3,8 +3,18 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { ThumbsUp, ThumbsDown, Lightbulb } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Lightbulb, ChevronRight, ChevronDown } from 'lucide-react';
 import type { DisplayMessage } from './types';
+
+/**
+ * 清除思考内容中可能残留的 <think...> 和 </think> 标签
+ * 防止 HTML 标签干扰 ReactMarkdown 解析
+ */
+function stripThinkTags(content: string): string {
+  return content
+    .replace(/<think[^>]*>/gi, '')
+    .replace(/<\/think\s*>/gi, '');
+}
 
 interface ChatMessageProps {
   message: DisplayMessage;
@@ -37,7 +47,7 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
   onCopy,
   onRetry,
 }) => {
-  const thinkingContent = message.thinkingContent || '';
+  const thinkingContent = stripThinkTags(message.thinkingContent || '');
   const answerContent = message.answerContent || message.content;
   const isLoading = message.status === 'loading';
   const isThinkingInProgress = isLoading && thinkingContent.length > 0 && answerContent.length === 0;
@@ -56,22 +66,20 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
         {hasThinking && (
           <button className="thinking-toggle-btn" onClick={onToggleThinking}>
             <Lightbulb className={`thinking-icon ${isLoading && isThinkingInProgress ? 'animate' : ''}`} />
-            <span>{isLoading && isThinkingInProgress ? '思考中...' : '思考过程'}</span>
-            <svg
-              className={`thinking-arrow ${showThinking ? 'expanded' : ''}`}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
+            <span>{isLoading && isThinkingInProgress ? '思考中...' : '已完成思考'}</span>
+            {showThinking ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         )}
         {showThinking && hasThinking && (
-          <div className="thinking-content">{thinkingContent}</div>
+          <div className="thinking-content">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{thinkingContent}</ReactMarkdown>
+            {!isLoading && (
+              <div className="thinking-complete-marker">
+                <span className="thinking-check-icon">✓</span>
+                <span>已完成</span>
+              </div>
+            )}
+          </div>
         )}
         {hasAnswer && (
           <div className="chat-message-markdown">

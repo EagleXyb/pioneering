@@ -89,4 +89,12 @@ export class ChatStreamDto {
   @ValidateNested({ each: true })
   @Type(() => ChatMessage)
   messages: ChatMessage[];
+
+  @IsOptional()
+  @IsString()
+  provider?: string;
+
+  @IsOptional()
+  @IsString()
+  model?: string;
 }
