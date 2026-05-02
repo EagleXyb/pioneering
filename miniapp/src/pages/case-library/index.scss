@@ -1,19 +1,22 @@
+@use '../../app.scss' as *;
+
 .case-library-page {
   min-height: 100vh;
-  background: #F5F5F5;
-  padding-bottom: 40rpx;
+  background: $color-bg-secondary;
+  padding-bottom: 48rpx;
 }
 
+/* ========== 搜索栏 ========== */
 .search-bar {
-  padding: 20rpx 32rpx;
-  background: #FFFFFF;
+  padding: 20rpx 32rpx 24rpx;
+  background: $color-bg-primary;
 }
 
 .search-input-wrapper {
   display: flex;
   align-items: center;
-  background: #F5F5F7;
-  border-radius: 24rpx;
+  background: $color-bg-secondary;
+  border-radius: $border-radius-lg;
   padding: 18rpx 28rpx;
   gap: 16rpx;
 }
@@ -26,39 +29,38 @@
 
 .search-input {
   flex: 1;
-  font-size: 30rpx;
-  color: #333333;
+  font-size: 28rpx;
+  color: $color-text-primary;
   background: transparent;
 }
 
+/* ========== 模块区通用 ========== */
 .section {
+  padding: 0 32rpx;
   margin-top: 24px;
-  background: transparent;
-  padding: 0 16px;
 }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 24rpx;
+  padding: 32rpx 0 24rpx;
 }
 
 .section-title {
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: bold;
-  color: #1A1A1A;
+  color: $color-text-primary;
 }
 
 .refresh-btn {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  padding: 12rpx 24rpx;
+  padding: 12rpx 20rpx;
 
-  &:active {
+  &--hover {
     opacity: 0.6;
-    transform: scale(0.98);
   }
 }
 
@@ -69,129 +71,20 @@
 
 .refresh-text {
   font-size: 26rpx;
-  color: #666666;
+  color: $color-text-secondary;
 }
 
-.featured-list,
-.recommend-list {
+/* ========== 卡片列表容器（统一精选与推荐） ========== */
+.card-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24rpx;
 }
 
-.knowledge-card {
-  display: flex;
-  gap: 12px;
-  padding: 16px;
-  background: #FFFFFF;
-  border-radius: 10px;
-  align-items: flex-start;
-
-  &:active {
-    opacity: 0.9;
-    transform: scale(0.99);
-  }
-}
-
-.card-icon-wrapper {
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 8px;
-  overflow: hidden;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card-icon {
-  width: 100%;
-  height: 100%;
-}
-
-.card-icon-text {
-  font-size: 64rpx;
-}
-
-.card-content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.card-title {
-  font-size: 32rpx;
-  font-weight: normal;
-  color: #1A1A1A;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-
-.card-desc {
-  font-size: 26rpx;
-  color: #666666;
-  line-height: 1.6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-
-.card-meta {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-wrap: nowrap;
-  overflow: hidden;
-  margin-top: 8rpx;
-}
-
-.meta-item {
-  font-size: 24rpx;
-  color: #999999;
-  white-space: nowrap;
-}
-
-.meta-divider {
-  font-size: 24rpx;
-  color: #DDDDDD;
-  flex-shrink: 0;
-}
-
-.meta-author {
-  font-size: 24rpx;
-  color: #999999;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 1;
-}
-
-.verified-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32rpx;
-  height: 32rpx;
-  background: #FFC107;
-  color: #FFFFFF;
-  border-radius: 50%;
-  font-size: 22rpx;
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
+/* ========== 标签导航栏 ========== */
 .category-tabs {
   display: flex;
-  gap: 40rpx;
+  gap: 48rpx;
   padding: 32rpx 0 24rpx;
   overflow-x: auto;
   white-space: nowrap;
@@ -204,14 +97,15 @@
 
 .category-tab {
   font-size: 30rpx;
-  color: #666666;
+  color: $color-text-secondary;
   position: relative;
   padding-bottom: 12rpx;
-  transition: all 0.3s ease;
+  transition: color 0.3s ease;
   flex-shrink: 0;
+  cursor: pointer;
 
   &.active {
-    color: #1A1A1A;
+    color: $color-text-primary;
     font-weight: bold;
 
     &::after {
@@ -220,9 +114,9 @@
       bottom: 0;
       left: 50%;
       transform: translateX(-50%);
-      width: 40rpx;
+      width: 48rpx;
       height: 6rpx;
-      background: #1A1A1A;
+      background: $color-text-primary;
       border-radius: 3rpx;
     }
   }
@@ -230,4 +124,15 @@
   &:active {
     opacity: 0.7;
   }
+}
+
+/* ========== 底部加载状态 ========== */
+.loading-more {
+  text-align: center;
+  padding: 32rpx 0;
+}
+
+.loading-text {
+  font-size: 24rpx;
+  color: #CCCCCC;
 }

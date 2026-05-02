@@ -1,0 +1,131 @@
+.knowledge-card {
+  display: flex;
+  gap: 24rpx;
+  padding: 32rpx;
+  background: #FFFFFF;
+  border-radius: 16rpx;
+  align-items: flex-start;
+  transition: transform 0.2s ease;
+
+  &--hover {
+    opacity: 0.92;
+    transform: scale(0.985);
+  }
+}
+
+.card-icon-wrapper {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.card-icon-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-icon-emoji {
+  font-size: 64rpx;
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.card-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #1A1A1A;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.card-desc {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4rpx;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.meta-item {
+  font-size: 22rpx;
+  color: #999999;
+  white-space: nowrap;
+}
+
+.meta-divider {
+  font-size: 22rpx;
+  color: #DDDDDD;
+  flex-shrink: 0;
+}
+
+.card-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.meta-author {
+  font-size: 22rpx;
+  color: #999999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140rpx;
+}
+
+.verified-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32rpx;
+  height: 32rpx;
+  background: #FFC107;
+  color: #FFFFFF;
+  border-radius: 50%;
+  font-size: 20rpx;
+  font-weight: bold;
+  flex-shrink: 0;
+}

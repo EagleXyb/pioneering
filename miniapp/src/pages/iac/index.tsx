@@ -1,81 +1,50 @@
-import { View, Text, Textarea, Image, ScrollView } from '@tarojs/components';
+import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { generateId, PROJECT_OPTIONS } from './constants';
+import type { Message } from './constants';
+import { useStreamingResponse } from './hooks/useStreamingResponse';
+import EmptyState from './components/EmptyState';
+import MessageBubble from './components/MessageBubble';
+import ChatInput from './components/ChatInput';
+import ModeSheet from './components/ModeSheet';
 import './index.scss';
 
-import normalModeIcon from '../../assets/normal-mode.png';
-import normalModeSelectedIcon from '../../assets/normal-mode-selected.png';
-import professionalModeIcon from '../../assets/professional-mode.png';
-import professionalModeSelectedIcon from '../../assets/professional-mode-selected.png';
-import taskModeIcon from '../../assets/task-mode.png';
-import taskModeSelectedIcon from '../../assets/task-mode-selected.png';
-import sendIcon from '../../assets/send.png';
-import addIcon from '../../assets/add.png';
-import closeIcon from '../../assets/close.png';
-import voiceIcon from '../../assets/voice.png';
-import softKeyboardIcon from '../../assets/soft-keyboard.png';
-import imageIcon from '../../assets/image.png';
-import cameraIcon from '../../assets/camera.png';
-import localFilesIcon from '../../assets/local-files.png';
-
-const PROJECT_OPTIONS = [
-  { id: 'normal', name: '普通模式', description: '适配多元场景支持多轮对话', icon: normalModeIcon, selectedIcon: normalModeSelectedIcon },
-  { id: 'professional', name: '专业模式', description: '聚焦专业领域精准交付成果', icon: professionalModeIcon, selectedIcon: professionalModeSelectedIcon },
-  { id: 'task', name: '任务模式', description: '承接复杂任务高效推进落地', icon: taskModeIcon, selectedIcon: taskModeSelectedIcon },
-];
-
-const EXPAND_ITEMS = [
-  { key: 'image', label: '图片', icon: imageIcon },
-  { key: 'camera', label: '拍照', icon: cameraIcon },
-  { key: 'file', label: '文件', icon: localFilesIcon },
-];
-
-const MOCK_RESPONSES: Record<string, string> = {
-  normal: '您好！我是您的智能助手。很高兴为您服务，请问有什么可以帮助您的吗？我会尽力为您提供准确和有用的信息。',
-  professional: '【专业分析】根据您提供的信息，我将为您进行深入分析。从专业角度来看，这个问题需要考虑多个维度：\n1. 技术可行性分析\n2. 市场前景评估\n3. 风险因素识别',
-  task: '【任务规划】收到您的任务请求，开始进行分析...\n第一步：需求拆解\n第二步：资源调配\n第三步：执行监控\n任务规划完成，请确认是否开始执行。',
-};
-
-type MessageStatus = 'loading' | 'streaming' | 'success' | 'error' | 'stopped';
-
-interface Message {
-  id: number;
-  type: 'user' | 'ai' | 'system';
-  content: string;
-  status?: MessageStatus;
-  timestamp?: number;
-}
+const SCROLL_BOTTOM_THRESHOLD = 80;
+const SCROLL_BOTTOM_SHOW_THRESHOLD = 200;
 
 export default function IAC() {
-  const [selectedProject, setSelectedProject] = useState('normal');
+  /* ==================== 状态 ==================== */
+  const [selectedMode, setSelectedMode] = useState('normal');
   const [inputValue, setInputValue] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [showModeSheet, setShowModeSheet] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [longPressMsgId, setLongPressMsgId] = useState<number | null>(null);
   const [networkHint, setNetworkHint] = useState('');
-  const [scrollTop, setScrollTop] = useState(0);
-  const chatAreaRef = useRef<any>(null);
-  const streamingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isVoiceRecordingRef = useRef(false);
+  const [scrollStamp, setScrollStamp] = useState(0);
+
   const isAtBottomRef = useRef(true);
+  const chatAreaRef = useRef<any>(null);
 
-  const getCurrentModeShortName = () => {
-    const mode = PROJECT_OPTIONS.find((opt) => opt.id === selectedProject);
-    if (!mode) return '普通';
-    return mode.name.replace('模式', '');
-  };
+  /* ==================== Hooks ==================== */
+  const { simulateStreamingResponse, onStopGenerate, cleanup } = useStreamingResponse({
+    setMessages,
+    setIsSending,
+  });
 
+  /* ==================== 清理 ==================== */
+  useEffect(() => cleanup, [cleanup]);
+
+  /* ==================== 自动滚动 ==================== */
   const scrollToBottom = useCallback((immediate = false) => {
     if (immediate) {
-      setScrollTop(Date.now());
+      setScrollStamp(Date.now());
     } else {
-      setTimeout(() => setScrollTop(Date.now()), 50);
+      setTimeout(() => setScrollStamp(Date.now()), 50);
     }
   }, []);
 
@@ -85,63 +54,16 @@ export default function IAC() {
     }
   }, [messages, scrollToBottom]);
 
-  useEffect(() => {
-    return () => {
-      if (streamingTimerRef.current) {
-        clearTimeout(streamingTimerRef.current);
-      }
-      if (voiceTimerRef.current) {
-        clearTimeout(voiceTimerRef.current);
-      }
-    };
-  }, []);
-
-  const onChatScroll = (e: any) => {
+  /* ==================== 滚动监听 ==================== */
+  const onChatScroll = useCallback((e: any) => {
     const { scrollTop, scrollHeight, clientHeight } = e.detail;
     const distanceToBottom = scrollHeight - scrollTop - clientHeight;
-    isAtBottomRef.current = distanceToBottom < 80;
-    setShowScrollBottom(distanceToBottom > 200);
-  };
+    isAtBottomRef.current = distanceToBottom < SCROLL_BOTTOM_THRESHOLD;
+    setShowScrollBottom(distanceToBottom > SCROLL_BOTTOM_SHOW_THRESHOLD);
+  }, []);
 
-  const simulateStreamingResponse = (aiMessageId: number, fullText: string) => {
-    let charIndex = 0;
-
-    const tick = () => {
-      if (charIndex < fullText.length) {
-        const step = Math.floor(Math.random() * 2) + 1;
-        charIndex = Math.min(charIndex + step, fullText.length);
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === aiMessageId
-              ? { ...msg, content: fullText.substring(0, charIndex), status: 'streaming' as MessageStatus }
-              : msg
-          )
-        );
-        const isPunctuation = /[，。！？、；：""''）】》…—]/.test(fullText[charIndex - 1]);
-        const delay = isPunctuation
-          ? 80 + Math.random() * 60
-          : 25 + Math.random() * 35;
-        streamingTimerRef.current = setTimeout(tick, delay);
-      } else {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === aiMessageId ? { ...msg, status: 'success' as MessageStatus } : msg
-          )
-        );
-        setIsSending(false);
-        streamingTimerRef.current = null;
-      }
-    };
-
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === aiMessageId ? { ...msg, status: 'streaming' as MessageStatus } : msg
-      )
-    );
-    streamingTimerRef.current = setTimeout(tick, 400);
-  };
-
-  const onSend = () => {
+  /* ==================== 发送消息 ==================== */
+  const onSend = useCallback(() => {
     const trimmedValue = inputValue.trim();
     if (!trimmedValue || isSending) return;
 
@@ -150,20 +72,18 @@ export default function IAC() {
     setIsVoiceMode(false);
 
     const userMessage: Message = {
-      id: Date.now(),
+      id: generateId(),
       type: 'user',
       content: trimmedValue,
       status: 'success',
-      timestamp: Date.now(),
     };
 
-    const aiMessageId = Date.now() + 1;
+    const aiMessageId = generateId() + 1;
     const aiMessage: Message = {
       id: aiMessageId,
       type: 'ai',
       content: '',
       status: 'loading',
-      timestamp: Date.now(),
     };
 
     setMessages((prev) => [...prev, userMessage, aiMessage]);
@@ -171,106 +91,51 @@ export default function IAC() {
     isAtBottomRef.current = true;
     scrollToBottom(true);
 
-    const responseText = MOCK_RESPONSES[selectedProject] || MOCK_RESPONSES.normal;
-
     setTimeout(() => {
-      simulateStreamingResponse(aiMessageId, responseText);
+      simulateStreamingResponse(aiMessageId, selectedMode);
     }, 600);
-  };
+  }, [inputValue, isSending, selectedMode, scrollToBottom, simulateStreamingResponse]);
 
-  const onStopGenerate = () => {
-    if (streamingTimerRef.current) {
-      clearTimeout(streamingTimerRef.current);
-      streamingTimerRef.current = null;
-    }
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.status === 'streaming' || msg.status === 'loading'
-          ? { ...msg, status: 'stopped' as MessageStatus }
-          : msg
-      )
-    );
-    setIsSending(false);
-  };
+  /* ==================== 重试 ==================== */
+  const onRetry = useCallback(
+    (msgId: number) => {
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg) return;
 
-  const onRetry = (msgId: number) => {
-    const msg = messages.find((m) => m.id === msgId);
-    if (!msg) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, content: '', status: 'loading' as const } : m)),
+      );
+      setIsSending(true);
 
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, content: '', status: 'loading' as MessageStatus } : m
-      )
-    );
-    setIsSending(true);
+      setTimeout(() => {
+        simulateStreamingResponse(msgId, selectedMode);
+      }, 400);
+    },
+    [messages, selectedMode, simulateStreamingResponse],
+  );
 
-    const responseText = MOCK_RESPONSES[selectedProject] || MOCK_RESPONSES.normal;
-    setTimeout(() => {
-      simulateStreamingResponse(msgId, responseText);
-    }, 400);
-  };
-
+  /* ==================== 辅助计算 ==================== */
   const canSend = inputValue.trim().length > 0 && !isSending;
 
-  const onModeSelect = (id: string) => {
-    setSelectedProject(id);
+  /* ==================== 模式选择 ==================== */
+  const onModeSelect = useCallback((id: string) => {
+    setSelectedMode(id);
     setShowModeSheet(false);
-  };
+  }, []);
 
-  const toggleModeSheet = () => {
-    if (!isSending) {
-      setShowModeSheet(true);
-      setIsExpanded(false);
-    }
-  };
+  const toggleModeSheet = useCallback(() => {
+    if (isSending) return;
+    setShowModeSheet(true);
+    setIsExpanded(false);
+  }, [isSending]);
 
-  const toggleExpand = () => {
-    if (!isSending && !isVoiceMode) {
-      setIsExpanded((prev) => !prev);
-    }
-  };
+  /* ==================== 扩展面板 ==================== */
+  const toggleExpand = useCallback(() => {
+    if (isSending || isVoiceMode) return;
+    setIsExpanded((prev) => !prev);
+  }, [isSending, isVoiceMode]);
 
-  const switchToVoiceMode = () => {
-    if (isExpanded) return;
-    setIsVoiceMode(true);
-    setIsFocused(false);
-  };
-
-  const switchToKeyboardMode = () => {
-    setIsVoiceMode(false);
-    setTimeout(() => {
-      Taro.hideKeyboard();
-    }, 100);
-  };
-
-  const onVoiceRecordStart = (e: any) => {
-    e.preventDefault();
-    isVoiceRecordingRef.current = false;
-    voiceTimerRef.current = setTimeout(() => {
-      isVoiceRecordingRef.current = true;
-      Taro.vibrateShort({ type: 'light' });
-      Taro.showToast({ title: '录音中...', icon: 'none', duration: 60000 });
-    }, 200);
-  };
-
-  const onVoiceRecordEnd = (e: any) => {
-    e.preventDefault();
-    if (voiceTimerRef.current) {
-      clearTimeout(voiceTimerRef.current);
-      voiceTimerRef.current = null;
-    }
-    if (!isVoiceRecordingRef.current) return;
-    isVoiceRecordingRef.current = false;
-    Taro.hideToast();
-    Taro.showToast({ title: '识别中...', icon: 'loading' });
-    setTimeout(() => {
-      Taro.hideToast();
-      setInputValue('[语音消息]');
-      setIsVoiceMode(false);
-    }, 800);
-  };
-
-  const handleExpandItemTap = (key: string) => {
+  const handleExpandItemTap = useCallback((key: string) => {
     switch (key) {
       case 'image':
         Taro.chooseImage({ count: 9, sizeType: ['compressed'], sourceType: ['album'] });
@@ -281,18 +146,27 @@ export default function IAC() {
       case 'file':
         Taro.chooseMessageFile({ count: 10, type: 'all' });
         break;
-      default:
-        break;
     }
     setIsExpanded(false);
-  };
+  }, []);
 
-  const onLongPress = (msgId: number) => {
+  /* ==================== 语音模式 ==================== */
+  const switchToVoiceMode = useCallback(() => {
+    if (isExpanded) return;
+    setIsVoiceMode(true);
+  }, [isExpanded]);
+
+  const switchToKeyboardMode = useCallback(() => {
+    setIsVoiceMode(false);
+  }, []);
+
+  /* ==================== 长按菜单 ==================== */
+  const onLongPress = useCallback((msgId: number) => {
     setLongPressMsgId(msgId);
     Taro.vibrateShort({ type: 'medium' });
-  };
+  }, []);
 
-  const onCopyContent = (content: string) => {
+  const onCopyContent = useCallback((content: string) => {
     Taro.setClipboardData({
       data: content,
       success: () => {
@@ -300,242 +174,94 @@ export default function IAC() {
       },
     });
     setLongPressMsgId(null);
-  };
+  }, []);
 
-  const onCloseLongPress = () => {
+  const onCloseLongPress = useCallback(() => {
     setLongPressMsgId(null);
-  };
+  }, []);
 
-  const onLoadHistory = () => {
+  /* ==================== 加载历史 ==================== */
+  const onLoadHistory = useCallback(() => {
     setNetworkHint('正在加载历史消息...');
     setTimeout(() => {
       setNetworkHint('');
       Taro.showToast({ title: '已加载全部历史', icon: 'none' });
     }, 800);
-  };
+  }, []);
 
+  /* ==================== 渲染 ==================== */
   return (
     <View className='page'>
-      {networkHint ? (
+      {networkHint && (
         <View className='network-hint'>
           <Text className='network-hint-text'>{networkHint}</Text>
         </View>
-      ) : null}
+      )}
 
-      <ScrollView className='chat-area' ref={chatAreaRef} scrollY scrollTop={scrollTop} onScroll={onChatScroll} lowerThreshold={200} onScrollToLower={onLoadHistory}>
+      <ScrollView
+        className='chat-area'
+        ref={chatAreaRef}
+        scrollY
+        scrollTop={scrollStamp}
+        onScroll={onChatScroll}
+        lowerThreshold={200}
+        onScrollToLower={onLoadHistory}
+      >
         {messages.length === 0 ? (
-          <View className='empty-state'>
-            <View className='empty-icon-wrap'>
-              <Text className='empty-emoji'>💬</Text>
-            </View>
-            <Text className='empty-title'>开始对话</Text>
-            <Text className='empty-desc'>选择模式后，开始您的智能体验之旅</Text>
-            <View className='mode-quick-select'>
-              {PROJECT_OPTIONS.map((opt) => (
-                <View
-                  key={opt.id}
-                  className={`mode-chip ${selectedProject === opt.id ? 'active' : ''}`}
-                  onClick={() => setSelectedProject(opt.id)}
-                >
-                  <Text className='mode-chip-text'>{opt.name}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
+          <EmptyState selectedMode={selectedMode} onModeSelect={setSelectedMode} />
         ) : (
           <View className='message-list'>
             {messages.map((msg) => (
-              <View key={msg.id} className={`message-row ${msg.type}`}>
-                {msg.type === 'system' ? (
-                  <View className='system-hint'>
-                    <Text className='system-text'>{msg.content}</Text>
-                  </View>
-                ) : (
-                  <>
-                    <View
-                      className={`message-bubble-wrap ${msg.type}`}
-                      onLongPress={() => onLongPress(msg.id)}
-                    >
-                      <View className={`message-bubble ${msg.type} ${msg.status === 'error' ? 'error' : ''}`}>
-                        <Text className='message-text' selectable>{msg.content}</Text>
-                        {(msg.status === 'streaming') && (
-                          <Text className='streaming-cursor'>▎</Text>
-                        )}
-                        {msg.status === 'loading' && (
-                          <View className='typing-dots'>
-                            <Text className='dot'></Text>
-                            <Text className='dot'></Text>
-                            <Text className='dot'></Text>
-                          </View>
-                        )}
-                      </View>
-                      {msg.status === 'error' && (
-                        <View className='error-action' onClick={() => onRetry(msg.id)}>
-                          <Text className='error-text'>发送失败，点击重试</Text>
-                        </View>
-                      )}
-                      {msg.status === 'stopped' && (
-                        <View className='stopped-hint'>
-                          <Text className='stopped-text'>生成已停止</Text>
-                          <View className='retry-btn' onClick={() => onRetry(msg.id)}>
-                            <Text className='retry-text'>重新生成</Text>
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                    {longPressMsgId === msg.id && (
-                      <View className='longpress-menu' catchMove>
-                        <View className='menu-item' onClick={() => onCopyContent(msg.content)}>
-                          <Text className='menu-icon'>📋</Text>
-                          <Text className='menu-label'>复制</Text>
-                        </View>
-                        <View className='menu-divider'></View>
-                        <View className='menu-item' onClick={onCloseLongPress}>
-                          <Text className='menu-icon'>✕</Text>
-                          <Text className='menu-label'>取消</Text>
-                        </View>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                onRetry={onRetry}
+                onLongPress={onLongPress}
+                isLongPressed={longPressMsgId === msg.id}
+                onCopy={onCopyContent}
+                onCloseLongPress={onCloseLongPress}
+              />
             ))}
           </View>
         )}
       </ScrollView>
 
       {showScrollBottom && messages.length > 0 && (
-        <View className='scroll-bottom-btn' onClick={() => { isAtBottomRef.current = true; scrollToBottom(true); }}>
+        <View
+          className='scroll-bottom-btn'
+          onClick={() => {
+            isAtBottomRef.current = true;
+            scrollToBottom();
+          }}
+        >
           <Text className='scroll-bottom-arrow'>↓</Text>
         </View>
       )}
 
-      <View className='input-bar'>
-        <View className='input-container'>
-          {!isVoiceMode ? (
-            <View className='input-field'>
-              <Textarea
-                className='input'
-                value={inputValue}
-                onInput={(e) => setInputValue(e.detail.value)}
-                placeholder={isFocused ? '有问题尽管问IAC' : '发消息或按住说话'}
-                confirmType='send'
-                onConfirm={onSend}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                autoHeight
-                maxlength={-1}
-                disableDefaultPadding
-                cursorSpacing={16}
-                adjustPosition
-              />
-            </View>
-          ) : (
-            <View
-              className='voice-hold-area'
-              onTouchStart={onVoiceRecordStart}
-              onTouchEnd={onVoiceRecordEnd}
-              onTouchCancel={onVoiceRecordEnd}
-            >
-              <Text className='voice-hold-text'>按住 说话</Text>
-            </View>
-          )}
+      <ChatInput
+        inputValue={inputValue}
+        isSending={isSending}
+        isVoiceMode={isVoiceMode}
+        isExpanded={isExpanded}
+        selectedMode={selectedMode}
+        canSend={canSend}
+        onInput={setInputValue}
+        onSend={onSend}
+        onStopGenerate={onStopGenerate}
+        onToggleVoiceMode={switchToVoiceMode}
+        onToggleKeyboardMode={switchToKeyboardMode}
+        onToggleExpand={toggleExpand}
+        onToggleModeSheet={toggleModeSheet}
+        onExpandItemTap={handleExpandItemTap}
+      />
 
-          <View className='toolbar'>
-            <View className='toolbar-left'>
-              <View className='mode-btn' onClick={toggleModeSheet}>
-                <Image
-                  className='mode-icon-img'
-                  src={PROJECT_OPTIONS.find((opt) => opt.id === selectedProject)?.selectedIcon || normalModeSelectedIcon}
-                  mode='aspectFit'
-                />
-                <Text className='mode-label'>{getCurrentModeShortName()}</Text>
-                <Text className='dropdown-arrow'>▼</Text>
-              </View>
-            </View>
-
-            <View className='toolbar-right'>
-              {!isSending && (
-                <View
-                  className={`tool-btn voice-btn ${isVoiceMode ? 'active' : ''}`}
-                  onClick={isVoiceMode ? switchToKeyboardMode : switchToVoiceMode}
-                >
-                  <Image className='tool-icon-img' src={isVoiceMode ? softKeyboardIcon : voiceIcon} mode='aspectFit' />
-                </View>
-              )}
-
-              {isSending ? (
-                <View className='action-btn stop-btn' onClick={onStopGenerate}>
-                  <View className='stop-icon-box'>
-                    <Text className='stop-icon'>■</Text>
-                  </View>
-                  <Text className='stop-label'>停止</Text>
-                </View>
-              ) : canSend ? (
-                <View className='tool-btn send-mode-btn' onClick={onSend}>
-                  <Image className='tool-icon-img' src={sendIcon} mode='aspectFit' />
-                </View>
-              ) : (
-                <View className={`tool-btn expand-btn ${isExpanded ? 'expanded' : ''}`} onClick={toggleExpand}>
-                  <Image className='tool-icon-img expand-icon-img' src={isExpanded ? closeIcon : addIcon} mode='aspectFit' />
-                </View>
-              )}
-            </View>
-          </View>
-
-          {isExpanded && (
-            <View className='expand-panel' catchMove>
-              {EXPAND_ITEMS.map((item) => (
-                <View
-                  key={item.key}
-                  className='expand-item'
-                  onClick={() => handleExpandItemTap(item.key)}
-                >
-                  <View className='expand-icon-wrap'>
-                    <Image className='expand-icon-img' src={item.icon} mode='aspectFit' />
-                  </View>
-                  <Text className='expand-label'>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      </View>
-
-      {showModeSheet && (
-        <View className='mode-sheet-mask' onClick={() => setShowModeSheet(false)}>
-          <View className='mode-sheet' catchMove onClick={(e) => e.stopPropagation()}>
-            <View className='mode-sheet-header'>
-              <Text className='mode-sheet-title'>选择模型</Text>
-              <View className='mode-sheet-close' onClick={() => setShowModeSheet(false)}>
-                <Text className='mode-sheet-close-text'>✕</Text>
-              </View>
-            </View>
-            <View className='mode-sheet-list'>
-              {PROJECT_OPTIONS.map((option) => (
-                <View
-                  key={option.id}
-                  className={`mode-sheet-item ${selectedProject === option.id ? 'active' : ''}`}
-                  onClick={() => onModeSelect(option.id)}
-                >
-                  <Image
-                    className='mode-sheet-icon'
-                    src={selectedProject === option.id ? option.selectedIcon : option.icon}
-                    mode='aspectFit'
-                  />
-                  <View className='mode-sheet-info'>
-                    <Text className='mode-sheet-name'>{option.name}</Text>
-                    <Text className='mode-sheet-desc'>{option.description}</Text>
-                  </View>
-                  {selectedProject === option.id && (
-                    <Text className='mode-sheet-check'>✓</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      )}
+      <ModeSheet
+        visible={showModeSheet}
+        selectedMode={selectedMode}
+        options={PROJECT_OPTIONS}
+        onSelect={onModeSelect}
+        onClose={() => setShowModeSheet(false)}
+      />
     </View>
   );
 }

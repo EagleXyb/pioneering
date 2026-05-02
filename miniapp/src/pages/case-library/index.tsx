@@ -1,30 +1,12 @@
 import { View, Text, Image, Input } from '@tarojs/components';
-import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useReachBottom } from '@tarojs/taro';
+import { useState, useCallback } from 'react';
+import KnowledgeCard, { KnowledgeCardData } from '../../components/KnowledgeCard';
 import './index.scss';
 
-interface KnowledgeBase {
-  id: number;
-  title: string;
-  description: string;
-  icon: string;
-  views: number;
-  contentCount: number;
-  author: string;
-  isVerified?: boolean;
-}
+const PAGE_SIZE = 5;
 
-interface RecommendItem {
-  id: number;
-  title: string;
-  description: string;
-  thumbnail: string;
-  views: number;
-  contentCount: number;
-  author: string;
-}
-
-const featuredData: KnowledgeBase[] = [
+const featuredData: KnowledgeCardData[] = [
   {
     id: 1,
     title: '宠医 AI 问诊知识库',
@@ -67,12 +49,12 @@ const featuredData: KnowledgeBase[] = [
   }
 ];
 
-const recommendData: RecommendItem[] = [
+const allRecommendData: KnowledgeCardData[] = [
   {
     id: 1,
     title: 'A 股 / 港股股市研报分享',
-    description: '研报隔周更新，处于版权原因，不予以公开',
-    thumbnail: '',
+    description: '研报隔周更新，出于版权原因，不予以公开',
+    icon: '',
     views: 3566,
     contentCount: 15114,
     author: '投研届得面包树'
@@ -81,7 +63,7 @@ const recommendData: RecommendItem[] = [
     id: 2,
     title: '公众号写作知识库',
     description: '搜集了一些文章写作的技巧和推送知识，为自己和大...',
-    thumbnail: '',
+    icon: '',
     views: 3636,
     contentCount: 216,
     author: '合木'
@@ -90,10 +72,37 @@ const recommendData: RecommendItem[] = [
     id: 3,
     title: '向上管理 / 沟通 / 领导 / 上司 / 汇报',
     description: '混迹职场10余年的80后来告诉你，学会管理你的上...',
-    thumbnail: '',
+    icon: '',
     views: 3485,
     contentCount: 16,
     author: '付明辉'
+  },
+  {
+    id: 4,
+    title: 'Python 编程从入门到实践',
+    description: '涵盖 Python 基础语法、数据结构、常用库及项目...',
+    icon: '',
+    views: 2891,
+    contentCount: 420,
+    author: 'CodeMaster'
+  },
+  {
+    id: 5,
+    title: '设计模式与架构实践',
+    description: '深入浅出讲解 23 种设计模式及微服务架构设计...',
+    icon: '',
+    views: 2156,
+    contentCount: 328,
+    author: '架构师之路'
+  },
+  {
+    id: 6,
+    title: '数据科学入门指南',
+    description: '包含统计学基础、机器学习算法、数据分析工具链...',
+    icon: '',
+    views: 1943,
+    contentCount: 267,
+    author: 'DataGeek'
   }
 ];
 
@@ -102,17 +111,41 @@ const categories = ['推荐', '科技', '教育', '职场', '财经', '产业', 
 export default function CaseLibrary() {
   const [searchValue, setSearchValue] = useState('');
   const [activeCategory, setActiveCategory] = useState('推荐');
+  const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const handleCardClick = (id: number) => {
+  const displayedRecommend = allRecommendData.slice(0, displayedCount);
+  const hasMore = displayedCount < allRecommendData.length;
+
+  const handleCardClick = useCallback((id: number) => {
     console.log('点击卡片:', id);
-  };
+  }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     console.log('换一换');
-  };
+  }, []);
+
+  const handleSearchInput = useCallback((e: { detail: { value: string } }) => {
+    setSearchValue(e.detail.value);
+  }, []);
+
+  const handleCategoryChange = useCallback((category: string) => {
+    setActiveCategory(category);
+    setDisplayedCount(PAGE_SIZE);
+  }, []);
+
+  useReachBottom(() => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    setTimeout(() => {
+      setDisplayedCount(c => c + PAGE_SIZE);
+      setLoadingMore(false);
+    }, 400);
+  });
 
   return (
     <View className='case-library-page'>
+      {/* 搜索栏 */}
       <View className='search-bar'>
         <View className='search-input-wrapper'>
           <Image className='search-icon' src='/assets/case/search.png' mode='aspectFit' />
@@ -120,84 +153,56 @@ export default function CaseLibrary() {
             className='search-input'
             placeholder='搜索订阅知识库'
             value={searchValue}
-            onInput={(e) => setSearchValue(e.detail.value)}
+            onInput={handleSearchInput}
+            confirmType='search'
           />
         </View>
       </View>
 
-      <View className='section'>
+      {/* 精选模块 */}
+      <View className='section section-featured'>
         <View className='section-header'>
           <Text className='section-title'>精选</Text>
-          <View className='refresh-btn' onClick={handleRefresh}>
+          <View className='refresh-btn' onClick={handleRefresh} hoverClass='refresh-btn--hover'>
             <Image className='refresh-icon' src='/assets/case/refresh.png' mode='aspectFit' />
             <Text className='refresh-text'>换一换</Text>
           </View>
         </View>
-
-        <View className='featured-list'>
+        <View className='card-list'>
           {featuredData.map((item) => (
-            <View key={item.id} className='knowledge-card' onClick={() => handleCardClick(item.id)}>
-              <View className='card-icon-wrapper'>
-                {item.icon ? (
-                  <Image className='card-icon' src={item.icon} mode='aspectFill' />
-                ) : (
-                  <Text className='card-icon-text'>📚</Text>
-                )}
-              </View>
-              <View className='card-content'>
-                <Text className='card-title'>{item.title}</Text>
-                <Text className='card-desc'>{item.description}</Text>
-                <View className='card-meta'>
-                  <Text className='meta-item'>{item.views} 人订阅</Text>
-                  <Text className='meta-divider'>|</Text>
-                  <Text className='meta-item'>{item.contentCount} 个内容</Text>
-                  <Text className='meta-divider'>|</Text>
-                  <Text className='meta-author'>@{item.author}</Text>
-                  {item.isVerified && <Text className='verified-badge'>✓</Text>}
-                </View>
-              </View>
-            </View>
+            <KnowledgeCard key={item.id} item={item} onClick={handleCardClick} />
           ))}
         </View>
       </View>
 
-      <View className='section'>
+      {/* 推荐列表 */}
+      <View className='section section-recommend'>
         <View className='category-tabs'>
           {categories.map((category) => (
             <Text
               key={category}
               className={`category-tab ${activeCategory === category ? 'active' : ''}`}
-              onClick={() => setActiveCategory(category)}
+              onClick={() => handleCategoryChange(category)}
             >
               {category}
             </Text>
           ))}
         </View>
-
-        <View className='recommend-list'>
-          {recommendData.map((item) => (
-            <View key={item.id} className='knowledge-card' onClick={() => handleCardClick(item.id)}>
-              <View className='card-icon-wrapper'>
-                {item.thumbnail ? (
-                  <Image className='card-icon' src={item.thumbnail} mode='aspectFill' />
-                ) : (
-                  <Text className='card-icon-text'>📖</Text>
-                )}
-              </View>
-              <View className='card-content'>
-                <Text className='card-title'>{item.title}</Text>
-                <Text className='card-desc'>{item.description}</Text>
-                <View className='card-meta'>
-                  <Text className='meta-item'>{item.views} 人订阅</Text>
-                  <Text className='meta-divider'>|</Text>
-                  <Text className='meta-item'>{item.contentCount} 个内容</Text>
-                  <Text className='meta-divider'>|</Text>
-                  <Text className='meta-author'>@{item.author}</Text>
-                </View>
-              </View>
-            </View>
+        <View className='card-list'>
+          {displayedRecommend.map((item) => (
+            <KnowledgeCard key={item.id} item={item} onClick={handleCardClick} />
           ))}
         </View>
+        {loadingMore && (
+          <View className='loading-more'>
+            <Text className='loading-text'>加载中...</Text>
+          </View>
+        )}
+        {!hasMore && displayedRecommend.length > 0 && (
+          <View className='loading-more'>
+            <Text className='loading-text'>— 已展示全部 —</Text>
+          </View>
+        )}
       </View>
     </View>
   );
