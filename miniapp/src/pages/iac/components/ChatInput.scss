@@ -64,7 +64,7 @@
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 12rpx;
 }
 
 .mode-btn {
@@ -103,14 +103,18 @@
 }
 
 .dropdown-arrow {
-  font-size: 20rpx;
-  color: #aeaeb2;
+  width: 0;
+  height: 0;
+  border-left: 8rpx solid transparent;
+  border-right: 8rpx solid transparent;
+  border-top: 10rpx solid #aeaeb2;
   margin-left: 4rpx;
+  flex-shrink: 0;
 }
 
 .tool-btn {
-  width: 88rpx;
-  height: 88rpx;
+  width: 72rpx;
+  height: 72rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -124,8 +128,13 @@
 }
 
 .tool-icon-img {
-  width: 48rpx;
-  height: 48rpx;
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.voice-btn .tool-icon-img {
+  width: 44rpx;
+  height: 44rpx;
 }
 
 .voice-btn.active {
@@ -160,9 +169,9 @@
 
 .action-btn.stop-btn {
   background: #ff3b30;
-  gap: 8rpx;
-  padding: 0 20rpx;
-  width: auto;
+  gap: 6rpx;
+  padding: 0 18rpx;
+  height: 72rpx;
   border-radius: 36rpx;
 
   &:active {
@@ -172,15 +181,15 @@
 }
 
 .stop-icon-box {
-  width: 28rpx;
-  height: 28rpx;
+  width: 24rpx;
+  height: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .stop-icon {
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #fff;
 }
 

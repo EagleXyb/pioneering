@@ -39,29 +39,50 @@
 
 .mode-quick-select {
   display: flex;
-  gap: 20rpx;
-  flex-wrap: wrap;
-  justify-content: center;
+  width: 100%;
+  max-width: 600rpx;
+  margin: 0 auto;
+  position: relative;
+  background: #fff;
+  border-radius: 40rpx;
+  overflow: hidden;
+  padding: 4rpx;
+  box-sizing: border-box;
+}
+
+.mode-selector-thumb {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: calc(100% / var(--total-items) - 8rpx);
+  height: calc(100% - 8rpx);
+  background: rgba(36, 144, 248, 0.1);
+  border-radius: 36rpx;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  transform: translateX(calc(var(--active-index) * (100% + 8rpx / var(--total-items))));
 }
 
 .mode-chip {
-  padding: 14rpx 32rpx;
-  border-radius: 40rpx;
-  border: 2rpx solid #e5e5ea;
-  background: #fff;
-
-  &.active {
-    border-color: #2490f8;
-    background: rgba(36, 144, 248, 0.1);
-  }
+  flex: 1;
+  padding: 14rpx 0;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  transition: none;
 }
 
 .mode-chip-text {
   font-size: 26rpx;
   color: #86868b;
   font-weight: 500;
+  transition: color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-  .active & {
-    color: #2490f8;
-  }
+.mode-chip.active .mode-chip-text {
+  color: #2490f8;
 }

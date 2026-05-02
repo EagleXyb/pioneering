@@ -132,7 +132,7 @@ export default function ChatInput({
               <Image className='mode-icon-img' src={modeIcon} mode='aspectFit' />
               <View className='mode-divider' />
               <Text className='mode-label'>{currentModeLabel}</Text>
-              <Text className='dropdown-arrow'>▼</Text>
+              <View className='dropdown-arrow' />
             </View>
           </View>
 

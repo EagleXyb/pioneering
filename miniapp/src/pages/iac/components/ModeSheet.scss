@@ -166,18 +166,40 @@ $font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue'
   border-radius: 44rpx;
   padding: 4rpx;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+.mode-segment-thumb {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: calc(50% - 4rpx);
+  height: calc(100% - 8rpx);
+  background: #fff;
+  border-radius: 40rpx;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.06), 0 1rpx 2rpx rgba(0, 0, 0, 0.03);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  z-index: 0;
+}
+
+.mode-segment--deep .mode-segment-thumb {
+  transform: translateX(100%);
 }
 
 .mode-segment-item {
   padding: 10rpx 28rpx;
   border-radius: 40rpx;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
-
-  &--active {
-    background: #fff;
-    box-shadow: 0 1rpx 6rpx rgba(0, 0, 0, 0.08), 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
-  }
+  background: transparent;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  z-index: 1;
 
   &:active:not(&--active) {
     background: rgba(0, 0, 0, 0.03);
@@ -191,11 +213,11 @@ $font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue'
   font-family: $font-family;
   font-weight: 400;
   white-space: nowrap;
+  transition: color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .mode-segment-item--active .mode-segment-text {
   color: $color-theme;
-  font-weight: 600;
 }
 
 /* ========== 模型选择项 ========== */

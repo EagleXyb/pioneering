@@ -77,7 +77,8 @@ export default function ModeSheet({
                 <Image className='mode-card-row-icon' src={deepThinkingIcon} mode='aspectFit' />
                 <Text className='mode-card-row-label'>思考模式</Text>
               </View>
-              <View className='mode-segment'>
+              <View className={`mode-segment ${thinkingMode === 'deep' ? 'mode-segment--deep' : ''}`}>
+                <View className='mode-segment-thumb' />
                 <View
                   className={`mode-segment-item ${thinkingMode === 'fast' ? 'mode-segment-item--active' : ''}`}
                   onClick={() => onToggleThinkingMode('fast')}
