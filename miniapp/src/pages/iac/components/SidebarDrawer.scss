@@ -1,0 +1,220 @@
+$sidebar-width: 560rpx;
+$sidebar-bg: #fafaf8;
+$sidebar-text-primary: #1d1d1f;
+$sidebar-text-secondary: #8e8e93;
+$sidebar-btn-bg: #f0f0f2;
+$sidebar-radius: 20rpx;
+$sidebar-padding-h: 32rpx;
+$sidebar-item-padding-v: 24rpx;
+$sidebar-item-padding-h: 24rpx;
+$sidebar-section-gap: 32rpx;
+
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: row;
+}
+
+.sidebar-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.sidebar-panel {
+  position: relative;
+  width: $sidebar-width;
+  height: 100%;
+  background: $sidebar-bg;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+  transform: translateX(-100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &--open {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx $sidebar-padding-h;
+  padding-top: calc(28rpx + env(safe-area-inset-top));
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: $sidebar-text-primary;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+.sidebar-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.sidebar-icon-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:active {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  &--sm {
+    width: 48rpx;
+    height: 48rpx;
+  }
+}
+
+.sidebar-icon {
+  font-size: 32rpx;
+  color: $sidebar-text-primary;
+
+  &--sm {
+    font-size: 28rpx;
+    color: $sidebar-text-secondary;
+  }
+}
+
+.sidebar-new-chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  margin: 0 $sidebar-padding-h;
+  margin-bottom: $sidebar-section-gap;
+  padding: 22rpx 0;
+  background: $sidebar-btn-bg;
+  border-radius: $sidebar-radius;
+  flex-shrink: 0;
+
+  &:active {
+    background: #e5e5ea;
+  }
+}
+
+.sidebar-new-chat-icon {
+  font-size: 32rpx;
+  color: $sidebar-text-primary;
+}
+
+.sidebar-new-chat-text {
+  font-size: 30rpx;
+  color: $sidebar-text-primary;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+.sidebar-section {
+  padding: 0 $sidebar-padding-h;
+  flex-shrink: 0;
+
+  &--history {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 24rpx);
+  }
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.sidebar-section-title {
+  font-size: 24rpx;
+  color: $sidebar-text-secondary;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+.sidebar-section-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $sidebar-item-padding-v $sidebar-item-padding-h;
+  border-radius: $sidebar-radius;
+}
+
+.sidebar-group-item-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-group-folder-icon {
+  font-size: 32rpx;
+  flex-shrink: 0;
+}
+
+.sidebar-group-name {
+  font-size: 28rpx;
+  color: $sidebar-text-primary;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-group-pin-icon {
+  font-size: 28rpx;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.sidebar-history-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar-history-item {
+  padding: $sidebar-item-padding-v $sidebar-item-padding-h;
+  border-radius: $sidebar-radius;
+}
+
+.sidebar-history-text {
+  font-size: 28rpx;
+  color: $sidebar-text-primary;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.sidebar-item--hover {
+  background: rgba(0, 0, 0, 0.04);
+}

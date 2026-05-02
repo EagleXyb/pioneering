@@ -34,6 +34,46 @@ page {
   }
 }
 
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx;
+  padding-top: calc(16rpx + env(safe-area-inset-top));
+  background: $color-bg-page;
+  flex-shrink: 0;
+}
+
+.chat-header-menu-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:active {
+    background: rgba(0, 0, 0, 0.06);
+  }
+}
+
+.chat-header-menu-icon {
+  font-size: 36rpx;
+  color: #1d1d1f;
+}
+
+.chat-header-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+.chat-header-placeholder {
+  width: 64rpx;
+  height: 64rpx;
+}
+
 .chat-area {
   flex: 1;
   overflow-y: auto;

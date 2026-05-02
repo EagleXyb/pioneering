@@ -29,6 +29,12 @@ export interface ModeOption {
   selectedIcon: string;
 }
 
+export interface ModelItem {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface ExpandItem {
   key: string;
   label: string;
@@ -61,6 +67,24 @@ export const PROJECT_OPTIONS: ModeOption[] = [
     description: '承接复杂任务高效推进落地',
     icon: taskModeIcon,
     selectedIcon: taskModeSelectedIcon,
+  },
+];
+
+export const MODEL_LIST: ModelItem[] = [
+  {
+    id: 'deepseek-flash',
+    name: 'DeepSeek V4-Flash',
+    description: '适用简单问题，适合普通模式',
+  },
+  {
+    id: 'deepseek-pro',
+    name: 'DeepSeek V4-Pro',
+    description: '复杂任务分析，适合专业模式',
+  },
+  {
+    id: 'glm-5.1',
+    name: '智谱 GLM-5.1',
+    description: '长任务分析，适合任务模式',
   },
 ];
 

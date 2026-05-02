@@ -1,17 +1,35 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { generateId, PROJECT_OPTIONS } from './constants';
+import { generateId, PROJECT_OPTIONS, MODEL_LIST } from './constants';
 import type { Message } from './constants';
 import { useStreamingResponse } from './hooks/useStreamingResponse';
 import EmptyState from './components/EmptyState';
 import MessageBubble from './components/MessageBubble';
 import ChatInput from './components/ChatInput';
 import ModeSheet from './components/ModeSheet';
+import SidebarDrawer from './components/SidebarDrawer';
 import './index.scss';
 
 const SCROLL_BOTTOM_THRESHOLD = 80;
 const SCROLL_BOTTOM_SHOW_THRESHOLD = 200;
+
+const MOCK_GROUPS = [
+  { id: '1', name: '产品创新' },
+  { id: '2', name: '技术方案' },
+  { id: '3', name: '市场策略' },
+];
+
+const MOCK_HISTORY = [
+  { id: '1', title: '关于AI产品定位的讨论' },
+  { id: '2', title: '小程序交互方案优化' },
+  { id: '3', title: '用户增长策略分析' },
+  { id: '4', title: '竞品功能对比研究' },
+  { id: '5', title: '技术架构选型建议' },
+  { id: '6', title: '商业模式可行性评估' },
+  { id: '7', title: '产品需求优先级排序' },
+  { id: '8', title: '设计系统规范讨论' },
+];
 
 export default function IAC() {
   /* ==================== 状态 ==================== */
@@ -26,6 +44,10 @@ export default function IAC() {
   const [longPressMsgId, setLongPressMsgId] = useState<number | null>(null);
   const [networkHint, setNetworkHint] = useState('');
   const [scrollStamp, setScrollStamp] = useState(0);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('deepseek-flash');
+  const [searchEnabled, setSearchEnabled] = useState(true);
+  const [thinkingMode, setThinkingMode] = useState<'fast' | 'deep'>('fast');
 
   const isAtBottomRef = useRef(true);
   const chatAreaRef = useRef<any>(null);
@@ -189,6 +211,51 @@ export default function IAC() {
     }, 800);
   }, []);
 
+  /* ==================== 侧边栏 ==================== */
+  const openSidebar = useCallback(() => {
+    setShowSidebar(true);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setShowSidebar(false);
+  }, []);
+
+  const onNewChat = useCallback(() => {
+    setMessages([]);
+    setInputValue('');
+    setShowSidebar(false);
+  }, []);
+
+  const onGroupClick = useCallback((id: string) => {
+    console.log('点击分组:', id);
+  }, []);
+
+  const onHistoryClick = useCallback((id: string) => {
+    console.log('点击历史:', id);
+  }, []);
+
+  const onAddGroup = useCallback(() => {
+    console.log('添加分组');
+  }, []);
+
+  const onMoreHistory = useCallback(() => {
+    console.log('更多历史');
+  }, []);
+
+  /* ==================== 模型选择弹框 ==================== */
+  const onSelectModel = useCallback((id: string) => {
+    setSelectedModel(id);
+    setShowModeSheet(false);
+  }, []);
+
+  const onToggleSearch = useCallback(() => {
+    setSearchEnabled((prev) => !prev);
+  }, []);
+
+  const onToggleThinkingMode = useCallback((mode: 'fast' | 'deep') => {
+    setThinkingMode(mode);
+  }, []);
+
   /* ==================== 渲染 ==================== */
   return (
     <View className='page'>
@@ -197,6 +264,14 @@ export default function IAC() {
           <Text className='network-hint-text'>{networkHint}</Text>
         </View>
       )}
+
+      <View className='chat-header'>
+        <View className='chat-header-menu-btn' onClick={openSidebar}>
+          <Text className='chat-header-menu-icon'>☰</Text>
+        </View>
+        <Text className='chat-header-title'>IAC 创意孵化</Text>
+        <View className='chat-header-placeholder' />
+      </View>
 
       <ScrollView
         className='chat-area'
@@ -244,6 +319,9 @@ export default function IAC() {
         isVoiceMode={isVoiceMode}
         isExpanded={isExpanded}
         selectedMode={selectedMode}
+        thinkingMode={thinkingMode}
+        selectedModel={selectedModel}
+        searchEnabled={searchEnabled}
         canSend={canSend}
         onInput={setInputValue}
         onSend={onSend}
@@ -257,10 +335,26 @@ export default function IAC() {
 
       <ModeSheet
         visible={showModeSheet}
-        selectedMode={selectedMode}
-        options={PROJECT_OPTIONS}
-        onSelect={onModeSelect}
+        selectedModel={selectedModel}
+        searchEnabled={searchEnabled}
+        thinkingMode={thinkingMode}
+        models={MODEL_LIST}
+        onSelectModel={onSelectModel}
+        onToggleSearch={onToggleSearch}
+        onToggleThinkingMode={onToggleThinkingMode}
         onClose={() => setShowModeSheet(false)}
+      />
+
+      <SidebarDrawer
+        visible={showSidebar}
+        onClose={closeSidebar}
+        onNewChat={onNewChat}
+        groups={MOCK_GROUPS}
+        historyList={MOCK_HISTORY}
+        onGroupClick={onGroupClick}
+        onHistoryClick={onHistoryClick}
+        onAddGroup={onAddGroup}
+        onMoreHistory={onMoreHistory}
       />
     </View>
   );

@@ -70,21 +70,30 @@
 .mode-btn {
   display: flex;
   align-items: center;
-  gap: 8rpx;
-  padding: 8rpx 16rpx 8rpx 12rpx;
-  border: 2rpx solid #e5e5ea;
-  border-radius: 32rpx;
-  background: #fafafa;
-  min-height: 64rpx;
+  gap: 12rpx;
+  padding: 6rpx 22rpx 6rpx 14rpx;
+  border: 1.5rpx solid #e8e8ed;
+  border-radius: 40rpx;
+  background: #fff;
+  min-height: 52rpx;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.04);
 
   &:active {
-    background: #f0f0f0;
+    background: #f7f7f7;
   }
 }
 
 .mode-icon-img {
-  width: 36rpx;
-  height: 36rpx;
+  width: 30rpx;
+  height: 30rpx;
+  flex-shrink: 0;
+}
+
+.mode-divider {
+  width: 1.5rpx;
+  height: 20rpx;
+  background: #d8d8dd;
+  flex-shrink: 0;
 }
 
 .mode-label {

@@ -6,7 +6,9 @@ import addIcon from '../../../assets/add.png';
 import closeIcon from '../../../assets/close.png';
 import voiceIcon from '../../../assets/voice.png';
 import softKeyboardIcon from '../../../assets/soft-keyboard.png';
-import { PROJECT_OPTIONS, EXPAND_ITEMS } from '../constants';
+import networkIcon from '../../../assets/iac/Network.png';
+import disableNetworkIcon from '../../../assets/iac/Disable-Network.png';
+import { PROJECT_OPTIONS, MODEL_LIST, EXPAND_ITEMS } from '../constants';
 import type { ExpandItem } from '../constants';
 import './ChatInput.scss';
 
@@ -16,6 +18,9 @@ interface ChatInputProps {
   isVoiceMode: boolean;
   isExpanded: boolean;
   selectedMode: string;
+  thinkingMode: 'fast' | 'deep';
+  selectedModel: string;
+  searchEnabled: boolean;
   canSend: boolean;
   onInput: (value: string) => void;
   onSend: () => void;
@@ -27,12 +32,21 @@ interface ChatInputProps {
   onExpandItemTap: (key: string) => void;
 }
 
+const MODEL_SHORT_NAME_MAP: Record<string, string> = {
+  'deepseek-flash': 'DSF',
+  'deepseek-pro': 'DSP',
+  'glm-5.1': 'GLM',
+};
+
 export default function ChatInput({
   inputValue,
   isSending,
   isVoiceMode,
   isExpanded,
   selectedMode,
+  thinkingMode,
+  selectedModel,
+  searchEnabled,
   canSend,
   onInput,
   onSend,
@@ -47,7 +61,10 @@ export default function ChatInput({
   const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentMode = PROJECT_OPTIONS.find((opt) => opt.id === selectedMode);
-  const currentModeLabel = currentMode?.shortName || '普通';
+  const modelShortName = MODEL_SHORT_NAME_MAP[selectedModel] || currentMode?.shortName || '';
+  const thinkingLabel = thinkingMode === 'fast' ? '快速' : '深度';
+  const currentModeLabel = `${modelShortName} ${thinkingLabel}`;
+  const modeIcon = searchEnabled ? networkIcon : disableNetworkIcon;
 
   const onVoiceRecordStart = useCallback((e: any) => {
     e.preventDefault();
@@ -112,7 +129,8 @@ export default function ChatInput({
         <View className='toolbar'>
           <View className='toolbar-left'>
             <View className='mode-btn' onClick={onToggleModeSheet}>
-              <Image className='mode-icon-img' src={currentMode?.selectedIcon || ''} mode='aspectFit' />
+              <Image className='mode-icon-img' src={modeIcon} mode='aspectFit' />
+              <View className='mode-divider' />
               <Text className='mode-label'>{currentModeLabel}</Text>
               <Text className='dropdown-arrow'>▼</Text>
             </View>

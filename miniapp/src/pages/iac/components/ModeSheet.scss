@@ -1,117 +1,256 @@
+$sheet-radius: 36rpx;
+$card-radius: 20rpx;
+$color-theme: #00b853;
+$color-theme-light: rgba(0, 184, 83, 0.08);
+$color-text-primary: #333333;
+$color-text-secondary: #333333;
+$color-text-tertiary: #aeaeb2;
+$color-bg-page: #f2f2f7;
+$color-bg-card: #ffffff;
+$color-bg-segment-inactive: #f1f1f5;
+$color-toggle-off: #e0e0e5;
+$color-card-border: rgba(0, 0, 0, 0.04);
+$color-card-shadow: rgba(0, 0, 0, 0.06);
+$color-row-divider: rgba(0, 0, 0, 0.04);
+$font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+
 .mode-sheet-mask {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
+  background: rgba(0, 0, 0, 0);
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
-  justify-content: center;
+  transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+
+  &--visible {
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+  }
 }
 
 .mode-sheet {
   width: 100%;
-  background: #fff;
-  border-radius: 32rpx 32rpx 0 0;
-  padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
-  animation: sheetSlideUp 0.3s ease-out;
-}
+  max-height: 82vh;
+  background: $color-bg-page;
+  border-radius: $sheet-radius $sheet-radius 0 0;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
 
-@keyframes sheetSlideUp {
-  from {
-    transform: translateY(100%);
-  }
-  to {
+  &--open {
     transform: translateY(0);
   }
 }
 
-.mode-sheet-header {
+.mode-sheet-drag-bar {
+  display: flex;
+  justify-content: center;
+  padding: 15rpx 0 25rpx;
+  flex-shrink: 0;
+}
+
+.mode-sheet-drag-handle {
+  width: 82rpx;
+  height: 10rpx;
+  border-radius: 6rpx;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.mode-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 20rpx;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 28rpx);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* ========== 卡片容器 ========== */
+
+.mode-card {
+  background: $color-bg-card;
+  border-radius: $card-radius;
+  border: 1rpx solid $color-card-border;
+  box-shadow: 0 2rpx 16rpx $color-card-shadow;
+  padding: 4rpx 0;
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+/* ========== 卡片行（功能开关模块） ========== */
+
+.mode-card-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 32rpx 32rpx 24rpx;
+  padding: 26rpx 28rpx;
+
+  & + & {
+    border-top: 1rpx solid $color-row-divider;
+  }
 }
 
-.mode-sheet-title {
-  font-size: 32rpx;
-  color: #1d1d1f;
+.mode-card-row-left {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.mode-card-row-icon {
+  width: 38rpx;
+  height: 38rpx;
+  flex-shrink: 0;
+}
+
+.mode-card-row-label {
+  font-size: 29rpx;
+  line-height: 1.3;
+  color: #333333;
+  font-weight: 400;
+  font-family: $font-family;
+}
+
+/* ========== Toggle 开关 ========== */
+
+.mode-toggle {
+  width: 102rpx;
+  height: 48rpx;
+  box-sizing: border-box;
+  border-radius: 24rpx;
+  background: $color-toggle-off;
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+
+  &--on {
+    background: #34c759;
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+.mode-toggle-thumb {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.15), 0 1rpx 3rpx rgba(0, 0, 0, 0.1);
+  position: absolute;
+  top: 2rpx;
+  left: 2rpx;
+  will-change: transform;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mode-toggle--on .mode-toggle-thumb {
+  transform: translateX(56rpx);
+}
+
+/* ========== 分段控件 ========== */
+
+.mode-segment {
+  display: flex;
+  background: $color-bg-segment-inactive;
+  border-radius: 44rpx;
+  padding: 4rpx;
+  flex-shrink: 0;
+}
+
+.mode-segment-item {
+  padding: 10rpx 28rpx;
+  border-radius: 40rpx;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+
+  &--active {
+    background: #fff;
+    box-shadow: 0 1rpx 6rpx rgba(0, 0, 0, 0.08), 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  }
+
+  &:active:not(&--active) {
+    background: rgba(0, 0, 0, 0.03);
+  }
+}
+
+.mode-segment-text {
+  font-size: 26rpx;
+  line-height: 1.3;
+  color: #666666;
+  font-family: $font-family;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.mode-segment-item--active .mode-segment-text {
+  color: $color-theme;
   font-weight: 600;
 }
 
-.mode-sheet-close {
-  width: 56rpx;
-  height: 56rpx;
+/* ========== 模型选择项 ========== */
+
+.mode-model-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-}
+  justify-content: space-between;
+  padding: 26rpx 28rpx;
+  transition: background-color 0.2s ease;
+  border-radius: 16rpx;
+  margin: 4rpx 8rpx;
 
-.mode-sheet-close:active {
-  background: #f0f0f0;
-}
+  &--hover {
+    background: $color-theme-light;
+  }
 
-.mode-sheet-close-text {
-  font-size: 28rpx;
-  color: #aeaeb2;
-}
-
-.mode-sheet-list {
-  padding: 0 24rpx;
-}
-
-.mode-sheet-item {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  padding: 24rpx 16rpx;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.05);
+  &:first-child {
+    margin-top: 4rpx;
+  }
 
   &:last-child {
-    border-bottom: none;
-  }
-
-  &.active {
-    background: rgba(36, 144, 248, 0.1);
-    border-radius: 16rpx;
+    margin-bottom: 4rpx;
   }
 }
 
-.mode-sheet-item:active:not(.active) {
-  background: #f8f8f8;
-  border-radius: 16rpx;
-}
-
-.mode-sheet-icon {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 14rpx;
-}
-
-.mode-sheet-info {
+.mode-model-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6rpx;
 }
 
-.mode-sheet-name {
-  font-size: 30rpx;
-  color: #1d1d1f;
-  font-weight: 600;
+.mode-model-name {
+  font-size: 29rpx;
+  line-height: 1.35;
+  color: #333333;
+  font-weight: 400;
+  font-family: $font-family;
 }
 
-.mode-sheet-desc {
-  font-size: 24rpx;
-  color: #86868b;
-  line-height: 1.4;
+.mode-model-desc {
+  font-size: 23rpx;
+  line-height: 1.45;
+  color: #999999;
+  font-family: $font-family;
+  font-weight: 400;
 }
 
-.mode-sheet-check {
-  font-size: 36rpx;
-  color: #2490f8;
-  font-weight: bold;
+.mode-model-check {
+  font-size: 34rpx;
+  color: $color-theme;
+  font-weight: 700;
+  margin-left: 20rpx;
+  flex-shrink: 0;
+  line-height: 1;
 }
