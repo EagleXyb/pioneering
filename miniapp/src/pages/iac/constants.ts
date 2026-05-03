@@ -1,12 +1,12 @@
-import normalModeIcon from '../../assets/normal-mode.png';
-import normalModeSelectedIcon from '../../assets/normal-mode-selected.png';
-import professionalModeIcon from '../../assets/professional-mode.png';
-import professionalModeSelectedIcon from '../../assets/professional-mode-selected.png';
-import taskModeIcon from '../../assets/task-mode.png';
-import taskModeSelectedIcon from '../../assets/task-mode-selected.png';
-import imageIcon from '../../assets/image.png';
-import cameraIcon from '../../assets/camera.png';
-import localFilesIcon from '../../assets/local-files.png';
+const _normalModeIcon = '';
+const _normalModeSelectedIcon = '';
+const _professionalModeIcon = '';
+const _professionalModeSelectedIcon = '';
+const _taskModeIcon = '';
+const _taskModeSelectedIcon = '';
+import imageIcon from '../../assets/input/image.png';
+import cameraIcon from '../../assets/input/camera.png';
+import localFilesIcon from '../../assets/input/local-files.png';
 
 /* ==================== 类型定义 ==================== */
 
@@ -49,24 +49,24 @@ export const PROJECT_OPTIONS: ModeOption[] = [
     name: '普通模式',
     shortName: '普通',
     description: '适配多元场景支持多轮对话',
-    icon: normalModeIcon,
-    selectedIcon: normalModeSelectedIcon,
+    icon: _normalModeIcon,
+    selectedIcon: _normalModeSelectedIcon,
   },
   {
     id: 'professional',
     name: '专业模式',
     shortName: '专业',
     description: '聚焦专业领域精准交付成果',
-    icon: professionalModeIcon,
-    selectedIcon: professionalModeSelectedIcon,
+    icon: _professionalModeIcon,
+    selectedIcon: _professionalModeSelectedIcon,
   },
   {
     id: 'task',
     name: '任务模式',
     shortName: '任务',
     description: '承接复杂任务高效推进落地',
-    icon: taskModeIcon,
-    selectedIcon: taskModeSelectedIcon,
+    icon: _taskModeIcon,
+    selectedIcon: _taskModeSelectedIcon,
   },
 ];
 

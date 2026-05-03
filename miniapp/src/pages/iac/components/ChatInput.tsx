@@ -1,11 +1,11 @@
 import { View, Text, Image, Textarea } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useCallback, useRef } from 'react';
-import sendIcon from '../../../assets/send.png';
-import addIcon from '../../../assets/add.png';
-import closeIcon from '../../../assets/close.png';
-import voiceIcon from '../../../assets/voice.png';
-import softKeyboardIcon from '../../../assets/soft-keyboard.png';
+import sendIcon from '../../../assets/input/send.png';
+import addIcon from '../../../assets/input/add.png';
+import closeIcon from '../../../assets/input/close.png';
+import voiceIcon from '../../../assets/input/voice.png';
+import softKeyboardIcon from '../../../assets/input/keyboard.png';
 import networkIcon from '../../../assets/iac/Network.png';
 import disableNetworkIcon from '../../../assets/iac/Disable-Network.png';
 import { PROJECT_OPTIONS, MODEL_LIST, EXPAND_ITEMS } from '../constants';
@@ -182,7 +182,7 @@ export default function ChatInput({
                 onClick={() => onExpandItemTap(item.key)}
               >
                 <View className='expand-icon-wrap'>
-                  <Image className='expand-icon-img' src={item.icon} mode='aspectFit' />
+                  <Image className={`expand-icon-img expand-icon-${item.key}`} src={item.icon} mode='aspectFit' />
                 </View>
                 <Text className='expand-label'>{item.label}</Text>
               </View>

@@ -128,13 +128,23 @@
 }
 
 .tool-icon-img {
-  width: 40rpx;
-  height: 40rpx;
+  width: 44rpx;
+  height: 44rpx;
 }
 
 .voice-btn .tool-icon-img {
-  width: 44rpx;
-  height: 44rpx;
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.expand-btn .tool-icon-img {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.send-mode-btn .tool-icon-img {
+  width: 48rpx;
+  height: 48rpx;
 }
 
 .voice-btn.active {
@@ -246,6 +256,21 @@
 .expand-icon-img {
   width: 48rpx;
   height: 48rpx;
+}
+
+.expand-icon-image {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.expand-icon-camera {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.expand-icon-file {
+  width: 44rpx;
+  height: 44rpx;
 }
 
 .expand-label {
