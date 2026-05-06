@@ -81,13 +81,13 @@
     font-size: 36rpx;
     font-weight: 600;
     color: #1A1A1A;
-    line-height: 1.4;
-    margin: 24rpx 0 24rpx 0;
+    line-height: 1.8;
+    margin: 16rpx 0 30rpx 0;
   }
 
   ul {
     padding-left: 40rpx;
-    margin: 12rpx 0;
+    margin: 0 0 30rpx 0;
   }
 
   li {
@@ -100,7 +100,7 @@
   }
 
   p {
-    margin: 0 0 24rpx 0;
+    margin: 0 0 30rpx 0;
   }
 
   p:last-child {
@@ -121,7 +121,7 @@
     padding: 24rpx 32rpx;
     border-radius: 12rpx;
     overflow-x: auto;
-    margin: 16rpx 0;
+    margin: 0 0 30rpx 0;
   }
 
   pre code {
@@ -133,7 +133,7 @@
   blockquote {
     border-left: 6rpx solid #1677ff;
     padding-left: 24rpx;
-    margin: 16rpx 0;
+    margin: 0 0 30rpx 0;
     color: #666;
   }
 
@@ -145,7 +145,7 @@
   hr {
     border: none;
     border-top: 2rpx solid #e5e5ea;
-    margin: 24rpx 0;
+    margin: 0 0 30rpx 0;
   }
 }
 
