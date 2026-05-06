@@ -75,12 +75,14 @@
   color: #333;
   word-break: break-all;
   text-align: justify;
+  letter-spacing: 0.2px;
 
   h3 {
-    font-size: 32rpx;
+    font-size: 36rpx;
     font-weight: 600;
-    margin: 24rpx 0 12rpx 0;
-    color: #222;
+    color: #1A1A1A;
+    line-height: 1.4;
+    margin: 24rpx 0 24rpx 0;
   }
 
   ul {
@@ -93,12 +95,12 @@
   }
 
   strong {
-    color: #1377ed;
-    font-weight: 500;
+    color: #000000;
+    font-weight: 600;
   }
 
   p {
-    margin: 0 0 16rpx 0;
+    margin: 0 0 24rpx 0;
   }
 
   p:last-child {
@@ -106,8 +108,8 @@
   }
 
   code {
-    background: rgba(19, 119, 237, 0.08);
-    color: #1377ed;
+    background: rgba(22, 119, 255, 0.08);
+    color: #1677ff;
     padding: 4rpx 12rpx;
     border-radius: 6rpx;
     font-size: 26rpx;
@@ -129,14 +131,14 @@
   }
 
   blockquote {
-    border-left: 6rpx solid #1377ed;
+    border-left: 6rpx solid #1677ff;
     padding-left: 24rpx;
     margin: 16rpx 0;
     color: #666;
   }
 
   a {
-    color: #1377ed;
+    color: #1677ff;
     text-decoration: none;
   }
 
@@ -149,7 +151,7 @@
 
 .streaming-cursor {
   display: inline-block;
-  color: #2490f8;
+  color: #1677ff;
   font-weight: 300;
   animation: cursorBlink 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   margin-left: 2rpx;
