@@ -70,7 +70,7 @@ const tools = [
 ];
 
 const TrialCenter: React.FC = () => {
-  const [selectedModel, setSelectedModel] = useState('MiniMax-M2.7');
+  const [selectedModel, setSelectedModel] = useState('deepseek-v4-flash');
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string>('normal');

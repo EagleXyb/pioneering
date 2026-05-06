@@ -34,7 +34,7 @@ const FloatingCursor = forwardRef<FloatingCursorRef, {}>((_, ref) => {
         top: 0,
         width: '2px',
         height: '1.2em',
-        backgroundColor: '#8B5CF6',
+        backgroundColor: '#1377ed',
         transition: 'transform 0.05s ease-out',
         opacity: 0,
         pointerEvents: 'none',

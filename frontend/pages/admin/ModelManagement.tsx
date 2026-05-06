@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { TestStatus, SaveStatus, TestResult, ProviderInfo, ModelInfo } from './types';
+import { PROVIDER_LIST, MODEL_MAP } from '@shared/constants';
 
 interface ModelManagementProps {
   apiKey: string;
@@ -99,11 +100,9 @@ const renderApiKeyConfig: React.FC<ApiKeyConfigProps> = ({
             className="form-select"
           >
             <option value="">请选择服务商</option>
-            <option value="deepseek">DeepSeek</option>
-            <option value="glm">GLM</option>
-            <option value="minimax">MiniMax</option>
-            <option value="kimi">Kimi</option>
-            <option value="qwen">Qwen</option>
+            {PROVIDER_LIST.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
           </select>
         </div>
         <div className="form-group">
@@ -119,39 +118,9 @@ const renderApiKeyConfig: React.FC<ApiKeyConfigProps> = ({
             disabled={!provider}
           >
             <option value="">请选择模型</option>
-            {provider === 'deepseek' && (
-              <>
-                <option value="deepseek-chat">DeepSeek Chat</option>
-                <option value="deepseek-coder">DeepSeek Coder</option>
-                <option value="deepseek-v2">DeepSeek V2</option>
-              </>
-            )}
-            {provider === 'glm' && (
-              <>
-                <option value="glm-4">GLM-4</option>
-                <option value="glm-4v">GLM-4V</option>
-                <option value="glm-3-turbo">GLM-3 Turbo</option>
-              </>
-            )}
-            {provider === 'minimax' && (
-              <>
-                <option value="MiniMax-M2.5">MiniMax-M2.5</option>
-                <option value="MiniMax-M2.7">MiniMax-M2.7</option>
-              </>
-            )}
-            {provider === 'kimi' && (
-              <>
-                <option value="kimi-1">Kimi-1</option>
-                <option value="kimi-2">Kimi-2</option>
-              </>
-            )}
-            {provider === 'qwen' && (
-              <>
-                <option value="qwen-2.5">Qwen-2.5</option>
-                <option value="qwen-2">Qwen-2</option>
-                <option value="qwen-1.5">Qwen-1.5</option>
-              </>
-            )}
+            {provider && MODEL_MAP[provider]?.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -245,15 +214,13 @@ const renderProviderManagement = () => {
 
 // 模型列表
 const renderModelList = () => {
-  const models: ModelInfo[] = [
-    { provider: 'DeepSeek', name: 'DeepSeek Chat', id: 'deepseek-chat', status: 'active' },
-    { provider: 'DeepSeek', name: 'DeepSeek Coder', id: 'deepseek-coder', status: 'active' },
-    { provider: 'GLM', name: 'GLM-4', id: 'glm-4', status: 'active' },
-    { provider: 'GLM', name: 'GLM-4V', id: 'glm-4v', status: 'active' },
-    { provider: 'MiniMax', name: 'ABAB-6', id: 'abab-6', status: 'active' },
-    { provider: 'Kimi', name: 'Kimi-2', id: 'kimi-2', status: 'active' },
-    { provider: 'Qwen', name: 'Qwen-2.5', id: 'qwen-2.5', status: 'active' },
-  ];
+  const models: ModelInfo[] = [];
+  for (const [providerId, providerModels] of Object.entries(MODEL_MAP)) {
+    const providerName = PROVIDER_LIST.find(p => p.id === providerId)?.name || providerId;
+    for (const m of providerModels) {
+      models.push({ provider: providerName, name: m.name, id: m.id, status: 'active' });
+    }
+  }
 
   return (
     <div className="content-panel">

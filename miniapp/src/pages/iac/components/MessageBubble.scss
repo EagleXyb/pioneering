@@ -68,6 +68,85 @@
   }
 }
 
+/* AI 回复 Markdown 渲染样式 - 跨端统一规范 */
+.ai-reply {
+  font-size: 30rpx;
+  line-height: 1.6;
+  color: #333;
+  word-break: break-all;
+  text-align: justify;
+
+  h3 {
+    font-size: 32rpx;
+    font-weight: 600;
+    margin: 24rpx 0 12rpx 0;
+    color: #222;
+  }
+
+  ul {
+    padding-left: 40rpx;
+    margin: 12rpx 0;
+  }
+
+  li {
+    margin: 8rpx 0;
+  }
+
+  strong {
+    color: #1377ed;
+    font-weight: 500;
+  }
+
+  p {
+    margin: 0 0 16rpx 0;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  code {
+    background: rgba(19, 119, 237, 0.08);
+    color: #1377ed;
+    padding: 4rpx 12rpx;
+    border-radius: 6rpx;
+    font-size: 26rpx;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  }
+
+  pre {
+    background: #f9fafb;
+    padding: 24rpx 32rpx;
+    border-radius: 12rpx;
+    overflow-x: auto;
+    margin: 16rpx 0;
+  }
+
+  pre code {
+    background: none;
+    color: #1F2937;
+    padding: 0;
+  }
+
+  blockquote {
+    border-left: 6rpx solid #1377ed;
+    padding-left: 24rpx;
+    margin: 16rpx 0;
+    color: #666;
+  }
+
+  a {
+    color: #1377ed;
+    text-decoration: none;
+  }
+
+  hr {
+    border: none;
+    border-top: 2rpx solid #e5e5ea;
+    margin: 24rpx 0;
+  }
+}
+
 .streaming-cursor {
   display: inline-block;
   color: #2490f8;

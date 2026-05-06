@@ -737,6 +737,21 @@
 .model-option:hover {
   background: #F5F5F5;
 }
+.model-option.selected {
+  background: rgba(36, 144, 248, 0.08);
+  color: #2490f8;
+}
+.model-group-label {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.model-group-label:first-child {
+  padding-top: 10px;
+}
 .send-btn {
   width: 30px;
   height: 30px;
@@ -880,7 +895,11 @@
   white-space: pre-wrap;
 }
 .chat-message-markdown {
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #333;
+  word-break: break-all;
+  text-align: justify;
 }
 .chat-message-markdown p {
   margin: 0 0 8px 0;
@@ -899,8 +918,8 @@
   line-height: 1.5;
 }
 .chat-message-markdown code {
-  background: rgba(139, 92, 246, 0.1);
-  color: #7C3AED;
+  background: rgba(19, 119, 237, 0.08);
+  color: #1377ed;
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 13px;
@@ -915,13 +934,13 @@
 .chat-message-markdown ul,
 .chat-message-markdown ol {
   padding-left: 20px;
-  margin: 8px 0;
+  margin: 6px 0;
 }
 .chat-message-markdown li {
   margin: 4px 0;
 }
 .chat-message-markdown blockquote {
-  border-left: 3px solid #8B5CF6;
+  border-left: 3px solid #1377ed;
   padding-left: 12px;
   margin: 8px 0;
   color: #666;
@@ -943,7 +962,7 @@
   font-weight: 600;
 }
 .chat-message-markdown a {
-  color: #8B5CF6;
+  color: #1377ed;
   text-decoration: none;
 }
 .chat-message-markdown a:hover {
@@ -953,13 +972,17 @@
 .chat-message-markdown h2,
 .chat-message-markdown h3,
 .chat-message-markdown h4 {
-  margin: 12px 0 8px 0;
+  margin: 12px 0 6px 0;
   font-weight: 600;
 }
 .chat-message-markdown h1 { font-size: 20px; }
 .chat-message-markdown h2 { font-size: 18px; }
-.chat-message-markdown h3 { font-size: 16px; }
+.chat-message-markdown h3 { font-size: 16px; color: #222; }
 .chat-message-markdown h4 { font-size: 15px; }
+.chat-message-markdown strong {
+  color: #1377ed;
+  font-weight: 500;
+}
 .chat-message-markdown hr {
   border: none;
   border-top: 1px solid #E5E7EB;
@@ -1350,11 +1373,15 @@
     color: #F5F5F7;
 }
 .chat-message-markdown code {
-    background: rgba(139, 92, 246, 0.2);
-    color: #C4B5FD;
+    background: rgba(19, 119, 237, 0.15);
+    color: #6BB3F0;
 }
 .chat-message-markdown pre {
     background: #1E1E2E;
+}
+.chat-message-markdown strong {
+    color: #6BB3F0;
+    font-weight: 500;
 }
 .chat-message-markdown th {
     background: #3A3A3C;
@@ -1364,6 +1391,7 @@
     border-color: #48484A;
 }
 .chat-message-markdown blockquote {
+    border-left-color: #1377ed;
     color: #D1D1D6;
 }
 .action-btn:hover {

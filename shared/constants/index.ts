@@ -32,27 +32,24 @@ export const PROVIDER_LIST = [
 
 export const MODEL_MAP: Record<string, { id: string; name: string }[]> = {
   deepseek: [
-    { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-    { id: 'deepseek-coder', name: 'DeepSeek Coder' },
-    { id: 'deepseek-v2', name: 'DeepSeek V2' },
+    { id: 'deepseek-v4-flash', name: 'Deepseek-V4-Flash' },
+    { id: 'deepseek-v4-pro', name: 'Deepseek-V4-Pro' },
   ],
   glm: [
-    { id: 'glm-4', name: 'GLM-4' },
-    { id: 'glm-4v', name: 'GLM-4V' },
-    { id: 'glm-3-turbo', name: 'GLM-3 Turbo' },
-  ],
-  minimax: [
-    { id: 'abab-5.5', name: 'ABAB-5.5' },
-    { id: 'abab-6', name: 'ABAB-6' },
+    { id: 'glm-5.1', name: 'GLM-5.1' },
+    { id: 'glm-5v-turbo', name: 'GLM-5v-Turbo' },
+    { id: 'glm-5.0-turbo', name: 'GLM-5.0-Turbo' },
   ],
   kimi: [
-    { id: 'kimi-1', name: 'Kimi-1' },
-    { id: 'kimi-2', name: 'Kimi-2' },
+    { id: 'kimi-k2.6', name: 'Kimi-K2.6' },
+    { id: 'kimi-k2.5', name: 'Kimi-K2.5' },
+  ],
+  minimax: [
+    { id: 'MiniMax-M2.7', name: 'MiniMax-M2.7' },
+    { id: 'MiniMax-M2.5', name: 'MiniMax-M2.5' },
   ],
   qwen: [
-    { id: 'qwen-2.5', name: 'Qwen-2.5' },
-    { id: 'qwen-2', name: 'Qwen-2' },
-    { id: 'qwen-1.5', name: 'Qwen-1.5' },
+    { id: 'qwen-3.6plus', name: 'Qwen-3.6plus' },
   ],
 };
 

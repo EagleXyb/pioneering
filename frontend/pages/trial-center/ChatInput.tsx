@@ -1,6 +1,6 @@
 import React from 'react';
 import { GlobeLock, Waypoints, ShipWheel, SquareSlash } from 'lucide-react';
-import { PROJECT_OPTIONS } from '@shared/constants';
+import { PROJECT_OPTIONS, MODEL_MAP, PROVIDER_LIST } from '@shared/constants';
 import { MAX_INPUT_LENGTH } from './types';
 
 interface ChatInputProps {
@@ -157,9 +157,20 @@ const ChatInput: React.FC<ChatInputProps> = ({
               </div>
               {isModelDropdownOpen && (
                 <div className="model-dropdown">
-                  <div className="model-option" onClick={() => { onSelectModel('MiniMax-M2.7'); onToggleModelDropdown(); }}>MiniMax-M2.7</div>
-                  <div className="model-option" onClick={() => { onSelectModel('GPT-4'); onToggleModelDropdown(); }}>GPT-4</div>
-                  <div className="model-option" onClick={() => { onSelectModel('Claude-3'); onToggleModelDropdown(); }}>Claude-3</div>
+                  {PROVIDER_LIST.map(p => (
+                    <React.Fragment key={p.id}>
+                      <div className="model-group-label">{p.name}</div>
+                      {MODEL_MAP[p.id].map(m => (
+                        <div
+                          key={m.id}
+                          className={`model-option ${selectedModel === m.id ? 'selected' : ''}`}
+                          onClick={() => { onSelectModel(m.id); onToggleModelDropdown(); }}
+                        >
+                          {m.name}
+                        </div>
+                      ))}
+                    </React.Fragment>
+                  ))}
                 </div>
               )}
             </div>

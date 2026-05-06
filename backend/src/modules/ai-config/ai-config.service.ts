@@ -18,8 +18,15 @@ export class AiConfigService implements OnModuleInit {
         data: {
           apiKey: '',
           provider: 'deepseek',
-          model: 'deepseek-chat',
-          prompt: '你是一个有用的AI助手。',
+          model: 'deepseek-v4-flash',
+          prompt: `你是一个有用的AI助手。请遵循以下 Markdown 输出规范：
+1. 标题层级：只使用 ### 三级标题，简洁不突兀
+2. 列表：统一使用 - 无序列表，不使用数字列表
+3. 重点强调：只使用 **加粗**，不使用斜体、删除线
+4. 段落间距：段落之间空一行，列表项之间不空行
+5. 不使用换行符，全部靠 Markdown 自动换行
+6. 少量使用 ✅ ✨ 📌 等简洁图标提升可读性
+7. 排版简洁、清晰、重点突出，避免冗余格式`,
         },
       });
     }

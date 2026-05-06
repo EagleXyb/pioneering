@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import llmService from '../services/llmService';
+import { PROVIDER_LIST, MODEL_MAP } from '@shared/constants';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
@@ -255,11 +256,9 @@ const TestConfig: React.FC = () => {
                         className="form-select"
                       >
                         <option value="">请选择服务商</option>
-                        <option value="deepseek">DeepSeek</option>
-                        <option value="glm">GLM</option>
-                        <option value="minimax">MiniMax</option>
-                        <option value="kimi">Kimi</option>
-                        <option value="qwen">Qwen</option>
+                        {PROVIDER_LIST.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -272,39 +271,9 @@ const TestConfig: React.FC = () => {
                         disabled={!provider}
                       >
                         <option value="">请选择模型</option>
-                        {provider === 'deepseek' && (
-                          <>
-                            <option value="deepseek-chat">DeepSeek Chat</option>
-                            <option value="deepseek-coder">DeepSeek Coder</option>
-                            <option value="deepseek-v2">DeepSeek V2</option>
-                          </>
-                        )}
-                        {provider === 'glm' && (
-                          <>
-                            <option value="glm-4">GLM-4</option>
-                            <option value="glm-4v">GLM-4V</option>
-                            <option value="glm-3-turbo">GLM-3 Turbo</option>
-                          </>
-                        )}
-                        {provider === 'minimax' && (
-                          <>
-                            <option value="abab-5.5">ABAB-5.5</option>
-                            <option value="abab-6">ABAB-6</option>
-                          </>
-                        )}
-                        {provider === 'kimi' && (
-                          <>
-                            <option value="kimi-1">Kimi-1</option>
-                            <option value="kimi-2">Kimi-2</option>
-                          </>
-                        )}
-                        {provider === 'qwen' && (
-                          <>
-                            <option value="qwen-2.5">Qwen-2.5</option>
-                            <option value="qwen-2">Qwen-2</option>
-                            <option value="qwen-1.5">Qwen-1.5</option>
-                          </>
-                        )}
+                        {provider && MODEL_MAP[provider]?.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

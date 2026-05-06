@@ -1,6 +1,7 @@
-import { View, Text } from '@tarojs/components';
-import { useCallback } from 'react';
+import { View, Text, RichText } from '@tarojs/components';
+import { useCallback, useMemo } from 'react';
 import type { Message } from '../constants';
+import { markdownToHtml } from '../../../utils/markdown';
 import './MessageBubble.scss';
 
 interface MessageBubbleProps {
@@ -24,6 +25,11 @@ export default function MessageBubble({
     onCopy(message.content);
   }, [message.content, onCopy]);
 
+  const aiHtml = useMemo(() => {
+    if (message.type !== 'ai') return '';
+    return markdownToHtml(message.content);
+  }, [message.type, message.content]);
+
   if (message.type === 'system') {
     return (
       <View className='message-row system'>
@@ -43,9 +49,13 @@ export default function MessageBubble({
         <View
           className={`message-bubble ${message.type} ${message.status === 'error' ? 'error' : ''}`}
         >
-          <Text className='message-text' selectable>
-            {message.content}
-          </Text>
+          {message.type === 'ai' ? (
+            <RichText className='ai-reply' nodes={aiHtml} />
+          ) : (
+            <Text className='message-text' selectable>
+              {message.content}
+            </Text>
+          )}
           {message.status === 'streaming' && <Text className='streaming-cursor'>▎</Text>}
           {message.status === 'loading' && (
             <View className='typing-dots'>
