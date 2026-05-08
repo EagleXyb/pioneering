@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useGlobalPrompt } from './useGlobalPrompt';
-import type { GlobalPrompt, PromptListProps } from './types';
+import type { PromptListProps } from './types';
 import './PromptList.css';
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -11,18 +11,12 @@ type SortField = 'updatedAt' | 'createdAt' | null;
 export const PromptList: React.FC<PromptListProps> = ({
   onEdit,
   onView,
-  onOnline,
-  onOffline,
-  onDelete,
-  onCreate,
 }) => {
   const {
     prompts,
     loading,
     error,
     fetchPrompts,
-    handleOnline: apiHandleOnline,
-    handleOffline: apiHandleOffline,
     handleDelete: apiHandleDelete,
   } = useGlobalPrompt();
 
@@ -56,20 +50,6 @@ export const PromptList: React.FC<PromptListProps> = ({
     }
     return 0;
   });
-
-  // 处理上线操作
-  const handleOnline = async (id: number) => {
-    if (window.confirm('确定要将此Prompt上线吗？')) {
-      await apiHandleOnline(id);
-    }
-  };
-
-  // 处理下线操作
-  const handleOffline = async (id: number) => {
-    if (window.confirm('确定要将此Prompt下线吗？')) {
-      await apiHandleOffline(id);
-    }
-  };
 
   // 处理删除操作
   const handleDelete = async (id: number) => {

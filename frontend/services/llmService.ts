@@ -133,6 +133,37 @@ export class LLMService {
       return null;
     }
   }
+
+  async callLLM(
+    config: { apiKey: string; provider: string; model: string; prompt: string },
+    userInput: string
+  ): Promise<{ content: string; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.TEST}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: config.provider,
+          model: config.model,
+          prompt: config.prompt,
+          messages: [{ role: 'user', content: userInput }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '未知错误');
+        return { content: '', error: `请求失败(${response.status}): ${errorText}` };
+      }
+
+      const data = await response.json();
+      return { content: data.content || data.response || JSON.stringify(data) };
+    } catch (error) {
+      return {
+        content: '',
+        error: error instanceof Error ? error.message : '请求失败',
+      };
+    }
+  }
 }
 
 const llmServiceInstance = LLMService.getInstance();

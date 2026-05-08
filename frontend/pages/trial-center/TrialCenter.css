@@ -189,11 +189,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 5px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 3px;
   cursor: pointer;
   transition: all 0.15s;
   position: relative;
+  background: transparent;
 }
 .sidebar-conversation-item:hover {
   background: #E5E7EB;
@@ -208,52 +210,181 @@
 .sidebar-conversation-item.active .sidebar-conversation-icon {
   color: #8B5CF6;
 }
-.sidebar-conversation-info {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
 .sidebar-conversation-title {
+  flex: 1;
   font-size: 13px;
   color: #333;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
   line-height: 1.3;
 }
 .sidebar-conversation-item.active .sidebar-conversation-title {
   color: #8B5CF6;
   font-weight: 500;
 }
-.sidebar-conversation-meta {
-  font-size: 11px;
+.sidebar-conversation-pin {
+  flex-shrink: 0;
   color: #9CA3AF;
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 14px;
+  height: 14px;
+  transition: color 0.15s;
 }
-.sidebar-conversation-delete {
-  width: 22px;
-  height: 22px;
+.sidebar-conversation-pin:hover {
+  color: #6B7280;
+}
+.sidebar-conversation-more-btn {
+  width: 24px;
+  height: 24px;
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   background: transparent;
   color: #9CA3AF;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0;
-  transition: all 0.15s;
   flex-shrink: 0;
+  transition: all 0.15s;
+  opacity: 0;
 }
-.sidebar-conversation-item:hover .sidebar-conversation-delete {
+.sidebar-conversation-item:hover .sidebar-conversation-more-btn {
   opacity: 1;
 }
-.sidebar-conversation-delete:hover {
-  background: #FEE2E2;
+.sidebar-conversation-more-btn:hover {
+  background: #D1D5DB;
+  color: #6B7280;
+}
+.sidebar-conversation-menu {
+  position: absolute;
+  right: 8px;
+  top: calc(100% - 4px);
+  width: 140px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  padding: 4px 0;
+  animation: menuFadeIn 0.15s ease;
+}
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.sidebar-conversation-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.1s;
+  line-height: 1;
+}
+.sidebar-conversation-menu-item:hover {
+  background: #F5F5F5;
+}
+.sidebar-conversation-menu-item.disabled {
+  color: #D1D5DB;
+  cursor: not-allowed;
+}
+.sidebar-conversation-menu-item.disabled:hover {
+  background: transparent;
+}
+.sidebar-conversation-menu-item.danger {
   color: #EF4444;
+}
+.sidebar-conversation-menu-item.danger:hover {
+  background: #FEF2F2;
+}
+.sidebar-conversation-menu-divider {
+  height: 1px;
+  background: #E5E7EB;
+  margin: 4px 0;
+}
+.sidebar-delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: overlayFadeIn 0.15s ease;
+}
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.sidebar-delete-confirm-dialog {
+  width: 360px;
+  background: white;
+  border-radius: 8px;
+  padding: 28px 24px 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  animation: dialogFadeIn 0.2s ease;
+}
+@keyframes dialogFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.sidebar-delete-confirm-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1F2937;
+  line-height: 1.5;
+}
+.sidebar-delete-confirm-desc {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #6B7280;
+  line-height: 1.5;
+}
+.sidebar-delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+.sidebar-delete-confirm-btn {
+  padding: 9px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  border: none;
+  line-height: 1;
+}
+.sidebar-delete-confirm-btn.cancel {
+  background: #F3F4F6;
+  color: #374151;
+}
+.sidebar-delete-confirm-btn.cancel:hover {
+  background: #E5E7EB;
+}
+.sidebar-delete-confirm-btn.danger {
+  background: #EF4444;
+  color: white;
+}
+.sidebar-delete-confirm-btn.danger:hover {
+  background: #DC2626;
 }
 .sidebar-footer {
   margin-top: auto;
@@ -1340,12 +1471,37 @@
 .sidebar-conversation-item.active .sidebar-conversation-title {
   color: #C4B5FD;
 }
-.sidebar-conversation-meta {
+.sidebar-conversation-more-btn:hover {
+  background: #555557;
+  color: #D1D1D6;
+}
+.sidebar-conversation-pin {
   color: #98989D;
 }
-.sidebar-conversation-delete:hover {
-  background: rgba(239, 68, 68, 0.15);
+.sidebar-conversation-pin:hover {
+  color: #D1D1D6;
+}
+.sidebar-conversation-menu {
+  background: #2C2C2E;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.sidebar-conversation-menu-item {
+  color: #F5F5F7;
+}
+.sidebar-conversation-menu-item:hover {
+  background: #3A3A3C;
+}
+.sidebar-conversation-menu-item.disabled {
+  color: #555557;
+}
+.sidebar-conversation-menu-item.danger {
   color: #F87171;
+}
+.sidebar-conversation-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+.sidebar-conversation-menu-divider {
+  background: #3A3A3C;
 }
 .model-option:hover {
     background: #48484A;

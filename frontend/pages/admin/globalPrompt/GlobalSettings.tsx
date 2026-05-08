@@ -30,9 +30,6 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
-    prompts: globalPrompts,
-    loading,
-    error,
     fetchPrompts,
     handleOnline,
     handleOffline,
@@ -42,13 +39,12 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
     enterEditMode,
     exitEditMode,
     currentEditingPrompt,
-    isEditing,
   } = useGlobalPrompt();
 
   const minLeftWidthPx = 400;
   const minRightWidthPx = 350;
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (_e: React.MouseEvent) => {
     setIsDragging(true);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);

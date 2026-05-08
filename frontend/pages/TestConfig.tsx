@@ -17,7 +17,6 @@ const TestConfig: React.FC = () => {
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [configId, setConfigId] = useState<number | null>(null);
   const [lastTestTime, setLastTestTime] = useState<string | null>(null);
   const [lastTestInput, setLastTestInput] = useState<string | null>(null);
   const [lastTestResult, setLastTestResult] = useState<string | null>(null);
@@ -33,7 +32,6 @@ const TestConfig: React.FC = () => {
         const configs = await response.json();
         if (configs.length > 0) {
           const configData = configs[0];
-          setConfigId(configData.id);
           setApiKey(configData.apiKey || '');
           setProvider(configData.provider || '');
           setModel(configData.model || '');
@@ -95,7 +93,6 @@ const TestConfig: React.FC = () => {
 
       if (response.ok) {
         const savedConfig = await response.json();
-        setConfigId(savedConfig.id);
         localStorage.setItem('aiConfig', JSON.stringify(savedConfig));
         setIsEditing(false);
         alert('配置保存成功');
@@ -109,12 +106,6 @@ const TestConfig: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleLoad = () => {
-    fetchConfig();
-    setIsEditing(false);
-    alert('配置已加载');
   };
 
   const handleCancel = () => {

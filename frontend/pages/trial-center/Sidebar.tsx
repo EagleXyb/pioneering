@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquare } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, Pencil, Flag, Pin } from 'lucide-react';
 import chatConversationService, { type ConversationItem } from '../../services/chatConversationService';
 
 interface SidebarProps {
@@ -24,6 +24,21 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (openMenuId !== null) {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.sidebar-conversation-menu') && !target.closest('.sidebar-conversation-more-btn')) {
+          setOpenMenuId(null);
+        }
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openMenuId]);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -43,14 +58,33 @@ const Sidebar: React.FC<SidebarProps> = ({
     fetchConversations();
   }, [currentConversationId, fetchConversations]);
 
-  const handleDelete = useCallback(async (e: React.MouseEvent, id: number) => {
+  const handleMoreClick = useCallback((e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    if (deletingId !== null) return;
+    setOpenMenuId(prev => prev === id ? null : id);
+  }, []);
+
+  const handleMenuAction = useCallback((e: React.MouseEvent, action: string, id: number) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    switch (action) {
+      case 'delete':
+        setDeleteConfirmId(id);
+        break;
+      case 'rename':
+        break;
+      case 'report':
+        break;
+    }
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (deleteConfirmId === null || deletingId !== null) return;
+    const id = deleteConfirmId;
+    setDeleteConfirmId(null);
     setDeletingId(id);
     try {
       await chatConversationService.deleteConversation(id);
       setConversations(prev => prev.filter(c => c.id !== id));
-      // 如果删除的是当前会话，触发新建
       if (id === currentConversationId) {
         onNewChat();
       }
@@ -59,18 +93,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     } finally {
       setDeletingId(null);
     }
-  }, [deletingId, currentConversationId, onNewChat]);
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return '今天';
-    if (diffDays === 1) return '昨天';
-    if (diffDays < 7) return `${diffDays}天前`;
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-  };
+  }, [deleteConfirmId, deletingId, currentConversationId, onNewChat]);
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -107,27 +130,38 @@ const Sidebar: React.FC<SidebarProps> = ({
               {conversations.length === 0 && (
                 <div className="sidebar-conversations-empty">暂无历史会话</div>
               )}
-              {conversations.map(conv => (
+              {conversations.map((conv, index) => (
                 <div
                   key={conv.id}
                   className={`sidebar-conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}
                   onClick={() => onSwitchConversation(conv.id)}
                 >
-                  <MessageSquare size={14} className="sidebar-conversation-icon" />
-                  <div className="sidebar-conversation-info">
-                    <div className="sidebar-conversation-title">{conv.title}</div>
-                    <div className="sidebar-conversation-meta">
-                      {formatDate(conv.updatedAt)} · {conv._count.messages}条消息
-                    </div>
-                  </div>
+                  <MessageSquareMore size={14} className="sidebar-conversation-icon" />
+                  <span className="sidebar-conversation-title">{conv.title}</span>
+                  {index === 0 && <Pin size={14} className="sidebar-conversation-pin" />}
                   <button
-                    className="sidebar-conversation-delete"
-                    onClick={(e) => handleDelete(e, conv.id)}
-                    title="删除会话"
-                    disabled={deletingId === conv.id}
+                    className="sidebar-conversation-more-btn"
+                    onClick={(e) => handleMoreClick(e, conv.id)}
                   >
-                    <Trash2 size={12} />
+                    <MoreHorizontal size={16} />
                   </button>
+                  {openMenuId === conv.id && (
+                    <div className="sidebar-conversation-menu">
+                      <div className="sidebar-conversation-menu-item disabled">
+                        <Share2 size={14} /> 分享
+                      </div>
+                      <div className="sidebar-conversation-menu-item" onClick={(e) => handleMenuAction(e, 'rename', conv.id)}>
+                        <Pencil size={14} /> 重命名
+                      </div>
+                      <div className="sidebar-conversation-menu-item" onClick={(e) => handleMenuAction(e, 'report', conv.id)}>
+                        <Flag size={14} /> 举报
+                      </div>
+                      <div className="sidebar-conversation-menu-divider" />
+                      <div className="sidebar-conversation-menu-item danger" onClick={(e) => handleMenuAction(e, 'delete', conv.id)}>
+                        <Trash2 size={14} /> 删除
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -201,6 +235,18 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+      {deleteConfirmId !== null && (
+        <div className="sidebar-delete-confirm-overlay" onClick={() => setDeleteConfirmId(null)}>
+          <div className="sidebar-delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="sidebar-delete-confirm-title">删除后，该对话将不可恢复</div>
+            <div className="sidebar-delete-confirm-desc">由该对话生成的分享链接也将失效</div>
+            <div className="sidebar-delete-confirm-actions">
+              <button className="sidebar-delete-confirm-btn cancel" onClick={() => setDeleteConfirmId(null)}>取消</button>
+              <button className="sidebar-delete-confirm-btn danger" onClick={confirmDelete}>删除该对话</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };
