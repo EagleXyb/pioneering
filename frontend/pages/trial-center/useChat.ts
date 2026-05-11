@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { DisplayMessage } from './types';
 import { MAX_INPUT_LENGTH, MAX_CONTEXT_MESSAGES } from './types';
 import { useStreamChat } from './useStreamChat';
@@ -19,7 +19,13 @@ export function useChat() {
     setMessages(prev => prev.map(msg => msg.id === id ? { ...msg, ...updates } : msg));
   }, []);
 
-  const { startStream, stopStream } = useStreamChat(updateMessage, setIsGenerating);
+  const { startStream, stopStream, cleanupStream } = useStreamChat(updateMessage, setIsGenerating);
+
+  useEffect(() => {
+    return () => {
+      cleanupStream();
+    };
+  }, [cleanupStream]);
 
   const getContextMessages = useCallback((): ChatMessage[] => {
     const contextMsgs = messages

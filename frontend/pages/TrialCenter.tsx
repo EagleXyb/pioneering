@@ -6,6 +6,7 @@ import type { DisplayMessage } from './trial-center/types';
 import Sidebar from './trial-center/Sidebar';
 import { UserMessage, AssistantMessage, SystemMessage } from './trial-center/ChatMessage';
 import ChatInput from './trial-center/ChatInput';
+import AgentProcessPanel, { type AgentStep, type AgentStepStatus } from './trial-center/AgentProcessPanel';
 import './trial-center/TrialCenter.css';
 
 const tools = [
@@ -84,6 +85,9 @@ const TrialCenter: React.FC = () => {
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set());
   const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
+  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
+  const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());
+  const [isAgentRunning, setIsAgentRunning] = useState(false);
 
   const projectDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
@@ -238,6 +242,64 @@ const TrialCenter: React.FC = () => {
     }
   }, [handleSend, aiConfig, selectedModel]);
 
+  const isProfessionalMode = selectedProject === 'professional';
+
+  const handleToggleAgentStep = useCallback((stepId: string) => {
+    setCollapsedSteps(prev => {
+      const next = new Set(prev);
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
+      return next;
+    });
+  }, []);
+
+  const handleTerminateAgent = useCallback(() => {
+    setIsAgentRunning(false);
+  }, []);
+
+  useEffect(() => {
+    if (isProfessionalMode && isInChatMode && agentSteps.length === 0) {
+      setAgentSteps([
+        {
+          id: 'step_1',
+          title: '分析基础架构与范式创新方向，包括扩散模型、MoE架构和多模态统一框架等',
+          status: 'completed',
+          progress: { current: 1, total: 5 },
+        },
+        {
+          id: 'step_2',
+          title: '探讨模型能力与性能优化方向，如可解释性、持续学习、多语言支持和事实幻觉缓解',
+          status: 'completed',
+          progress: { current: 2, total: 5 },
+          subItems: [
+            { id: 'sub_2_1', type: 'search', query: '百川大模型 金融性能', sourceCount: 6, sourceLabel: '资料', content: '调研显示大模型应用已覆盖三大方向：专业领域适配(如金融、医疗)、多模态能力扩展(如图文视频)及社会科学研究工具开发。接下来需补充具体性能指标、机器人操作实验场景及评测工具开源状态等信息。' },
+            { id: 'sub_2_2', type: 'search', query: '百川大模型 金融风控 案例', sourceCount: 8, sourceLabel: '资料', content: '经查阅资料，我注意到百川大模型在金融风控领域有实际案例，但缺乏量化指标；Emu3机器人可通过预训练架构支持视觉语言动作建模；TRIP-Bench是旅行规划评测标准。接下来我需查找具体金融任务指标、机器人操作实验数据及TravelBench的开源状态。' },
+            { id: 'sub_2_3', type: 'analysis', content: '研究显示，百川大模型金融性能表现优异，准确率超93%。Emu3通过回归架构支持机器人操作，但缺乏具体数据。已确认TravelBench开源状态。接下来将整合这些发现，完善专业领域适配、多模态能力和科研工具分析。', sourceCount: 5 },
+          ],
+        },
+        {
+          id: 'step_3',
+          title: '研究应用场景与专业化方向，包括专业领域适配、多模态能力拓展和社会科学研究工具开发',
+          status: 'completed',
+          progress: { current: 3, total: 5 },
+        },
+        {
+          id: 'step_4',
+          title: '撰写研究报告',
+          status: 'running',
+          progress: { current: 4, total: 5 },
+        },
+        {
+          id: 'step_5',
+          title: '生成可视化报告',
+          status: 'pending',
+          progress: { current: 5, total: 5 },
+        },
+      ]);
+      setIsAgentRunning(true);
+    }
+  }, [isProfessionalMode, isInChatMode, agentSteps.length]);
+
   const renderMessageContent = (message: DisplayMessage) => {
     if (message.role === 'system') return <SystemMessage message={message} />;
     if (message.role === 'user') return <UserMessage message={message} />;
@@ -268,8 +330,8 @@ const TrialCenter: React.FC = () => {
         currentConversationId={conversationId}
         onSwitchConversation={handleSwitchConversation}
       />
-      <main className="trial-main-content">
-        <div className="main-wrapper">
+      <main className={`trial-main-content ${isProfessionalMode && isInChatMode ? 'professional-mode' : ''}`}>
+        <div className={`main-wrapper ${isProfessionalMode && isInChatMode ? 'professional-wrapper' : ''}`}>
           {!isInChatMode && (
             <div className="non-chat-content">
               <section className="trial-hero-section">
@@ -292,30 +354,72 @@ const TrialCenter: React.FC = () => {
             </div>
           )}
           {isInChatMode && (
-            <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
-              <div className="chat-welcome">
-                <div className="chat-welcome-icon">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
-                    <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+            <>
+              {isProfessionalMode ? (
+                <div className="professional-layout">
+                  <div className="professional-left-panel">
+                    <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
+                      <div className="chat-welcome">
+                        <div className="chat-welcome-icon">
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
+                            <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                        <span>IAC Incubator</span>
+                      </div>
+                      {messages.map((message) => (
+                        <div key={message.id} className="chat-message-wrapper">
+                          {renderMessageContent(message)}
+                        </div>
+                      ))}
+                      <div ref={messagesEndRef} />
+                      {showScrollBottom && (
+                        <button className="scroll-bottom-btn" onClick={scrollToBottom}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12l7 7 7-7"/>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="professional-right-panel">
+                    <AgentProcessPanel
+                      steps={agentSteps}
+                      isRunning={isAgentRunning}
+                      onTerminate={handleTerminateAgent}
+                      onToggleStep={handleToggleAgentStep}
+                      collapsedSteps={collapsedSteps}
+                    />
+                  </div>
                 </div>
-                <span>IAC Incubator</span>
-              </div>
-              {messages.map((message) => (
-                <div key={message.id} className="chat-message-wrapper">
-                  {renderMessageContent(message)}
+              ) : (
+                <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
+                  <div className="chat-welcome">
+                    <div className="chat-welcome-icon">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
+                        <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span>IAC Incubator</span>
+                  </div>
+                  {messages.map((message) => (
+                    <div key={message.id} className="chat-message-wrapper">
+                      {renderMessageContent(message)}
+                    </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                  {showScrollBottom && (
+                    <button className="scroll-bottom-btn" onClick={scrollToBottom}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12l7 7 7-7"/>
+                      </svg>
+                    </button>
+                  )}
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
-              {showScrollBottom && (
-                <button className="scroll-bottom-btn" onClick={scrollToBottom}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12l7 7 7-7"/>
-                  </svg>
-                </button>
               )}
-            </div>
+            </>
           )}
           <ChatInput
             inputValue={inputValue}
