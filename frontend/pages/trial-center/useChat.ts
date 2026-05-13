@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { DisplayMessage } from './types';
-import { MAX_INPUT_LENGTH, MAX_CONTEXT_MESSAGES } from './types';
+import { MAX_INPUT_LENGTH, MAX_CONTEXT_MESSAGES, MAX_CONTEXT_TOKENS, MODEL_TO_PROVIDER, estimateTokens } from './types';
 import { useStreamChat } from './useStreamChat';
 import type { ChatMessage } from '../../services/llmService';
 import chatConversationService from '../../services/chatConversationService';
@@ -28,10 +28,19 @@ export function useChat() {
   }, [cleanupStream]);
 
   const getContextMessages = useCallback((): ChatMessage[] => {
-    const contextMsgs = messages
+    const eligible = messages
       .filter(m => m.role !== 'system' && m.status === 'success')
-      .slice(-MAX_CONTEXT_MESSAGES);
-    return contextMsgs.map(m => ({ role: m.role, content: m.content }));
+      .reverse();
+    const result: ChatMessage[] = [];
+    let tokenCount = 0;
+    for (const m of eligible) {
+      const msgTokens = estimateTokens(m.content);
+      if (result.length >= MAX_CONTEXT_MESSAGES) break;
+      if (tokenCount + msgTokens > MAX_CONTEXT_TOKENS) break;
+      result.push({ role: m.role, content: m.content });
+      tokenCount += msgTokens;
+    }
+    return result.reverse();
   }, [messages]);
 
   // 将 DB 消息加载到 DisplayMessage
@@ -70,9 +79,9 @@ export function useChat() {
       if (!trimmed || isGenerating) return;
       if (trimmed.length > MAX_INPUT_LENGTH) return;
 
-      const config = aiConfig || { apiKey: '', provider: 'minimax', model: selectedModel, prompt: '' };
+      const provider = aiConfig?.provider || MODEL_TO_PROVIDER[selectedModel] || 'minimax';
+      const config = aiConfig || { apiKey: '', provider, model: selectedModel, prompt: '' };
 
-      // 首次发送消息时创建会话
       let convId = conversationId;
       if (convId === null) {
         try {
@@ -84,6 +93,7 @@ export function useChat() {
           setConversationId(convId);
         } catch (e) {
           console.error('创建会话失败:', e);
+          return;
         }
       }
 
@@ -107,30 +117,23 @@ export function useChat() {
       setInputValue('');
       setIsGenerating(true);
 
-      // 持久化用户消息
       if (convId !== null) {
-        try {
-          const dbMsg = await chatConversationService.createMessage(convId, {
+        Promise.all([
+          chatConversationService.createMessage(convId, {
             role: 'user',
             content: trimmed,
             status: 'success',
-          });
-          msgIdMapRef.current.set(userMsg.id, dbMsg.id);
-        } catch (e) {
-          console.error('保存用户消息失败:', e);
-        }
-
-        // 持久化 assistant 占位消息
-        try {
-          const dbMsg = await chatConversationService.createMessage(convId, {
+          }).then(dbMsg => {
+            msgIdMapRef.current.set(userMsg.id, dbMsg.id);
+          }).catch(e => console.error('保存用户消息失败:', e)),
+          chatConversationService.createMessage(convId, {
             role: 'assistant',
             content: '',
             status: 'loading',
-          });
-          msgIdMapRef.current.set(assistantMsg.id, dbMsg.id);
-        } catch (e) {
-          console.error('保存助手消息失败:', e);
-        }
+          }).then(dbMsg => {
+            msgIdMapRef.current.set(assistantMsg.id, dbMsg.id);
+          }).catch(e => console.error('保存助手消息失败:', e)),
+        ]);
       }
 
       const contextMessages = getContextMessages();
@@ -151,7 +154,6 @@ export function useChat() {
           });
           setIsGenerating(false);
 
-          // 流式完成后更新 DB 中的 assistant 消息
           const dbMsgId = msgIdMapRef.current.get(assistantMsg.id);
           if (currentConvId !== null && dbMsgId !== undefined) {
             chatConversationService.updateMessage(currentConvId, dbMsgId, {
@@ -170,7 +172,6 @@ export function useChat() {
           });
           setIsGenerating(false);
 
-          // 流式出错时更新 DB
           const dbMsgId = msgIdMapRef.current.get(assistantMsg.id);
           if (currentConvId !== null && dbMsgId !== undefined) {
             chatConversationService.updateMessage(currentConvId, dbMsgId, {
@@ -221,6 +222,10 @@ export function useChat() {
 
       const userContent = messages[userMsgIndex].content;
 
+      const eligibleMessages = messages.slice(0, userMsgIndex)
+        .filter(m => m.role !== 'system' && m.status === 'success');
+      const contextMsgs = eligibleMessages.slice(-MAX_CONTEXT_MESSAGES);
+
       setMessages(prev => prev.slice(0, userMsgIndex + 1));
 
       const assistantMsg: DisplayMessage = {
@@ -234,9 +239,9 @@ export function useChat() {
       setMessages(prev => [...prev, assistantMsg]);
       setIsGenerating(true);
 
-      // 持久化新的 assistant 占位消息
-      if (conversationId !== null) {
-        chatConversationService.createMessage(conversationId, {
+      const currentConvId = conversationId;
+      if (currentConvId !== null) {
+        chatConversationService.createMessage(currentConvId, {
           role: 'assistant',
           content: '',
           status: 'loading',
@@ -245,15 +250,11 @@ export function useChat() {
         }).catch(e => console.error('保存助手消息失败:', e));
       }
 
-      const config = aiConfig || { apiKey: '', provider: 'minimax', model: selectedModel, prompt: '' };
+      const provider = aiConfig?.provider || MODEL_TO_PROVIDER[selectedModel] || 'minimax';
+      const config = aiConfig || { apiKey: '', provider, model: selectedModel, prompt: '' };
 
-      const contextMsgs = messages.slice(0, userMsgIndex)
-        .filter(m => m.role !== 'system' && m.status === 'success')
-        .slice(-MAX_CONTEXT_MESSAGES);
       const contextMessages: ChatMessage[] = contextMsgs.map(m => ({ role: m.role, content: m.content }));
       contextMessages.push({ role: 'user', content: userContent });
-
-      const currentConvId = conversationId;
 
       startStream(
         assistantMsg.id,
