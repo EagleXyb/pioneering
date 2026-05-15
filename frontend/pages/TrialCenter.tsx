@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import 'katex/dist/katex.min.css';
 import llmService from '../services/llmService';
 import { useChat } from './trial-center/useChat';
-import type { DisplayMessage } from './trial-center/types';
 import Sidebar from './trial-center/Sidebar';
-import { UserMessage, AssistantMessage, SystemMessage } from './trial-center/ChatMessage';
 import ChatInput from './trial-center/ChatInput';
-import AgentProcessPanel, { type AgentStep, type AgentStepStatus } from './trial-center/AgentProcessPanel';
+import TopNavbar from './trial-center/modes/TopNavbar';
+import NormalChatPanel from './trial-center/modes/NormalChatPanel';
+import AgentChatPanel from './trial-center/modes/AgentChatPanel';
+import AgentProcessPanel from './trial-center/AgentProcessPanel';
+import type { AgentStep } from './trial-center/AgentProcessPanel';
 import './trial-center/TrialCenter.css';
 
 const tools = [
@@ -70,28 +72,6 @@ const tools = [
   }
 ];
 
-const FEEDBACK_KEY = 'iac_trial_feedback';
-
-function loadFeedbackSet(key: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(FEEDBACK_KEY);
-    if (!raw) return new Set();
-    const data = JSON.parse(raw);
-    return new Set(data[key] || []);
-  } catch {
-    return new Set();
-  }
-}
-
-function persistFeedback(liked: Set<string>, disliked: Set<string>) {
-  try {
-    localStorage.setItem(FEEDBACK_KEY, JSON.stringify({
-      liked: Array.from(liked),
-      disliked: Array.from(disliked),
-    }));
-  } catch { /* storage full or unavailable */ }
-}
-
 const TrialCenter: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState('deepseek-v4-flash');
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
@@ -99,24 +79,15 @@ const TrialCenter: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<string>('normal');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [aiConfig, setAiConfig] = useState<{ apiKey: string; provider: string; model: string; prompt: string } | null>(null);
-  const [showThinkingFor, setShowThinkingFor] = useState<Set<string>>(new Set());
-  const [likedMessages, setLikedMessages] = useState<Set<string>>(() => loadFeedbackSet('liked'));
-  const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(() => loadFeedbackSet('disliked'));
-  const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
+
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());
   const [isAgentRunning, setIsAgentRunning] = useState(false);
 
   const projectDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isAutoScrolling = useRef(false);
 
   const {
     messages,
@@ -133,6 +104,7 @@ const TrialCenter: React.FC = () => {
   } = useChat();
 
   const isInChatMode = messages.length > 0;
+  const isAgentMode = selectedProject === 'professional' || selectedProject === 'task';
 
   useEffect(() => {
     llmService.fetchAIConfig().then(config => {
@@ -162,103 +134,6 @@ const TrialCenter: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    isAutoScrolling.current = true;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    setTimeout(() => { isAutoScrolling.current = false; }, 500);
-  }, []);
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom();
-    }
-  }, [messages, scrollToBottom]);
-
-  const handleScroll = useCallback(() => {
-    if (isAutoScrolling.current) return;
-    const container = chatContainerRef.current;
-    if (!container) return;
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    setShowScrollBottom(distanceFromBottom > 100);
-    setIsScrolling(true);
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => { setIsScrolling(false); }, 1500);
-  }, []);
-
-  const showToast = useCallback((message: string) => {
-    setToast({ show: true, message });
-    setTimeout(() => { setToast({ show: false, message: '' }); }, 2000);
-  }, []);
-
-  const handleCopyMessage = useCallback(async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      showToast('复制成功');
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = content;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      showToast('复制成功');
-    }
-  }, [showToast]);
-
-  const handleForward = useCallback((messageId: string) => {
-    const msg = messages.find(m => m.id === messageId);
-    if (!msg) return;
-    const content = msg.answerContent || msg.content;
-    if (navigator.share) {
-      navigator.share({ title: 'IAC Incubator', text: content }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(content).then(() => showToast('链接已复制，可粘贴转发')).catch(() => showToast('转发失败'));
-    }
-  }, [messages, showToast]);
-
-  const toggleThinkingDisplay = useCallback((messageId: string) => {
-    setShowThinkingFor(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(messageId)) newSet.delete(messageId);
-      else newSet.add(messageId);
-      return newSet;
-    });
-  }, []);
-
-  const toggleLike = useCallback((messageId: string) => {
-    setLikedMessages(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(messageId)) newSet.delete(messageId);
-      else {
-        newSet.add(messageId);
-        setDislikedMessages(p => { const s = new Set(p); s.delete(messageId); return s; });
-      }
-      persistFeedback(newSet, dislikedMessages);
-      return newSet;
-    });
-  }, [dislikedMessages]);
-
-  const toggleDislike = useCallback((messageId: string) => {
-    setDislikedMessages(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(messageId)) newSet.delete(messageId);
-      else {
-        newSet.add(messageId);
-        setLikedMessages(p => { const s = new Set(p); s.delete(messageId); return s; });
-      }
-      persistFeedback(likedMessages, newSet);
-      return newSet;
-    });
-  }, [likedMessages]);
-
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -266,8 +141,9 @@ const TrialCenter: React.FC = () => {
     }
   }, [handleSend, aiConfig, selectedModel]);
 
-  const isProfessionalMode = selectedProject === 'professional';
-  const isTaskMode = selectedProject === 'task';
+  const handleRetryMessage = useCallback((messageId: string) => {
+    handleRetry(messageId, aiConfig, selectedModel);
+  }, [handleRetry, aiConfig, selectedModel]);
 
   const handleToggleAgentStep = useCallback((stepId: string) => {
     setCollapsedSteps(prev => {
@@ -282,35 +158,78 @@ const TrialCenter: React.FC = () => {
     setIsAgentRunning(false);
   }, []);
 
-  useEffect(() => {
-    if (!isProfessionalMode || !isInChatMode) {
-      setAgentSteps([]);
-      setIsAgentRunning(false);
-    }
-  }, [isProfessionalMode, isInChatMode]);
-
-  const renderMessageContent = (message: DisplayMessage) => {
-    if (message.role === 'system') return <SystemMessage message={message} />;
-    if (message.role === 'user') return <UserMessage message={message} />;
-    return (
-      <AssistantMessage
-        message={message}
-        showThinking={showThinkingFor.has(message.id)}
-        isLiked={likedMessages.has(message.id)}
-        isDisliked={dislikedMessages.has(message.id)}
-        onToggleThinking={() => toggleThinkingDisplay(message.id)}
-        onToggleLike={() => toggleLike(message.id)}
-        onToggleDislike={() => toggleDislike(message.id)}
-        onCopy={handleCopyMessage}
-        onRetry={(msgId) => handleRetry(msgId, aiConfig, selectedModel)}
-        onForward={handleForward}
-      />
-    );
+  const renderMainContent = () => {
+    if (!isInChatMode) return null;
+    if (isAgentMode) return <AgentChatPanel messages={messages} onRetry={handleRetryMessage} />;
+    return <NormalChatPanel messages={messages} onRetry={handleRetryMessage} />;
   };
+
+  const renderInputFooter = (
+    <footer className="trial-input-footer">
+      <ChatInput
+        inputValue={inputValue}
+        onInputChange={setInputValue}
+        isInputFocused={isInputFocused}
+        onInputFocusChange={setIsInputFocused}
+        canSend={canSend}
+        isGenerating={isGenerating}
+        selectedProject={selectedProject}
+        selectedModel={selectedModel}
+        isProjectDropdownOpen={isProjectDropdownOpen}
+        isModelDropdownOpen={isModelDropdownOpen}
+        onToggleProjectDropdown={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
+        onToggleModelDropdown={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+        onSelectProject={setSelectedProject}
+        onSelectModel={setSelectedModel}
+        onSend={() => handleSend(aiConfig, selectedModel)}
+        onStop={handleStopGeneration}
+        onKeyDown={handleKeyDown}
+        textareaRef={textareaRef}
+        projectDropdownRef={projectDropdownRef}
+        modelDropdownRef={modelDropdownRef}
+      />
+    </footer>
+  );
+
+  if (isAgentMode && isInChatMode) {
+    return (
+      <div className="trial-center-container">
+        <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          onNewChat={handleNewChat}
+          isGenerating={isGenerating}
+          currentConversationId={conversationId}
+          onSwitchConversation={handleSwitchConversation}
+        />
+        <div className="trial-main-area">
+          <TopNavbar />
+          <div className="agent-content-row">
+            <div className="agent-left-area">
+              <div className="trial-body agent-mode">
+                <div className="main-wrapper professional-wrapper">
+                  {renderMainContent()}
+                </div>
+              </div>
+              {renderInputFooter}
+            </div>
+            <div className="agent-right-panel">
+              <AgentProcessPanel
+                steps={agentSteps}
+                isRunning={isAgentRunning}
+                onTerminate={handleTerminateAgent}
+                onToggleStep={handleToggleAgentStep}
+                collapsedSteps={collapsedSteps}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="trial-center-container">
-      {toast.show && <div className="toast">{toast.message}</div>}
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -319,159 +238,36 @@ const TrialCenter: React.FC = () => {
         currentConversationId={conversationId}
         onSwitchConversation={handleSwitchConversation}
       />
-      <main className={`trial-main-content ${(isProfessionalMode || isTaskMode) && isInChatMode ? 'professional-mode' : ''}`}>
-        <div className={`main-wrapper ${(isProfessionalMode || isTaskMode) && isInChatMode ? 'professional-wrapper' : ''}`}>
-          {!isInChatMode && (
-            <div className="non-chat-content">
-              <section className="trial-hero-section">
-                <div className="trial-hero-content animate-in">
-                  <h2 className="trial-hero-title">Innovation and Creation</h2>
-                  <p className="trial-hero-subtitle">激发创新潜能，孵化未来梦想</p>
-                </div>
-              </section>
-              <section className="tools-section">
-                <div className="tools-grid">
-                  {tools.map((tool) => (
-                    <div key={tool.id} className="tool-card">
-                      <div className="tool-icon">{tool.icon}</div>
-                      <h3 className="tool-name">{tool.title}</h3>
-                      <p className="tool-desc">{tool.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-          {isInChatMode && (
-            <>
-              {isProfessionalMode ? (
-                <div className="professional-layout">
-                  <div className="professional-left-panel">
-                    <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
-                      <div className="chat-welcome">
-                        <div className="chat-welcome-icon">
-                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
-                            <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                        <span>IAC Incubator</span>
+      <div className="trial-main-area">
+        <TopNavbar />
+        <div className={`trial-body ${isAgentMode && isInChatMode ? 'agent-mode' : ''}`}>
+          <div className={`main-wrapper ${isAgentMode && isInChatMode ? 'professional-wrapper' : ''}`}>
+            {!isInChatMode && (
+              <div className="non-chat-content">
+                <section className="trial-hero-section">
+                  <div className="trial-hero-content animate-in">
+                    <h2 className="trial-hero-title">Innovation and Creation</h2>
+                    <p className="trial-hero-subtitle">激发创新潜能，孵化未来梦想</p>
+                  </div>
+                </section>
+                <section className="tools-section">
+                  <div className="tools-grid">
+                    {tools.map((tool) => (
+                      <div key={tool.id} className="tool-card">
+                        <div className="tool-icon">{tool.icon}</div>
+                        <h3 className="tool-name">{tool.title}</h3>
+                        <p className="tool-desc">{tool.description}</p>
                       </div>
-                      {messages.map((message) => (
-                        <div key={message.id} className="chat-message-wrapper">
-                          {renderMessageContent(message)}
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                      {showScrollBottom && (
-                        <button className="scroll-bottom-btn" onClick={scrollToBottom}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M5 12l7 7 7-7"/>
-                          </svg>
-                        </button>
-                      )}
-                    </div>
+                    ))}
                   </div>
-                  <div className="professional-right-panel">
-                    <AgentProcessPanel
-                      steps={agentSteps}
-                      isRunning={isAgentRunning}
-                      onTerminate={handleTerminateAgent}
-                      onToggleStep={handleToggleAgentStep}
-                      collapsedSteps={collapsedSteps}
-                    />
-                  </div>
-                </div>
-              ) : isTaskMode ? (
-                <div className="professional-layout">
-                  <div className="professional-left-panel">
-                    <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
-                      <div className="chat-welcome">
-                        <div className="chat-welcome-icon">
-                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
-                            <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                        <span>IAC Incubator</span>
-                      </div>
-                      {messages.map((message) => (
-                        <div key={message.id} className="chat-message-wrapper">
-                          {renderMessageContent(message)}
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                      {showScrollBottom && (
-                        <button className="scroll-bottom-btn" onClick={scrollToBottom}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M5 12l7 7 7-7"/>
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="professional-right-panel">
-                    <AgentProcessPanel
-                      steps={agentSteps}
-                      isRunning={isAgentRunning}
-                      onTerminate={handleTerminateAgent}
-                      onToggleStep={handleToggleAgentStep}
-                      collapsedSteps={collapsedSteps}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className={`chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
-                  <div className="chat-welcome">
-                    <div className="chat-welcome-icon">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
-                        <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span>IAC Incubator</span>
-                  </div>
-                  {messages.map((message) => (
-                    <div key={message.id} className="chat-message-wrapper">
-                      {renderMessageContent(message)}
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                  {showScrollBottom && (
-                    <button className="scroll-bottom-btn" onClick={scrollToBottom}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 5v14M5 12l7 7 7-7"/>
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-          <ChatInput
-            inputValue={inputValue}
-            onInputChange={setInputValue}
-            isInputFocused={isInputFocused}
-            onInputFocusChange={setIsInputFocused}
-            canSend={canSend}
-            isGenerating={isGenerating}
-            selectedProject={selectedProject}
-            selectedModel={selectedModel}
-            isProjectDropdownOpen={isProjectDropdownOpen}
-            isModelDropdownOpen={isModelDropdownOpen}
-            onToggleProjectDropdown={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
-            onToggleModelDropdown={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-            onSelectProject={setSelectedProject}
-            onSelectModel={setSelectedModel}
-            onSend={() => handleSend(aiConfig, selectedModel)}
-            onStop={handleStopGeneration}
-            onKeyDown={handleKeyDown}
-            textareaRef={textareaRef}
-            projectDropdownRef={projectDropdownRef}
-            modelDropdownRef={modelDropdownRef}
-          />
+                </section>
+              </div>
+            )}
+            {renderMainContent()}
+          </div>
         </div>
-      </main>
+        {renderInputFooter}
+      </div>
     </div>
   );
 };
