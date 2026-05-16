@@ -91,10 +91,6 @@
   margin-right: auto;
 }
 
-.professional-chat-container .chat-welcome {
-  padding: var(--spacing-md) 28px;
-}
-
 .agent-process-panel {
   height: 100%;
   display: flex;

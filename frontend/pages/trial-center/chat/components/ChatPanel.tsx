@@ -22,15 +22,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onRetry, className = ''
 
   return (
     <div className={`chat-container ${className} ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
-      <div className="chat-welcome">
-        <div className="chat-welcome-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" fill="#8B5CF6"/>
-            <path d="M8 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-        <span>IAC Incubator</span>
-      </div>
       {messages.map((message) => (
         <div key={message.id} className="chat-message-wrapper">
           {renderMessageContent(message, onRetry)}
