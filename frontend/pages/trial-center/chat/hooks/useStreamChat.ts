@@ -1,7 +1,7 @@
 import { useRef, useCallback } from 'react';
-import type { DisplayMessage } from './types';
-import { REQUEST_TIMEOUT } from './types';
-import llmService, { type ChatMessage } from '../../services/llmService';
+import type { DisplayMessage } from '../../types';
+import { REQUEST_TIMEOUT } from '../../types/constants';
+import llmService, { type ChatMessage } from '../../../../services/llmService';
 
 interface StreamState {
   inThinkBlock: boolean;
@@ -11,20 +11,13 @@ interface StreamState {
 }
 
 const THINK_OPEN = '<think';
-const THINK_CLOSE = '</think>';
+const THINK_CLOSE = '</think';
 
-/**
- * 检查 <think 标签是否完整（以 > 或空格+属性+> 结尾）
- * 避免误匹配 <thinkers> 等非思考标签
- */
 function isOpenThinkTag(text: string, tagStartIdx: number): boolean {
   const after = text.slice(tagStartIdx + THINK_OPEN.length);
   return /^(>|\/>| )/.test(after);
 }
 
-/**
- * 跳过 <think...> 开始标签，返回标签结束后的起始索引
- */
 function skipOpenTag(text: string, tagStartIdx: number): number {
   const gtIdx = text.indexOf('>', tagStartIdx + THINK_OPEN.length);
   if (gtIdx !== -1) {
@@ -49,12 +42,10 @@ export function useStreamChat(
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<StreamState>(createInitialState());
-  // 标记流是否已由本层处理完成（正常完成/超时/停止），防止 llmService 的回调重复处理
   const completedRef = useRef(false);
 
   const processStreamChunk = useCallback(
     (id: string, text: string, type?: 'thinking' | 'answer') => {
-      // 流已结束，忽略迟到的 chunk
       if (completedRef.current) return;
 
       const state = stateRef.current;
@@ -87,14 +78,12 @@ export function useStreamChat(
         state.pendingThinkTag += remaining;
         if (state.pendingThinkTag.includes(THINK_CLOSE)) {
           const closeIdx = state.pendingThinkTag.indexOf(THINK_CLOSE);
-          // pendingThinkTag 包含 <think...> 开标签，需跳过
           const contentStart = skipOpenTag(state.pendingThinkTag, 0);
           state.thinkBuffer += state.pendingThinkTag.slice(contentStart, closeIdx);
           state.inThinkBlock = false;
           remaining = state.pendingThinkTag.slice(closeIdx + THINK_CLOSE.length);
           state.pendingThinkTag = '';
         } else if (state.pendingThinkTag.length > 10) {
-          // 超时回退：跳过 <think...> 开标签后取内容
           const contentStart = skipOpenTag(state.pendingThinkTag, 0);
           state.thinkBuffer += state.pendingThinkTag.slice(contentStart);
           state.inThinkBlock = true;
@@ -149,7 +138,6 @@ export function useStreamChat(
   );
 
   const cleanupStream = useCallback(() => {
-    // 先中断 fetch 请求，防止后续 chunk 回调
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -195,16 +183,12 @@ export function useStreamChat(
             processStreamChunk(assistantMsgId, text, type);
           },
           onDone: () => {
-            // 流已被超时/停止处理，忽略迟到的 onDone
             if (completedRef.current) return;
             completedRef.current = true;
 
             let { answerBuffer, thinkBuffer } = stateRef.current;
 
-            // 处理未闭合的 think 块：将仍在 thinkBuffer 中、未被闭合的内容保留为思考内容
-            // 不会将 thinkBuffer 回退为 answerBuffer
             if (stateRef.current.inThinkBlock || stateRef.current.pendingThinkTag) {
-              // think 块未闭合，thinkBuffer 已包含其内容，answerBuffer 保持原样
             }
 
             cleanupStream();
@@ -215,7 +199,6 @@ export function useStreamChat(
             );
           },
           onError: (error: string) => {
-            // 流已被超时/停止处理，忽略迟到的 onError
             if (completedRef.current) return;
             completedRef.current = true;
 
@@ -232,7 +215,6 @@ export function useStreamChat(
 
   const stopStream = useCallback(
     (messages: DisplayMessage[], onStopped: (msgId: string, hasContent: boolean) => void) => {
-      // 标记已由停止处理，阻止 onDone/onError 重复处理
       completedRef.current = true;
       cleanupStream();
       const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant' && m.status === 'loading');

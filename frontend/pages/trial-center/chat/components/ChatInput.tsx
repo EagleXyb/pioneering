@@ -1,7 +1,7 @@
 import React from 'react';
 import { GlobeLock, Waypoints, ShipWheel, SquareSlash } from 'lucide-react';
 import { PROJECT_OPTIONS, MODEL_MAP, PROVIDER_LIST } from '@shared/constants';
-import { MAX_INPUT_LENGTH } from './types';
+import { MAX_INPUT_LENGTH } from '../../types/constants';
 
 interface ChatInputProps {
   inputValue: string;

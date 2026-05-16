@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, Pencil, Flag, Pin } from 'lucide-react';
-import chatConversationService, { type ConversationItem } from '../../services/chatConversationService';
+import chatConversationService, { type ConversationItem } from '../../../../services/chatConversationService';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -58,7 +58,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     fetchConversations();
   }, [fetchConversations]);
 
-  // 当前会话变化时刷新列表（新建、消息更新等场景）
   useEffect(() => {
     fetchConversations();
   }, [currentConversationId, fetchConversations]);
@@ -127,7 +126,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           新建任务
         </button>
 
-        {/* 历史会话列表 */}
         {!isCollapsed && (
           <div className="sidebar-conversations">
             <div className="sidebar-conversations-title">历史会话</div>

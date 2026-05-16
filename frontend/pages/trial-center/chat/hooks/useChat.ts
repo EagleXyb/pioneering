@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { DisplayMessage } from './types';
-import { MAX_INPUT_LENGTH, MAX_CONTEXT_MESSAGES, MAX_CONTEXT_TOKENS, MODEL_TO_PROVIDER, estimateTokens } from './types';
+import type { DisplayMessage } from '../../types';
+import { MAX_INPUT_LENGTH, MAX_CONTEXT_MESSAGES, MAX_CONTEXT_TOKENS, MODEL_TO_PROVIDER } from '../../types/constants';
+import { estimateTokens } from '../../utils/estimateTokens';
 import { useStreamChat } from './useStreamChat';
-import type { ChatMessage } from '../../services/llmService';
-import chatConversationService from '../../services/chatConversationService';
+import type { ChatMessage } from '../../../../services/llmService';
+import chatConversationService from '../../../../services/chatConversationService';
 
-// 本地消息与数据库消息的映射：localMsgId -> dbMsgId
 type MsgIdMap = Map<string, number>;
 
 export function useChat() {
@@ -45,7 +45,6 @@ export function useChat() {
     return result.reverse();
   }, [messages]);
 
-  // 将 DB 消息加载到 DisplayMessage
   const loadConversation = useCallback(async (convId: number) => {
     try {
       const dbMessages = await chatConversationService.getMessages(convId);
@@ -59,7 +58,6 @@ export function useChat() {
         error: m.error || undefined,
         timestamp: new Date(m.createdAt).getTime(),
       }));
-      // 重建 id 映射
       const newMap = new Map<string, number>();
       dbMessages.forEach(m => {
         newMap.set(`db_${m.id}`, m.id);
@@ -320,7 +318,6 @@ export function useChat() {
     msgIdMapRef.current = new Map();
   }, [isGenerating]);
 
-  // 切换到指定会话
   const handleSwitchConversation = useCallback(async (convId: number) => {
     if (isGenerating) return;
     await loadConversation(convId);

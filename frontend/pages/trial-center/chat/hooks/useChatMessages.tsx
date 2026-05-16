@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
-import type { DisplayMessage } from '../types';
-import { UserMessage, AssistantMessage, SystemMessage } from '../ChatMessage';
+import type { DisplayMessage } from '../../types';
+import { UserMessage, AssistantMessage, SystemMessage } from '../components/ChatMessage';
 
 const FEEDBACK_KEY = 'iac_trial_feedback';
 

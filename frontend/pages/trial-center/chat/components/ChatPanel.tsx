@@ -1,5 +1,5 @@
 import React from 'react';
-import type { DisplayMessage } from '../types';
+import type { DisplayMessage } from '../../types';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { useChatScroll } from '../hooks/useChatScroll';
 

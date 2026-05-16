@@ -4,20 +4,11 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { ThumbsUp, ThumbsDown, ChevronRight, ChevronDown, Share, Sparkles } from 'lucide-react';
-import type { DisplayMessage } from './types';
+import type { DisplayMessage } from '../../types';
 import FloatingCursor from './FloatingCursor';
 import type { FloatingCursorRef } from './FloatingCursor';
-import { useFloatingCursor } from './useFloatingCursor';
-
-/**
- * 清除思考内容中可能残留的 <think...> 和 </think> 标签
- * 防止 HTML 标签干扰 ReactMarkdown 解析
- */
-function stripThinkTags(content: string): string {
-  return content
-    .replace(/<think[^>]*>/gi, '')
-    .replace(/<\/think\s*>/gi, '');
-}
+import { useFloatingCursor } from '../hooks/useFloatingCursor';
+import { stripThinkTags } from '../../utils/stripThinkTags';
 
 interface ChatMessageProps {
   message: DisplayMessage;
