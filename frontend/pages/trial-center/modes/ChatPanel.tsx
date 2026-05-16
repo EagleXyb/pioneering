@@ -1,14 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React from 'react';
 import type { DisplayMessage } from '../types';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { useChatScroll } from '../hooks/useChatScroll';
 
-interface AgentChatPanelProps {
+interface ChatPanelProps {
   messages: DisplayMessage[];
   onRetry: (messageId: string) => void;
+  className?: string;
 }
 
-const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ messages, onRetry }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onRetry, className = '' }) => {
   const { renderMessageContent } = useChatMessages(messages);
   const {
     showScrollBottom,
@@ -20,7 +21,7 @@ const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ messages, onRetry }) =>
   } = useChatScroll(messages.length);
 
   return (
-    <div className={`chat-container professional-chat-container ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
+    <div className={`chat-container ${className} ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
       <div className="chat-welcome">
         <div className="chat-welcome-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
@@ -47,4 +48,4 @@ const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ messages, onRetry }) =>
   );
 };
 
-export default AgentChatPanel;
+export default ChatPanel;

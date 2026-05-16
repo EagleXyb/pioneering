@@ -5,8 +5,7 @@ import { useChat } from './trial-center/useChat';
 import Sidebar from './trial-center/Sidebar';
 import ChatInput from './trial-center/ChatInput';
 import TopNavbar from './trial-center/modes/TopNavbar';
-import NormalChatPanel from './trial-center/modes/NormalChatPanel';
-import AgentChatPanel from './trial-center/modes/AgentChatPanel';
+import ChatPanel from './trial-center/modes/ChatPanel';
 import AgentProcessPanel from './trial-center/AgentProcessPanel';
 import type { AgentStep } from './trial-center/AgentProcessPanel';
 import './trial-center/TrialCenter.css';
@@ -160,12 +159,12 @@ const TrialCenter: React.FC = () => {
 
   const renderMainContent = () => {
     if (!isInChatMode) return null;
-    if (isAgentMode) return <AgentChatPanel messages={messages} onRetry={handleRetryMessage} />;
-    return <NormalChatPanel messages={messages} onRetry={handleRetryMessage} />;
+    if (isAgentMode) return <ChatPanel messages={messages} onRetry={handleRetryMessage} className="professional-chat-container" />;
+    return <ChatPanel messages={messages} onRetry={handleRetryMessage} />;
   };
 
   const renderInputFooter = (
-    <footer className="trial-input-footer">
+    <div className="trial-input-footer">
       <ChatInput
         inputValue={inputValue}
         onInputChange={setInputValue}
@@ -188,7 +187,7 @@ const TrialCenter: React.FC = () => {
         projectDropdownRef={projectDropdownRef}
         modelDropdownRef={modelDropdownRef}
       />
-    </footer>
+    </div>
   );
 
   if (isAgentMode && isInChatMode) {
@@ -209,9 +208,9 @@ const TrialCenter: React.FC = () => {
               <div className="trial-body agent-mode">
                 <div className="main-wrapper professional-wrapper">
                   {renderMainContent()}
+                  {renderInputFooter}
                 </div>
               </div>
-              {renderInputFooter}
             </div>
             <div className="agent-right-panel">
               <AgentProcessPanel
