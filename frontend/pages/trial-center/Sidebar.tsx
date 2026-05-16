@@ -29,16 +29,21 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
       if (openMenuId !== null) {
-        const target = e.target as HTMLElement;
         if (!target.closest('.sidebar-conversation-menu') && !target.closest('.sidebar-conversation-more-btn')) {
           setOpenMenuId(null);
+        }
+      }
+      if (isUserMenuOpen) {
+        if (!target.closest('.sidebar-user-menu') && !target.closest('.user-info')) {
+          setIsUserMenuOpen(false);
         }
       }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [openMenuId]);
+  }, [openMenuId, isUserMenuOpen]);
 
   const fetchConversations = useCallback(async () => {
     try {

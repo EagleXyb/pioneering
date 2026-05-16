@@ -14,6 +14,8 @@ export function useChat() {
   const [inputValue, setInputValue] = useState('');
   const [conversationId, setConversationId] = useState<number | null>(null);
   const msgIdMapRef = useRef<MsgIdMap>(new Map());
+  const messagesRef = useRef<DisplayMessage[]>([]);
+  messagesRef.current = messages;
 
   const updateMessage = useCallback((id: string, updates: Partial<DisplayMessage>) => {
     setMessages(prev => prev.map(msg => msg.id === id ? { ...msg, ...updates } : msg));
@@ -187,15 +189,14 @@ export function useChat() {
   );
 
   const handleStopGeneration = useCallback(() => {
-    stopStream(messages, (msgId, hasContent) => {
+    stopStream(messagesRef.current, (msgId, hasContent) => {
       updateMessage(msgId, {
         status: hasContent ? 'success' : 'error',
         error: hasContent ? undefined : '生成已停止',
       });
 
-      // 停止生成时也持久化最终状态
       const dbMsgId = msgIdMapRef.current.get(msgId);
-      const msg = messages.find(m => m.id === msgId);
+      const msg = messagesRef.current.find(m => m.id === msgId);
       if (conversationId !== null && dbMsgId !== undefined && msg) {
         chatConversationService.updateMessage(conversationId, dbMsgId, {
           content: msg.content,
@@ -206,7 +207,7 @@ export function useChat() {
         }).catch(e => console.error('更新消息失败:', e));
       }
     });
-  }, [messages, conversationId, stopStream, updateMessage]);
+  }, [conversationId, stopStream, updateMessage]);
 
   const handleRetry = useCallback(
     (
@@ -223,8 +224,18 @@ export function useChat() {
       const userContent = messages[userMsgIndex].content;
 
       const eligibleMessages = messages.slice(0, userMsgIndex)
-        .filter(m => m.role !== 'system' && m.status === 'success');
-      const contextMsgs = eligibleMessages.slice(-MAX_CONTEXT_MESSAGES);
+        .filter(m => m.role !== 'system' && m.status === 'success')
+        .reverse();
+      const contextMsgs: DisplayMessage[] = [];
+      let tokenCount = 0;
+      for (const m of eligibleMessages) {
+        const msgTokens = estimateTokens(m.content);
+        if (contextMsgs.length >= MAX_CONTEXT_MESSAGES) break;
+        if (tokenCount + msgTokens > MAX_CONTEXT_TOKENS) break;
+        contextMsgs.push(m);
+        tokenCount += msgTokens;
+      }
+      contextMsgs.reverse();
 
       setMessages(prev => prev.slice(0, userMsgIndex + 1));
 

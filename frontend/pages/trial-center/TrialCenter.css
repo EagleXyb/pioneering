@@ -1060,7 +1060,6 @@
 }
 .chat-message-markdown blockquote {
   border-left: 3px solid #165DFF;
-  padding-left: 12px;
   margin: 0 0 16px 0;
   color: #4E5969;
   background: #F2F3F5;
@@ -1195,7 +1194,7 @@
 }
 .scroll-bottom-btn {
   position: sticky;
-  bottom: 0px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   width: 32px;
@@ -1211,7 +1210,9 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.2s;
   z-index: 10;
-  margin: 0 auto;
+  margin: -32px auto 0;
+  float: right;
+  margin-right: 16px;
 }
 .scroll-bottom-btn:hover {
   background: #F5F5F5;
@@ -1560,6 +1561,9 @@
 .assistant-bubble {
     background: #2C2C2E;
     color: #F5F5F7;
+}
+.assistant-bubble:hover {
+    background: #3A3A3C;
 }
 .chat-message-markdown code {
     background: rgba(22, 119, 255, 0.15);

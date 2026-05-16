@@ -81,7 +81,7 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
         )}
         {showThinking && hasThinking && (
           <div className="thinking-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{thinkingContent}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{thinkingContent}</ReactMarkdown>
             {!isLoading && (
               <div className="thinking-complete-marker">
                 <span className="thinking-check-icon">✓</span>

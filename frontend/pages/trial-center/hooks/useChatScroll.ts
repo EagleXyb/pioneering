@@ -7,6 +7,7 @@ export function useChatScroll(messagesLength: number) {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isAutoScrolling = useRef(false);
+  const isNearBottom = useRef(true);
 
   useEffect(() => {
     return () => {
@@ -23,7 +24,7 @@ export function useChatScroll(messagesLength: number) {
   }, []);
 
   useEffect(() => {
-    if (messagesLength > 0) {
+    if (messagesLength > 0 && isNearBottom.current) {
       scrollToBottom();
     }
   }, [messagesLength, scrollToBottom]);
@@ -33,6 +34,7 @@ export function useChatScroll(messagesLength: number) {
     const container = chatContainerRef.current;
     if (!container) return;
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearBottom.current = distanceFromBottom <= 100;
     setShowScrollBottom(distanceFromBottom > 100);
     setIsScrolling(true);
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);

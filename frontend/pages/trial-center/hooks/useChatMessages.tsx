@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import type { DisplayMessage } from '../types';
 import { UserMessage, AssistantMessage, SystemMessage } from '../ChatMessage';
 
@@ -29,6 +29,11 @@ export function useChatMessages(messages: DisplayMessage[]) {
   const [likedMessages, setLikedMessages] = useState<Set<string>>(() => loadFeedbackSet('liked'));
   const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(() => loadFeedbackSet('disliked'));
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
+
+  const likedRef = useRef(likedMessages);
+  likedRef.current = likedMessages;
+  const dislikedRef = useRef(dislikedMessages);
+  dislikedRef.current = dislikedMessages;
 
   const showToast = useCallback((message: string) => {
     setToast({ show: true, message });
@@ -78,10 +83,10 @@ export function useChatMessages(messages: DisplayMessage[]) {
         newSet.add(messageId);
         setDislikedMessages(p => { const s = new Set(p); s.delete(messageId); return s; });
       }
-      persistFeedback(newSet, dislikedMessages);
+      persistFeedback(newSet, dislikedRef.current);
       return newSet;
     });
-  }, [dislikedMessages]);
+  }, []);
 
   const toggleDislike = useCallback((messageId: string) => {
     setDislikedMessages(prev => {
@@ -91,10 +96,10 @@ export function useChatMessages(messages: DisplayMessage[]) {
         newSet.add(messageId);
         setLikedMessages(p => { const s = new Set(p); s.delete(messageId); return s; });
       }
-      persistFeedback(likedMessages, newSet);
+      persistFeedback(likedRef.current, newSet);
       return newSet;
     });
-  }, [likedMessages]);
+  }, []);
 
   const renderMessageContent = useCallback((message: DisplayMessage, onRetry: (msgId: string) => void) => {
     if (message.role === 'system') return <SystemMessage message={message} />;
