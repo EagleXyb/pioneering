@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, ChevronLeft, Check, Loader2, Search, AlertCircle, Circle, XCircle, Zap, Minus } from 'lucide-react';
+import React from 'react';
+import { ChevronDown, ChevronRight, ChevronLeft, Check, Loader2, Search, AlertCircle, Circle, XCircle, Zap, Minus, Copy, Download, Expand } from 'lucide-react';
 
 export type AgentStepStatus = 'pending' | 'running' | 'completed' | 'error';
 
@@ -23,19 +23,24 @@ export interface AgentStep {
 interface AgentProcessPanelProps {
   steps: AgentStep[];
   isRunning: boolean;
+  isPanelCollapsed: boolean;
+  onTogglePanel: () => void;
   onTerminate?: () => void;
   onToggleStep?: (stepId: string) => void;
+  onExpand?: () => void;
   collapsedSteps?: Set<string>;
 }
 
 const AgentProcessPanel: React.FC<AgentProcessPanelProps> = ({
   steps,
   isRunning,
+  isPanelCollapsed,
+  onTogglePanel,
   onTerminate,
   onToggleStep,
+  onExpand,
   collapsedSteps = new Set(),
 }) => {
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   const getStepIcon = (status: AgentStepStatus) => {
     switch (status) {
@@ -56,6 +61,38 @@ const AgentProcessPanel: React.FC<AgentProcessPanelProps> = ({
     return '';
   };
 
+  const handleCopy = () => {
+    const text = steps.map((step, i) => {
+      let line = `${i + 1}. ${step.title} [${step.status}]`;
+      if (step.content) line += `\n   ${step.content}`;
+      step.subItems?.forEach(sub => {
+        if (sub.query) line += `\n   搜索: ${sub.query}`;
+        if (sub.content) line += `\n   ${sub.content}`;
+      });
+      return line;
+    }).join('\n');
+    navigator.clipboard.writeText(text);
+  };
+
+  const handleDownload = () => {
+    const text = steps.map((step, i) => {
+      let line = `${i + 1}. ${step.title} [${step.status}]`;
+      if (step.content) line += `\n   ${step.content}`;
+      step.subItems?.forEach(sub => {
+        if (sub.query) line += `\n   搜索: ${sub.query}`;
+        if (sub.content) line += `\n   ${sub.content}`;
+      });
+      return line;
+    }).join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent-process-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const completedCount = steps.filter(s => s.status === 'completed').length;
   const totalCount = steps.length;
 
@@ -71,10 +108,23 @@ const AgentProcessPanel: React.FC<AgentProcessPanelProps> = ({
           )}
         </div>
         <div className="agent-panel-header-right">
+          {!isPanelCollapsed && (
+            <>
+              <button className="agent-panel-action-btn" onClick={handleCopy} data-tooltip="复制">
+                <Copy size={14} />
+              </button>
+              <button className="agent-panel-action-btn" onClick={handleDownload} data-tooltip="下载">
+                <Download size={14} />
+              </button>
+              <button className="agent-panel-action-btn" onClick={onExpand} data-tooltip="最大化">
+                <Expand size={14} />
+              </button>
+            </>
+          )}
           <button
             className="agent-panel-toggle-btn"
-            onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-            title={isPanelCollapsed ? '展开面板' : '收起面板'}
+            onClick={onTogglePanel}
+            data-tooltip={isPanelCollapsed ? '展开面板' : '收起面板'}
           >
             {isPanelCollapsed ? <ChevronLeft size={16} /> : <Minus size={16} />}
           </button>

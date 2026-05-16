@@ -32,6 +32,9 @@ const TrialCenter: React.FC = () => {
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());
   const [isAgentRunning, setIsAgentRunning] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState(380);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const projectDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
@@ -106,6 +109,29 @@ const TrialCenter: React.FC = () => {
     setIsAgentRunning(false);
   }, []);
 
+  const handleRightResizeStart = useCallback((e: React.MouseEvent) => {
+    if (isRightPanelCollapsed) return;
+    e.preventDefault();
+    resizeRef.current = { startX: e.clientX, startWidth: rightPanelWidth };
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const delta = resizeRef.current.startX - moveEvent.clientX;
+      const newWidth = Math.min(420, Math.max(280, resizeRef.current.startWidth + delta));
+      setRightPanelWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      resizeRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [isRightPanelCollapsed, rightPanelWidth]);
+
   const renderMainContent = () => {
     if (!isInChatMode) return null;
     if (isAgentMode) return <ChatPanel messages={messages} onRetry={handleRetryMessage} className="professional-chat-container" />;
@@ -141,36 +167,41 @@ const TrialCenter: React.FC = () => {
 
   if (isAgentMode && isInChatMode) {
     return (
-      <div className="trial-center-container">
-        <Sidebar
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          onNewChat={handleNewChat}
-          isGenerating={isGenerating}
-          currentConversationId={conversationId}
-          onSwitchConversation={handleSwitchConversation}
-        />
-        <div className="trial-main-area">
+      <div className="three-column-layout">
+        <div className={`layout-column layout-left ${isSidebarCollapsed ? 'collapsed' : ''}`}>
+          <Sidebar
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onNewChat={handleNewChat}
+            isGenerating={isGenerating}
+            currentConversationId={conversationId}
+            onSwitchConversation={handleSwitchConversation}
+          />
+        </div>
+        <div className="layout-column layout-center">
           <TopNavbar />
-          <div className="agent-content-row">
-            <div className="agent-left-area">
-              <div className="trial-body agent-mode">
-                <div className="main-wrapper professional-wrapper">
-                  {renderMainContent()}
-                  {renderInputFooter}
-                </div>
-              </div>
-            </div>
-            <div className="agent-right-panel">
-              <AgentProcessPanel
-                steps={agentSteps}
-                isRunning={isAgentRunning}
-                onTerminate={handleTerminateAgent}
-                onToggleStep={handleToggleAgentStep}
-                collapsedSteps={collapsedSteps}
-              />
-            </div>
+          <div className="main-wrapper professional-wrapper">
+            {renderMainContent()}
+            {renderInputFooter}
           </div>
+        </div>
+        <div
+          className="resize-handle"
+          onMouseDown={handleRightResizeStart}
+        />
+        <div
+          className={`layout-column layout-right ${isRightPanelCollapsed ? 'collapsed' : ''}`}
+          style={isRightPanelCollapsed ? undefined : { width: rightPanelWidth, minWidth: rightPanelWidth }}
+        >
+          <AgentProcessPanel
+            steps={agentSteps}
+            isRunning={isAgentRunning}
+            isPanelCollapsed={isRightPanelCollapsed}
+            onTogglePanel={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
+            onTerminate={handleTerminateAgent}
+            onToggleStep={handleToggleAgentStep}
+            collapsedSteps={collapsedSteps}
+          />
         </div>
       </div>
     );

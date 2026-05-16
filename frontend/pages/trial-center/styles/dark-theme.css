@@ -126,21 +126,21 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   }
 
-  .agent-right-panel {
-    background: #1C1C1F;
+  .layout-right {
+    background: #2C2C2E;
     border-left-color: #2C2C2E;
   }
 
   .agent-process-panel {
-    background: #1C1C1F;
+    background: #2C2C2E;
   }
 
   .agent-process-panel.panel-collapsed {
-    background: #1C1C1F;
+    background: #2C2C2E;
   }
 
   .agent-panel-header {
-    background: #1C1C1F;
+    background: #2C2C2E;
     border-bottom-color: #2C2C2E;
   }
 
@@ -153,8 +153,13 @@
     color: #D1D1D6;
   }
 
+  .agent-panel-action-btn:hover {
+    background: #2C2C2E;
+    color: #D1D1D6;
+  }
+
   .agent-panel-body {
-    background: #1C1C1F;
+    background: #2C2C2E;
   }
 
   .agent-step-running {
@@ -225,7 +230,7 @@
   }
 
   .agent-panel-footer {
-    background: #1C1C1F;
+    background: #2C2C2E;
     border-top-color: #2C2C2E;
   }
 

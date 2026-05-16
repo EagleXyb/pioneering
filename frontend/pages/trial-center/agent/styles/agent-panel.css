@@ -1,117 +1,23 @@
-.agent-content-row {
-  flex: 1;
-  display: flex;
-  gap: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.agent-left-area {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.agent-right-panel {
-  width: var(--right-panel-width);
-  min-width: var(--right-panel-min-width);
-  max-width: var(--right-panel-max-width);
-  flex-shrink: 0;
-  overflow: hidden;
-  background: var(--color-bg-panel);
-  border-left: 1px solid var(--color-border-right-panel);
-}
-
-.professional-wrapper {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  gap: 0;
-}
-
-.professional-wrapper .chat-footer {
-  padding-top: var(--spacing-md);
-  padding-bottom: var(--spacing-xs);
-}
-
-.professional-wrapper .trial-input-footer {
-  padding: 0;
-}
-
-.professional-wrapper .input-box {
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto var(--spacing-xs) auto;
-  border-radius: var(--radius-md);
-}
-
-.professional-chat-container {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--spacing-lg) 0;
-  position: relative;
-  scroll-behavior: smooth;
-}
-
-.professional-chat-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.professional-chat-container::-webkit-scrollbar-track {
-  background: transparent;
-  border: none;
-}
-
-.professional-chat-container::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: var(--radius-sm);
-  border: none;
-  transition: background var(--transition-slow) ease;
-}
-
-.professional-chat-container.scrolling::-webkit-scrollbar-thumb {
-  background: var(--color-bg-scroll-thumb);
-}
-
-.professional-chat-container::-webkit-scrollbar-thumb:hover {
-  background: var(--color-bg-scroll-thumb-hover);
-}
-
-.professional-chat-container .chat-message-wrapper {
-  padding: var(--spacing-xs) 28px;
-}
-
-.professional-chat-container .user-row,
-.professional-chat-container .assistant-row {
-  max-width: 720px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 .agent-process-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-panel);
+  background: var(--color-bg-main);
 }
 
 .agent-process-panel.panel-collapsed {
-  width: 40px;
   align-items: center;
-  background: var(--color-bg-panel);
 }
 
 .agent-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-xl) var(--spacing-xl) 14px;
-  border-bottom: 1px solid var(--color-border-light);
+  height: 48px;
+  padding: 0 var(--spacing-xl);
+  border-bottom: none;
   flex-shrink: 0;
-  background: var(--color-bg-panel);
+  background: var(--color-bg-main);
 }
 
 .agent-panel-header-left {
@@ -143,18 +49,57 @@
   height: 28px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #bbb;
   cursor: pointer;
   transition: all var(--transition-normal);
+  position: relative;
 }
 
 .agent-panel-toggle-btn:hover {
   background: #f0f0f2;
   color: var(--color-text-secondary);
+}
+
+.agent-panel-action-btn {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #bbb;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  position: relative;
+}
+
+.agent-panel-action-btn:hover {
+  background: #f0f0f2;
+  color: var(--color-text-secondary);
+}
+
+.agent-panel-toggle-btn:hover::after,
+.agent-panel-action-btn:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1C1C1E;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 3px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
 }
 
 .agent-panel-body {
@@ -490,7 +435,7 @@
   padding: 14px var(--spacing-xl);
   border-top: 1px solid var(--color-border-light);
   flex-shrink: 0;
-  background: var(--color-bg-panel);
+  background: var(--color-bg-main);
 }
 
 .agent-terminate-btn {
