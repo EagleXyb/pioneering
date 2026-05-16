@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, Pencil, Flag, Pin } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, Pencil, Flag } from 'lucide-react';
 import chatConversationService, { type ConversationItem } from '../../../../services/chatConversationService';
 
 interface SidebarProps {
@@ -104,7 +104,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="sidebar-content">
         <div className="sidebar-header">
           <div className="sidebar-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-            <div className="logo-circle">IAC</div>
+            <div className="logo-circle">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="25" height="25">
+                <circle cx="16" cy="16" r="14" fill="#646cff"/>
+                <text x="16" y="21" fontSize="14" textAnchor="middle" fill="white" fontFamily="Arial">IAC</text>
+              </svg>
+            </div>
             <span className="logo-text">IAC Incubator</span>
           </div>
           <div className="sidebar-header-actions">
@@ -141,7 +146,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <MessageSquareMore size={14} className="sidebar-conversation-icon" />
                   <span className="sidebar-conversation-title">{conv.title}</span>
-                  {index === 0 && <Pin size={14} className="sidebar-conversation-pin" />}
                   <button
                     className="sidebar-conversation-more-btn"
                     onClick={(e) => handleMoreClick(e, conv.id)}

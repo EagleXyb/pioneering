@@ -306,14 +306,6 @@
     color: #D1D1D6;
   }
 
-  .sidebar-conversation-pin {
-    color: #98989D;
-  }
-
-  .sidebar-conversation-pin:hover {
-    color: #D1D1D6;
-  }
-
   .sidebar-conversation-menu {
     background: #2C2C2E;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
