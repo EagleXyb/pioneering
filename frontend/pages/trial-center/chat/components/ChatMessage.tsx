@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -9,6 +9,14 @@ import FloatingCursor from './FloatingCursor';
 import type { FloatingCursorRef } from './FloatingCursor';
 import { useFloatingCursor } from '../hooks/useFloatingCursor';
 import { stripThinkTags } from '../../utils/stripThinkTags';
+
+/** 将思考内容按段落拆分为时间线步骤 */
+function parseThinkingSteps(content: string): string[] {
+  return content
+    .split(/\n\s*\n/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+}
 
 interface ChatMessageProps {
   message: DisplayMessage;
@@ -52,6 +60,9 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
   const hasThinking = thinkingContent.length > 0;
   const hasAnswer = answerContent.length > 0;
 
+  // 将思考内容解析为步骤列表
+  const thinkingSteps = useMemo(() => parseThinkingSteps(thinkingContent), [thinkingContent]);
+
   useFloatingCursor(answerContent, isLoading, markdownContainerRef, cursorRef);
 
   return (
@@ -71,12 +82,30 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
           </button>
         )}
         {showThinking && hasThinking && (
-          <div className="thinking-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{thinkingContent}</ReactMarkdown>
+          <div className="thinking-timeline">
+            {thinkingSteps.map((step, index) => (
+              <div key={index} className="thinking-step">
+                <div className="thinking-step-node" data-is-last={index === thinkingSteps.length - 1 && !isLoading}>
+                  <span className="step-dot" />
+                </div>
+                <div className="thinking-step-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                    {step}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            ))}
             {!isLoading && (
-              <div className="thinking-complete-marker">
-                <span className="thinking-check-icon">✓</span>
-                <span>已完成</span>
+              <div className="thinking-step thinking-step-complete">
+                <div className="thinking-step-node step-node-complete">
+                  <svg className="step-check-svg" viewBox="0 0 20 20" fill="none">
+                    <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M6 10l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="thinking-step-body step-body-complete">
+                  <span>已完成思考</span>
+                </div>
               </div>
             )}
           </div>

@@ -376,86 +376,113 @@
   }
 }
 
-.thinking-content {
+/* ====== 思考时间线容器 ====== */
+.thinking-timeline {
   position: relative;
-  padding: 0 14px;
   margin-bottom: var(--spacing-md);
-  font-size: var(--font-size-base);
-  color: var(--color-text-thinking);
-  max-height: 460px;
-  overflow: auto;
-  line-height: 1.6;
+  padding-left: 4px;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
-.thinking-content::before {
-  content: '';
-  position: absolute;
-  left: 14px;
-  top: var(--spacing-sm);
-  bottom: 0;
-  width: 2px;
-  background: linear-gradient(to bottom, #8B5CF6, #A78BFA, #C084FC, #E879F9);
-  border-radius: 1px;
-  z-index: 0;
-}
-
-.thinking-content p {
+/* ====== 单个思考步骤 ====== */
+.thinking-step {
+  display: flex;
+  gap: 14px;
   position: relative;
-  margin: 0 0 14px 0;
-  padding-left: 24px;
 }
 
-.thinking-content p::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 8px;
-  width: 8px;
-  height: 8px;
+/* ====== 步骤节点列（圆点 + 连接线） ====== */
+.thinking-step-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 18px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* 圆形实心节点 */
+.step-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: #8B5CF6;
-  border: 2px solid var(--color-bg-assistant);
-  box-shadow: 0 0 0 2px #8B5CF6;
-  z-index: 1;
-}
-
-.thinking-content p:first-of-type::before {
-  width: 10px;
-  height: 10px;
-  left: 1px;
-  top: 7px;
-  background: #7C3AED;
-  box-shadow: 0 0 0 2px #7C3AED, 0 0 8px rgba(139, 92, 246, 0.4);
-}
-
-.thinking-content p:last-of-type {
-  margin-bottom: 8px;
-}
-
-.thinking-complete-marker {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+  flex-shrink: 0;
+  /* 确保在连接线上方 */
   position: relative;
-  padding: var(--spacing-sm) 0 var(--spacing-sm) 24px;
-  margin-top: 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-success);
-  font-weight: var(--font-weight-medium);
+  z-index: 1;
+  /* 微妙的外发光效果 */
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.35);
 }
 
-.thinking-complete-marker::before {
+/* 节点之间的垂直连接线（用伪元素画在每个步骤节点的下方） */
+.thinking-step-node::after {
   content: '';
   position: absolute;
-  left: 0;
-  top: 10px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--color-success);
-  border: 2px solid var(--color-bg-assistant);
-  box-shadow: 0 0 0 2px var(--color-success);
-  z-index: 1;
+  top: 22px;      /* 圆点底部之后，留出明显间隙 */
+  bottom: -8px;   /* 延伸到下一个步骤 */
+  width: 1.5px;
+  background: #C4B5FD;
+  border-radius: 1px;
+}
+
+/* 最后一个步骤不显示连接线 */
+.thinking-step-node[data-is-last="true"]::after,
+.thinking-step-complete .thinking-step-node::after {
+  display: none;
+}
+
+/* ====== 步骤内容 ====== */
+.thinking-step-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 16px;
+  color: var(--color-text-thinking);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.thinking-step-body p {
+  margin: 0 0 8px 0;
+}
+
+.thinking-step-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* 步骤内 Markdown 样式覆盖 */
+.thinking-step-body strong {
+  color: var(--color-text-heading);
+  font-weight: var(--font-weight-semibold);
+}
+
+.thinking-step-body code {
+  background: var(--color-bg-code);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.92em;
+  font-family: var(--font-family-mono);
+}
+
+/* ====== 完成标记步骤 ====== */
+.thinking-step-complete .thinking-step-node {
+  margin-top: 2px;
+}
+
+.step-node-complete .step-check-svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-success);
+  display: block;
+}
+
+.step-body-complete {
+  padding-top: 3px !important;
+  padding-bottom: 0 !important;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-thinking-secondary);
+  font-weight: var(--font-weight-medium);
 }
 
 .thinking-check-icon {
