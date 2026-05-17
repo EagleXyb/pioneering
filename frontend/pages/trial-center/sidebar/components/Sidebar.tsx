@@ -1,7 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, PencilLine, Pin, PinOff, AlertTriangle } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, PencilLine, Pin, PinOff, AlertTriangle } from 'lucide-react';
 import chatConversationService, { type ConversationItem } from '../../../../services/chatConversationService';
+
+const ShareIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={18} height={18} fill="currentColor" viewBox="0 0 1024 1024">
+    <path d="M512 119.168c0-49.024 59.264-73.6 93.952-38.976l360.32 360.384a55.04 55.04 0 0 1 0 77.888l-360.32 360.32C571.264 913.536 512 888.96 512 839.936v-167.04c-126.08 8.96-220.096 70.592-284.544 133.568a595.5 595.5 0 0 0-96.96 124.544c-2.048 3.648-3.52 6.4-4.48 8.32l-1.088 1.92-.192.448-2.88 4.672A32 32 0 0 1 64 927.552c0-190.08 40.768-349.568 122.048-462.336C262.464 359.168 373.12 296.768 512 288.576V119.104zm64 200.32a32 32 0 0 1-32 32c-134.08 0-236.288 54.336-306.048 151.168-55.424 76.864-91.328 182.208-104.384 311.744 14.08-17.216 30.4-35.456 49.088-53.76C260.224 684.864 379.776 607.552 544 607.552a32 32 0 0 1 32 32v178.752l338.752-338.752L576 140.8v178.752z"/>
+  </svg>
+);
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -172,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         )}
                       </div>
                       <div className="sidebar-conversation-menu-item disabled">
-                        <Share2 size={18} strokeWidth={1.8} /> 分享
+                        <ShareIcon /> 分享
                       </div>
                       <div className="sidebar-conversation-menu-item" onClick={(e) => handleMenuAction(e, 'rename', conv.id)}>
                         <PencilLine size={18} strokeWidth={1.8} /> 重命名
