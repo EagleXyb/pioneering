@@ -377,10 +377,8 @@
 }
 
 .thinking-content {
-  background: var(--color-bg-thinking);
-  border: 1px solid var(--color-border-thinking);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-md) 14px;
+  position: relative;
+  padding: 0 14px;
   margin-bottom: var(--spacing-md);
   font-size: var(--font-size-base);
   color: var(--color-text-thinking);
@@ -389,24 +387,75 @@
   line-height: 1.6;
 }
 
+.thinking-content::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: var(--spacing-sm);
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, #8B5CF6, #A78BFA, #C084FC, #E879F9);
+  border-radius: 1px;
+  z-index: 0;
+}
+
 .thinking-content p {
-  margin: 0 0 var(--spacing-sm) 0;
+  position: relative;
+  margin: 0 0 14px 0;
+  padding-left: 24px;
+}
+
+.thinking-content p::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8B5CF6;
+  border: 2px solid var(--color-bg-assistant);
+  box-shadow: 0 0 0 2px #8B5CF6;
+  z-index: 1;
+}
+
+.thinking-content p:first-of-type::before {
+  width: 10px;
+  height: 10px;
+  left: 1px;
+  top: 7px;
+  background: #7C3AED;
+  box-shadow: 0 0 0 2px #7C3AED, 0 0 8px rgba(139, 92, 246, 0.4);
 }
 
 .thinking-content p:last-of-type {
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: 8px;
 }
 
 .thinking-complete-marker {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding-top: var(--spacing-sm);
-  margin-top: 10px;
-  border-top: 1px solid var(--color-border-thinking-divider);
+  position: relative;
+  padding: var(--spacing-sm) 0 var(--spacing-sm) 24px;
+  margin-top: 0;
   font-size: var(--font-size-sm);
   color: var(--color-success);
   font-weight: var(--font-weight-medium);
+}
+
+.thinking-complete-marker::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-success);
+  border: 2px solid var(--color-bg-assistant);
+  box-shadow: 0 0 0 2px var(--color-success);
+  z-index: 1;
 }
 
 .thinking-check-icon {

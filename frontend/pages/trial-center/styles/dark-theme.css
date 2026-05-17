@@ -463,4 +463,23 @@
   .trial-input-footer {
     background: transparent;
   }
+
+  .thinking-content::before {
+    background: linear-gradient(to bottom, #8B5CF6, #A78BFA, #C084FC, #F0ABFC);
+  }
+
+  .thinking-content p::before {
+    background: #8B5CF6;
+    border-color: #2C2C2E;
+    box-shadow: 0 0 0 2px #8B5CF6;
+  }
+
+  .thinking-content p:first-of-type::before {
+    background: #A78BFA;
+    box-shadow: 0 0 0 2px #A78BFA, 0 0 12px rgba(167, 139, 250, 0.5);
+  }
+
+  .thinking-complete-marker::before {
+    border-color: #2C2C2E;
+  }
 }
