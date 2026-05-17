@@ -319,6 +319,10 @@
     background: #3A3A3C;
   }
 
+  .sidebar-conversation-menu-item:active {
+    background: #48484A;
+  }
+
   .sidebar-conversation-menu-item.disabled {
     color: #555557;
   }
@@ -328,11 +332,7 @@
   }
 
   .sidebar-conversation-menu-item.danger:hover {
-    background: rgba(239, 68, 68, 0.15);
-  }
-
-  .sidebar-conversation-menu-divider {
-    background: #3A3A3C;
+    background: rgba(248, 113, 113, 0.15);
   }
 
   .model-option:hover {

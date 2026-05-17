@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, Pencil, Flag } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, Share2, PencilLine, Pin, PinOff, AlertTriangle } from 'lucide-react';
 import chatConversationService, { type ConversationItem } from '../../../../services/chatConversationService';
 
 interface SidebarProps {
@@ -26,6 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -76,7 +77,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         break;
       case 'rename':
         break;
-      case 'report':
+      case 'pin':
+        setPinnedIds(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) {
+            next.delete(id);
+          } else {
+            next.add(id);
+          }
+          return next;
+        });
         break;
     }
   }, []);
@@ -154,18 +164,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                   {openMenuId === conv.id && (
                     <div className="sidebar-conversation-menu">
+                      <div className="sidebar-conversation-menu-item" onClick={(e) => handleMenuAction(e, 'pin', conv.id)}>
+                        {pinnedIds.has(conv.id) ? (
+                          <><PinOff size={18} strokeWidth={1.8} /> 取消置顶</>
+                        ) : (
+                          <><Pin size={18} strokeWidth={1.8} /> 置顶</>
+                        )}
+                      </div>
                       <div className="sidebar-conversation-menu-item disabled">
-                        <Share2 size={14} /> 分享
+                        <Share2 size={18} strokeWidth={1.8} /> 分享
                       </div>
                       <div className="sidebar-conversation-menu-item" onClick={(e) => handleMenuAction(e, 'rename', conv.id)}>
-                        <Pencil size={14} /> 重命名
+                        <PencilLine size={18} strokeWidth={1.8} /> 重命名
                       </div>
                       <div className="sidebar-conversation-menu-item" onClick={(e) => handleMenuAction(e, 'report', conv.id)}>
-                        <Flag size={14} /> 举报
+                        <AlertTriangle size={18} strokeWidth={1.8} /> 举报
                       </div>
-                      <div className="sidebar-conversation-menu-divider" />
                       <div className="sidebar-conversation-menu-item danger" onClick={(e) => handleMenuAction(e, 'delete', conv.id)}>
-                        <Trash2 size={14} /> 删除
+                        <Trash2 size={18} strokeWidth={1.8} /> 删除
                       </div>
                     </div>
                   )}
