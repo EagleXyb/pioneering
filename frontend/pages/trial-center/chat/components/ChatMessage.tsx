@@ -138,27 +138,26 @@ export const AssistantMessage: React.FC<ChatMessageProps> = ({
         )}
         {message.status === 'success' && (hasAnswer || hasThinking) && (
           <div className="chat-message-actions">
-            <button className="action-btn" onClick={() => onCopy(answerContent || thinkingContent)} title="复制">
+            <button className="action-btn" onClick={() => onCopy(answerContent || thinkingContent)} data-title="复制">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
               </svg>
             </button>
-            <button className="action-btn" onClick={() => onRetry(message.id)} title="重新生成">
+            <button className={`action-btn ${isLiked ? 'action-btn-active' : ''}`} onClick={onToggleLike} data-title="点赞">
+              <ThumbsUp size={14} />
+            </button>
+            <button className={`action-btn ${isDisliked ? 'action-btn-active' : ''}`} onClick={onToggleDislike} data-title="点踩">
+              <ThumbsDown size={14} />
+            </button>
+            <button className="action-btn" onClick={() => onForward(message.id)} data-title="分享">
+              <ShareIcon />
+            </button>
+            <button className="action-btn" onClick={() => onRetry(message.id)} data-title="重新生成">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M1 4v6h6"/>
                 <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
               </svg>
-            </button>
-            <div className="action-divider"></div>
-            <button className={`action-btn ${isLiked ? 'action-btn-active' : ''}`} onClick={onToggleLike} title="点赞">
-              <ThumbsUp size={14} />
-            </button>
-            <button className={`action-btn ${isDisliked ? 'action-btn-active' : ''}`} onClick={onToggleDislike} title="反对">
-              <ThumbsDown size={14} />
-            </button>
-            <button className="action-btn" onClick={() => onForward(message.id)} title="分享">
-              <ShareIcon />
             </button>
           </div>
         )}
