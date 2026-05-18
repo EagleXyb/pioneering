@@ -269,8 +269,6 @@ export default function IAC() {
         <View className='chat-header-menu-btn' onClick={openSidebar}>
           <Text className='chat-header-menu-icon'>☰</Text>
         </View>
-        <Text className='chat-header-title'>IAC 创意孵化</Text>
-        <View className='chat-header-placeholder' />
       </View>
 
       <ScrollView

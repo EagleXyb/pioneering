@@ -37,7 +37,6 @@ page {
 .chat-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 16rpx 24rpx;
   padding-top: calc(16rpx + env(safe-area-inset-top));
   background: $color-bg-page;
@@ -60,18 +59,6 @@ page {
 .chat-header-menu-icon {
   font-size: 36rpx;
   color: #1d1d1f;
-}
-
-.chat-header-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #1d1d1f;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-}
-
-.chat-header-placeholder {
-  width: 64rpx;
-  height: 64rpx;
 }
 
 .chat-area {

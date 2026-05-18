@@ -1,8 +1,7 @@
 .input-bar {
   flex-shrink: 0;
   background: #f5f5f7;
-  padding: 12rpx 16rpx;
-  padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
   position: relative;
   z-index: 100;
 }
