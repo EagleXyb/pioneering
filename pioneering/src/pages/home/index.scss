@@ -1,0 +1,263 @@
+@import '../../styles/variables.scss';
+
+.home-page {
+  min-height: 100vh;
+  background: $color-bg-page;
+  padding-bottom: calc(100rpx + #{$safe-area-bottom});
+}
+
+.home-header {
+  background: linear-gradient(135deg, $color-primary 0%, $color-primary-dark 100%);
+  padding: calc(80rpx + #{$safe-area-top}) $spacing-lg $spacing-xl;
+}
+
+.home-header-greeting {
+  font-size: $font-sm;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: $spacing-xs;
+}
+
+.home-header-title {
+  font-size: $font-3xl;
+  font-weight: $font-weight-bold;
+  color: #ffffff;
+  line-height: 1.3;
+}
+
+.home-header-subtitle {
+  font-size: $font-base;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: $spacing-sm;
+}
+
+.home-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-sm;
+  margin: -40rpx $spacing-md 0;
+  position: relative;
+  z-index: 2;
+}
+
+.home-mode-card {
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  box-shadow: $shadow-md;
+  display: flex;
+  align-items: flex-start;
+
+  &:active {
+    transform: scale(0.97);
+    transition: transform $transition-fast;
+  }
+}
+
+.home-mode-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: $radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.home-mode-icon-brainstorm {
+  background: rgba(79, 70, 229, 0.1);
+}
+
+.home-mode-icon-analyze {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.home-mode-icon-create {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.home-mode-icon-evaluate {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.home-mode-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-mode-name {
+  font-size: $font-base;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: 4rpx;
+}
+
+.home-mode-desc {
+  font-size: 22rpx;
+  color: $color-text-tertiary;
+  @extend .ellipsis;
+}
+
+.home-section {
+  padding: $spacing-lg $spacing-md 0;
+}
+
+.home-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $spacing-md;
+}
+
+.home-section-title {
+  font-size: $font-lg;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.home-section-more {
+  font-size: $font-sm;
+  color: $color-primary;
+}
+
+.home-chat-entry {
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  display: flex;
+  align-items: center;
+  box-shadow: $shadow-sm;
+  margin-bottom: $spacing-sm;
+
+  &:active {
+    opacity: 0.85;
+  }
+}
+
+.home-chat-entry-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: $radius-full;
+  background: linear-gradient(135deg, $color-primary-light, $color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  font-weight: $font-weight-bold;
+  color: #fff;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.home-chat-entry-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-chat-entry-title {
+  font-size: $font-base;
+  font-weight: $font-weight-medium;
+  color: $color-text-primary;
+  @extend .ellipsis;
+}
+
+.home-chat-entry-preview {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  margin-top: 6rpx;
+  @extend .ellipsis;
+}
+
+.home-chat-entry-meta {
+  display: flex;
+  align-items: center;
+  margin-top: 6rpx;
+}
+
+.home-chat-entry-tag {
+  font-size: 20rpx;
+  color: $color-primary;
+  background: $color-primary-bg;
+  padding: 4rpx 12rpx;
+  border-radius: $radius-xs;
+  margin-right: $spacing-xs;
+}
+
+.home-chat-entry-time {
+  font-size: 20rpx;
+  color: $color-text-tertiary;
+}
+
+.home-cases {
+  white-space: nowrap;
+}
+
+.home-case-item {
+  display: inline-block;
+  width: 280rpx;
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  margin-right: $spacing-sm;
+  box-shadow: $shadow-sm;
+  vertical-align: top;
+
+  &:active {
+    opacity: 0.85;
+  }
+}
+
+.home-case-cover {
+  width: 280rpx;
+  height: 180rpx;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52rpx;
+}
+
+.home-case-cover-brainstorm {
+  background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+}
+
+.home-case-cover-create {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+}
+
+.home-case-cover-analyze {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+}
+
+.home-case-info {
+  padding: $spacing-sm;
+}
+
+.home-case-name {
+  font-size: $font-sm;
+  font-weight: $font-weight-medium;
+  color: $color-text-primary;
+  @extend .ellipsis;
+}
+
+.home-case-desc {
+  font-size: 22rpx;
+  color: $color-text-tertiary;
+  margin-top: 4rpx;
+  @extend .ellipsis;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-loading {
+  text-align: center;
+  padding: $spacing-lg;
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+}

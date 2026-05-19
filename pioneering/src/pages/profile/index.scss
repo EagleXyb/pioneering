@@ -1,0 +1,167 @@
+@import '../../styles/variables.scss';
+
+.profile-page {
+  min-height: 100vh;
+  background: $color-bg-page;
+  padding-bottom: calc(100rpx + #{$safe-area-bottom});
+}
+
+.profile-header {
+  background: linear-gradient(135deg, $color-primary 0%, $color-primary-dark 100%);
+  padding: calc(60rpx + #{$safe-area-top}) $spacing-md $spacing-xl;
+  display: flex;
+  align-items: center;
+}
+
+.profile-avatar {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  border: 4rpx solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+  color: #fff;
+  margin-right: $spacing-md;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-name {
+  font-size: $font-2xl;
+  font-weight: $font-weight-bold;
+  color: #fff;
+  margin-bottom: 4rpx;
+}
+
+.profile-email {
+  font-size: $font-sm;
+  color: rgba(255, 255, 255, 0.7);
+  @extend .ellipsis;
+}
+
+.profile-stats {
+  display: flex;
+  margin: -30rpx $spacing-md 0;
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  box-shadow: $shadow-md;
+  position: relative;
+  z-index: 2;
+}
+
+.profile-stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.profile-stat-value {
+  font-size: $font-xl;
+  font-weight: $font-weight-bold;
+  color: $color-text-primary;
+  margin-bottom: 4rpx;
+}
+
+.profile-stat-label {
+  font-size: 22rpx;
+  color: $color-text-tertiary;
+}
+
+.profile-stat-divider {
+  width: 1rpx;
+  height: 48rpx;
+  background: $color-border;
+  align-self: center;
+}
+
+.profile-section {
+  padding: $spacing-lg $spacing-md 0;
+}
+
+.profile-section-title {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  margin-bottom: $spacing-sm;
+  padding-left: $spacing-xs;
+}
+
+.profile-menu-group {
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  box-shadow: $shadow-sm;
+}
+
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  padding: $spacing-md;
+  border-bottom: 1rpx solid $color-divider;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:active {
+    background: $color-bg-secondary;
+  }
+}
+
+.profile-menu-icon {
+  width: 40rpx;
+  height: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  margin-right: $spacing-sm;
+}
+
+.profile-menu-label {
+  flex: 1;
+  font-size: $font-base;
+  color: $color-text-primary;
+}
+
+.profile-menu-value {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  margin-right: $spacing-xs;
+}
+
+.profile-menu-arrow {
+  font-size: 28rpx;
+  color: $color-text-tertiary;
+}
+
+.profile-logout {
+  margin: $spacing-lg $spacing-md;
+  padding: $spacing-md;
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  text-align: center;
+  font-size: $font-base;
+  color: $color-error;
+  font-weight: $font-weight-medium;
+  box-shadow: $shadow-sm;
+
+  &:active {
+    background: $color-bg-secondary;
+  }
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

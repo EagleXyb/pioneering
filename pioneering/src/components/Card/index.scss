@@ -1,0 +1,107 @@
+@import '../../styles/variables.scss';
+
+.card {
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.card-bordered {
+  border: 1rpx solid $color-border;
+}
+
+.card-shadow-sm {
+  box-shadow: $shadow-sm;
+}
+
+.card-shadow-md {
+  box-shadow: $shadow-md;
+}
+
+.card-shadow-lg {
+  box-shadow: $shadow-lg;
+}
+
+.card-shadow-none {
+  box-shadow: none;
+}
+
+.card-clickable {
+  &:active {
+    opacity: 0.92;
+    transform: scale(0.985);
+    transition: all $transition-fast;
+  }
+}
+
+.card-cover {
+  width: 100%;
+
+  .card-cover-img {
+    width: 100%;
+    height: 320rpx;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: $spacing-md $spacing-md 0;
+}
+
+.card-header-left {
+  flex: 1;
+  overflow: hidden;
+}
+
+.card-title {
+  font-size: $font-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  @extend .ellipsis-2;
+}
+
+.card-subtitle {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  margin-top: $spacing-xs;
+}
+
+.card-extra {
+  flex-shrink: 0;
+  margin-left: $spacing-sm;
+}
+
+.card-body {
+  padding: $spacing-md;
+}
+
+.card-footer {
+  padding: $spacing-md;
+  border-top: 1rpx solid $color-divider;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  .btn {
+    font-size: $font-sm;
+    padding: 12rpx 32rpx;
+  }
+}
+
+.ellipsis-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.card-no-padding {
+  .card-body { padding: 0; }
+  .card-header { padding: $spacing-md $spacing-md 0; }
+}

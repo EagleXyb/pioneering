@@ -1,0 +1,141 @@
+@import '../../styles/variables.scss';
+
+.chat-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: $color-bg-page;
+  overflow: hidden;
+}
+
+.chat-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-2xl $spacing-lg;
+  min-height: 60vh;
+}
+
+.chat-empty-icon {
+  font-size: 96rpx;
+  margin-bottom: $spacing-lg;
+}
+
+.chat-empty-title {
+  font-size: $font-lg;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: $spacing-xs;
+}
+
+.chat-empty-desc {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  text-align: center;
+  margin-bottom: $spacing-lg;
+  line-height: 1.6;
+}
+
+.chat-empty-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  justify-content: center;
+}
+
+.chat-empty-prompt {
+  padding: 14rpx 28rpx;
+  background: $color-bg-secondary;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-full;
+  font-size: $font-sm;
+  color: $color-text-secondary;
+  transition: all $transition-fast;
+
+  &:active {
+    background: $color-primary-bg;
+    color: $color-primary;
+    border-color: $color-primary;
+  }
+}
+
+.chat-mode-bar {
+  display: flex;
+  align-items: center;
+  padding: $spacing-sm $spacing-md;
+  padding-top: calc(#{$spacing-sm} + #{$safe-area-top});
+  background: $color-bg-primary;
+  border-bottom: 1rpx solid $color-border;
+  flex-shrink: 0;
+  gap: $spacing-sm;
+}
+
+.chat-mode-tag {
+  display: flex;
+  align-items: center;
+  padding: 10rpx 24rpx;
+  border-radius: $radius-full;
+  font-size: $font-sm;
+  font-weight: $font-weight-medium;
+  background: $color-primary-bg;
+  color: $color-primary;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.chat-mode-arrow {
+  font-size: 20rpx;
+  margin-left: 6rpx;
+}
+
+.chat-model-select {
+  margin-left: auto;
+  padding: 10rpx 20rpx;
+  border-radius: $radius-full;
+  font-size: $font-sm;
+  color: $color-text-secondary;
+  background: $color-bg-tertiary;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.chat-scroll-bottom {
+  position: fixed;
+  bottom: 240rpx;
+  right: 32rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: $color-bg-primary;
+  box-shadow: $shadow-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  color: $color-text-secondary;
+  z-index: 10;
+  animation: scroll-to-bottom-in $transition-base;
+}
+
+@keyframes scroll-to-bottom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

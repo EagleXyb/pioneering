@@ -1,0 +1,9 @@
+@import './variables.scss';
+
+$page-bg: $color-bg-page;
+$text-primary: $color-text-primary;
+
+page {
+  background-color: $page-bg;
+  color: $text-primary;
+}

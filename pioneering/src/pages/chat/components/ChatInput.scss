@@ -1,0 +1,129 @@
+@import '../../../styles/variables.scss';
+
+.chat-input-wrap {
+  background: $color-bg-primary;
+  padding: $spacing-sm $spacing-md;
+  padding-bottom: calc(#{$spacing-sm} + #{$safe-area-bottom});
+  border-top: 1rpx solid $color-border;
+  flex-shrink: 0;
+}
+
+.chat-input-bar {
+  display: flex;
+  align-items: flex-end;
+  background: $color-bg-secondary;
+  border-radius: $radius-lg;
+  padding: $spacing-xs $spacing-sm;
+  border: 2rpx solid transparent;
+  transition: border-color $transition-fast;
+
+  &.focused {
+    border-color: $color-primary;
+    background: $color-bg-primary;
+  }
+}
+
+.chat-input-plus {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  color: $color-text-tertiary;
+  flex-shrink: 0;
+  margin-right: $spacing-xs;
+}
+
+.chat-input-textarea {
+  flex: 1;
+  max-height: 200rpx;
+  min-height: 56rpx;
+  font-size: $font-base;
+  line-height: 1.5;
+  padding: $spacing-xs 0;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.chat-input-send {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: $color-primary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: $spacing-xs;
+  font-size: 32rpx;
+  color: #fff;
+  font-weight: $font-weight-bold;
+  transition: all $transition-fast;
+
+  &.disabled {
+    background: $color-bg-tertiary;
+    color: $color-text-tertiary;
+  }
+}
+
+.chat-input-tools {
+  display: flex;
+  align-items: center;
+  padding-top: $spacing-xs;
+  gap: $spacing-sm;
+}
+
+.chat-input-tool {
+  font-size: 24rpx;
+  color: $color-text-secondary;
+  padding: 8rpx 20rpx;
+  background: $color-bg-tertiary;
+  border-radius: $radius-full;
+
+  &:active {
+    background: $color-primary-bg;
+    color: $color-primary;
+  }
+}
+
+.chat-mode-bar {
+  display: flex;
+  align-items: center;
+  padding: $spacing-sm $spacing-md;
+  background: $color-bg-primary;
+  border-bottom: 1rpx solid $color-border;
+  flex-shrink: 0;
+}
+
+.chat-mode-tag {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 24rpx;
+  border-radius: $radius-full;
+  font-size: $font-sm;
+  font-weight: $font-weight-medium;
+  background: $color-primary-bg;
+  color: $color-primary;
+  margin-right: $spacing-xs;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.chat-mode-arrow {
+  font-size: 20rpx;
+  margin-left: 6rpx;
+  transform: rotate(90deg);
+}
+
+.chat-model-badge {
+  font-size: 22rpx;
+  color: $color-text-tertiary;
+  padding: 6rpx 16rpx;
+  background: $color-bg-tertiary;
+  border-radius: $radius-full;
+}

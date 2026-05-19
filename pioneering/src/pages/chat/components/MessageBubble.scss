@@ -1,0 +1,121 @@
+@import '../../../styles/variables.scss';
+
+.msg-wrapper {
+  display: flex;
+  padding: $spacing-sm $spacing-md;
+  box-sizing: border-box;
+}
+
+.msg-user {
+  flex-direction: row-reverse;
+}
+
+.msg-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  font-weight: $font-weight-bold;
+  color: #fff;
+}
+
+.msg-avatar-user {
+  background: linear-gradient(135deg, $color-primary, $color-primary-dark);
+}
+
+.msg-avatar-ai {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.msg-bubble {
+  max-width: 75%;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-md;
+  font-size: $font-base;
+  line-height: 1.6;
+  word-break: break-all;
+  position: relative;
+}
+
+.msg-bubble-user {
+  background: $color-primary;
+  color: #fff;
+  margin-right: $spacing-sm;
+  border-top-right-radius: $radius-xs;
+}
+
+.msg-bubble-ai {
+  background: $color-bg-secondary;
+  color: $color-text-primary;
+  margin-left: $spacing-sm;
+  border-top-left-radius: $radius-xs;
+}
+
+.msg-bubble-system {
+  background: $color-bg-tertiary;
+  color: $color-text-secondary;
+  font-size: $font-sm;
+  margin: 0 auto;
+  border-radius: $radius-xs;
+  padding: $spacing-xs $spacing-md;
+  max-width: 85%;
+  text-align: center;
+}
+
+.msg-status {
+  display: flex;
+  align-items: center;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+}
+
+.msg-status-user {
+  justify-content: flex-end;
+  color: $color-text-tertiary;
+}
+
+.msg-status-ai {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.msg-status-loading {
+  color: $color-primary;
+}
+
+.msg-status-error {
+  color: $color-error;
+}
+
+.msg-typing-dot {
+  display: inline-block;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: $color-primary;
+  margin: 0 3rpx;
+  animation: typing-bounce 1.4s ease-in-out infinite both;
+
+  &:nth-child(2) { animation-delay: 0.2s; }
+  &:nth-child(3) { animation-delay: 0.4s; }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-8rpx); }
+}
+
+.msg-think-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 22rpx;
+  color: $color-primary;
+  background: $color-primary-bg;
+  padding: 4rpx 12rpx;
+  border-radius: $radius-xs;
+  margin-bottom: $spacing-xs;
+}
