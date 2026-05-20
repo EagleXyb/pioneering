@@ -1,18 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Slot } from '@tarojs/components';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, ScrollView, Input } from '@tarojs/components';
 import { useChatSession } from './hooks';
 import type { ChatMessage } from './strategy/types';
 import { InsightCard, ActionCard, SessionDrawer } from './components';
 import { requireAuth } from '@/services/auth';
 import styles from './index.module.scss';
-
-/** 将 ChatMessage 转换为 t-chat-message 的 content 格式 */
-function toTDesignContent(msg: ChatMessage) {
-  if (msg.type === 'insight' || msg.type === 'action') {
-    return [];
-  }
-  return [{ type: 'text' as const, data: msg.content }];
-}
 
 export default function Chat() {
   useEffect(() => {
@@ -38,26 +30,26 @@ export default function Chat() {
 
   const [inputValue, setInputValue] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const scrollIntoViewId = useRef('');
+  const [scrollInto, setScrollInto] = useState('');
 
   // 消息变化时自动滚动到底部
   const lastMsgId = messages.length > 0 ? messages[messages.length - 1].id : '';
   useEffect(() => {
     if (lastMsgId) {
-      scrollIntoViewId.current = `msg-${lastMsgId}`;
+      // 用 setTimeout 确保 DOM 已更新
+      setTimeout(() => setScrollInto(`msg-${lastMsgId}`), 50);
     }
   }, [lastMsgId, isTyping]);
 
-  const handleSend = (e: any) => {
-    const text = typeof e === 'string' ? e : inputValue;
-    if (!text?.trim()) return;
-    sendMessage(text.trim());
+  const handleSend = useCallback(() => {
+    if (!inputValue.trim() || isTyping) return;
+    sendMessage(inputValue.trim());
     setInputValue('');
-  };
+  }, [inputValue, isTyping, sendMessage]);
 
-  const handleSenderChange = (e: any) => {
-    setInputValue(e?.detail?.value ?? e ?? '');
-  };
+  const handleInput = useCallback((e: any) => {
+    setInputValue(e.detail?.value ?? e?.target?.value ?? '');
+  }, []);
 
   // Onboarding 页面
   if (!started) {
@@ -114,54 +106,74 @@ export default function Chat() {
         <Text className={styles['phase-label']}>{phaseLabel}</Text>
       </View>
 
-      {/* 消息列表 - 使用 ScrollView 保持滚动控制权 */}
+      {/* 消息列表 */}
       <ScrollView
         className={styles['chat-messages']}
         scrollY
-        scrollIntoView={scrollIntoViewId.current}
+        scrollIntoView={scrollInto}
         scrollWithAnimation
         enhanced
         showScrollbar={false}
       >
         {messages.map((msg) => (
-          <View key={msg.id} id={`msg-${msg.id}`}>
-            <t-chat-message
-              avatar={msg.isUser ? '' : '🧭'}
-              name={msg.isUser ? '我' : '创路伙伴'}
-              content={toTDesignContent(msg)}
-              role={msg.isUser ? 'user' : 'assistant'}
-              placement={msg.isUser ? 'right' : 'left'}
-              status="complete"
-            >
-              {msg.type === 'insight' && msg.insightData && (
-                <Slot name="content">
+          <View key={msg.id} id={`msg-${msg.id}`} className={styles['msg-wrap']}>
+            {msg.isUser ? (
+              /* 用户消息 */
+              <View className={styles['msg-user']}>
+                <View className={styles['msg-user-bubble']}>
+                  <Text className={styles['msg-user-text']}>{msg.content}</Text>
+                </View>
+              </View>
+            ) : msg.type === 'insight' && msg.insightData ? (
+              /* AI 洞察卡片 */
+              <View className={styles['msg-ai']}>
+                <View className={styles['msg-ai-avatar']}>🧭</View>
+                <View className={styles['msg-ai-content']}>
+                  <Text className={styles['msg-ai-name']}>创路伙伴</Text>
                   <InsightCard
                     data={msg.insightData}
                     msgId={msg.id}
                     onAccept={acceptInsight}
                     onRevise={reviseInsight}
                   />
-                </Slot>
-              )}
-              {msg.type === 'action' && msg.actionData && (
-                <Slot name="content">
+                </View>
+              </View>
+            ) : msg.type === 'action' && msg.actionData ? (
+              /* AI 行动卡片 */
+              <View className={styles['msg-ai']}>
+                <View className={styles['msg-ai-avatar']}>🧭</View>
+                <View className={styles['msg-ai-content']}>
+                  <Text className={styles['msg-ai-name']}>创路伙伴</Text>
                   <ActionCard data={msg.actionData} onSelect={selectAction} />
-                </Slot>
-              )}
-            </t-chat-message>
+                </View>
+              </View>
+            ) : (
+              /* AI 文本消息 */
+              <View className={styles['msg-ai']}>
+                <View className={styles['msg-ai-avatar']}>🧭</View>
+                <View className={styles['msg-ai-content']}>
+                  <Text className={styles['msg-ai-name']}>创路伙伴</Text>
+                  <View className={styles['msg-ai-bubble']}>
+                    <Text className={styles['msg-ai-text']}>{msg.content}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         ))}
 
         {/* 打字指示器 */}
         {isTyping && (
-          <View id="msg-typing">
-            <t-chat-message
-              avatar="🧭"
-              name="创路伙伴"
-              content={[]}
-              role="assistant"
-              status="loading"
-            />
+          <View id="msg-typing" className={styles['msg-wrap']}>
+            <View className={styles['msg-ai']}>
+              <View className={styles['msg-ai-avatar']}>🧭</View>
+              <View className={styles['msg-ai-content']}>
+                <Text className={styles['msg-ai-name']}>创路伙伴</Text>
+                <View className={styles['msg-ai-bubble']}>
+                  <t-loading size="40rpx" />
+                </View>
+              </View>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -181,16 +193,24 @@ export default function Chat() {
         </View>
       )}
 
-      {/* 输入区 - 使用 t-chat-sender */}
-      <t-chat-sender
-        value={inputValue}
-        loading={isTyping}
-        disabled={isTyping}
-        autoRiseWithKeyboard
-        placeholder="也可以直接打字..."
-        onSend={handleSend}
-        onChange={handleSenderChange}
-      />
+      {/* 输入区 - 自定义输入栏替代 t-chat-sender */}
+      <View className={styles['chat-input-bar']}>
+        <Input
+          className={styles['chat-input']}
+          value={inputValue}
+          placeholder="也可以直接打字..."
+          disabled={isTyping}
+          confirmType="send"
+          onInput={handleInput}
+          onConfirm={handleSend}
+        />
+        <View
+          className={`${styles['chat-send-btn']} ${inputValue.trim() ? styles['chat-send-active'] : ''}`}
+          onClick={handleSend}
+        >
+          <t-icon name="send-filled" size="40rpx" />
+        </View>
+      </View>
     </View>
   );
 }

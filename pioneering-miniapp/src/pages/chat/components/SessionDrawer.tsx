@@ -1,21 +1,12 @@
 import { View, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useAppStore } from '@/store';
+import { formatTime } from '@/utils';
 import styles from './SessionDrawer.module.scss';
 
 interface SessionDrawerProps {
   visible: boolean;
   onClose: () => void;
-}
-
-function formatTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  if (diff < 60000) return '刚刚';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
-  const date = new Date(timestamp);
-  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 export default function SessionDrawer({ visible, onClose }: SessionDrawerProps) {
@@ -55,6 +46,8 @@ export default function SessionDrawer({ visible, onClose }: SessionDrawerProps) 
     <t-drawer
       visible={visible}
       placement="left"
+      closeOnOverlayClick
+      onClose={onClose}
       onOverlayClick={onClose}
     >
       <View className={styles.drawer}>
@@ -72,14 +65,16 @@ export default function SessionDrawer({ visible, onClose }: SessionDrawerProps) 
 
         <View className={styles.list}>
           {sessions.length === 0 ? (
-            <t-empty icon="chat" description="暂无对话" size="small" />
+            <t-empty icon="chat" description="暂无对话" />
           ) : (
             sessions.map((session) => (
               <t-swipe-cell
                 key={session.id}
                 right={[{ text: '删除', className: 'btn-delete' }]}
                 onClick={(e: any) => {
-                  if (e.detail.index === 0) handleDelete(session.id);
+                  // TDesign swipe-cell 的 click 事件参数是 action 对象
+                  const action = e.detail;
+                  if (action?.text === '删除') handleDelete(session.id);
                 }}
               >
                 <View

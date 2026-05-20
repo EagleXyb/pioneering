@@ -137,12 +137,9 @@
   padding: 32rpx;
 }
 
-// 快捷回复
-.quick-replies {
-  padding: 0 32rpx 16rpx;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
+// 消息气泡
+.msg-wrap {
+  margin-bottom: 24rpx;
   animation: msgIn 0.3s ease;
 }
 
@@ -155,6 +152,122 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+// 用户消息
+.msg-user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.msg-user-bubble {
+  max-width: 75%;
+  background: $color-primary;
+  color: $color-text-inverse;
+  border-radius: $radius-lg $radius-lg 4rpx $radius-lg;
+  padding: 20rpx 28rpx;
+}
+
+.msg-user-text {
+  font-size: $font-base;
+  line-height: 1.6;
+  color: $color-text-inverse;
+}
+
+// AI 消息
+.msg-ai {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+
+.msg-ai-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, $color-primary, #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $font-lg;
+  flex-shrink: 0;
+}
+
+.msg-ai-content {
+  max-width: 80%;
+  min-width: 0;
+}
+
+.msg-ai-name {
+  font-size: $font-xs;
+  color: $color-text-tertiary;
+  margin-bottom: 8rpx;
+  display: block;
+}
+
+.msg-ai-bubble {
+  background: $color-bg-primary;
+  border-radius: $radius-lg $radius-lg $radius-lg 4rpx;
+  padding: 20rpx 28rpx;
+  box-shadow: $shadow-sm;
+}
+
+.msg-ai-text {
+  font-size: $font-base;
+  line-height: 1.7;
+  color: $color-text-primary;
+  white-space: pre-wrap;
+}
+
+// 输入栏
+.chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 32rpx;
+  padding-bottom: calc(16rpx + #{$safe-area-bottom});
+  background: $color-bg-primary;
+  border-top: 1rpx solid $color-border;
+}
+
+.chat-input {
+  flex: 1;
+  height: 72rpx;
+  background: $color-bg-tertiary;
+  border-radius: $radius-full;
+  padding: 0 28rpx;
+  font-size: $font-base;
+  color: $color-text-primary;
+}
+
+.chat-send-btn {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: $color-bg-tertiary;
+  color: $color-text-tertiary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all $transition-fast;
+}
+
+.chat-send-active {
+  background: $color-primary;
+  color: $color-text-inverse;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+// 快捷回复
+.quick-replies {
+  padding: 0 32rpx 16rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  animation: msgIn 0.3s ease;
 }
 
 .quick-reply-btn {

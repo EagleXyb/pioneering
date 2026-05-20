@@ -37,7 +37,6 @@ export default function InsightCard({ data, onAccept, onRevise, msgId }: Insight
             theme="default"
             variant="outline"
             size="medium"
-            style="color: white; border-color: rgba(255,255,255,0.4);"
             onClick={() => onRevise?.(msgId)}
           >
             ✎ 部分对，再说说

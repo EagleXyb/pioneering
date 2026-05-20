@@ -45,7 +45,7 @@ export default function SessionsPage() {
 
   return (
     <View className="page">
-      <t-navbar title="创路 Agent" className="navbar" />
+      <t-navbar title="创路 Agent" />
 
       <View className="body">
         {sessions.length === 0 ? (
@@ -58,7 +58,9 @@ export default function SessionsPage() {
               <t-swipe-cell
                 right={[{ text: '删除', className: 'btn-delete' }]}
                 onClick={(e: any) => {
-                  if (e.detail.index === 0) handleDelete(session.id);
+                  // TDesign swipe-cell 的 click 事件参数是 action 对象
+                  const action = e.detail;
+                  if (action?.text === '删除') handleDelete(session.id);
                 }}
               >
                 <View
@@ -79,7 +81,7 @@ export default function SessionsPage() {
                       )}
                     </View>
                   </View>
-                  <t-icon name="chevron-right" className="sessionArrow" />
+                  <t-icon name="chevron-right" />
                 </View>
               </t-swipe-cell>
             </View>
