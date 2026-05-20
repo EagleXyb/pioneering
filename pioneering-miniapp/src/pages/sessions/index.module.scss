@@ -1,0 +1,93 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 120px;
+}
+
+.sessionItem {
+  margin: 16rpx 24rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background-color: #ffffff;
+
+  .sessionContent {
+    display: flex;
+    align-items: center;
+    padding: 24rpx 32rpx;
+  }
+
+  .sessionInfo {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sessionTitle {
+    font-size: 30rpx;
+    font-weight: 500;
+    color: #1a1a1a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sessionPreview {
+    font-size: 24rpx;
+    color: #999;
+    margin-top: 8rpx;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sessionMeta {
+    display: flex;
+    align-items: center;
+    gap: 12rpx;
+    margin-top: 8rpx;
+  }
+
+  .sessionTime {
+    font-size: 22rpx;
+    color: #bbb;
+  }
+
+  .sessionArrow {
+    color: #ccc;
+    font-size: 28rpx;
+  }
+}
+
+.emptyWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 200rpx;
+}
+
+.fab {
+  position: fixed;
+  bottom: 60rpx;
+  right: 40rpx;
+  z-index: 99;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(0, 102, 204, 0.3);
+}

@@ -1,0 +1,73 @@
+@import '../../../styles/variables.scss';
+
+.card {
+  background: $color-bg-primary;
+  border-radius: $radius-lg;
+  padding: 40rpx;
+  box-shadow: $shadow-md;
+  animation: cardIn 0.5s ease;
+  border: 1rpx solid $color-border;
+}
+
+@keyframes cardIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(32rpx);
+  }
+  60% {
+    transform: scale(1.02) translateY(-4rpx);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.label {
+  font-size: $font-xs;
+  color: $color-success;
+  text-transform: uppercase;
+  letter-spacing: 2rpx;
+  font-weight: $font-weight-bold;
+  margin-bottom: 24rpx;
+  display: block;
+}
+
+.item {
+  padding: 24rpx;
+  border-radius: $radius-sm;
+  background: rgba(16, 185, 129, 0.06);
+  margin-bottom: 16rpx;
+  border: 3rpx solid transparent;
+  transition: all $transition-fast;
+}
+
+.item:last-child {
+  margin-bottom: 0;
+}
+
+.item:active {
+  border-color: $color-success;
+}
+
+.itemTitle {
+  font-size: $font-base;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: 8rpx;
+  display: block;
+}
+
+.itemDesc {
+  font-size: $font-sm;
+  color: $color-text-secondary;
+  display: block;
+}
+
+.itemMeta {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 12rpx;
+  font-size: $font-xs;
+  color: $color-text-tertiary;
+}

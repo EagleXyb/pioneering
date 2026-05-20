@@ -20,6 +20,7 @@ declare namespace JSX {
     't-avatar': any;
     't-badge': any;
     't-cell': any;
+    't-cell-group': any;
     't-tag': any;
     't-loading': any;
     't-toast': any;
@@ -35,5 +36,12 @@ declare namespace JSX {
     't-divider': any;
     't-switch': any;
     't-message': any;
+    't-drawer': any;
+    't-swipe-cell': any;
+    't-chat-message': any;
+    't-chat-sender': any;
+    't-chat-content': any;
+    't-chat-actionbar': any;
+    't-chat-list': any;
   }
 }

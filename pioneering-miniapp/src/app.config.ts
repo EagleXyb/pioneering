@@ -1,6 +1,7 @@
 export default defineAppConfig({
   lazyCodeLoading: 'requiredComponents',
   pages: [
+    'pages/sessions/index',
     'pages/chat/index',
     'pages/home/index',
   ],
@@ -19,6 +20,7 @@ export default defineAppConfig({
     't-avatar': 'tdesign-miniprogram/avatar/avatar',
     't-badge': 'tdesign-miniprogram/badge/badge',
     't-cell': 'tdesign-miniprogram/cell/cell',
+    't-cell-group': 'tdesign-miniprogram/cell-group/cell-group',
     't-tag': 'tdesign-miniprogram/tag/tag',
     't-loading': 'tdesign-miniprogram/loading/loading',
     't-toast': 'tdesign-miniprogram/toast/toast',
@@ -34,5 +36,12 @@ export default defineAppConfig({
     't-divider': 'tdesign-miniprogram/divider/divider',
     't-switch': 'tdesign-miniprogram/switch/switch',
     't-message': 'tdesign-miniprogram/message/message',
+    't-drawer': 'tdesign-miniprogram/drawer/drawer',
+    't-swipe-cell': 'tdesign-miniprogram/swipe-cell/swipe-cell',
+    't-chat-message': 'tdesign-miniprogram/chat-message/chat-message',
+    't-chat-sender': 'tdesign-miniprogram/chat-sender/chat-sender',
+    't-chat-content': 'tdesign-miniprogram/chat-content/chat-content',
+    't-chat-actionbar': 'tdesign-miniprogram/chat-actionbar/chat-actionbar',
+    't-chat-list': 'tdesign-miniprogram/chat-list/chat-list',
   },
 });

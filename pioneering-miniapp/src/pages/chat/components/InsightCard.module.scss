@@ -1,0 +1,73 @@
+@import '../../../styles/variables.scss';
+
+.card {
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  border-radius: $radius-lg;
+  padding: 40rpx;
+  color: white;
+  animation: cardIn 0.6s ease;
+  box-shadow: 0 16rpx 48rpx rgba(124, 58, 237, 0.3);
+}
+
+@keyframes cardIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(32rpx);
+  }
+  60% {
+    transform: scale(1.02) translateY(-4rpx);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.label {
+  font-size: $font-xs;
+  text-transform: uppercase;
+  letter-spacing: 2rpx;
+  opacity: 0.8;
+  margin-bottom: 20rpx;
+  display: block;
+}
+
+.title {
+  font-size: $font-lg;
+  font-weight: $font-weight-bold;
+  line-height: 1.4;
+  margin-bottom: 24rpx;
+  display: block;
+}
+
+.body {
+  font-size: $font-base;
+  line-height: 1.6;
+  opacity: 0.95;
+  margin-bottom: 32rpx;
+  display: block;
+}
+
+.evidence {
+  border-top: 1rpx solid rgba(255, 255, 255, 0.2);
+  padding-top: 24rpx;
+  margin-bottom: 32rpx;
+}
+
+.evidenceItem {
+  font-size: $font-sm;
+  opacity: 0.85;
+  padding: 6rpx 0;
+}
+
+.actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.resolved {
+  text-align: center;
+  padding: 16rpx;
+  opacity: 0.8;
+  font-size: $font-sm;
+}

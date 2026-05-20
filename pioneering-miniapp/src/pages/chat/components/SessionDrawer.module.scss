@@ -1,0 +1,84 @@
+@import '../../../styles/variables.scss';
+
+.drawer {
+  width: 600rpx;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: $color-bg-primary;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx;
+  border-bottom: 1rpx solid $color-border;
+}
+
+.title {
+  font-size: $font-lg;
+  font-weight: $font-weight-bold;
+  color: $color-text-primary;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 32rpx;
+  border-bottom: 1rpx solid $color-border;
+  transition: background $transition-fast;
+}
+
+.item:active {
+  background: $color-bg-secondary;
+}
+
+.active {
+  background: rgba(79, 70, 229, 0.06);
+  border-left: 6rpx solid $color-primary;
+}
+
+.itemInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemTitle {
+  font-size: $font-base;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.itemPreview {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 6rpx;
+  display: block;
+}
+
+.itemMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
+.itemTime {
+  font-size: $font-xs;
+  color: $color-text-tertiary;
+}

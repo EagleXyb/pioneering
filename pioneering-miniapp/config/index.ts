@@ -22,7 +22,7 @@ export default defineConfig(async (merge) => {
       patterns: [
         { from: 'src/assets/', to: 'dist/assets/' },
         {
-          from: 'node_modules/tdesign-miniprogram-taro/miniprogram_dist/',
+          from: 'node_modules/tdesign-miniprogram/miniprogram_dist/',
           to: 'dist/miniprogram_npm/tdesign-miniprogram/',
           ignore: ['*.ts', '*.map', 'type.js'],
         },

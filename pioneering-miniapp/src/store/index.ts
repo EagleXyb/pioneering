@@ -43,6 +43,38 @@ const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
   clearAuth: () => set({ token: '', openid: '', isLoggedIn: false }),
 });
 
+// ====== Session Slice ======
+export interface SessionItem {
+  id: string;
+  title: string;
+  preview: string;
+  mode: 'script' | 'ai';
+  phase: number;
+  messageCount: number;
+  updatedAt: number;
+}
+
+export interface SessionSlice {
+  sessions: SessionItem[];
+  addSession: (session: SessionItem) => void;
+  removeSession: (id: string) => void;
+  updateSession: (id: string, partial: Partial<SessionItem>) => void;
+}
+
+const createSessionSlice: StateCreator<SessionSlice> = (set) => ({
+  sessions: [],
+  addSession: (session) =>
+    set((state) => ({ sessions: [session, ...state.sessions] })),
+  removeSession: (id) =>
+    set((state) => ({ sessions: state.sessions.filter((s) => s.id !== id) })),
+  updateSession: (id, partial) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, ...partial } : s
+      ),
+    })),
+});
+
 // ====== Chat Slice ======
 export interface ChatSlice {
   currentSessionId: string;
@@ -61,10 +93,11 @@ const createChatSlice: StateCreator<ChatSlice> = (set) => ({
 });
 
 // ====== 合并 Store ======
-export type StoreState = AppSlice & AuthSlice & ChatSlice;
+export type StoreState = AppSlice & AuthSlice & SessionSlice & ChatSlice;
 
 export const useAppStore = create<StoreState>()((...a) => ({
   ...createAppSlice(...a),
   ...createAuthSlice(...a),
+  ...createSessionSlice(...a),
   ...createChatSlice(...a),
 }));

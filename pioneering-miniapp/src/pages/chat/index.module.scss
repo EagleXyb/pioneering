@@ -45,20 +45,6 @@
   margin-bottom: 80rpx;
 }
 
-.onboarding-btn {
-  padding: 28rpx 96rpx;
-  background: white;
-  color: $color-primary;
-  border-radius: $radius-full;
-  font-size: $font-md;
-  font-weight: $font-weight-bold;
-  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.2);
-
-  &:active {
-    transform: scale(0.95);
-  }
-}
-
 // Chat 页面
 .chat-page {
   display: flex;
@@ -81,6 +67,11 @@
   display: flex;
   align-items: center;
   gap: 20rpx;
+}
+
+.chat-header-menu {
+  padding: 8rpx;
+  color: $color-text-secondary;
 }
 
 .chat-avatar {
@@ -133,24 +124,6 @@
   gap: 8rpx;
 }
 
-.phase-dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  background: $color-border;
-  transition: all 0.3s;
-}
-
-.phase-dot-active {
-  background: $color-primary;
-  width: 48rpx;
-  border-radius: 8rpx;
-}
-
-.phase-dot-done {
-  background: $color-primary-light;
-}
-
 .phase-label {
   font-size: $font-xs;
   color: $color-text-secondary;
@@ -162,7 +135,44 @@
   flex: 1;
   overflow-y: auto;
   padding: 32rpx;
+}
+
+// 快捷回复
+.quick-replies {
+  padding: 0 32rpx 16rpx;
   display: flex;
-  flex-direction: column;
-  gap: 24rpx;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  animation: msgIn 0.3s ease;
+}
+
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(16rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quick-reply-btn {
+  padding: 16rpx 32rpx;
+  border: 3rpx solid $color-primary-light;
+  background: $color-bg-primary;
+  color: $color-primary;
+  border-radius: $radius-full;
+  font-size: $font-sm;
+  white-space: nowrap;
+  transition: all $transition-fast;
+
+  &:active {
+    background: $color-primary;
+    color: white;
+  }
+}
+
+.quick-reply-free {
+  border-style: dashed;
 }
