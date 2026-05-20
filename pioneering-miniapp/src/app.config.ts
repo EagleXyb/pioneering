@@ -28,7 +28,7 @@ export default defineAppConfig({
     't-popup': 'tdesign-miniprogram/popup/popup',
     't-empty': 'tdesign-miniprogram/empty/empty',
     't-steps': 'tdesign-miniprogram/steps/steps',
-    't-step': 'tdesign-miniprogram/steps/step-item',
+    't-step': 'tdesign-miniprogram/step-item/step-item',
     't-navbar': 'tdesign-miniprogram/navbar/navbar',
     't-tabs': 'tdesign-miniprogram/tabs/tabs',
     't-image': 'tdesign-miniprogram/image/image',

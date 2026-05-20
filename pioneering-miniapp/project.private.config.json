@@ -1,7 +1,7 @@
 {
   "libVersion": "3.15.2",
   "condition": {},
-  "projectname": "pioneering",
+  "projectname": "pioneering-miniapp",
   "setting": {
     "urlCheck": true,
     "coverView": true,
