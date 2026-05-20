@@ -1,35 +1,3 @@
-export const STORAGE_KEYS = {
-  TOKEN: 'token',
-  USER_INFO: 'userInfo',
-  SETTINGS: 'appSettings',
-  SEARCH_HISTORY: 'searchHistory',
-  CHAT_SESSIONS: 'chatSessions',
-} as const;
-
-export const PAGE_SIZE = 20;
-
-export const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
-
-export const DEFAULT_AVATAR = '/assets/icons/default-avatar.png';
-
-export const CHAT_ROLES = {
-  USER: 'user',
-  ASSISTANT: 'assistant',
-  SYSTEM: 'system',
-} as const;
-
-export type ChatRole = (typeof CHAT_ROLES)[keyof typeof CHAT_ROLES];
-
-export const MESSAGE_STATUS = {
-  LOADING: 'loading',
-  STREAMING: 'streaming',
-  SUCCESS: 'success',
-  ERROR: 'error',
-  STOPPED: 'stopped',
-} as const;
-
-export type MessageStatus = (typeof MESSAGE_STATUS)[keyof typeof MESSAGE_STATUS];
-
 export const AGENT_MODES = {
   BRAINSTORM: 'brainstorm',
   ANALYZE: 'analyze',

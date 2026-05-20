@@ -1,62 +1,102 @@
 import { View, Text } from '@tarojs/components';
-import { CHAT_ROLES, MESSAGE_STATUS } from '@/constants';
+import type { ChatMessage } from '../hooks/useChatSession';
 import './MessageBubble.scss';
 
-interface Message {
-  id: number;
-  role: string;
-  content: string;
-  status?: string;
-  timestamp?: number;
-  thinking?: boolean;
-}
-
 interface MessageBubbleProps {
-  message: Message;
-  onRetry?: () => void;
+  message: ChatMessage;
+  onAcceptInsight?: (msgId: string) => void;
+  onReviseInsight?: (msgId: string) => void;
+  onSelectAction?: (title: string) => void;
 }
 
-export default function MessageBubble({ message, onRetry }: MessageBubbleProps) {
-  const isUser = message.role === CHAT_ROLES.USER;
-  const isSystem = message.role === CHAT_ROLES.SYSTEM;
-  const isLoading = message.status === MESSAGE_STATUS.LOADING;
-  const isError = message.status === MESSAGE_STATUS.ERROR;
+export default function MessageBubble({
+  message,
+  onAcceptInsight,
+  onReviseInsight,
+  onSelectAction,
+}: MessageBubbleProps) {
+  const { id, content, isUser, type, insightData, actionData, timestamp } = message;
 
-  if (isSystem) {
+  const timeStr = new Date(timestamp).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  // 洞察卡片
+  if (type === 'insight' && insightData) {
+    const resolved = (insightData as any).accepted || (insightData as any).revised;
     return (
-      <View className="msg-wrapper">
-        <View className="msg-bubble msg-bubble-system">{message.content}</View>
+      <View className='insight-card-inline'>
+        <Text className='insight-label'>{insightData.label}</Text>
+        <Text className='insight-title'>{insightData.title}</Text>
+        <Text className='insight-body'>{insightData.body}</Text>
+        <View className='insight-evidence'>
+          {insightData.evidence.map((e, i) => (
+            <View key={i} className='insight-evidence-item'>
+              <Text>▸ {e}</Text>
+            </View>
+          ))}
+        </View>
+        {!resolved && (
+          <View className='insight-actions'>
+            <View className='insight-btn insight-btn-accept' onClick={() => onAcceptInsight?.(id)}>
+              <Text>✓ 这就是我！</Text>
+            </View>
+            <View className='insight-btn insight-btn-revise' onClick={() => onReviseInsight?.(id)}>
+              <Text>✎ 部分对，再说说</Text>
+            </View>
+          </View>
+        )}
+        {resolved && (
+          <View className='insight-resolved'>
+            <Text>✓ 已保存到洞察本</Text>
+          </View>
+        )}
       </View>
     );
   }
 
-  return (
-    <View className={`msg-wrapper ${isUser ? 'msg-user' : ''}`}>
-      <View className={`msg-avatar ${isUser ? 'msg-avatar-user' : 'msg-avatar-ai'}`}>
-        {isUser ? '我' : 'AI'}
-      </View>
-      <View className={`msg-bubble ${isUser ? 'msg-bubble-user' : 'msg-bubble-ai'}`}>
-        {message.thinking && <Text className="msg-think-tag">💭 深度思考中</Text>}
-        {isLoading ? (
-          <View>
-            <View className="msg-typing-dot" />
-            <View className="msg-typing-dot" />
-            <View className="msg-typing-dot" />
+  // 行动卡片
+  if (type === 'action' && actionData) {
+    return (
+      <View className='action-card-inline'>
+        <Text className='action-label'>{actionData.label}</Text>
+        {actionData.items.map((item, i) => (
+          <View
+            key={i}
+            className='action-item'
+            onClick={() => onSelectAction?.(item.title)}
+          >
+            <Text className='action-item-title'>{item.title}</Text>
+            <Text className='action-item-desc'>{item.desc}</Text>
+            <View className='action-item-meta'>
+              <Text>风险 {item.risk}</Text>
+              <Text>潜力 {item.potential}</Text>
+            </View>
           </View>
-        ) : (
-          <Text>{message.content}</Text>
-        )}
+        ))}
       </View>
-      {!isUser && (
-        <View className={`msg-status msg-status-ai`}>
-          {isLoading && <Text className="msg-status-loading">生成中...</Text>}
-          {isError && (
-            <Text className="msg-status-error" onClick={onRetry}>
-              发送失败，点击重试
-            </Text>
-          )}
-        </View>
-      )}
+    );
+  }
+
+  // 普通消息
+  return (
+    <View className={`msg ${isUser ? 'msg-user' : 'msg-agent'}`}>
+      <View className='msg-bubble'>
+        <Text>{content}</Text>
+      </View>
+      <Text className='msg-meta'>{timeStr}</Text>
+    </View>
+  );
+}
+
+// 打字指示器组件
+export function TypingIndicator() {
+  return (
+    <View className='typing-indicator'>
+      <View className='typing-dot' />
+      <View className='typing-dot' />
+      <View className='typing-dot' />
     </View>
   );
 }

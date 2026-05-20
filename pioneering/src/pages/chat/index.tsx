@@ -1,124 +1,116 @@
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView } from '@tarojs/components';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from '@tarojs/taro';
 import { useChatSession } from './hooks';
-import { MessageBubble, ChatInput } from './components';
-import { AGENT_MODE_LABELS } from '@/constants';
-import Loading from '@/components/Loading';
+import { MessageBubble, TypingIndicator, ChatInput } from './components';
 import './index.scss';
 
-const SUGGESTIONS = [
-  '为我的SaaS产品想5个增长策略',
-  '分析短视频赛道的创新机会',
-  '帮我设计一个用户激励体系',
-  '评估AI在教育领域的应用前景',
-];
-
 export default function Chat() {
-  const router = useRouter();
-  const initialMode = (router.params as any)?.mode || 'brainstorm';
-
-  const { messages, isSending, mode, setMode, sendMessage, stopGenerate, retry } =
-    useChatSession(initialMode);
+  const {
+    messages,
+    currentPhase,
+    isTyping,
+    quickReplies,
+    started,
+    phaseName,
+    phaseLabel,
+    startChat,
+    selectQuickReply,
+    sendMessage,
+    acceptInsight,
+    reviseInsight,
+    selectAction,
+    resetChat,
+  } = useChatSession();
 
   const [inputValue, setInputValue] = useState('');
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const scrollViewRef = useRef<any>(null);
-  const isAtBottomRef = useRef(true);
+  const scrollRef = useRef<any>(null);
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => {
-      scrollViewRef.current?.scrollIntoView?.();
-    }, 50);
-  }, []);
-
+  // 消息变化时自动滚动到底部
   useEffect(() => {
-    if (isAtBottomRef.current) scrollToBottom();
-  }, [messages, scrollToBottom]);
+    setTimeout(() => {
+      scrollRef.current?.scrollTo?.({ top: 999999, behavior: 'smooth' });
+    }, 100);
+  }, [messages.length, isTyping]);
 
-  const onScroll = useCallback((e: any) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.detail;
-    const distance = scrollHeight - scrollTop - clientHeight;
-    isAtBottomRef.current = distance < 60;
-    setShowScrollBottom(distance > 200);
-  }, []);
-
-  const onSend = useCallback(() => {
-    const val = inputValue.trim();
-    if (!val || isSending) return;
+  const handleSend = () => {
+    if (!inputValue.trim()) return;
+    sendMessage(inputValue);
     setInputValue('');
-    sendMessage(val);
-  }, [inputValue, isSending, sendMessage]);
+  };
 
-  const onSuggestionTap = useCallback(
-    (text: string) => {
-      sendMessage(text);
-    },
-    [sendMessage],
-  );
+  // Onboarding 页面
+  if (!started) {
+    return (
+      <View className='onboarding'>
+        <Text className='onboarding-icon'>🧭</Text>
+        <Text className='onboarding-title'>每个人心里都有{'\n'}一个「想做的事」</Text>
+        <Text className='onboarding-subtitle'>只是还没想清楚。{'\n'}我来帮你找到它。</Text>
+        <View className='onboarding-btn' onClick={startChat}>
+          <Text>开始探索</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View className="chat-page">
-      {/* Top mode bar */}
-      <View className="chat-mode-bar">
-        <View className="chat-mode-tag">
-          {AGENT_MODE_LABELS[mode]}
-          <Text className="chat-mode-arrow">▸</Text>
+    <View className='chat-page'>
+      {/* 头部 */}
+      <View className='chat-header'>
+        <View className='chat-header-left'>
+          <View className='chat-avatar'>
+            <Text>🧭</Text>
+          </View>
+          <View className='chat-header-info'>
+            <Text className='chat-name'>创路伙伴</Text>
+            <Text className='chat-phase'>{phaseName}</Text>
+          </View>
         </View>
-        <View className="chat-model-select">DeepSeek V4</View>
+        <View className='chat-header-right' onClick={resetChat}>
+          <Text>↻</Text>
+        </View>
       </View>
 
-      {/* Messages */}
+      {/* 阶段进度 */}
+      <View className='phase-progress'>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View
+            key={i}
+            className={`phase-dot ${i < currentPhase ? 'phase-dot-done' : ''} ${i === currentPhase ? 'phase-dot-active' : ''}`}
+          />
+        ))}
+        <Text className='phase-label'>{phaseLabel}</Text>
+      </View>
+
+      {/* 消息列表 */}
       <ScrollView
-        className="chat-content"
+        ref={scrollRef}
+        className='chat-messages'
         scrollY
+        scrollIntoView=''
         scrollWithAnimation
-        onScroll={onScroll}
-        enableBackToTop
+        enhanced
+        showScrollbar={false}
       >
-        {messages.length === 0 ? (
-          <View className="chat-empty">
-            <View className="chat-empty-icon">💡</View>
-            <View className="chat-empty-title">开始你的创意探索</View>
-            <View className="chat-empty-desc">
-              我是你的 AI 创意孵化助手，可以帮你头脑风暴、深度分析、
-              生成方案或评估决策。告诉我你想探索什么？
-            </View>
-            <View className="chat-empty-prompts">
-              {SUGGESTIONS.map((s, i) => (
-                <View
-                  key={i}
-                  className="chat-empty-prompt"
-                  onClick={() => onSuggestionTap(s)}
-                >
-                  {s}
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              onRetry={() => retry(msg.id)}
-            />
-          ))
-        )}
-        <View ref={scrollViewRef} style={{ height: '1rpx' }} />
+        {messages.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            onAcceptInsight={acceptInsight}
+            onReviseInsight={reviseInsight}
+            onSelectAction={selectAction}
+          />
+        ))}
+        {isTyping && <TypingIndicator />}
       </ScrollView>
 
-      {showScrollBottom && messages.length > 0 && (
-        <View className="chat-scroll-bottom" onClick={scrollToBottom}>
-          ↓
-        </View>
-      )}
-
+      {/* 输入区 */}
       <ChatInput
         value={inputValue}
-        disabled={isSending}
         onChange={setInputValue}
-        onSend={isSending ? stopGenerate : onSend}
+        onSend={handleSend}
+        disabled={isTyping}
+        quickReplies={quickReplies}
+        onSelectQuickReply={selectQuickReply}
       />
     </View>
   );

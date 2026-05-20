@@ -1,141 +1,168 @@
 @import '../../styles/variables.scss';
 
-.chat-page {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: $color-bg-page;
-  overflow: hidden;
-}
-
-.chat-content {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-}
-
-.chat-empty {
+// Onboarding
+.onboarding {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(160deg, #1e1b4b 0%, #312e81 40%, #4338ca 100%);
+  z-index: 200;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: $spacing-2xl $spacing-lg;
-  min-height: 60vh;
-}
-
-.chat-empty-icon {
-  font-size: 96rpx;
-  margin-bottom: $spacing-lg;
-}
-
-.chat-empty-title {
-  font-size: $font-lg;
-  font-weight: $font-weight-semibold;
-  color: $color-text-primary;
-  margin-bottom: $spacing-xs;
-}
-
-.chat-empty-desc {
-  font-size: $font-sm;
-  color: $color-text-tertiary;
+  color: white;
   text-align: center;
-  margin-bottom: $spacing-lg;
-  line-height: 1.6;
+  padding: 80rpx;
 }
 
-.chat-empty-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $spacing-sm;
-  justify-content: center;
+.onboarding-icon {
+  font-size: 112rpx;
+  margin-bottom: 48rpx;
+  animation: float 3s ease-in-out infinite;
 }
 
-.chat-empty-prompt {
-  padding: 14rpx 28rpx;
-  background: $color-bg-secondary;
-  border: 1rpx solid $color-border;
-  border-radius: $radius-full;
-  font-size: $font-sm;
-  color: $color-text-secondary;
-  transition: all $transition-fast;
-
-  &:active {
-    background: $color-primary-bg;
-    color: $color-primary;
-    border-color: $color-primary;
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20rpx);
   }
 }
 
-.chat-mode-bar {
+.onboarding-title {
+  font-size: $font-2xl;
+  font-weight: $font-weight-bold;
+  line-height: 1.4;
+  margin-bottom: 24rpx;
+}
+
+.onboarding-subtitle {
+  font-size: $font-md;
+  opacity: 0.8;
+  line-height: 1.6;
+  margin-bottom: 80rpx;
+}
+
+.onboarding-btn {
+  padding: 28rpx 96rpx;
+  background: white;
+  color: $color-primary;
+  border-radius: $radius-full;
+  font-size: $font-md;
+  font-weight: $font-weight-bold;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.2);
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// Chat 页面
+.chat-page {
   display: flex;
-  align-items: center;
-  padding: $spacing-sm $spacing-md;
-  padding-top: calc(#{$spacing-sm} + #{$safe-area-top});
+  flex-direction: column;
+  height: 100vh;
+  background: $color-bg-secondary;
+}
+
+// 头部
+.chat-header {
+  padding: 24rpx 32rpx;
   background: $color-bg-primary;
   border-bottom: 1rpx solid $color-border;
-  flex-shrink: 0;
-  gap: $spacing-sm;
-}
-
-.chat-mode-tag {
   display: flex;
   align-items: center;
-  padding: 10rpx 24rpx;
-  border-radius: $radius-full;
-  font-size: $font-sm;
-  font-weight: $font-weight-medium;
-  background: $color-primary-bg;
-  color: $color-primary;
-
-  &:active {
-    opacity: 0.8;
-  }
+  justify-content: space-between;
 }
 
-.chat-mode-arrow {
-  font-size: 20rpx;
-  margin-left: 6rpx;
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
 }
 
-.chat-model-select {
-  margin-left: auto;
-  padding: 10rpx 20rpx;
-  border-radius: $radius-full;
-  font-size: $font-sm;
-  color: $color-text-secondary;
-  background: $color-bg-tertiary;
-
-  &:active {
-    opacity: 0.8;
-  }
-}
-
-.chat-scroll-bottom {
-  position: fixed;
-  bottom: 240rpx;
-  right: 32rpx;
+.chat-avatar {
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
-  background: $color-bg-primary;
-  box-shadow: $shadow-md;
+  background: linear-gradient(135deg, $color-primary, #7c3aed);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36rpx;
-  color: $color-text-secondary;
-  z-index: 10;
-  animation: scroll-to-bottom-in $transition-base;
+  font-size: $font-lg;
 }
 
-@keyframes scroll-to-bottom-in {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
+.chat-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.chat-name {
+  font-size: $font-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.chat-phase {
+  font-size: $font-xs;
+  color: $color-primary;
+  background: rgba(79, 70, 229, 0.06);
+  padding: 4rpx 16rpx;
+  border-radius: $radius-full;
+}
+
+.chat-header-right {
+  font-size: $font-lg;
+  color: $color-text-secondary;
+  padding: 8rpx;
+
+  &:active {
+    opacity: 0.6;
   }
-  to {
-    opacity: 1;
-    transform: scale(1);
+}
+
+// 阶段进度
+.phase-progress {
+  padding: 16rpx 32rpx;
+  background: $color-bg-secondary;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.phase-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: $color-border;
+  transition: all 0.3s;
+
+  &-active {
+    background: $color-primary;
+    width: 48rpx;
+    border-radius: 8rpx;
   }
+
+  &-done {
+    background: $color-primary-light;
+  }
+}
+
+.phase-label {
+  font-size: $font-xs;
+  color: $color-text-secondary;
+  margin-left: auto;
+}
+
+// 消息列表
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
 }

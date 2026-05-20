@@ -4,8 +4,6 @@ import { useAppStore } from './store';
 import './styles/global.scss';
 
 function App({ children }: { children?: React.ReactNode }) {
-  const setLoggedIn = useAppStore((s) => s.setLoggedIn);
-  const setUserInfo = useAppStore((s) => s.setUserInfo);
   const setSystemInfo = useAppStore((s) => s.setSystemInfo);
 
   useEffect(() => {
@@ -22,21 +20,6 @@ function App({ children }: { children?: React.ReactNode }) {
       // ignore
     }
   }, [setSystemInfo]);
-
-  useEffect(() => {
-    const token = Taro.getStorageSync('token');
-    if (token) {
-      setLoggedIn(true);
-      const userInfo = Taro.getStorageSync('userInfo');
-      if (userInfo) {
-        try {
-          setUserInfo(JSON.parse(userInfo));
-        } catch {
-          // ignore
-        }
-      }
-    }
-  }, [setLoggedIn, setUserInfo]);
 
   return <>{children}</>;
 }

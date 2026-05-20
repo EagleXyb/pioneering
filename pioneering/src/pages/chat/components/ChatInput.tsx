@@ -1,63 +1,55 @@
-import { View, Textarea } from '@tarojs/components';
-import { useState, useCallback, useRef } from 'react';
+import { View, Input } from '@tarojs/components';
 import './ChatInput.scss';
 
 interface ChatInputProps {
   value: string;
-  disabled?: boolean;
-  onChange: (value: string) => void;
+  onChange: (val: string) => void;
   onSend: () => void;
+  disabled?: boolean;
+  quickReplies: string[];
+  onSelectQuickReply: (text: string) => void;
 }
 
-export default function ChatInput({ value, disabled, onChange, onSend }: ChatInputProps) {
-  const [focused, setFocused] = useState(false);
-  const cursorRef = useRef(0);
-
-  const handleInput = useCallback(
-    (e: any) => {
-      const val = e.detail.value;
-      cursorRef.current = e.detail.cursor;
-      onChange(val);
-    },
-    [onChange],
-  );
-
-  const handleConfirm = useCallback(() => {
-    if (!disabled && value.trim()) onSend();
-  }, [value, disabled, onSend]);
-
-  const canSend = value.trim().length > 0 && !disabled;
-
+export default function ChatInput({
+  value,
+  onChange,
+  onSend,
+  disabled,
+  quickReplies,
+  onSelectQuickReply,
+}: ChatInputProps) {
   return (
-    <View className="chat-input-wrap">
-      <View className={`chat-input-bar${focused ? ' focused' : ''}`}>
-        <View className="chat-input-plus">+</View>
-        <Textarea
-          className="chat-input-textarea"
+    <>
+      {quickReplies.length > 0 && (
+        <View className='quick-replies'>
+          {quickReplies.map((text, i) => (
+            <View
+              key={i}
+              className={`quick-reply-btn ${text === '✍️ 我想自己说' ? 'quick-reply-free' : ''}`}
+              onClick={() => onSelectQuickReply(text)}
+            >
+              {text}
+            </View>
+          ))}
+        </View>
+      )}
+      <View className='chat-input-bar'>
+        <Input
+          className='chat-input'
           value={value}
-          placeholder="输入你的创意想法..."
-          onInput={handleInput}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onConfirm={handleConfirm}
-          autoHeight
-          maxlength={5000}
-          adjustPosition
-          cursorSpacing={20}
-          showConfirmBar={false}
+          onInput={(e) => onChange(e.detail.value)}
+          placeholder='也可以直接打字...'
+          confirmType='send'
+          onConfirm={onSend}
+          disabled={disabled}
         />
         <View
-          className={`chat-input-send${!canSend ? ' disabled' : ''}`}
-          onClick={canSend ? onSend : undefined}
+          className={`chat-send ${!value.trim() || disabled ? 'chat-send-disabled' : ''}`}
+          onClick={value.trim() && !disabled ? onSend : undefined}
         >
           ↑
         </View>
       </View>
-      <View className="chat-input-tools">
-        <View className="chat-input-tool">📎 图片</View>
-        <View className="chat-input-tool">📷 拍照</View>
-        <View className="chat-input-tool">📄 文件</View>
-      </View>
-    </View>
+    </>
   );
 }

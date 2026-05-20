@@ -1,5 +1,5 @@
 import { View, Text, ScrollView } from '@tarojs/components';
-import Taro, { useDidShow } from '@tarojs/taro';
+import Taro from '@tarojs/taro';
 import { useState, useCallback } from 'react';
 import { AGENT_MODES, AGENT_MODE_LABELS, AGENT_MODE_DESCRIPTIONS } from '@/constants';
 import { formatTime } from '@/utils';
@@ -28,22 +28,9 @@ const MOCK_CASES = [
 export default function Home() {
   const [recentSessions] = useState(MOCK_SESSIONS);
 
-  const navigateToChat = useCallback((mode?: string) => {
-    const url = mode ? `/pages/chat/index?mode=${mode}` : '/pages/chat/index';
-    Taro.navigateTo({ url });
+  const showToast = useCallback((title: string) => {
+    Taro.showToast({ title, icon: 'none', duration: 1500 });
   }, []);
-
-  const navigateToDiscover = useCallback(() => {
-    Taro.switchTab({ url: '/pages/discover/index' });
-  }, []);
-
-  const navigateToProfile = useCallback(() => {
-    Taro.switchTab({ url: '/pages/profile/index' });
-  }, []);
-
-  useDidShow(() => {
-    // refresh data
-  });
 
   return (
     <ScrollView className="home-page" scrollY enableBackToTop>
@@ -58,7 +45,7 @@ export default function Home() {
           <View
             key={item.key}
             className="home-mode-card"
-            onClick={() => navigateToChat(item.key)}
+            onClick={() => showToast('即将上线')}
           >
             <View className={`home-mode-icon home-mode-icon-${item.color}`}>
               {item.emoji}
@@ -74,13 +61,13 @@ export default function Home() {
       <View className="home-section">
         <View className="home-section-header">
           <Text className="home-section-title">最近对话</Text>
-          <Text className="home-section-more" onClick={navigateToDiscover}>更多</Text>
+          <Text className="home-section-more" onClick={() => showToast('即将上线')}>更多</Text>
         </View>
         {recentSessions.map((session) => (
           <View
             key={session.id}
             className="home-chat-entry"
-            onClick={() => navigateToChat(session.mode)}
+            onClick={() => showToast('即将上线')}
           >
             <View className="home-chat-entry-avatar">AI</View>
             <View className="home-chat-entry-body">
@@ -96,7 +83,7 @@ export default function Home() {
 
         <View
           className="home-chat-entry"
-          onClick={() => navigateToChat()}
+          onClick={() => showToast('即将上线')}
           style={{ justifyContent: 'center', padding: '36rpx' }}
         >
           <Text style={{ fontSize: '28rpx', color: '#4f46e5', fontWeight: 500 }}>+ 开始新对话</Text>
@@ -106,14 +93,14 @@ export default function Home() {
       <View className="home-section">
         <View className="home-section-header">
           <Text className="home-section-title">精选案例</Text>
-          <Text className="home-section-more" onClick={navigateToDiscover}>更多</Text>
+          <Text className="home-section-more" onClick={() => showToast('即将上线')}>更多</Text>
         </View>
         <ScrollView className="home-cases" scrollX showScrollbar={false}>
           {MOCK_CASES.map((item) => (
             <View
               key={item.id}
               className="home-case-item"
-              onClick={() => navigateToChat(item.mode)}
+              onClick={() => showToast('即将上线')}
             >
               <View className={`home-case-cover home-case-cover-${item.mode}`}>
                 {item.mode === AGENT_MODES.BRAINSTORM ? '💡' :
