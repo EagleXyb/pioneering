@@ -4,14 +4,14 @@
 .msg {
   max-width: 85%;
   animation: msgIn 0.3s ease;
+}
 
-  &.msg-agent {
-    align-self: flex-start;
-  }
+.msg-agent {
+  align-self: flex-start;
+}
 
-  &.msg-user {
-    align-self: flex-end;
-  }
+.msg-user {
+  align-self: flex-end;
 }
 
 @keyframes msgIn {
@@ -31,19 +31,19 @@
   font-size: $font-base;
   line-height: 1.6;
   word-break: break-word;
+}
 
-  .msg-agent & {
-    background: $color-bg-primary;
-    color: $color-text-primary;
-    border-bottom-left-radius: 8rpx;
-    box-shadow: $shadow-sm;
-  }
+.msg-agent .msg-bubble {
+  background: $color-bg-primary;
+  color: $color-text-primary;
+  border-bottom-left-radius: 8rpx;
+  box-shadow: $shadow-sm;
+}
 
-  .msg-user & {
-    background: $color-primary;
-    color: $color-text-inverse;
-    border-bottom-right-radius: 8rpx;
-  }
+.msg-user .msg-bubble {
+  background: $color-primary;
+  color: $color-text-inverse;
+  border-bottom-right-radius: 8rpx;
 }
 
 .msg-meta {
@@ -52,14 +52,14 @@
   margin-top: 8rpx;
   padding: 0 8rpx;
   display: block;
+}
 
-  .msg-agent & {
-    text-align: left;
-  }
+.msg-agent .msg-meta {
+  text-align: left;
+}
 
-  .msg-user & {
-    text-align: right;
-  }
+.msg-user .msg-meta {
+  text-align: right;
 }
 
 // 洞察卡片
@@ -139,16 +139,16 @@
   font-weight: $font-weight-semibold;
   text-align: center;
   transition: all $transition-fast;
+}
 
-  &-accept {
-    background: white;
-    color: #7c3aed;
-  }
+.insight-btn-accept {
+  background: white;
+  color: #7c3aed;
+}
 
-  &-revise {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-  }
+.insight-btn-revise {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .insight-resolved {
@@ -188,14 +188,14 @@
   margin-bottom: 16rpx;
   border: 3rpx solid transparent;
   transition: all $transition-fast;
+}
 
-  &:last-child {
-    margin-bottom: 0;
-  }
+.action-item:last-child {
+  margin-bottom: 0;
+}
 
-  &:active {
-    border-color: $color-success;
-  }
+.action-item:active {
+  border-color: $color-success;
 }
 
 .action-item-title {
@@ -238,14 +238,14 @@
   border-radius: 50%;
   background: $color-text-tertiary;
   animation: typing 1.4s infinite;
+}
 
-  &:nth-child(2) {
-    animation-delay: 0.2s;
-  }
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
 
-  &:nth-child(3) {
-    animation-delay: 0.4s;
-  }
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
 }
 
 @keyframes typing {

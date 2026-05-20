@@ -20,7 +20,10 @@
     "build:h5": "npx taro build --type h5",
     "dev:h5": "npx taro build --type h5 --watch",
     "lint": "eslint src --ext .ts,.tsx --fix",
-    "typecheck": "tsc --noEmit"
+    "format": "prettier --write \"src/**/*.{ts,tsx,scss,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,scss,json}\"",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky"
   },
   "browserslist": [
     "last 3 versions",
@@ -28,7 +31,6 @@
     "ios >= 8"
   ],
   "dependencies": {
-    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
     "@tarojs/components": "4.0.9",
     "@tarojs/helper": "4.0.9",
     "@tarojs/plugin-framework-react": "4.0.9",
@@ -43,6 +45,7 @@
     "@tarojs/taro": "4.0.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "tdesign-miniprogram-taro": "^0.0.4",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
@@ -51,6 +54,7 @@
     "@babel/preset-react": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
     "@babel/runtime": "^7.24.0",
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
     "@tarojs/cli": "4.0.9",
     "@tarojs/webpack5-runner": "4.0.9",
     "@types/react": "^18.3.12",
@@ -60,8 +64,20 @@
     "eslint": "^8.57.0",
     "eslint-config-taro": "4.0.9",
     "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.3.0",
     "sass": "^1.77.0",
     "typescript": "5.1.6",
     "webpack": "^5.91.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{scss,css,json,md}": [
+      "prettier --write"
+    ]
   }
 }

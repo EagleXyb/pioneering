@@ -139,16 +139,16 @@
   border-radius: 50%;
   background: $color-border;
   transition: all 0.3s;
+}
 
-  &-active {
-    background: $color-primary;
-    width: 48rpx;
-    border-radius: 8rpx;
-  }
+.phase-dot-active {
+  background: $color-primary;
+  width: 48rpx;
+  border-radius: 8rpx;
+}
 
-  &-done {
-    background: $color-primary-light;
-  }
+.phase-dot-done {
+  background: $color-primary-light;
 }
 
 .phase-label {

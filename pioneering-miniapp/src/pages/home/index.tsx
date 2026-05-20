@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { useState, useCallback } from 'react';
 import { AGENT_MODES, AGENT_MODE_LABELS, AGENT_MODE_DESCRIPTIONS } from '@/constants';
 import { formatTime } from '@/utils';
-import './index.scss';
+import styles from './index.module.scss';
 
 const MODE_CONFIG = [
   { key: AGENT_MODES.BRAINSTORM, emoji: '💡', color: 'brainstorm' },
@@ -33,56 +33,56 @@ export default function Home() {
   }, []);
 
   return (
-    <ScrollView className="home-page" scrollY enableBackToTop>
-      <View className="home-header">
-        <View className="home-header-greeting">AI 创意孵化引擎</View>
-        <View className="home-header-title">创路 Agent</View>
-        <View className="home-header-subtitle">激发灵感 · 深度思考 · 创造价值</View>
+    <ScrollView className={styles['home-page']} scrollY enableBackToTop>
+      <View className={styles['home-header']}>
+        <View className={styles['home-header-greeting']}>AI 创意孵化引擎</View>
+        <View className={styles['home-header-title']}>创路 Agent</View>
+        <View className={styles['home-header-subtitle']}>激发灵感 · 深度思考 · 创造价值</View>
       </View>
 
-      <View className="home-modes">
+      <View className={styles['home-modes']}>
         {MODE_CONFIG.map((item) => (
           <View
             key={item.key}
-            className="home-mode-card"
+            className={styles['home-mode-card']}
             onClick={() => showToast('即将上线')}
           >
-            <View className={`home-mode-icon home-mode-icon-${item.color}`}>
+            <View className={`${styles['home-mode-icon']} ${styles[`home-mode-icon-${item.color}`]}`}>
               {item.emoji}
             </View>
-            <View className="home-mode-body">
-              <View className="home-mode-name">{AGENT_MODE_LABELS[item.key]}</View>
-              <View className="home-mode-desc">{AGENT_MODE_DESCRIPTIONS[item.key]}</View>
+            <View className={styles['home-mode-body']}>
+              <View className={styles['home-mode-name']}>{AGENT_MODE_LABELS[item.key]}</View>
+              <View className={styles['home-mode-desc']}>{AGENT_MODE_DESCRIPTIONS[item.key]}</View>
             </View>
           </View>
         ))}
       </View>
 
-      <View className="home-section">
-        <View className="home-section-header">
-          <Text className="home-section-title">最近对话</Text>
-          <Text className="home-section-more" onClick={() => showToast('即将上线')}>更多</Text>
+      <View className={styles['home-section']}>
+        <View className={styles['home-section-header']}>
+          <Text className={styles['home-section-title']}>最近对话</Text>
+          <Text className={styles['home-section-more']} onClick={() => showToast('即将上线')}>更多</Text>
         </View>
         {recentSessions.map((session) => (
           <View
             key={session.id}
-            className="home-chat-entry"
+            className={styles['home-chat-entry']}
             onClick={() => showToast('即将上线')}
           >
-            <View className="home-chat-entry-avatar">AI</View>
-            <View className="home-chat-entry-body">
-              <View className="home-chat-entry-title">{session.title}</View>
-              <View className="home-chat-entry-preview">{session.preview}</View>
-              <View className="home-chat-entry-meta">
-                <Text className="home-chat-entry-tag">{AGENT_MODE_LABELS[session.mode]}</Text>
-                <Text className="home-chat-entry-time">{formatTime(session.time)}</Text>
+            <View className={styles['home-chat-entry-avatar']}>AI</View>
+            <View className={styles['home-chat-entry-body']}>
+              <View className={styles['home-chat-entry-title']}>{session.title}</View>
+              <View className={styles['home-chat-entry-preview']}>{session.preview}</View>
+              <View className={styles['home-chat-entry-meta']}>
+                <t-tag theme='primary' variant='light' size='small'>{AGENT_MODE_LABELS[session.mode]}</t-tag>
+                <Text className={styles['home-chat-entry-time']}>{formatTime(session.time)}</Text>
               </View>
             </View>
           </View>
         ))}
 
         <View
-          className="home-chat-entry"
+          className={styles['home-chat-entry']}
           onClick={() => showToast('即将上线')}
           style={{ justifyContent: 'center', padding: '36rpx' }}
         >
@@ -90,26 +90,26 @@ export default function Home() {
         </View>
       </View>
 
-      <View className="home-section">
-        <View className="home-section-header">
-          <Text className="home-section-title">精选案例</Text>
-          <Text className="home-section-more" onClick={() => showToast('即将上线')}>更多</Text>
+      <View className={styles['home-section']}>
+        <View className={styles['home-section-header']}>
+          <Text className={styles['home-section-title']}>精选案例</Text>
+          <Text className={styles['home-section-more']} onClick={() => showToast('即将上线')}>更多</Text>
         </View>
-        <ScrollView className="home-cases" scrollX showScrollbar={false}>
+        <ScrollView className={styles['home-cases']} scrollX showScrollbar={false}>
           {MOCK_CASES.map((item) => (
             <View
               key={item.id}
-              className="home-case-item"
+              className={styles['home-case-item']}
               onClick={() => showToast('即将上线')}
             >
-              <View className={`home-case-cover home-case-cover-${item.mode}`}>
+              <View className={`${styles['home-case-cover']} ${styles[`home-case-cover-${item.mode}`]}`}>
                 {item.mode === AGENT_MODES.BRAINSTORM ? '💡' :
                  item.mode === AGENT_MODES.CREATE ? '✨' :
                  item.mode === AGENT_MODES.ANALYZE ? '🔍' : '🎯'}
               </View>
-              <View className="home-case-info">
-                <View className="home-case-name">{item.title}</View>
-                <View className="home-case-desc">{item.desc}</View>
+              <View className={styles['home-case-info']}>
+                <View className={styles['home-case-name']}>{item.title}</View>
+                <View className={styles['home-case-desc']}>{item.desc}</View>
               </View>
             </View>
           ))}

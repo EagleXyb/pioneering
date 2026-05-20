@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import Taro from '@tarojs/taro';
 import { useAppStore } from './store';
+import { ensureLogin } from './services/auth';
 import './styles/global.scss';
 
 function App({ children }: { children?: React.ReactNode }) {
@@ -19,6 +20,9 @@ function App({ children }: { children?: React.ReactNode }) {
     } catch {
       // ignore
     }
+
+    // 应用启动时静默登录
+    ensureLogin();
   }, [setSystemInfo]);
 
   return <>{children}</>;

@@ -19,7 +19,14 @@ export default defineConfig(async (merge) => {
     plugins: ['@tarojs/plugin-framework-react'],
     defineConstants: {},
     copy: {
-      patterns: [{ from: 'src/assets/', to: 'dist/assets/' }],
+      patterns: [
+        { from: 'src/assets/', to: 'dist/assets/' },
+        {
+          from: 'node_modules/tdesign-miniprogram-taro/miniprogram_dist/',
+          to: 'dist/miniprogram_npm/tdesign-miniprogram/',
+          ignore: ['*.ts', '*.map', 'type.js'],
+        },
+      ],
       options: {},
     },
     framework: 'react',
@@ -37,7 +44,7 @@ export default defineConfig(async (merge) => {
       postcss: {
         pxtransform: { enable: true, config: {} },
         cssModules: {
-          enable: false,
+          enable: true,
           config: {
             namingPattern: 'module',
             generateScopedName: '[name]__[local]___[hash:base64:5]',
@@ -51,7 +58,7 @@ export default defineConfig(async (merge) => {
       postcss: {
         autoprefixer: { enable: true, config: {} },
         cssModules: {
-          enable: false,
+          enable: true,
           config: {
             namingPattern: 'module',
             generateScopedName: '[name]__[local]___[hash:base64:5]',

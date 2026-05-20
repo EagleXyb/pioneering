@@ -1,5 +1,5 @@
-import { View, Input } from '@tarojs/components';
-import './ChatInput.scss';
+import { View } from '@tarojs/components';
+import styles from './ChatInput.module.scss';
 
 interface ChatInputProps {
   value: string;
@@ -21,11 +21,11 @@ export default function ChatInput({
   return (
     <>
       {quickReplies.length > 0 && (
-        <View className='quick-replies'>
+        <View className={styles['quick-replies']}>
           {quickReplies.map((text, i) => (
             <View
               key={i}
-              className={`quick-reply-btn ${text === '✍️ 我想自己说' ? 'quick-reply-free' : ''}`}
+              className={`${styles['quick-reply-btn']} ${text === '✍️ 我想自己说' ? styles['quick-reply-free'] : ''}`}
               onClick={() => onSelectQuickReply(text)}
             >
               {text}
@@ -33,22 +33,24 @@ export default function ChatInput({
           ))}
         </View>
       )}
-      <View className='chat-input-bar'>
-        <Input
-          className='chat-input'
+      <View className={styles['chat-input-bar']}>
+        <t-input
+          class={styles['chat-input']}
           value={value}
-          onInput={(e) => onChange(e.detail.value)}
+          onChange={(e: { detail: { value: string } }) => onChange(e.detail.value)}
           placeholder='也可以直接打字...'
-          confirmType='send'
-          onConfirm={onSend}
+          type='text'
           disabled={disabled}
         />
-        <View
-          className={`chat-send ${!value.trim() || disabled ? 'chat-send-disabled' : ''}`}
-          onClick={value.trim() && !disabled ? onSend : undefined}
+        <t-button
+          theme='primary'
+          size='small'
+          icon='send'
+          disabled={!value.trim() || disabled}
+          onClick={onSend}
         >
-          ↑
-        </View>
+          发送
+        </t-button>
       </View>
     </>
   );

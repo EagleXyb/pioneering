@@ -9,3 +9,31 @@ declare module '*.css';
 
 declare function defineAppConfig(config: Record<string, any>): Record<string, any>;
 declare function definePageConfig(config: Record<string, any>): Record<string, any>;
+
+// TDesign 小程序组件类型声明
+declare namespace JSX {
+  interface IntrinsicElements {
+    't-button': any;
+    't-icon': any;
+    't-input': any;
+    't-textarea': any;
+    't-avatar': any;
+    't-badge': any;
+    't-cell': any;
+    't-tag': any;
+    't-loading': any;
+    't-toast': any;
+    't-dialog': any;
+    't-popup': any;
+    't-empty': any;
+    't-steps': any;
+    't-step': any;
+    't-navbar': any;
+    't-tabs': any;
+    't-image': any;
+    't-skeleton': any;
+    't-divider': any;
+    't-switch': any;
+    't-message': any;
+  }
+}

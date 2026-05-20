@@ -96,7 +96,9 @@
 .home-mode-desc {
   font-size: 22rpx;
   color: $color-text-tertiary;
-  @extend .ellipsis;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-section {
@@ -159,14 +161,18 @@
   font-size: $font-base;
   font-weight: $font-weight-medium;
   color: $color-text-primary;
-  @extend .ellipsis;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-chat-entry-preview {
   font-size: $font-sm;
   color: $color-text-tertiary;
   margin-top: 6rpx;
-  @extend .ellipsis;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-chat-entry-meta {
@@ -239,17 +245,15 @@
   font-size: $font-sm;
   font-weight: $font-weight-medium;
   color: $color-text-primary;
-  @extend .ellipsis;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-case-desc {
   font-size: 22rpx;
   color: $color-text-tertiary;
   margin-top: 4rpx;
-  @extend .ellipsis;
-}
-
-.ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
