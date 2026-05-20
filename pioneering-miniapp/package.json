@@ -9,7 +9,8 @@
     "css": "sass"
   },
   "scripts": {
-    "build:weapp": "npx taro build --type weapp",
+    "build:weapp": "npx taro build --type weapp && node scripts/fix-icon-font.mjs",
+    "fix:icon-font": "node scripts/fix-icon-font.mjs",
     "dev:weapp": "npx taro build --type weapp --watch",
     "build:swan": "npx taro build --type swan",
     "dev:swan": "npx taro build --type swan --watch",
