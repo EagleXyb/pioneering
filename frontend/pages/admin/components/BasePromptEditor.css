@@ -1,0 +1,198 @@
+/* BasePromptEditor 组件样式 */
+
+/* Prompt 编辑器容器 */
+.prompt-module-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.prompt-module-editor .panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0 0 16px 0;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 20px;
+}
+
+.prompt-module-editor .header-left {
+  flex: 1;
+}
+
+.prompt-module-editor .header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.prompt-module-editor .form-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e7eb;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.prompt-module-editor .form-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.prompt-module-editor .form-textarea {
+  flex: 1;
+  min-height: 400px;
+}
+
+.prompt-module-editor.fullscreen-mode {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: white;
+  padding: 20px;
+  height: 100vh;
+}
+
+.prompt-module-editor.fullscreen-mode .panel-header {
+  display: none;
+}
+
+.prompt-module-editor.fullscreen-mode .form-card {
+  flex: 1;
+}
+
+.prompt-module-editor.fullscreen-mode .form-textarea {
+  height: calc(100vh - 120px) !important;
+}
+
+/* 表单文本域 */
+.form-textarea {
+  width: 100%;
+  min-height: 400px;
+  font-family: inherit;
+  border-radius: 8px;
+  color: #1D1D1F;
+  padding: 6px 0;
+  font-size: 14px;
+  border: none;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+
+.form-textarea:focus {
+  outline: none;
+}
+
+/* form-card 获取焦点时的样式 */
+.prompt-module-editor .form-card:focus-within {
+  border-color: #2490f8;
+  box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
+}
+
+/* 全屏模式文本域 */
+.form-textarea.fullscreen-textarea {
+  min-height: calc(100vh - 200px) !important;
+  width: 100% !important;
+}
+
+/* Prompt 编辑器头部 */
+.prompt-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 5px 0;
+}
+
+/* 编辑器分隔线 */
+.editor-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0px -24px 5px -20px;
+}
+
+/* Prompt 编辑器工具栏 */
+.prompt-editor-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+/* 工具栏按钮 */
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.toolbar-btn:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.toolbar-btn:hover::after {
+  content: attr(data-title);
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: #1f2937;
+  color: white;
+  font-size: 12px;
+  white-space: nowrap;
+  border-radius: 4px;
+  margin-top: 4px;
+  z-index: 1000;
+}
+
+.toolbar-btn:hover::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0;
+  border: 4px solid transparent;
+  border-bottom-color: #1f2937;
+  z-index: 1000;
+}
+
+.toolbar-btn svg {
+  flex-shrink: 0;
+}
+
+/* 通用表单样式 */
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin: 0;
+}
+
+.label-required {
+  color: #ef4444;
+  margin-left: 4px;
+}
+
+.form-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}

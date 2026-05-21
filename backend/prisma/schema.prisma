@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  phone     String?
+  location  String?
+  bio       String?
+  company   String?
+  position  String?
+  joinDate  DateTime @default(now())
+  skills    String[]  @default([])
+  avatar    String?  // 存储头像文件路径/URL
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AIConfig {
+  id        Int      @id @default(autoincrement())
+  apiKey    String
+  provider  String
+  model     String
+  prompt    String
+  lastTestInput    String?
+  lastTestResult   String?
+  lastTestTime     DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, model])
+}
+
+model GlobalPrompt {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique               // 全局Prompt业务标识（如 "system_default"）
+  templateContent String                         // Prompt模板内容（支持变量占位符）
+  version         Int      @default(1)            // 版本号，每次内容变更自增
+  status          String   @default("offline")    // online | offline，同一name仅允许一个online
+  approvalStatus  String   @default("pending")    // pending | approved | rejected
+  createdBy       String                         // 创建者标识
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("global_prompt")
+}
+
+model ChatConversation {
+  id        Int            @id @default(autoincrement())
+  title     String                             // 会话标题（取首条用户消息前20字）
+  model     String                             // 使用的模型
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  ChatMessage[]
+
+  @@map("chat_conversation")
+}
+
+model ChatMessage {
+  id              Int               @id @default(autoincrement())
+  conversationId  Int
+  role            String            // user / assistant / system
+  content         String            // 原始完整内容
+  thinkingContent String?           // 思考内容
+  answerContent   String?           // 回答内容
+  status          String            // loading / success / error
+  error           String?           // 错误信息
+  createdAt       DateTime          @default(now())
+  conversation    ChatConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("chat_message")
+}

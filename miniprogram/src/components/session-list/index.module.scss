@@ -1,0 +1,65 @@
+@import '../../styles/variables.scss';
+
+.item {
+  margin: $spacing-sm $spacing-lg;
+  border-radius: $radius-md;
+  overflow: hidden;
+  background-color: $color-bg-primary;
+  position: relative;
+}
+
+.itemActive {
+  background: #eef2ff;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  padding: $spacing-md $spacing-lg;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: $font-md;
+  font-weight: 500;
+  color: $color-text-primary;
+  @include text-ellipsis;
+  display: block;
+}
+
+.preview {
+  font-size: $font-sm;
+  color: $color-text-tertiary;
+  margin-top: 6rpx;
+  @include text-ellipsis;
+  display: block;
+}
+
+.time {
+  font-size: $font-xs;
+  color: $color-text-tertiary;
+  margin-top: 6rpx;
+  display: block;
+}
+
+.arrow {
+  color: $color-text-tertiary;
+  font-size: $font-xl;
+  margin-left: $spacing-sm;
+}
+
+.deleteBtn {
+  position: absolute;
+  right: 20rpx;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.deleteText {
+  font-size: $font-sm;
+  color: #ef4444;
+}

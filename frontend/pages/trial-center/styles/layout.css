@@ -1,0 +1,263 @@
+/* ============================================
+   三栏布局系统 — 分区职责分离 + 空间优先级分层
+   左栏：会话列表（数据入口、层级管理）
+   中栏：核心业务主画布（用户操作、内容展示、交互输出）
+   右栏：Agent面板（Agent状态执行过程）
+   ============================================ */
+
+/* ---------- 页面级容器 ---------- */
+
+.trial-center-container {
+  height: 100vh;
+  display: flex;
+  background: var(--color-bg-page);
+  overflow: hidden;
+  padding: 5px;
+  gap: 5px;
+}
+
+.three-column-layout {
+  height: 100vh;
+  display: flex;
+  background: var(--color-bg-page);
+  overflow: hidden;
+  padding: 5px;
+  gap: 0;
+}
+
+/* ---------- 栏列通用 ---------- */
+
+.layout-column {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ---------- 左栏：会话列表 ---------- */
+
+.layout-left {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  transition: width var(--transition-slow) ease;
+  overflow: hidden;
+}
+
+.layout-left.collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+/* ---------- 中栏：核心主画布 ---------- */
+
+.layout-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-main);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-main);
+  margin: 0 5px;
+}
+
+/* ---------- 右栏：Agent面板 ---------- */
+
+.layout-right {
+  width: var(--right-panel-width);
+  min-width: var(--right-panel-min-width);
+  max-width: var(--right-panel-max-width);
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--color-bg-main);
+  border-left: 1px solid var(--color-border-right-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-main);
+  transition: width var(--transition-slow) ease, min-width var(--transition-slow) ease;
+}
+
+.layout-right.collapsed {
+  width: 40px;
+  min-width: 40px;
+}
+
+/* ---------- 栏间拖拽分隔线 ---------- */
+
+.resize-handle {
+  width: 1px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 15;
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
+/* ============================================
+   非专业模式（普通模式）布局
+   ============================================ */
+
+.trial-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-main);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-main);
+}
+
+.trial-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.trial-body .main-wrapper {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
+  padding: 0;
+}
+
+/* ============================================
+   通用内容区布局
+   ============================================ */
+
+.main-wrapper {
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.professional-wrapper {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.professional-wrapper .chat-footer {
+  padding-top: var(--spacing-md);
+  padding-bottom: var(--spacing-xs);
+}
+
+.professional-wrapper .trial-input-footer {
+  padding: 0;
+}
+
+.professional-wrapper .input-box {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto var(--spacing-xs) auto;
+  border-radius: var(--radius-md);
+}
+
+.professional-chat-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-lg) 0;
+  position: relative;
+  scroll-behavior: smooth;
+}
+
+.professional-chat-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.professional-chat-container::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+}
+
+.professional-chat-container::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--radius-sm);
+  border: none;
+  transition: background var(--transition-slow) ease;
+}
+
+.professional-chat-container.scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-bg-scroll-thumb);
+}
+
+.professional-chat-container::-webkit-scrollbar-thumb:hover {
+  background: var(--color-bg-scroll-thumb-hover);
+}
+
+.professional-chat-container .chat-message-wrapper {
+  padding: var(--spacing-xs) 28px;
+}
+
+.professional-chat-container .user-row,
+.professional-chat-container .assistant-row {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.trial-input-footer {
+  flex-shrink: 0;
+  background: transparent;
+  z-index: 10;
+  padding: 0 var(--spacing-xl) var(--spacing-md);
+}
+
+.toast {
+  position: fixed;
+  top: var(--spacing-xl);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg-toast);
+  color: var(--color-text-toast);
+  padding: 10px var(--spacing-xl);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  z-index: 9999;
+  animation: toastFadeIn 0.3s ease;
+  box-shadow: var(--shadow-toast);
+}
+
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

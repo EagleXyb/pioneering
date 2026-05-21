@@ -1,0 +1,15 @@
+@import '../../styles/variables.scss';
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400rpx;
+  padding: $spacing-xl;
+}
+
+.text {
+  font-size: $font-base;
+  color: $color-text-tertiary;
+}

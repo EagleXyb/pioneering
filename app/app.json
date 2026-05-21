@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "IAC 创新孵化",
+    "slug": "iac-incubator",
+    "version": "0.5.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.iac.incubator"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.iac.incubator"
+    },
+    "plugins": ["expo-router"]
+  }
+}

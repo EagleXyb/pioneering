@@ -1,0 +1,43 @@
+@import '../../styles/variables.scss';
+
+.wrap {
+  margin-bottom: $spacing-md;
+}
+
+.user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.userBubble {
+  max-width: 75%;
+  background: $color-primary;
+  border-radius: $radius-lg $radius-lg 4rpx $radius-lg;
+  padding: 20rpx 28rpx;
+}
+
+.userText {
+  font-size: $font-base;
+  line-height: 1.6;
+  color: $color-text-inverse;
+}
+
+.ai {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.aiBubble {
+  max-width: 80%;
+  background: $color-bg-primary;
+  border-radius: $radius-lg $radius-lg $radius-lg 4rpx;
+  padding: 20rpx 28rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.aiText {
+  font-size: $font-base;
+  line-height: 1.7;
+  color: $color-text-primary;
+  white-space: pre-wrap;
+}

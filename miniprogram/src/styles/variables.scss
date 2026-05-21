@@ -1,0 +1,91 @@
+// ====== 主色调 ======
+$color-primary: #4f46e5;
+$color-primary-light: #6366f1;
+
+// ====== 文字色 ======
+$color-text-primary: #111827;
+$color-text-secondary: #6b7280;
+$color-text-tertiary: #9ca3af;
+$color-text-inverse: #ffffff;
+
+// ====== 背景色 ======
+$color-bg-primary: #ffffff;
+$color-bg-secondary: #f9fafb;
+$color-bg-page: #f3f4f6;
+
+// ====== 边框色 ======
+$color-border: #e5e7eb;
+
+// ====== 间距 ======
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+$spacing-xl: 48rpx;
+
+// ====== 圆角 ======
+$radius-sm: 12rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-full: 9999rpx;
+
+// ====== 字号 ======
+$font-xs: 20rpx;
+$font-sm: 24rpx;
+$font-base: 28rpx;
+$font-md: 30rpx;
+$font-lg: 34rpx;
+$font-xl: 38rpx;
+
+// ====== 安全区域 ======
+$safe-area-bottom: env(safe-area-inset-bottom);
+
+// ====== 过渡 ======
+$transition-fast: 0.15s ease;
+
+// ====== 布局尺寸 ======
+$fab-bottom-offset: 80rpx;
+$input-min-height: 120rpx;
+$header-height: 88rpx;
+
+// ====== Z-Index 层级 ======
+$z-fab: 99;
+$z-drawer: 100;
+$z-toast: 200;
+
+// ====== 通用 Mixins ======
+@mixin text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin safe-bottom($base: 0) {
+  padding-bottom: calc(#{$base} + env(safe-area-inset-bottom));
+}
+
+// 全屏 Flex 页面容器：原生导航占顶部，此容器占满剩余空间
+@mixin page-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: $color-bg-page;
+}
+
+// 可滚动内容区：flex:1 自动填充剩余高度
+@mixin scroll-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+// 固定底部区域：flex-shrink:0 + 安全区适配
+@mixin fixed-bottom($base-padding: 0) {
+  flex-shrink: 0;
+  background: $color-bg-primary;
+  border-top: 1rpx solid $color-border;
+  @include safe-bottom($base-padding);
+}

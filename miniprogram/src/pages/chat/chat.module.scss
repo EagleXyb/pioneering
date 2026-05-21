@@ -1,0 +1,67 @@
+@import '../../styles/variables.scss';
+
+// 全屏 Flex 容器
+.chatPage {
+  @include page-container;
+}
+
+// 导航栏操作按钮（放置在 t-navbar 的 left slot 中）
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.navBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  font-size: 40rpx;
+  color: $color-text-secondary;
+  border-radius: $radius-md;
+}
+
+// 中部：可滚动消息区，flex:1 撑满剩余空间
+.chatMessages {
+  @include scroll-content;
+  padding: 0 $spacing-lg $spacing-md;
+}
+
+// 欢迎空态
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400rpx;
+  padding: $spacing-xl;
+}
+
+.welcomeBtn {
+  margin-top: $spacing-lg;
+}
+
+// 底部：对话输入框 + 安全区适配
+.chatSenderWrap {
+  @include fixed-bottom($spacing-sm);
+  min-height: $input-min-height;
+}
+
+.chatSenderInner {
+  min-height: 80rpx;
+}
+
+// 抽屉内容
+.drawerContent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.drawerBottom {
+  flex-shrink: 0;
+  padding: $spacing-md $spacing-lg;
+  @include safe-bottom($spacing-sm);
+}
