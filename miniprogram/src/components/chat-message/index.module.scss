@@ -1,7 +1,7 @@
 @import '../../styles/variables.scss';
 
 .wrap {
-  margin-bottom: $spacing-md;
+  margin-bottom: $spacing-lg;
 }
 
 .user {
@@ -11,15 +11,17 @@
 
 .userBubble {
   max-width: 75%;
-  background: $color-primary;
-  border-radius: $radius-lg $radius-lg 4rpx $radius-lg;
-  padding: 20rpx 28rpx;
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  border-radius: $radius-xl $radius-xl 8rpx $radius-xl;
+  padding: 24rpx 32rpx;
+  box-shadow: 0 4rpx 12rpx rgba(82, 196, 26, 0.15);
 }
 
 .userText {
   font-size: $font-base;
   line-height: 1.6;
-  color: $color-text-inverse;
+  color: #ffffff;
+  font-weight: 400;
 }
 
 .ai {
@@ -28,11 +30,12 @@
 }
 
 .aiBubble {
-  max-width: 80%;
-  background: $color-bg-primary;
-  border-radius: $radius-lg $radius-lg $radius-lg 4rpx;
-  padding: 20rpx 28rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  max-width: 82%;
+  background: #ffffff;
+  border-radius: $radius-xl $radius-xl $radius-xl 8rpx;
+  padding: 24rpx 32rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.06);
+  border: 1rpx solid rgba(0, 0, 0, 0.03);
 }
 
 .aiText {
