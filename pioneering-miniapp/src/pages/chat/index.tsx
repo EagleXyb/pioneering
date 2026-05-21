@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Input } from '@tarojs/components';
 import { useChatSession } from './hooks';
 import type { ChatMessage } from './strategy/types';
 import { InsightCard, ActionCard, SessionDrawer } from './components';
+import { PHASE_NAMES } from './scripts/conversation';
 import { requireAuth } from '@/services/auth';
 import styles from './index.module.scss';
 
@@ -100,7 +101,7 @@ export default function Chat() {
       <View className={styles['phase-progress']}>
         <t-steps current={currentPhase} layout="vertical" readonly>
           {[0, 1, 2, 3, 4].map((i) => (
-            <t-step key={i} />
+            <t-step key={i} title={PHASE_NAMES[i]} />
           ))}
         </t-steps>
         <Text className={styles['phase-label']}>{phaseLabel}</Text>
