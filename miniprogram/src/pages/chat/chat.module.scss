@@ -11,12 +11,16 @@
   position: fixed;
   top: 0;
   left: 0;
+  right: 0;
   z-index: 1000;
   display: flex;
   align-items: center;
   gap: $spacing-xs;
   padding-left: $spacing-md;
   box-sizing: content-box;
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 // 导航栏按钮基础样式
@@ -167,6 +171,30 @@
 .sendBtnReady {
   background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
   box-shadow: 0 4rpx 12rpx rgba(82, 196, 26, 0.3);
+}
+
+// 停止按钮（方形，替换发送按钮）
+.stopBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 12rpx;
+  background: #ff4d4f;
+  transition: all $transition-fast;
+  box-shadow: 0 4rpx 12rpx rgba(255, 77, 79, 0.3);
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.stopIcon {
+  width: 28rpx;
+  height: 28rpx;
+  background: #ffffff;
+  border-radius: 4rpx;
 }
 
 // AI 生成提示文字

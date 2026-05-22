@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro';
+import { withRetry } from '@/utils/retry';
 import { getMockHandler } from './mock';
 
 // ====== Mock 模式开关 ======
@@ -76,30 +77,24 @@ class Request {
 
     const finalOptions = this.buildOptions(options);
 
-    try {
-      const response = await Taro.request(finalOptions);
-      const data = response.data as ApiResponse;
-      if (data.code !== 0 && data.code !== 200) {
-        throw new Error(data.message || '请求失败');
-      }
-      return data.data as T;
-    } catch (error) {
-      this.handleError(error as { statusCode?: number });
-      throw error;
-    }
-  }
-
-  private handleError(error: { statusCode?: number }) {
-    const statusMessages: Record<number, string> = {
-      400: '请求参数错误',
-      401: '登录已过期',
-      403: '没有访问权限',
-      404: '请求资源不存在',
-      500: '服务器内部错误',
-    };
-    const statusCode = error.statusCode || 0;
-    const message = statusMessages[statusCode] || '网络异常，请稍后重试';
-    Taro.showToast({ title: message, icon: 'none', duration: 2000 });
+    // 指数退避重试
+    return withRetry(
+      async () => {
+        const response = await Taro.request(finalOptions);
+        const data = response.data as ApiResponse;
+        if (data.code !== 0 && data.code !== 200) {
+          throw new Error(data.message || '请求失败');
+        }
+        return data.data as T;
+      },
+      {
+        maxRetries: 3,
+        baseDelay: 1000,
+        onRetry: (attempt, delay) => {
+          console.log(`[Request] 第 ${attempt} 次重试，等待 ${delay}ms`);
+        },
+      },
+    );
   }
 
   get<T = unknown>(url: string, data?: Record<string, unknown>) {
