@@ -40,6 +40,11 @@
   }
 }
 
+.navIcon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
 // 中部：可滚动消息区，flex:1 撑满剩余空间
 .chatMessages {
   @include scroll-content;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Taro from '@tarojs/taro';
-import { View, ScrollView, Text, Textarea } from '@tarojs/components';
+import { View, ScrollView, Text, Textarea, Image } from '@tarojs/components';
 import { useAppStore, type SessionItem } from '@/store';
 import type { ChatMessage } from '@/types/chat';
 import { useConversation } from '@/hooks/useConversation';
@@ -9,6 +9,7 @@ import ChatMessageComponent from '@/components/chat-message';
 import EmptyState from '@/components/empty-state';
 import LoadingDots from '@/components/loading-dots';
 import SessionList from '@/components/session-list';
+import { NavIcons } from '@/utils/icons';
 import styles from './chat.module.scss';
 
 export default function Chat() {
@@ -316,10 +317,10 @@ export default function Chat() {
       {/* 导航栏 */}
       <View className={styles.navActions} style={navbarStyle}>
         <View className={styles.navBtn} onClick={() => setDrawerVisible(true)}>
-          <t-icon name="view-list" size="44rpx" />
+          <Image className={styles.navIcon} src={NavIcons.viewList()} />
         </View>
         <View className={styles.navBtn} onClick={handleNewChat}>
-          <t-icon name="add" size="44rpx" />
+          <Image className={styles.navIcon} src={NavIcons.add()} />
         </View>
       </View>
       <t-navbar title="元宝" fixed />
