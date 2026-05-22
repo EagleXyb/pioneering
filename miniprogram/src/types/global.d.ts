@@ -17,7 +17,6 @@ declare namespace JSX {
     't-drawer': any;
     't-skeleton': any;
     't-toast': any;
-    't-chat-sender': any;
     't-popup': any;
     't-icon': any;
     't-overlay': any;
@@ -25,5 +24,7 @@ declare namespace JSX {
     't-loading': any;
     't-navbar': any;
     'attachments': any;
+    't-chat-message': any;
+    't-chat-content': any;
   }
 }

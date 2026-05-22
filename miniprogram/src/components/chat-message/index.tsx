@@ -1,28 +1,20 @@
-import { View, Text } from '@tarojs/components';
-import styles from './index.module.scss';
-
 interface ChatMessageProps {
-  id: string;
   content: string;
   isUser: boolean;
 }
 
-export default function ChatMessage({ id, content, isUser }: ChatMessageProps) {
+export default function ChatMessage({ content, isUser }: ChatMessageProps) {
   return (
-    <View id={`msg-${id}`} className={styles.wrap}>
-      {isUser ? (
-        <View className={styles.user}>
-          <View className={styles.userBubble}>
-            <Text className={styles.userText}>{content}</Text>
-          </View>
-        </View>
-      ) : (
-        <View className={styles.ai}>
-          <View className={styles.aiBubble}>
-            <Text className={styles.aiText}>{content}</Text>
-          </View>
-        </View>
-      )}
-    </View>
+    <t-chat-message
+      role={isUser ? 'user' : 'assistant'}
+      content={{ type: 'text', data: content }}
+    >
+      {/* content 插槽：使用 t-chat-content 渲染对话正文 */}
+      <t-chat-content
+        slot="content"
+        content={{ type: 'text', data: content }}
+        role={isUser ? 'user' : 'assistant'}
+      />
+    </t-chat-message>
   );
 }

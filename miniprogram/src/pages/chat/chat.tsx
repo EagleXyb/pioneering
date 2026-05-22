@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Taro from '@tarojs/taro';
-import { View, ScrollView } from '@tarojs/components';
+import { View, ScrollView, Text, Textarea } from '@tarojs/components';
 import { useAppStore, type SessionItem } from '@/store';
 import { chatApi } from '@/services';
 import ChatMessage from '@/components/chat-message';
@@ -29,6 +29,8 @@ export default function Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const [scrollInto, setScrollInto] = useState('');
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [deepThinkActive, setDeepThinkActive] = useState(false);
+  const [netSearchActive, setNetSearchActive] = useState(false);
 
   useEffect(() => {
     const sid = currentSessionId;
@@ -108,13 +110,22 @@ export default function Chat() {
     }
   }, [inputValue, isLoading, addMessage, updateSession, handleNewChat]);
 
-  const handleSenderChange = useCallback((e: any) => {
-    setInputValue(e.detail?.value ?? '');
+  const handleInputFocus = useCallback(() => {
   }, []);
 
-  const handleSenderSend = useCallback(() => {
-    handleSend();
-  }, [handleSend]);
+  const handleInputBlur = useCallback(() => {
+  }, []);
+
+  const handleLineChange = useCallback((e: any) => {
+  }, []);
+
+  const handleDeepThinkTap = useCallback(() => {
+    setDeepThinkActive((prev) => !prev);
+  }, []);
+
+  const handleNetSearchTap = useCallback(() => {
+    setNetSearchActive((prev) => !prev);
+  }, []);
 
   const handleSwitchSession = useCallback((id: string) => {
     setCurrentSessionId(id);
@@ -192,7 +203,6 @@ export default function Chat() {
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
-                id={msg.id}
                 content={msg.content}
                 isUser={msg.isUser}
               />
@@ -202,17 +212,60 @@ export default function Chat() {
         )}
       </ScrollView>
 
-      {/* 底部：对话输入框 + 安全区适配 */}
-      <View className={styles.chatSenderWrap}>
-        <t-chat-sender
-          value={inputValue}
-          placeholder="你有什么想知道的，快来问我"
-          disabled={isLoading}
-          loading={isLoading}
-          renderPresets={[{ name: 'send', type: 'icon' }]}
-          onInput={handleSenderChange}
-          onSend={handleSenderSend}
-        />
+      {/* 底部：对话输入区域 */}
+      <View className={styles.chatBottomArea}>
+        {/* 自定义输入框卡片：textarea + 工具栏 + 发送按钮 合为一体 */}
+        <View className={styles.inputCard}>
+          {/* 输入区域 */}
+          <View className={styles.textareaWrap}>
+            <Textarea
+              className={styles.textarea}
+              value={inputValue}
+              placeholder="请输入消息..."
+              placeholderClass={styles.placeholder}
+              disabled={isLoading}
+              maxlength={2000}
+              autoHeight
+              cursorSpacing={16}
+              onInput={(e) => setInputValue(e.detail.value)}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
+              onLineChange={handleLineChange}
+              confirmType="send"
+              onConfirm={handleSend}
+            />
+          </View>
+
+          {/* 底部工具栏：深度思考 / 联网搜索 / 发送 */}
+          <View className={styles.inputFooter}>
+            <View className={styles.footerLeft}>
+              <View
+                className={`${styles.deepThinkBlock} ${deepThinkActive ? styles.active : ''}`}
+                onClick={handleDeepThinkTap}
+              >
+                <t-icon name="system-sum" size="36rpx" />
+                <Text className={styles.deepThinkText}>深度思考</Text>
+              </View>
+              <View
+                className={`${styles.netSearchBlock} ${netSearchActive ? styles.active : ''}`}
+                onClick={handleNetSearchTap}
+              >
+                <t-icon name="internet" size="36rpx" />
+              </View>
+            </View>
+            <View
+              className={`${styles.sendBtn} ${inputValue.trim() && !isLoading ? styles.sendBtnReady : ''}`}
+              onClick={handleSend}
+            >
+              <t-icon name="chevron-up" size="40rpx" color="#fff" />
+            </View>
+          </View>
+        </View>
+
+        {/* AI 生成提示 */}
+        <View className={styles.aiDisclaimer}>
+          内容由AI生成，仅供参考
+        </View>
       </View>
 
       {/* 侧边抽屉：会话列表 */}

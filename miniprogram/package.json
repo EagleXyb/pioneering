@@ -44,6 +44,7 @@
     "@tarojs/runtime": "4.0.9",
     "@tarojs/shared": "4.0.9",
     "@tarojs/taro": "4.0.9",
+    "@tdesign-react/chat": "^1.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tdesign-miniprogram": "^1.14.0",

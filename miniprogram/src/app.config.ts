@@ -15,7 +15,6 @@ export default defineAppConfig({
     't-drawer': 'npm/tdesign-miniprogram/drawer/drawer',
     't-skeleton': 'npm/tdesign-miniprogram/skeleton/skeleton',
     't-toast': 'npm/tdesign-miniprogram/toast/toast',
-    't-chat-sender': 'npm/tdesign-miniprogram/chat-sender/chat-sender',
     't-popup': 'npm/tdesign-miniprogram/popup/popup',
     't-icon': 'npm/tdesign-miniprogram/icon/icon',
     't-overlay': 'npm/tdesign-miniprogram/overlay/overlay',
@@ -23,5 +22,7 @@ export default defineAppConfig({
     't-loading': 'npm/tdesign-miniprogram/loading/loading',
     't-navbar': 'npm/tdesign-miniprogram/navbar/navbar',
     'attachments': 'npm/tdesign-miniprogram/attachments/attachments',
+    't-chat-message': 'npm/tdesign-miniprogram/chat-message/chat-message',
+    't-chat-content': 'npm/tdesign-miniprogram/chat-content/chat-content',
   },
 });

@@ -52,15 +52,132 @@
   padding: $spacing-xl;
 }
 
-// 底部：对话输入框 + 安全区适配
-.chatSenderWrap {
+// 底部整体区域（输入卡片 + AI提示）
+.chatBottomArea {
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-top: 1rpx solid rgba(0, 0, 0, 0.05);
   padding: $spacing-sm $spacing-lg;
-  @include safe-bottom($spacing-sm);
+  @include safe-bottom($spacing-xs);
+}
+
+// 输入框卡片：圆角白色容器 = textarea + 工具栏 + 发送按钮 合为一体
+.inputCard {
+  background: #ffffff;
+  border-radius: $radius-xl;
+  border: 2rpx solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+// textarea 区域
+.textareaWrap {
+  padding: $spacing-md $spacing-lg 0;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 72rpx;
+  max-height: 264rpx;
+  font-size: $font-base;
+  line-height: 1.6;
+  color: $color-text-primary;
+}
+
+.placeholder {
+  color: $color-text-tertiary;
+  font-size: $font-base;
+}
+
+// 底部工具栏：flex 布局，左按钮 + 右发送
+.inputFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-sm $spacing-md $spacing-md;
+}
+
+.footerLeft {
+  display: flex;
+  align-items: center;
+}
+
+// 深度思考按钮
+.deepThinkBlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56rpx;
+  padding: 0 20rpx;
+  margin-right: 16rpx;
+  color: $color-text-secondary;
+  border-radius: 200rpx;
+  border: 2rpx solid $color-border;
+  font-size: 24rpx;
+  transition: all $transition-fast;
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+.deepThinkText {
+  margin-left: 8rpx;
+  font-size: 24rpx;
+}
+
+// 联网搜索按钮
+.netSearchBlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60rpx;
+  height: 56rpx;
+  color: $color-text-secondary;
+  border-radius: 50%;
+  border: 2rpx solid $color-border;
+  transition: all $transition-fast;
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// 激活状态
+.active {
+  border-color: #1677ff;
+  color: #1677ff;
+  background-color: #e6f4ff;
+}
+
+// 发送按钮（圆形）
+.sendBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 50%;
+  background: #d9d9d9;
+  transition: all $transition-fast;
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.sendBtnReady {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  box-shadow: 0 4rpx 12rpx rgba(82, 196, 26, 0.3);
+}
+
+// AI 生成提示文字
+.aiDisclaimer {
+  height: 32rpx;
+  width: 100%;
+  text-align: center;
+  font-size: $font-xs;
+  line-height: 32rpx;
+  color: $color-text-tertiary;
+  margin-top: 8rpx;
 }
 
 // 抽屉内容
