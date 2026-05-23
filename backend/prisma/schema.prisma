@@ -7,73 +7,169 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Profile {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  phone     String?
-  location  String?
-  bio       String?
-  company   String?
-  position  String?
-  joinDate  DateTime @default(now())
-  skills    String[]  @default([])
-  avatar    String?  // 存储头像文件路径/URL
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum MessageRole {
+  system
+  user
+  assistant
+  tool
 }
 
-model AIConfig {
-  id        Int      @id @default(autoincrement())
-  apiKey    String
-  provider  String
-  model     String
-  prompt    String
-  lastTestInput    String?
-  lastTestResult   String?
-  lastTestTime     DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([provider, model])
+enum Feedback {
+  none
+  like
+  dislike
 }
 
-model GlobalPrompt {
-  id              Int      @id @default(autoincrement())
-  name            String   @unique               // 全局Prompt业务标识（如 "system_default"）
-  templateContent String                         // Prompt模板内容（支持变量占位符）
-  version         Int      @default(1)            // 版本号，每次内容变更自增
-  status          String   @default("offline")    // online | offline，同一name仅允许一个online
-  approvalStatus  String   @default("pending")    // pending | approved | rejected
-  createdBy       String                         // 创建者标识
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model User {
+  id             String         @id @db.VarChar(64)
+  username       String         @unique @db.VarChar(100)
+  nickname       String?        @db.VarChar(100)
+  avatar         String?        @db.VarChar(500)
+  email          String?        @db.VarChar(200)
+  phone          String?        @db.VarChar(20)
+  passwordHash   String?        @map("password_hash") @db.VarChar(255)
+  wechatOpenid   String?        @map("wechat_openid") @db.VarChar(100)
+  wechatUnionid  String?        @map("wechat_unionid") @db.VarChar(100)
+  status         Int            @default(1) @db.SmallInt
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
 
-  @@map("global_prompt")
+  chatSessions   ChatSession[]
+  chatMessages   ChatMessage[]
+  files          File[]
+  tokenUsages    TokenUsage[]
+  refreshTokens  RefreshToken[]
+  userQuota      UserQuota?
+
+  @@index([wechatOpenid], map: "idx_openid")
+  @@index([wechatUnionid], map: "idx_unionid")
+  @@map("users")
 }
 
-model ChatConversation {
-  id        Int            @id @default(autoincrement())
-  title     String                             // 会话标题（取首条用户消息前20字）
-  model     String                             // 使用的模型
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  messages  ChatMessage[]
+model RefreshToken {
+  id         String   @id @db.VarChar(64)
+  userId     String   @map("user_id") @db.VarChar(64)
+  token      String   @unique @db.VarChar(500)
+  deviceInfo String?  @map("device_info") @db.VarChar(200)
+  expiresAt  DateTime @map("expires_at") @db.Timestamp(0)
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(0)
 
-  @@map("chat_conversation")
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_refresh_user")
+  @@index([token], map: "idx_token")
+  @@index([expiresAt], map: "idx_expires")
+  @@map("refresh_tokens")
+}
+
+model ChatSession {
+  id            String        @id @db.VarChar(64)
+  userId        String        @map("user_id") @db.VarChar(64)
+  title         String?       @default("新对话") @db.VarChar(200)
+  model         String?       @default("gpt-4o-mini") @db.VarChar(100)
+  modelConfig   Json?         @map("model_config")
+  systemPrompt  String?       @map("system_prompt") @db.Text
+  messageCount  Int           @default(0) @map("message_count")
+  lastMessageId String?       @map("last_message_id") @db.VarChar(64)
+  isArchived    Boolean       @default(false) @map("is_archived")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   ChatMessage[]
+
+  @@index([userId, isArchived, updatedAt], map: "idx_session_user")
+  @@map("chat_sessions")
 }
 
 model ChatMessage {
-  id              Int               @id @default(autoincrement())
-  conversationId  Int
-  role            String            // user / assistant / system
-  content         String            // 原始完整内容
-  thinkingContent String?           // 思考内容
-  answerContent   String?           // 回答内容
-  status          String            // loading / success / error
-  error           String?           // 错误信息
-  createdAt       DateTime          @default(now())
-  conversation    ChatConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id              String       @id @db.VarChar(64)
+  sessionId       String       @map("session_id") @db.VarChar(64)
+  userId          String       @map("user_id") @db.VarChar(64)
+  parentMessageId String?      @map("parent_message_id") @db.VarChar(64)
+  role            MessageRole
+  content         String       @db.Text
+  contentBlocks   Json?        @map("content_blocks")
+  tokenCount      Int?         @map("token_count")
+  feedback        Feedback     @default(none)
+  metadata        Json?
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
 
-  @@map("chat_message")
+  session       ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentMessage ChatMessage?  @relation("MessageParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  childMessages ChatMessage[] @relation("MessageParent")
+
+  @@index([sessionId, createdAt], map: "idx_message_session")
+  @@index([parentMessageId], map: "idx_parent")
+  @@map("chat_messages")
+}
+
+model File {
+  id            String    @id @db.VarChar(64)
+  userId        String    @map("user_id") @db.VarChar(64)
+  originalName  String    @map("original_name") @db.VarChar(500)
+  fileType      String?   @map("file_type") @db.VarChar(50)
+  fileSize      BigInt?   @map("file_size")
+  filePath      String?   @map("file_path") @db.VarChar(1000)
+  url           String?   @db.VarChar(1000)
+  thumbnailUrl  String?   @map("thumbnail_url") @db.VarChar(1000)
+  status        Int       @default(1) @db.SmallInt
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_file_user")
+  @@map("files")
+}
+
+model TokenUsage {
+  id               BigInt    @id @default(autoincrement())
+  userId           String    @map("user_id") @db.VarChar(64)
+  sessionId        String?   @map("session_id") @db.VarChar(64)
+  messageId        String?   @map("message_id") @db.VarChar(64)
+  model            String?   @db.VarChar(100)
+  promptTokens     Int?      @map("prompt_tokens")
+  completionTokens Int?      @map("completion_tokens")
+  totalTokens      Int?      @map("total_tokens")
+  cost             Decimal?  @db.Decimal(10, 6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "idx_user_date")
+  @@index([sessionId], map: "idx_token_session")
+  @@map("token_usage")
+}
+
+model UserQuota {
+  userId     String    @id @map("user_id") @db.VarChar(64)
+  totalTokens BigInt   @default(1000000) @map("total_tokens")
+  usedTokens  BigInt   @default(0) @map("used_tokens")
+  dailyLimit  BigInt   @default(100000) @map("daily_limit")
+  dailyUsed   BigInt   @default(0) @map("daily_used")
+  resetAt     DateTime? @map("reset_at") @db.Date
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_quotas")
+}
+
+model AiConfig {
+  id             Int       @id @default(autoincrement())
+  provider       String    @default("deepseek") @db.VarChar(50)
+  model          String    @default("deepseek-v4-flash") @db.VarChar(100)
+  apiKey         String    @map("api_key") @db.VarChar(500)
+  prompt         String?   @db.Text
+  lastTestInput  String?   @map("last_test_input") @db.VarChar(500)
+  lastTestResult String?   @map("last_test_result") @db.Text
+  lastTestTime   DateTime? @map("last_test_time") @db.Timestamp(0)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  @@unique([provider, model], map: "uq_provider_model")
+  @@map("ai_configs")
 }

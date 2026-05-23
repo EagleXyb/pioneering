@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import Taro from '@tarojs/taro';
 import { useAppStore } from '@/store';
 import { filterSensitive } from '@/utils/sensitive';
 import type { ChatMessage, SessionItem } from '@/types/chat';
@@ -9,7 +8,7 @@ function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function useConversation(sessionId: string) {
+export function useConversation(_sessionId: string) {
   const addSession = useAppStore((s) => s.addSession);
   const setCurrentSessionId = useAppStore((s) => s.setCurrentSessionId);
   const addMessage = useAppStore((s) => s.addMessage);

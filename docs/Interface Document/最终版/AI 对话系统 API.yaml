@@ -1,0 +1,1890 @@
+openapi: 3.0.0
+info:
+  title: AI 对话系统 API
+  version: 1.0.0
+  description: 支持小程序 + Web 双端的 AI 对话接口
+
+servers:
+  - url: https://api.yourdomain.com/v1
+    description: 生产环境
+  - url: https://dev-api.yourdomain.com/v1
+    description: 开发环境
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ========== 通用响应 ==========
+    ErrorResponse:
+      type: object
+      description: 通用错误响应结构
+      properties:
+        code:
+          type: integer
+          description: 业务状态码
+          example: 400
+        message:
+          type: string
+          description: 错误提示信息
+          example: 请求参数错误
+        details:
+          type: string
+          description: 详细错误信息（调试用）
+          example: "username: 用户名不能为空"
+        requestId:
+          type: string
+          description: 请求唯一标识（用于问题追踪）
+          example: "req_20260523a1b2c3d4"
+
+    # ========== 认证相关 ==========
+    LoginRequest:
+      type: object
+      description: 账号密码登录请求参数
+      properties:
+        username:
+          type: string
+          description: 用户名
+          example: "zhangsan"
+        password:
+          type: string
+          format: password
+          description: 登录密码
+          example: "password123"
+      required: [username, password]
+
+    WechatMiniProgramLoginRequest:
+      type: object
+      description: 微信小程序登录请求参数
+      properties:
+        code:
+          type: string
+          description: 微信登录 code（通过 wx.login 获取）
+          example: "033v7E0004rJpE1vxQ2004cn1r0v7E0r"
+        encryptedData:
+          type: string
+          description: 微信加密数据（包含用户敏感信息）
+          example: "CiyLU1Aw2KjvrjMoj8...全文加密字符串"
+        iv:
+          type: string
+          description: 加密算法的初始向量
+          example: "r7BXXKkLb8qrSNn05n0qiA=="
+      required: [code]
+
+    WechatWebLoginRequest:
+      type: object
+      description: 微信扫码登录请求参数
+      properties:
+        code:
+          type: string
+          description: 微信扫码 code（通过微信 OAuth2.0 授权获取）
+          example: "033v7E0004rJpE1vxQ2004cn1r0v7E0r"
+      required: [code]
+
+    AuthResponse:
+      type: object
+      description: 认证成功响应参数
+      properties:
+        token:
+          type: string
+          description: JWT Token（用于后续接口鉴权）
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          description: 刷新令牌（用于 Token 过期后续期）
+          example: "rt_20260523abc123def456"
+        user:
+          $ref: '#/components/schemas/User'
+        expiresIn:
+          type: integer
+          description: Token 过期时间（秒）
+          example: 7200
+
+    # ========== 用户相关 ==========
+    User:
+      type: object
+      description: 用户基本信息
+      properties:
+        id:
+          type: string
+          description: 用户唯一标识
+          example: "user_20260523a1b2c3"
+        username:
+          type: string
+          description: 用户名
+          example: "zhangsan"
+        nickname:
+          type: string
+          description: 用户昵称
+          example: "张三"
+        avatar:
+          type: string
+          format: uri
+          description: 头像 URL
+          example: "https://cdn.yourdomain.com/avatars/user_20260523a1b2c3.png"
+        email:
+          type: string
+          description: 电子邮箱
+          example: "zhangsan@example.com"
+        phone:
+          type: string
+          description: 手机号码
+          example: "13800138000"
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+          example: "2026-05-23T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: 更新时间
+          example: "2026-05-23T14:20:00Z"
+
+    QuotaInfo:
+      type: object
+      description: 用户配额及用量信息
+      properties:
+        totalTokens:
+          type: integer
+          description: 总 Token 配额
+          example: 1000000
+        usedTokens:
+          type: integer
+          description: 已使用 Token
+          example: 350000
+        remainingTokens:
+          type: integer
+          description: 剩余 Token
+          example: 650000
+        dailyLimit:
+          type: integer
+          description: 每日限制
+          example: 100000
+        dailyUsed:
+          type: integer
+          description: 今日已用
+          example: 45000
+
+    # ========== 会话相关 ==========
+    Session:
+      type: object
+      description: 会话信息
+      properties:
+        id:
+          type: string
+          description: 会话唯一标识
+          example: "sess_20260523a1b2c3"
+        title:
+          type: string
+          description: 会话标题
+          example: "关于 Python 装饰器的讨论"
+        model:
+          type: string
+          description: 使用的模型标识
+          example: "gpt-4o-mini"
+        modelConfig:
+          type: object
+          description: 模型参数配置
+          properties:
+            temperature:
+              type: number
+              default: 0.7
+              description: 生成温度（越高越随机）
+              example: 0.7
+            maxTokens:
+              type: integer
+              default: 2000
+              description: 最大输出 Token 数
+              example: 2000
+        messageCount:
+          type: integer
+          description: 消息数量
+          example: 12
+        lastMessage:
+          $ref: '#/components/schemas/MessagePreview'
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+          example: "2026-05-23T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: 最后更新时间
+          example: "2026-05-23T15:45:00Z"
+        isArchived:
+          type: boolean
+          default: false
+          description: 是否已归档
+          example: false
+
+    MessagePreview:
+      type: object
+      description: 消息预览（会话列表中使用）
+      properties:
+        content:
+          type: string
+          description: 消息摘要（前 50 字）
+          example: "Python装饰器是一种用于修改函数或类行为的语法结..."
+        role:
+          type: string
+          enum: [user, assistant]
+          description: 消息角色
+          example: "assistant"
+        createdAt:
+          type: string
+          format: date-time
+          description: 发送时间
+          example: "2026-05-23T15:45:00Z"
+
+    CreateSessionRequest:
+      type: object
+      description: 创建会话请求参数
+      properties:
+        title:
+          type: string
+          default: "新对话"
+          description: 会话标题
+          example: "关于 Python 装饰器的讨论"
+        model:
+          type: string
+          default: "gpt-4o-mini"
+          description: 使用的模型标识
+          example: "gpt-4o-mini"
+        systemPrompt:
+          type: string
+          description: 系统提示词（定义 AI 角色和行为）
+          example: "你是一个精通Python编程的专业助手，请用中文回答"
+        initialMessage:
+          type: string
+          description: 初始消息（可选，用于直接开始对话）
+          example: "你好，请介绍一下Python的装饰器"
+
+    # ========== 消息相关 ==========
+    Message:
+      type: object
+      description: 消息完整信息
+      properties:
+        id:
+          type: string
+          description: 消息唯一标识
+          example: "msg_20260523x7y8z9"
+        sessionId:
+          type: string
+          description: 所属会话 ID
+          example: "sess_20260523a1b2c3"
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+          description: 消息角色（system=系统提示, user=用户, assistant=AI, tool=工具调用）
+          example: "assistant"
+        content:
+          type: string
+          description: 消息内容（支持 Markdown）
+          example: "Python装饰器是一种强大的语法特性，它允许你在不修改原函数代码的情况下，给函数添加额外的功能。\n\n```python\ndef decorator(func):\n    def wrapper(*args, **kwargs):\n        print('函数调用前')\n        result = func(*args, **kwargs)\n        print('函数调用后')\n        return result\n    return wrapper\n```"
+        contentBlocks:
+          type: array
+          description: 分块内容（富文本，支持多模态）
+          items:
+            $ref: '#/components/schemas/ContentBlock'
+        parentMessageId:
+          type: string
+          description: 父消息 ID（用于分支对话/重新生成）
+          example: "msg_20260523x7y8z8"
+        childrenMessageIds:
+          type: array
+          description: 子消息 ID 列表（分支时使用）
+          items:
+            type: string
+            example: "msg_20260523x7y8z9"
+        tokenCount:
+          type: integer
+          description: Token 消耗数量
+          example: 256
+        feedback:
+          type: string
+          enum: [none, like, dislike]
+          default: none
+          description: 用户反馈状态
+          example: "like"
+        metadata:
+          type: object
+          description: 额外元数据（如引用来源、代码语言、思考过程等）
+          example: {"code_language": "python", "reference_sources": ["Python官方文档"]}
+        createdAt:
+          type: string
+          format: date-time
+          description: 发送时间
+          example: "2026-05-23T15:45:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: 更新时间
+          example: "2026-05-23T15:45:05Z"
+
+    ContentBlock:
+      type: object
+      description: 消息内容块（用于多模态消息）
+      properties:
+        type:
+          type: string
+          enum: [text, code, image, file]
+          description: 内容块类型
+          example: "code"
+        text:
+          type: string
+          description: 文本内容（type 为 text 时使用）
+          example: "以下是Python装饰器的示例代码："
+        code:
+          type: string
+          description: 代码内容（type 为 code 时使用）
+          example: "@timer\ndef fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"
+        language:
+          type: string
+          description: 代码语言标识（type 为 code 时使用）
+          example: "python"
+        imageUrl:
+          type: string
+          description: 图片 URL（type 为 image 时使用）
+          example: "https://cdn.yourdomain.com/images/diagram_20260523.png"
+        fileId:
+          type: string
+          description: 文件 ID（type 为 file 时使用）
+          example: "file_20260523d4e5f6"
+
+    ChatCompletionRequest:
+      type: object
+      description: AI 对话补全请求参数
+      properties:
+        sessionId:
+          type: string
+          description: 会话 ID（新建会话时可为空，为空则自动创建新会话）
+          example: "sess_20260523a1b2c3"
+        message:
+          type: string
+          description: 用户消息内容
+          example: "请用代码示例说明Python装饰器的用法"
+        model:
+          type: string
+          default: "gpt-4o-mini"
+          description: 使用的模型标识
+          example: "gpt-4o-mini"
+        systemPrompt:
+          type: string
+          description: 系统提示词（覆盖会话级 systemPrompt）
+          example: "你是一个精通Python编程的专业助手"
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.7
+          description: 生成温度（0=确定性最高，2=创造性最高）
+          example: 0.7
+        maxTokens:
+          type: integer
+          default: 2000
+          description: 最大输出 Token 数
+          example: 2000
+        stream:
+          type: boolean
+          default: true
+          description: 是否流式输出（true=SSE 流式，false=一次性返回）
+          example: true
+        parentMessageId:
+          type: string
+          description: 父消息 ID（用于重新生成、编辑或分支对话）
+          example: "msg_20260523x7y8z8"
+
+    ChatCompletionResponse:
+      type: object
+      description: AI 对话补全响应（非流式模式）
+      properties:
+        id:
+          type: string
+          description: 响应唯一标识
+          example: "chatcmpl_20260523a1b2c3d4"
+        sessionId:
+          type: string
+          description: 所属会话 ID
+          example: "sess_20260523a1b2c3"
+        choices:
+          type: array
+          description: 生成结果列表
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                description: 选项索引
+                example: 0
+              delta:
+                type: object
+                description: 增量内容（非流式模式下即为完整内容）
+                properties:
+                  role:
+                    type: string
+                    description: 消息角色
+                    example: "assistant"
+                  content:
+                    type: string
+                    description: 回复内容
+                    example: "Python装饰器是一种用于修改函数或类行为的高级语法..."
+              finishReason:
+                type: string
+                enum: [stop, length, content_filter, null]
+                description: 结束原因（stop=正常结束，length=达到长度限制，content_filter=内容过滤）
+                example: "stop"
+        usage:
+          type: object
+          description: Token 用量统计
+          properties:
+            promptTokens:
+              type: integer
+              description: 提示部分的 Token 数
+              example: 150
+            completionTokens:
+              type: integer
+              description: 生成部分的 Token 数
+              example: 320
+            totalTokens:
+              type: integer
+              description: 总 Token 数
+              example: 470
+        createdAt:
+          type: string
+          format: date-time
+          description: 响应生成时间
+          example: "2026-05-23T15:45:02Z"
+
+    StopGenerationRequest:
+      type: object
+      description: 停止生成请求参数
+      properties:
+        sessionId:
+          type: string
+          description: 会话 ID
+          example: "sess_20260523a1b2c3"
+        messageId:
+          type: string
+          description: 正在生成的消息 ID
+          example: "msg_20260523x7y8z9"
+
+    FeedbackRequest:
+      type: object
+      description: 消息反馈请求参数
+      properties:
+        messageId:
+          type: string
+          description: 消息 ID
+          example: "msg_20260523x7y8z9"
+        feedback:
+          type: string
+          enum: [like, dislike, none]
+          description: 反馈类型（like=点赞，dislike=点踩，none=取消反馈）
+          example: "like"
+
+    # ========== 消息编辑与重新生成 ==========
+    EditMessageRequest:
+      type: object
+      description: 编辑用户消息请求参数（新增）
+      properties:
+        content:
+          type: string
+          description: 修改后的消息内容
+          example: "请用实际项目案例说明Python装饰器在日志记录中的应用"
+        regenerate:
+          type: boolean
+          default: true
+          description: 是否立即重新生成 AI 回复（true=编辑后自动触发重新生成）
+          example: true
+
+    RegenerateRequest:
+      type: object
+      description: 重新生成 AI 回复请求参数（新增）
+      properties:
+        model:
+          type: string
+          description: 切换模型（不传则沿用当前会话模型）
+          example: "gpt-4o"
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          description: 生成温度
+          example: 0.8
+        maxTokens:
+          type: integer
+          description: 最大输出 Token 数
+          example: 4000
+
+    # ========== Token 用量查询 ==========
+    TokenUsageItem:
+      type: object
+      description: Token 用量明细项（新增）
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 记录 ID
+          example: 15342
+        sessionId:
+          type: string
+          description: 所属会话 ID
+          example: "sess_20260523a1b2c3"
+        model:
+          type: string
+          description: 使用的模型
+          example: "gpt-4o-mini"
+        promptTokens:
+          type: integer
+          description: 提示部分 Token 数
+          example: 150
+        completionTokens:
+          type: integer
+          description: 生成部分 Token 数
+          example: 320
+        totalTokens:
+          type: integer
+          description: 总 Token 数
+          example: 470
+        cost:
+          type: number
+          description: 单次调用花费（元）
+          example: 0.00213
+        createdAt:
+          type: string
+          format: date-time
+          description: 调用时间
+          example: "2026-05-23T15:45:02Z"
+
+    TokenUsageQueryResp:
+      type: object
+      description: Token 用量明细查询响应（新增）
+      properties:
+        records:
+          type: array
+          description: 用量明细列表
+          items:
+            $ref: '#/components/schemas/TokenUsageItem'
+        total:
+          type: integer
+          description: 总记录数
+          example: 128
+        page:
+          type: integer
+          description: 当前页码
+          example: 1
+        pageSize:
+          type: integer
+          description: 每页条数
+          example: 20
+        summary:
+          type: object
+          description: 汇总信息
+          properties:
+            totalTokens:
+              type: integer
+              description: 所选时段内总 Token 消耗
+              example: 126800
+            totalCost:
+              type: number
+              description: 所选时段内总花费（元）
+              example: 0.85
+
+    # ========== 文件相关 ==========
+    UploadResponse:
+      type: object
+      description: 文件上传响应参数
+      properties:
+        fileId:
+          type: string
+          description: 文件唯一标识
+          example: "file_20260523d4e5f6"
+        fileName:
+          type: string
+          description: 文件名称
+          example: "decorator_demo.png"
+        fileSize:
+          type: integer
+          description: 文件大小（字节）
+          example: 204800
+        fileType:
+          type: string
+          description: 文件 MIME 类型
+          example: "image/png"
+        url:
+          type: string
+          format: uri
+          description: 文件访问 URL
+          example: "https://cdn.yourdomain.com/files/file_20260523d4e5f6.png"
+        thumbnailUrl:
+          type: string
+          format: uri
+          description: 缩略图 URL
+          example: "https://cdn.yourdomain.com/thumbnails/file_20260523d4e5f6_thumb.png"
+
+    # ========== 系统相关 ==========
+    ModelInfo:
+      type: object
+      description: 模型基本信息
+      properties:
+        id:
+          type: string
+          description: 模型唯一标识
+          example: "gpt-4o-mini"
+        name:
+          type: string
+          description: 模型显示名称
+          example: "GPT-4o Mini"
+        description:
+          type: string
+          description: 模型描述
+          example: "轻量级多模态模型，适用于日常对话和代码生成"
+        maxTokens:
+          type: integer
+          description: 模型最大上下文长度
+          example: 128000
+        pricing:
+          type: object
+          description: 模型定价信息
+          properties:
+            inputPrice:
+              type: number
+              description: 每 1K tokens 输入价格（美元）
+              example: 0.15
+            outputPrice:
+              type: number
+              description: 每 1K tokens 输出价格（美元）
+              example: 0.6
+
+    SystemConfig:
+      type: object
+      description: 系统配置信息
+      properties:
+        maxMessageLength:
+          type: integer
+          default: 10000
+          description: 单条消息最大长度（字符数）
+          example: 10000
+        maxSessionCount:
+          type: integer
+          default: 100
+          description: 最大会话数量
+          example: 100
+        supportedModels:
+          type: array
+          description: 支持的模型列表
+          items:
+            $ref: '#/components/schemas/ModelInfo'
+        fileUpload:
+          type: object
+          description: 文件上传限制配置
+          properties:
+            maxSize:
+              type: integer
+              description: 最大文件大小（字节）
+              example: 10485760
+            allowedTypes:
+              type: array
+              description: 允许的文件 MIME 类型列表
+              items:
+                type: string
+                example: "image/png"
+
+paths:
+  # ========== 认证接口 ==========
+  /auth/login:
+    post:
+      summary: 账号密码登录
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 请求参数错误（用户名或密码为空）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 认证失败（用户名或密码错误）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 登录频率超限，请稍后重试
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/wechat/miniprogram:
+    post:
+      summary: 微信小程序登录
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WechatMiniProgramLoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 请求参数错误（code 无效或缺失）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 微信登录凭证校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 请求频率超限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/wechat/web:
+    post:
+      summary: 微信扫码登录
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WechatWebLoginRequest'
+      responses:
+        '200':
+          description: 扫码成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 请求参数错误（code 无效或缺失）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 微信扫码凭证校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 请求频率超限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      summary: 刷新 Token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+                  description: 刷新令牌
+                  example: "rt_20260523abc123def456"
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 请求参数错误（refreshToken 缺失）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 刷新令牌无效或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 请求频率超限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 会话接口 ==========
+  /chat/sessions:
+    get:
+      summary: 获取会话列表
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 页码（从 1 开始）
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - name: pageSize
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+            example: 20
+        - name: archived
+          in: query
+          description: 筛选归档状态（不传则返回全部）
+          schema:
+            type: boolean
+            default: false
+            example: false
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+                  total:
+                    type: integer
+                    description: 总记录数
+                    example: 42
+                  page:
+                    type: integer
+                    description: 当前页码
+                    example: 1
+                  pageSize:
+                    type: integer
+                    description: 每页数量
+                    example: 20
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: 创建新会话
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 会话创建频率超限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/sessions/{sessionId}:
+    get:
+      summary: 获取会话详情
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话唯一标识
+          schema:
+            type: string
+            example: "sess_20260523a1b2c3"
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限访问该会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: 更新会话（重命名等）
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话唯一标识
+          schema:
+            type: string
+            example: "sess_20260523a1b2c3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 会话更新请求参数
+              properties:
+                title:
+                  type: string
+                  description: 新的会话标题
+                  example: "关于Python高级特性的讨论"
+                model:
+                  type: string
+                  description: 切换模型
+                  example: "gpt-4o"
+                modelConfig:
+                  type: object
+                  description: 更新模型参数配置
+                  properties:
+                    temperature:
+                      type: number
+                      description: 生成温度
+                      example: 0.8
+                    maxTokens:
+                      type: integer
+                      description: 最大输出 Token 数
+                      example: 4000
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限修改该会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: 删除/归档会话
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话唯一标识
+          schema:
+            type: string
+            example: "sess_20260523a1b2c3"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 删除/归档操作参数
+              properties:
+                archive:
+                  type: boolean
+                  default: true
+                  description: true=归档，false=永久删除
+                  example: true
+      responses:
+        '204':
+          description: 操作成功
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限删除该会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 消息接口 ==========
+  /chat/completions:
+    post:
+      summary: AI 对话（流式/非流式）
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: 非流式响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '206':
+          description: 流式响应（SSE）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 格式的数据流，每个事件包含 json 格式的 ChatCompletionResponse 数据块
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 配额不足或模型无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 请求频率超限或 Token 配额耗尽
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: 上游模型服务响应异常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/completions/stop:
+    post:
+      summary: 停止生成
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StopGenerationRequest'
+      responses:
+        '200':
+          description: 停止成功
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 会话或消息不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/sessions/{sessionId}/messages:
+    get:
+      summary: 获取历史消息（游标分页）
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话唯一标识
+          schema:
+            type: string
+            example: "sess_20260523a1b2c3"
+        - name: cursor
+          in: query
+          description: 游标（消息 ID，为空则从最新消息开始获取）
+          schema:
+            type: string
+            example: "msg_20260523x7y8z5"
+        - name: limit
+          in: query
+          description: 返回消息数量
+          schema:
+            type: integer
+            default: 30
+            example: 30
+        - name: direction
+          in: query
+          description: 游标方向（before=游标之前的消息，after=游标之后的消息）
+          schema:
+            type: string
+            enum: [before, after]
+            default: before
+            example: "before"
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    description: 消息列表
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  nextCursor:
+                    type: string
+                    description: 下一页游标（用于继续翻页）
+                    example: "msg_20260523x7y8z5"
+                  hasMore:
+                    type: boolean
+                    description: 是否还有更多数据
+                    example: true
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限查看该会话消息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/sessions/{sessionId}/messages/{messageId}:
+    put:
+      summary: 编辑用户消息（新增）
+      description: 修改指定用户消息内容，可选自动触发 AI 重新生成回复
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话唯一标识
+          schema:
+            type: string
+            example: "sess_20260523a1b2c3"
+        - name: messageId
+          in: path
+          required: true
+          description: 消息唯一标识（仅允许编辑 role=user 的消息）
+          schema:
+            type: string
+            example: "msg_20260523x7y8z8"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditMessageRequest'
+      responses:
+        '200':
+          description: 编辑成功，返回更新后的消息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限修改该消息或不允许编辑非 user 角色的消息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 消息不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/messages/{messageId}/feedback:
+    post:
+      summary: 消息反馈（点赞/点踩）
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          description: 消息唯一标识
+          schema:
+            type: string
+            example: "msg_20260523x7y8z9"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '200':
+          description: 反馈成功
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 消息不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/messages/{messageId}/regenerate:
+    post:
+      summary: 重新生成 AI 回复（新增）
+      description: 基于指定父消息上下文，重新让 AI 生成一条新的回复消息（支持切换模型和参数）
+      tags: [Chat]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          description: 父消息 ID（基于此消息的上下文重新生成回复）
+          schema:
+            type: string
+            example: "msg_20260523x7y8z8"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegenerateRequest'
+      responses:
+        '200':
+          description: 重新生成成功（非流式模式，返回新的 AI 消息）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '206':
+          description: 重新生成成功（流式模式，SSE）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 格式的数据流
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 配额不足或模型无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 父消息不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 请求频率超限或 Token 配额耗尽
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: 上游模型服务响应异常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 用户接口 ==========
+  /user/profile:
+    get:
+      summary: 获取用户信息
+      tags: [User]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: 更新用户信息
+      tags: [User]
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 用户信息更新请求参数
+              properties:
+                nickname:
+                  type: string
+                  description: 新的用户昵称
+                  example: "张三_新"
+                avatar:
+                  type: string
+                  description: 新的头像 URL
+                  example: "https://cdn.yourdomain.com/avatars/user_20260523a1b2c3_new.png"
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /user/quota:
+    get:
+      summary: 查询配额/用量
+      tags: [User]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaInfo'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /user/quota/usage:
+    get:
+      summary: Token 用量明细查询（新增）
+      description: 查询用户每次调用的 Token 消耗明细及费用，支持按时间范围和模型筛选
+      tags: [User]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          description: 查询起始日期（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+            example: "2026-05-01"
+        - name: endDate
+          in: query
+          description: 查询结束日期（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+            example: "2026-05-23"
+        - name: model
+          in: query
+          description: 按模型筛选（不传则返回全部）
+          schema:
+            type: string
+            example: "gpt-4o-mini"
+        - name: sessionId
+          in: query
+          description: 按指定会话筛选（不传则返回全部）
+          schema:
+            type: string
+            example: "sess_20260523a1b2c3"
+        - name: page
+          in: query
+          description: 页码（从 1 开始）
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - name: pageSize
+          in: query
+          description: 每页条数
+          schema:
+            type: integer
+            default: 20
+            example: 20
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenUsageQueryResp'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 文件接口 ==========
+  /upload:
+    post:
+      summary: 文件上传
+      tags: [Upload]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              description: 文件上传请求参数
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 待上传的文件
+                type:
+                  type: string
+                  enum: [image, document, audio, video]
+                  default: image
+                  description: 文件类型分类
+                  example: "image"
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: 文件格式不支持或超出大小限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 上传频率超限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /upload/{fileId}:
+    delete:
+      summary: 删除文件
+      tags: [Upload]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          description: 文件唯一标识
+          schema:
+            type: string
+            example: "file_20260523d4e5f6"
+      responses:
+        '204':
+          description: 删除成功
+        '401':
+          description: 未认证或 Token 已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限删除该文件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 文件不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 系统接口 ==========
+  /system/models:
+    get:
+      summary: 获取可用模型列表
+      tags: [System]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelInfo'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /system/config:
+    get:
+      summary: 获取系统配置
+      tags: [System]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemConfig'
+        '500':
+          description: 服务器内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      summary: 健康检查
+      tags: [System]
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                    description: 服务状态
+                    example: "healthy"
+                  version:
+                    type: string
+                    description: 当前服务版本号
+                    example: "1.0.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: 当前服务器时间
+                    example: "2026-05-23T16:00:00Z"
+        '500':
+          description: 服务异常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

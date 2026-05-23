@@ -15,7 +15,7 @@ export default function Chat() {
   const [scrollInto, setScrollInto] = useState('');
 
   const {
-    sidRef,
+    currentSessionId,
     sessions,
     messages,
     chatPhase,
@@ -132,7 +132,7 @@ export default function Chat() {
       <SessionDrawer
         visible={drawerVisible}
         sessions={sessions}
-        activeId={sidRef.current}
+        activeId={currentSessionId}
         onVisibleChange={handleDrawerVisibleChange}
         onSelectSession={handleSwitchSessionWithDrawer}
         onDeleteSession={handleDeleteSession}

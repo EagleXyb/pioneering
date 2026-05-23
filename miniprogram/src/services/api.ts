@@ -1,6 +1,6 @@
 import request from './request';
 import { connectSSE } from './sse';
-import type { SSEParams } from '@/types/chat';
+import type { SSEParams, SSEChunk } from '@/types/chat';
 
 // ====== 类型定义 ======
 export interface ChatMessageRequest {
@@ -25,7 +25,7 @@ export interface SendChatResponse {
 
 // ====== 流式回调类型 ======
 export interface StreamCallbacks {
-  onChunk: (data: { type: 'thinking' | 'content'; data: string }) => void;
+  onChunk: (data: SSEChunk) => void;
   onDone: () => void;
   onError: (err: Error) => void;
 }
