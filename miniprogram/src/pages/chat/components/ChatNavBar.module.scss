@@ -1,0 +1,38 @@
+@import '../../../styles/variables.scss';
+
+.navActions {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding-left: $spacing-md;
+  box-sizing: content-box;
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.navBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  color: $color-text-primary;
+  border-radius: $radius-full;
+  transition: all $transition-fast;
+
+  &:active {
+    background: rgba(0, 0, 0, 0.06);
+    transform: scale(0.92);
+  }
+}
+
+.navIcon {
+  width: 44rpx;
+  height: 44rpx;
+}

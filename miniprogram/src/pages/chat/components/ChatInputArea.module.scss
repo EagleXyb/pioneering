@@ -1,0 +1,143 @@
+@import '../../../styles/variables.scss';
+
+.chatBottomArea {
+  flex-shrink: 0;
+  padding: $spacing-sm $spacing-lg;
+  @include safe-bottom($spacing-xs);
+}
+
+.inputCard {
+  background: #ffffff;
+  border-radius: $radius-xl;
+  border: 2rpx solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.textareaWrap {
+  padding: $spacing-md $spacing-lg 0;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 72rpx;
+  max-height: 264rpx;
+  font-size: $font-base;
+  line-height: 1.6;
+  color: $color-text-primary;
+}
+
+.placeholder {
+  color: $color-text-tertiary;
+  font-size: $font-base;
+}
+
+.inputFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-sm $spacing-md $spacing-md;
+}
+
+.footerLeft {
+  display: flex;
+  align-items: center;
+}
+
+.deepThinkBlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56rpx;
+  padding: 0 20rpx;
+  margin-right: 16rpx;
+  color: $color-text-secondary;
+  border-radius: 200rpx;
+  border: 2rpx solid $color-border;
+  font-size: 24rpx;
+  transition: all $transition-fast;
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+.deepThinkText {
+  margin-left: 8rpx;
+  font-size: 24rpx;
+}
+
+.netSearchBlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60rpx;
+  height: 56rpx;
+  color: $color-text-secondary;
+  border-radius: 50%;
+  border: 2rpx solid $color-border;
+  transition: all $transition-fast;
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+.active {
+  border-color: #1677ff;
+  color: #1677ff;
+  background-color: #e6f4ff;
+}
+
+.sendBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 50%;
+  background: #d9d9d9;
+  transition: all $transition-fast;
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.sendBtnReady {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  box-shadow: 0 4rpx 12rpx rgba(82, 196, 26, 0.3);
+}
+
+.stopBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 12rpx;
+  background: #ff4d4f;
+  transition: all $transition-fast;
+  box-shadow: 0 4rpx 12rpx rgba(255, 77, 79, 0.3);
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.stopIcon {
+  width: 28rpx;
+  height: 28rpx;
+  background: #ffffff;
+  border-radius: 4rpx;
+}
+
+.aiDisclaimer {
+  height: 32rpx;
+  width: 100%;
+  text-align: center;
+  font-size: $font-xs;
+  line-height: 32rpx;
+  color: $color-text-tertiary;
+  margin-top: 8rpx;
+}

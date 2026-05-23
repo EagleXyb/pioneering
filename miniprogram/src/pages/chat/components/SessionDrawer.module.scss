@@ -1,0 +1,13 @@
+@import '../../../styles/variables.scss';
+
+.drawerContent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.drawerBottom {
+  flex-shrink: 0;
+  padding: $spacing-md $spacing-lg;
+  @include safe-bottom($spacing-sm);
+}
