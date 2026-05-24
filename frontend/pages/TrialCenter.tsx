@@ -27,7 +27,7 @@ const TrialCenter: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<string>('normal');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [aiConfig, setAiConfig] = useState<{ apiKey: string; provider: string; model: string; prompt: string } | null>(null);
+  const [aiConfig, setAiConfig] = useState<{ provider: string; model: string; prompt: string } | null>(null);
 
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());

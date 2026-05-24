@@ -35,7 +35,7 @@ function parseSSELine(line: string): SSEChunk | null {
 
 // ====== 创建 SSE 连接 ======
 export function connectSSE(params: SSEParams): SSEConnection {
-  const { sessionId, content, messageId, deepThink, netSearch } = params;
+  const { sessionId, content } = params;
 
   let chunkCallback: ((data: SSEChunk) => void) | null = null;
   let doneCallback: (() => void) | null = null;
@@ -70,16 +70,14 @@ export function connectSSE(params: SSEParams): SSEConnection {
     resetTimeout();
 
     timer = Taro.request({
-      url: '/chat/stream',
+      url: '/chat/completions',
       method: 'POST',
       enableChunked: true,
       header: { 'Content-Type': 'application/json' },
       data: {
         sessionId,
-        content,
-        messageId,
-        deepThink: deepThink ?? false,
-        netSearch: netSearch ?? false,
+        message: content,
+        stream: true,
       },
       success(res) {
         if (aborted) return;

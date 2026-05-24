@@ -26,16 +26,21 @@ export class LLMService {
   }
 
   async streamChat(
-    config: { apiKey: string; provider: string; model: string; prompt: string },
-    messages: ChatMessage[],
+    sessionId: string,
+    message: string,
+    model: string,
     callbacks: StreamCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.CHAT_STREAM}`, {
+      const token = localStorage.getItem('token') || '';
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.CHAT.COMPLETIONS}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, provider: config.provider, model: config.model }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ sessionId, message, model, stream: true }),
         signal,
       });
 
@@ -101,30 +106,31 @@ export class LLMService {
         }
         callbacks.onDone();
       } catch (readerError) {
-        // abort 时静默退出，上层（useStreamChat）已自行处理超时/停止逻辑
         if (signal?.aborted) return;
         callbacks.onError(readerError instanceof Error ? readerError.message : '流读取异常');
       } finally {
         try { reader.releaseLock(); } catch { /* ignore */ }
       }
     } catch (error) {
-      // abort 时静默退出，上层已处理
       if (signal?.aborted) return;
       callbacks.onError(error instanceof Error ? error.message : '未知错误');
     }
   }
 
-  async fetchAIConfig(): Promise<{ apiKey: string; provider: string; model: string; prompt: string } | null> {
+  async fetchAIConfig(): Promise<{
+    provider: string;
+    model: string;
+    prompt: string;
+  } | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.LATEST}`);
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.SYSTEM.MODELS}`);
       if (response.ok) {
-        const data = await response.json();
-        if (data && data.provider && data.model) {
+        const models = await response.json();
+        if (Array.isArray(models) && models.length > 0) {
           return {
-            apiKey: '',
-            provider: data.provider,
-            model: data.model,
-            prompt: data.prompt || '',
+            provider: 'openai',
+            model: models[0].id || 'gpt-4o-mini',
+            prompt: '',
           };
         }
       }
@@ -135,18 +141,22 @@ export class LLMService {
   }
 
   async callLLM(
-    config: { apiKey: string; provider: string; model: string; prompt: string },
-    userInput: string
+    config: { provider: string; model: string; prompt: string },
+    userInput: string,
   ): Promise<{ content: string; error?: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AI_CONFIG.TEST}`, {
+      const token = localStorage.getItem('token') || '';
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.CHAT.COMPLETIONS}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
-          provider: config.provider,
+          message: userInput,
           model: config.model,
-          prompt: config.prompt,
-          messages: [{ role: 'user', content: userInput }],
+          systemPrompt: config.prompt,
+          stream: false,
         }),
       });
 

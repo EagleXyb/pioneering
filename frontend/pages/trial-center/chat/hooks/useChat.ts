@@ -6,13 +6,13 @@ import { useStreamChat } from './useStreamChat';
 import type { ChatMessage } from '../../../../services/llmService';
 import chatConversationService from '../../../../services/chatConversationService';
 
-type MsgIdMap = Map<string, number>;
+type MsgIdMap = Map<string, string>;
 
 export function useChat() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [inputValue, setInputValue] = useState('');
-  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const msgIdMapRef = useRef<MsgIdMap>(new Map());
   const messagesRef = useRef<DisplayMessage[]>([]);
   messagesRef.current = messages;
@@ -45,7 +45,7 @@ export function useChat() {
     return result.reverse();
   }, [messages]);
 
-  const loadConversation = useCallback(async (convId: number) => {
+  const loadConversation = useCallback(async (convId: string) => {
     try {
       const dbMessages = await chatConversationService.getMessages(convId);
       const displayMsgs: DisplayMessage[] = dbMessages.map(m => ({
@@ -58,7 +58,7 @@ export function useChat() {
         error: m.error || undefined,
         timestamp: new Date(m.createdAt).getTime(),
       }));
-      const newMap = new Map<string, number>();
+      const newMap = new Map<string, string>();
       dbMessages.forEach(m => {
         newMap.set(`db_${m.id}`, m.id);
       });
@@ -72,7 +72,7 @@ export function useChat() {
 
   const handleSend = useCallback(
     async (
-      aiConfig: { apiKey: string; provider: string; model: string; prompt: string } | null,
+      aiConfig: { provider: string; model: string; prompt: string } | null,
       selectedModel: string,
     ) => {
       const trimmed = inputValue.trim();
@@ -80,12 +80,12 @@ export function useChat() {
       if (trimmed.length > MAX_INPUT_LENGTH) return;
 
       const provider = aiConfig?.provider || MODEL_TO_PROVIDER[selectedModel] || 'minimax';
-      const config = aiConfig || { apiKey: '', provider, model: selectedModel, prompt: '' };
+      const config = aiConfig || { provider, model: selectedModel, prompt: '' };
 
       let convId = conversationId;
       if (convId === null) {
         try {
-          const conv = await chatConversationService.createConversation({
+          const conv = await chatConversationService.createSession({
             title: trimmed.slice(0, 20),
             model: selectedModel,
           });
@@ -117,34 +117,13 @@ export function useChat() {
       setInputValue('');
       setIsGenerating(true);
 
-      if (convId !== null) {
-        Promise.all([
-          chatConversationService.createMessage(convId, {
-            role: 'user',
-            content: trimmed,
-            status: 'success',
-          }).then(dbMsg => {
-            msgIdMapRef.current.set(userMsg.id, dbMsg.id);
-          }).catch(e => console.error('保存用户消息失败:', e)),
-          chatConversationService.createMessage(convId, {
-            role: 'assistant',
-            content: '',
-            status: 'loading',
-          }).then(dbMsg => {
-            msgIdMapRef.current.set(assistantMsg.id, dbMsg.id);
-          }).catch(e => console.error('保存助手消息失败:', e)),
-        ]);
-      }
-
-      const contextMessages = getContextMessages();
-      contextMessages.push({ role: 'user', content: trimmed });
-
       const currentConvId = convId;
 
       startStream(
         assistantMsg.id,
-        config,
-        contextMessages,
+        currentConvId!,
+        trimmed,
+        config.model,
         (accumulatedContent, thinkingContent, answerContent) => {
           updateMessage(assistantMsg.id, {
             content: accumulatedContent,
@@ -153,16 +132,6 @@ export function useChat() {
             status: 'success',
           });
           setIsGenerating(false);
-
-          const dbMsgId = msgIdMapRef.current.get(assistantMsg.id);
-          if (currentConvId !== null && dbMsgId !== undefined) {
-            chatConversationService.updateMessage(currentConvId, dbMsgId, {
-              content: accumulatedContent,
-              thinkingContent: thinkingContent || undefined,
-              answerContent: answerContent || undefined,
-              status: 'success',
-            }).catch(e => console.error('更新助手消息失败:', e));
-          }
         },
         (error, accumulatedContent) => {
           updateMessage(assistantMsg.id, {
@@ -171,15 +140,6 @@ export function useChat() {
             error,
           });
           setIsGenerating(false);
-
-          const dbMsgId = msgIdMapRef.current.get(assistantMsg.id);
-          if (currentConvId !== null && dbMsgId !== undefined) {
-            chatConversationService.updateMessage(currentConvId, dbMsgId, {
-              content: accumulatedContent || '',
-              status: 'error',
-              error,
-            }).catch(e => console.error('更新助手消息失败:', e));
-          }
         },
       );
     },
@@ -192,25 +152,13 @@ export function useChat() {
         status: hasContent ? 'success' : 'error',
         error: hasContent ? undefined : '生成已停止',
       });
-
-      const dbMsgId = msgIdMapRef.current.get(msgId);
-      const msg = messagesRef.current.find(m => m.id === msgId);
-      if (conversationId !== null && dbMsgId !== undefined && msg) {
-        chatConversationService.updateMessage(conversationId, dbMsgId, {
-          content: msg.content,
-          thinkingContent: msg.thinkingContent || undefined,
-          answerContent: msg.answerContent || undefined,
-          status: hasContent ? 'success' : 'error',
-          error: hasContent ? undefined : '生成已停止',
-        }).catch(e => console.error('更新消息失败:', e));
-      }
     });
-  }, [conversationId, stopStream, updateMessage]);
+  }, [stopStream, updateMessage]);
 
   const handleRetry = useCallback(
     (
       messageId: string,
-      aiConfig: { apiKey: string; provider: string; model: string; prompt: string } | null,
+      aiConfig: { provider: string; model: string; prompt: string } | null,
       selectedModel: string,
     ) => {
       const msgIndex = messages.findIndex(m => m.id === messageId);
@@ -220,20 +168,6 @@ export function useChat() {
       if (userMsgIndex < 0 || messages[userMsgIndex].role !== 'user') return;
 
       const userContent = messages[userMsgIndex].content;
-
-      const eligibleMessages = messages.slice(0, userMsgIndex)
-        .filter(m => m.role !== 'system' && m.status === 'success')
-        .reverse();
-      const contextMsgs: DisplayMessage[] = [];
-      let tokenCount = 0;
-      for (const m of eligibleMessages) {
-        const msgTokens = estimateTokens(m.content);
-        if (contextMsgs.length >= MAX_CONTEXT_MESSAGES) break;
-        if (tokenCount + msgTokens > MAX_CONTEXT_TOKENS) break;
-        contextMsgs.push(m);
-        tokenCount += msgTokens;
-      }
-      contextMsgs.reverse();
 
       setMessages(prev => prev.slice(0, userMsgIndex + 1));
 
@@ -248,27 +182,16 @@ export function useChat() {
       setMessages(prev => [...prev, assistantMsg]);
       setIsGenerating(true);
 
-      const currentConvId = conversationId;
-      if (currentConvId !== null) {
-        chatConversationService.createMessage(currentConvId, {
-          role: 'assistant',
-          content: '',
-          status: 'loading',
-        }).then(dbMsg => {
-          msgIdMapRef.current.set(assistantMsg.id, dbMsg.id);
-        }).catch(e => console.error('保存助手消息失败:', e));
-      }
-
       const provider = aiConfig?.provider || MODEL_TO_PROVIDER[selectedModel] || 'minimax';
-      const config = aiConfig || { apiKey: '', provider, model: selectedModel, prompt: '' };
+      const config = aiConfig || { provider, model: selectedModel, prompt: '' };
 
-      const contextMessages: ChatMessage[] = contextMsgs.map(m => ({ role: m.role, content: m.content }));
-      contextMessages.push({ role: 'user', content: userContent });
+      const currentConvId = conversationId;
 
       startStream(
         assistantMsg.id,
-        config,
-        contextMessages,
+        currentConvId!,
+        userContent,
+        config.model,
         (accumulatedContent, thinkingContent, answerContent) => {
           updateMessage(assistantMsg.id, {
             content: accumulatedContent,
@@ -277,16 +200,6 @@ export function useChat() {
             status: 'success',
           });
           setIsGenerating(false);
-
-          const dbMsgId = msgIdMapRef.current.get(assistantMsg.id);
-          if (currentConvId !== null && dbMsgId !== undefined) {
-            chatConversationService.updateMessage(currentConvId, dbMsgId, {
-              content: accumulatedContent,
-              thinkingContent: thinkingContent || undefined,
-              answerContent: answerContent || undefined,
-              status: 'success',
-            }).catch(e => console.error('更新助手消息失败:', e));
-          }
         },
         (error, accumulatedContent) => {
           updateMessage(assistantMsg.id, {
@@ -295,15 +208,6 @@ export function useChat() {
             error,
           });
           setIsGenerating(false);
-
-          const dbMsgId = msgIdMapRef.current.get(assistantMsg.id);
-          if (currentConvId !== null && dbMsgId !== undefined) {
-            chatConversationService.updateMessage(currentConvId, dbMsgId, {
-              content: accumulatedContent || '',
-              status: 'error',
-              error,
-            }).catch(e => console.error('更新助手消息失败:', e));
-          }
         },
       );
     },
@@ -318,7 +222,7 @@ export function useChat() {
     msgIdMapRef.current = new Map();
   }, [isGenerating]);
 
-  const handleSwitchConversation = useCallback(async (convId: number) => {
+  const handleSwitchConversation = useCallback(async (convId: string) => {
     if (isGenerating) return;
     await loadConversation(convId);
   }, [isGenerating, loadConversation]);

@@ -1,7 +1,7 @@
 import { useRef, useCallback } from 'react';
 import type { DisplayMessage } from '../../types';
 import { REQUEST_TIMEOUT } from '../../types/constants';
-import llmService, { type ChatMessage } from '../../../../services/llmService';
+import llmService from '../../../../services/llmService';
 
 interface StreamState {
   inThinkBlock: boolean;
@@ -152,8 +152,9 @@ export function useStreamChat(
   const startStream = useCallback(
     (
       assistantMsgId: string,
-      config: { apiKey: string; provider: string; model: string; prompt: string },
-      contextMessages: ChatMessage[],
+      sessionId: string,
+      message: string,
+      model: string,
       onStreamDone: (accumulatedContent: string, thinkingContent: string, answerContent: string) => void,
       onStreamError: (error: string, accumulatedContent: string) => void,
     ) => {
@@ -175,8 +176,9 @@ export function useStreamChat(
       resetIdleTimeout();
 
       llmService.streamChat(
-        config,
-        contextMessages,
+        sessionId,
+        message,
+        model,
         {
           onChunk: (text: string, type?: 'thinking' | 'answer') => {
             resetIdleTimeout();

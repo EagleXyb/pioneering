@@ -9,19 +9,29 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
-    email: '',
     password: '',
   });
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (error) setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await login(formData.email || formData.username, formData.username || undefined);
-    navigate('/');
+    setError('');
+    setIsLoading(true);
+    try {
+      await login(formData.username, formData.password);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.message || '登录失败，请检查用户名和密码');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -161,8 +171,10 @@ const Login: React.FC = () => {
                 </>
               )}
 
-              <button type="submit" className="submit-button">
-                {loginTab === 'account' ? '登录' : '登录 / 注册'}
+              {error && <div className="login-error">{error}</div>}
+
+              <button type="submit" className="submit-button" disabled={isLoading}>
+                {isLoading ? '登录中...' : loginTab === 'account' ? '登录' : '登录 / 注册'}
               </button>
             </form>
 
@@ -567,6 +579,22 @@ const Login: React.FC = () => {
 
         .submit-button:hover {
           background: var(--accent-blue-hover);
+        }
+
+        .submit-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .login-error {
+          color: #e74c3c;
+          font-size: 13px;
+          text-align: center;
+          margin-top: 12px;
+          padding: 8px 12px;
+          background: #fef2f2;
+          border-radius: 4px;
+          border: 1px solid #fecaca;
         }
 
         .login-links {

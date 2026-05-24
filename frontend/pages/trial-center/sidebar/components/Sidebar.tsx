@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, PencilLine, Pin, PinOff, AlertTriangle } from 'lucide-react';
-import chatConversationService, { type ConversationItem } from '../../../../services/chatConversationService';
+import chatConversationService, { type SessionItem } from '../../../../services/chatConversationService';
 
 const ShareIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width={18} height={18} fill="currentColor" viewBox="0 0 1024 1024">
@@ -14,8 +14,8 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onNewChat: () => void;
   isGenerating: boolean;
-  currentConversationId: number | null;
-  onSwitchConversation: (id: number) => void;
+  currentConversationId: string | null;
+  onSwitchConversation: (id: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -28,11 +28,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navigate = useNavigate();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [pinnedIds, setPinnedIds] = useState<Set<number>>(new Set());
+  const [conversations, setConversations] = useState<SessionItem[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const fetchConversations = useCallback(async () => {
     try {
-      const list = await chatConversationService.getConversations();
+      const list = await chatConversationService.getSessions();
       setConversations(list);
     } catch (e) {
       console.error('获取会话列表失败:', e);
@@ -69,12 +69,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     fetchConversations();
   }, [currentConversationId, fetchConversations]);
 
-  const handleMoreClick = useCallback((e: React.MouseEvent, id: number) => {
+  const handleMoreClick = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setOpenMenuId(prev => prev === id ? null : id);
   }, []);
 
-  const handleMenuAction = useCallback((e: React.MouseEvent, action: string, id: number) => {
+  const handleMenuAction = useCallback((e: React.MouseEvent, action: string, id: string) => {
     e.stopPropagation();
     setOpenMenuId(null);
     switch (action) {
@@ -103,7 +103,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     setDeleteConfirmId(null);
     setDeletingId(id);
     try {
-      await chatConversationService.deleteConversation(id);
+      await chatConversationService.deleteSession(id);
       setConversations(prev => prev.filter(c => c.id !== id));
       if (id === currentConversationId) {
         onNewChat();

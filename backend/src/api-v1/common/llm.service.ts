@@ -38,6 +38,25 @@ export class LlmService implements OnModuleInit {
     });
   }
 
+  // ========== model → provider 映射 ==========
+
+  private readonly MODEL_TO_PROVIDER: Record<string, string> = {
+    'deepseek-v4-flash': 'deepseek',
+    'deepseek-v4-pro': 'deepseek',
+    'glm-5.1': 'glm',
+    'glm-5v-turbo': 'glm',
+    'glm-5.0-turbo': 'glm',
+    'kimi-k2.6': 'kimi',
+    'kimi-k2.5': 'kimi',
+    'MiniMax-M2.7': 'minimax',
+    'MiniMax-M2.5': 'minimax',
+    'qwen-3.6plus': 'qwen',
+  };
+
+  private resolveProvider(model: string, fallback: string): string {
+    return this.MODEL_TO_PROVIDER[model] || fallback;
+  }
+
   // ========== 非流式调用 ==========
 
   async callNonStream(
@@ -51,7 +70,7 @@ export class LlmService implements OnModuleInit {
 
     const model = overrideModel || config.model;
     const apiKey = config.apiKey;
-    const provider = config.provider;
+    const provider = this.resolveProvider(model, config.provider);
 
     let url: string;
     let body: any;
@@ -125,8 +144,8 @@ export class LlmService implements OnModuleInit {
       return;
     }
 
-    const provider = overrideProvider || config.provider;
     const model = overrideModel || config.model;
+    const provider = overrideProvider || this.resolveProvider(model, config.provider);
     const apiKey = config.apiKey;
 
     if (!provider || !model) {

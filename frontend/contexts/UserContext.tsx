@@ -11,15 +11,20 @@ interface UserContextType {
   setName: (name: string) => void;
   setEmail: (email: string) => void;
   setIsLoggedIn: (isLoggedIn: boolean) => void;
-  login: (email: string, name?: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   syncUserInfo: () => Promise<void>;
+  getToken: () => string | null;
 }
 
 const defaultUserState: UserState = {
+  id: '',
+  username: '',
+  nickname: '',
+  name: '',
   avatar: null,
-  name: '张三',
-  email: 'zhangsan@example.com',
+  email: null,
+  phone: null,
   isLoggedIn: false,
 };
 
@@ -28,57 +33,58 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userState, setUserState] = useState<UserState>(() => {
     try {
-      const savedState = localStorage.getItem('userState');
-      if (savedState) {
-        const parsed = JSON.parse(savedState);
-        return {
-          ...defaultUserState,
-          ...parsed,
-          avatar: null,
-        };
+      const saved = localStorage.getItem('userState');
+      if (saved) {
+        return JSON.parse(saved);
       }
-      return defaultUserState;
-    } catch (error) {
-      console.error('读取用户状态失败:', error);
-      return defaultUserState;
+    } catch {
+      // ignore
     }
+    return defaultUserState;
   });
 
+  // 持久化到 localStorage
   useEffect(() => {
-    try {
-      const { avatar, ...stateToSave } = userState;
-      localStorage.setItem('userState', JSON.stringify(stateToSave));
-    } catch (error) {
-      console.error('保存用户状态失败:', error);
+    if (userState.isLoggedIn) {
+      localStorage.setItem('userState', JSON.stringify(userState));
+    } else {
+      localStorage.removeItem('userState');
     }
   }, [userState]);
 
+  // 登录后自动同步用户信息
   useEffect(() => {
-    if (userState.isLoggedIn && userState.email) {
+    if (userState.isLoggedIn) {
       syncUserInfo();
     }
-  }, [userState.isLoggedIn, userState.email]);
+  }, [userState.isLoggedIn]);
 
+  const getToken = (): string | null => {
+    return localStorage.getItem('token');
+  };
+
+  // ========== 同步用户信息（从后端拉取最新 profile） ==========
   const syncUserInfo = async () => {
-    if (!userState.email) return;
-    
+    const token = getToken();
+    if (!token) return;
+
     try {
-      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.PROFILE.BY_EMAIL(userState.email)}`);
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.PROFILE.BASE}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.ok) {
-        const text = await response.text();
-        if (text) {
-          try {
-            const data = JSON.parse(text);
-            if (data) {
-              setUserState(prev => ({
-                ...prev,
-                avatar: data.avatar || null,
-                name: data.name || prev.name,
-              }));
-            }
-          } catch (parseError) {
-            console.warn('解析用户信息失败:', parseError);
-          }
+        const data = await response.json();
+        if (data) {
+          setUserState(prev => ({
+            ...prev,
+            id: data.id || prev.id,
+            username: data.username || prev.username,
+            nickname: data.nickname || prev.nickname,
+            name: data.nickname || data.username || prev.name,
+            avatar: data.avatar || null,
+            email: data.email || null,
+            phone: data.phone || null,
+          }));
         }
       }
     } catch (error) {
@@ -86,33 +92,54 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const login = async (email: string, name?: string) => {
-    setUserState(prev => ({
-      ...prev,
-      email,
-      name: name || prev.name,
-      isLoggedIn: true,
-    }));
-  };
+  // ========== 登录 ==========
+  const login = async (username: string, password: string) => {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
 
-  const logout = () => {
-    setUserState(prev => ({
-      ...prev,
-      isLoggedIn: false,
-      avatar: null,
-    }));
-  };
-
-  const setAvatar = (avatar: string | null) => {
-    try {
-      setUserState(prev => ({ ...prev, avatar }));
-    } catch (error) {
-      console.error('设置头像失败:', error);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: '登录失败' }));
+      throw new Error(error.message || `登录失败 (${response.status})`);
     }
+
+    const data = await response.json();
+    const { token, refreshToken, user } = data;
+
+    // 存储 token
+    localStorage.setItem('token', token);
+    localStorage.setItem('refreshToken', refreshToken);
+
+    // 更新用户状态
+    setUserState({
+      id: user.id || '',
+      username: user.username || username,
+      nickname: user.nickname || '',
+      name: user.nickname || user.username || username,
+      avatar: user.avatar || null,
+      email: user.email || null,
+      phone: user.phone || null,
+      isLoggedIn: true,
+    });
+  };
+
+  // ========== 退出登录 ==========
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userState');
+    setUserState(defaultUserState);
+  };
+
+  // ========== 便捷 setter（兼容旧代码） ==========
+  const setAvatar = (avatar: string | null) => {
+    setUserState(prev => ({ ...prev, avatar }));
   };
 
   const setName = (name: string) => {
-    setUserState(prev => ({ ...prev, name }));
+    setUserState(prev => ({ ...prev, name, nickname: name }));
   };
 
   const setEmail = (email: string) => {
@@ -120,20 +147,27 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const setIsLoggedIn = (isLoggedIn: boolean) => {
-    setUserState(prev => ({ ...prev, isLoggedIn }));
+    if (!isLoggedIn) {
+      logout();
+    } else {
+      setUserState(prev => ({ ...prev, isLoggedIn: true }));
+    }
   };
 
   return (
-    <UserContext.Provider value={{ 
-      userState, 
-      setAvatar, 
-      setName, 
-      setEmail, 
-      setIsLoggedIn,
-      login,
-      logout,
-      syncUserInfo 
-    }}>
+    <UserContext.Provider
+      value={{
+        userState,
+        setAvatar,
+        setName,
+        setEmail,
+        setIsLoggedIn,
+        login,
+        logout,
+        syncUserInfo,
+        getToken,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );

@@ -34,7 +34,11 @@ export interface StreamCallbacks {
 export const chatApi = {
   /** 非流式发送消息 */
   sendMessage(data: ChatMessageRequest) {
-    return request.post<SendChatResponse>('/chat/message', data as unknown as Record<string, unknown>);
+    return request.post<SendChatResponse>('/chat/completions', {
+      sessionId: data.sessionId,
+      message: data.content,
+      stream: false,
+    } as unknown as Record<string, unknown>);
   },
 
   /** 流式发送消息 */
@@ -47,12 +51,12 @@ export const chatApi = {
   },
 
   /** 停止生成 */
-  stopMessage(sessionId: string, messageId: string) {
-    return request.post('/chat/stop', { sessionId, messageId });
+  stopMessage(sessionId: string) {
+    return request.post('/chat/completions/stop', { sessionId });
   },
 
   /** 重新生成 */
-  regenerate(sessionId: string, messageId: string) {
-    return request.post('/chat/regenerate', { sessionId, messageId });
+  regenerate(messageId: string) {
+    return request.post(`/chat/messages/${messageId}/regenerate`);
   },
 };

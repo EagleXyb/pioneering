@@ -23,7 +23,7 @@ function nextId(): string {
 
 // ====== 非流式 Mock ======
 const mockHandlers: Record<string, (data: any) => Promise<ApiResponse<any>>> = {
-  '/chat/message': async (_data) => {
+  '/chat/completions': async (_data) => {
     await delay(600 + Math.random() * 800);
     const reply = REPLIES[Math.floor(Math.random() * REPLIES.length)];
     return {

@@ -10,7 +10,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 const defaultProfile: ProfileData = DEFAULT_PROFILE;
 
 const Profile: React.FC = () => {
-  const { userState, setAvatar, setName } = useUser();
+  const { userState, setAvatar, setName, getToken } = useUser();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,32 +18,39 @@ const Profile: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (userState.isLoggedIn && userState.email) {
+    if (userState.isLoggedIn) {
       fetchProfile();
     } else {
       setIsLoading(false);
     }
-  }, [userState.isLoggedIn, userState.email]);
+  }, [userState.isLoggedIn]);
 
   const fetchProfile = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.BY_EMAIL(userState.email)}`);
+      const token = getToken();
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.BASE}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.ok) {
         const data = await response.json();
         if (data) {
-          setUserInfo({
+          setUserInfo(prev => ({
+            ...prev,
             ...data,
-            joinDate: data.joinDate ? new Date(data.joinDate).toISOString().split('T')[0] : defaultProfile.joinDate,
-            skills: data.skills || defaultProfile.skills,
-            achievements: defaultProfile.achievements,
-          });
+            joinDate: data.createdAt
+              ? new Date(data.createdAt).toISOString().split('T')[0]
+              : prev.joinDate,
+            name: data.nickname || data.username || prev.name,
+            email: data.email || prev.email,
+            phone: data.phone || prev.phone,
+          }));
           if (data.avatar) {
             setAvatar(data.avatar);
           }
-          if (data.name) {
-            setName(data.name);
+          if (data.nickname) {
+            setName(data.nickname);
           }
         }
       }
@@ -56,16 +63,22 @@ const Profile: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      if (!userInfo.email) {
+      const token = getToken();
+      if (!token) {
         setError('请先登录再保存个人信息');
         return;
       }
       setError(null);
-      const { achievements, joinDate, ...profileData } = userInfo;
-      const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.UPSERT}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profileData),
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.BASE}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nickname: userInfo.name,
+          avatar: userInfo.avatar,
+        }),
       });
       if (response.ok) {
         setIsEditing(false);
@@ -105,19 +118,14 @@ const Profile: React.FC = () => {
       formData.append('avatar', file);
 
       try {
-        const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.AVATAR(userState.email)}`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setAvatar(data.avatar);
-          console.log('头像上传成功');
-        } else {
-          const errorData = await response.json();
-          alert(errorData.message || '头像保存失败，请重试');
-        }
+        // 本地读取为 base64，更新状态；通过 handleSave 持久化到后端
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result as string;
+          setAvatar(base64);
+          setUserInfo(prev => ({ ...prev, avatar: base64 }));
+        };
+        reader.readAsDataURL(file);
       } catch (error) {
         console.error('保存头像失败:', error);
         alert('保存头像失败，请检查网络连接');
