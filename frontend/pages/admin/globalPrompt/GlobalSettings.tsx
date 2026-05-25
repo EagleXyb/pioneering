@@ -1,6 +1,8 @@
 // 全局设置组件
 
 import React, { useState, useRef } from 'react';
+import { Button, DialogPlugin, MessagePlugin } from 'tdesign-react';
+import { AddIcon, ChevronLeftIcon, EditIcon, CheckCircleFilledIcon, FullscreenIcon, FullscreenExitIcon, FileCopyIcon, DeleteIcon } from 'tdesign-icons-react';
 import type { PromptModule } from '../types';
 import '../PromptManagement.css';
 import { PromptList } from './PromptList';
@@ -72,14 +74,19 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
   const handleCopy = () => {
     const content = prompts['global-settings'];
     navigator.clipboard.writeText(content).then(() => {
-      alert('复制成功！');
+      MessagePlugin.success('复制成功！');
     });
   };
 
   const handleClear = () => {
-    if (window.confirm('确定要清空内容吗？')) {
-      onPromptChange('global-settings', '');
-    }
+    const dialog = DialogPlugin.confirm({
+      header: '确认清空',
+      body: '确定要清空内容吗？',
+      onConfirm: () => {
+        onPromptChange('global-settings', '');
+        dialog.hide();
+      },
+    });
   };
 
   const handleEdit = (prompt: GlobalPrompt) => {
@@ -93,31 +100,46 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
   };
 
   const handleOnlinePrompt = async (id: number) => {
-    if (window.confirm('确定要将此Prompt上线吗？')) {
-      const result = await handleOnline(id);
-      if (result) {
-        alert('上线成功！');
-        fetchPrompts();
-      }
-    }
+    const dialog = DialogPlugin.confirm({
+      header: '确认上线',
+      body: '确定要将此Prompt上线吗？',
+      onConfirm: async () => {
+        const result = await handleOnline(id);
+        if (result) {
+          MessagePlugin.success('上线成功！');
+          fetchPrompts();
+        }
+        dialog.hide();
+      },
+    });
   };
 
   const handleOfflinePrompt = async (id: number) => {
-    if (window.confirm('确定要将此Prompt下线吗？')) {
-      const result = await handleOffline(id);
-      if (result) {
-        alert('下线成功！');
-        fetchPrompts();
-      }
-    }
+    const dialog = DialogPlugin.confirm({
+      header: '确认下线',
+      body: '确定要将此Prompt下线吗？',
+      onConfirm: async () => {
+        const result = await handleOffline(id);
+        if (result) {
+          MessagePlugin.success('下线成功！');
+          fetchPrompts();
+        }
+        dialog.hide();
+      },
+    });
   };
 
   const handleDeletePrompt = async (id: number) => {
-    if (window.confirm('确定要删除此Prompt吗？')) {
-      await handleDelete(id);
-      alert('删除成功！');
-      fetchPrompts();
-    }
+    const dialog = DialogPlugin.confirm({
+      header: '确认删除',
+      body: '确定要删除此Prompt吗？',
+      onConfirm: async () => {
+        await handleDelete(id);
+        MessagePlugin.success('删除成功！');
+        fetchPrompts();
+        dialog.hide();
+      },
+    });
   };
 
   const handleCreatePromptClick = () => {
@@ -137,7 +159,7 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
       onPromptChange('global-settings', '');
       setShowList(false);
     } else {
-      alert('创建失败，请重试');
+      MessagePlugin.error('创建失败，请重试');
     }
   };
 
@@ -151,7 +173,7 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
     if (!currentEditingPrompt) return;
 
     if (!prompts['global-settings'].trim()) {
-      alert('请填写Prompt模板内容');
+      MessagePlugin.warning('请填写Prompt模板内容');
       return;
     }
 
@@ -161,10 +183,10 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
     });
 
     if (result) {
-      alert('保存成功！');
+      MessagePlugin.success('保存成功！');
       fetchPrompts();
     } else {
-      alert('保存失败，请重试');
+      MessagePlugin.error('保存失败，请重试');
     }
   };
 
@@ -177,13 +199,9 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
               <h2 className="panel-title">全局Prompt列表</h2>
             </div>
             <div className="header-actions">
-              <button className="btn-primary" onClick={handleCreatePromptClick}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
+              <Button theme="primary" icon={<AddIcon />} onClick={handleCreatePromptClick}>
                 新建Prompt
-              </button>
+              </Button>
             </div>
           </div>
           <PromptList
@@ -200,26 +218,20 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
           {!isFullscreen && (
             <div className="panel-header">
               <div className="header-left">
-                <button className="back-button" onClick={handleBackToList}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 12H5M12 19l-7-7 7-7" />
-                  </svg>
-                </button>
+                <Button variant="text" shape="square" size="large" icon={<ChevronLeftIcon />} onClick={handleBackToList} />
                 <div className="header-content">
                   <div className="header-item">
                     <span className="prompt-name">{currentEditingPrompt?.name || ''}</span>
-                    <button 
-                      className="edit-name-btn" 
+                    <Button 
+                      variant="text"
+                      shape="square"
+                      size="small"
+                      icon={<EditIcon />}
                       onClick={() => {
                         setNewName(currentEditingPrompt?.name || '');
                         setShowEditNameModal(true);
                       }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
+                    />
                   </div>
                   <div className="header-divider"></div>
                   <div className="header-item">
@@ -237,13 +249,9 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
                 </div>
               </div>
               <div className="header-actions">
-                <button className="btn-primary" onClick={handleSavePrompt}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                  </svg>
+                <Button theme="primary" icon={<CheckCircleFilledIcon />} onClick={handleSavePrompt}>
                   保存
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -257,27 +265,27 @@ export const GlobalSettings: React.FC<GlobalSettingsProps> = ({
                       <span className="label-required">*</span>
                     </label>
                     <div className="prompt-editor-toolbar">
-                      <button className="toolbar-btn" data-title={isFullscreen ? '退出全屏' : '全屏'} onClick={onToggleFullscreen}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          {isFullscreen ? (
-                            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-                          ) : (
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                          )}
-                        </svg>
-                      </button>
-                      <button className="toolbar-btn" data-title="复制" onClick={handleCopy}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      </button>
-                      <button className="toolbar-btn" data-title="清空" onClick={handleClear}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
+                      <Button
+                        variant="text"
+                        shape="square"
+                        icon={isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+                        title={isFullscreen ? '退出全屏' : '全屏'}
+                        onClick={onToggleFullscreen}
+                      />
+                      <Button
+                        variant="text"
+                        shape="square"
+                        icon={<FileCopyIcon />}
+                        title="复制"
+                        onClick={handleCopy}
+                      />
+                      <Button
+                        variant="text"
+                        shape="square"
+                        icon={<DeleteIcon />}
+                        title="清空"
+                        onClick={handleClear}
+                      />
                     </div>
                   </div>
                   <div className="editor-divider" />

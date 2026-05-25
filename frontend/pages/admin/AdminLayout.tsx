@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from 'tdesign-react';
+import { LogoutIcon } from 'tdesign-icons-react';
 import { useUser } from '../../contexts/UserContext';
 import type { NavSection, NavSectionConfig } from './types';
 
@@ -240,13 +242,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           
           <div className="user-section">
             <div className="language-switcher" ref={languageDropdownRef}>
-              <button 
-                className="language-btn"
-                onMouseEnter={() => setShowLanguageDropdown(true)}
+              <Button 
+                variant="text"
+                shape="circle"
+                icon={<Icons.Globe />}
                 title="语言"
-              >
-                <Icons.Globe />
-              </button>
+                onMouseEnter={() => setShowLanguageDropdown(true)}
+              />
               
               {showLanguageDropdown && (
                 <div 
@@ -260,8 +262,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               )}
             </div>
             <div className="user-avatar" ref={dropdownRef}>
-              <button 
-                className="avatar-button" 
+              <Button 
+                variant="text"
+                shape="circle"
                 onClick={() => setShowDropdown(!showDropdown)}
               >
                 {userState.avatar ? (
@@ -279,7 +282,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                     {userState.name.charAt(0)}
                   </div>
                 )}
-              </button>
+              </Button>
               
               {showDropdown && (
                 <div className="dropdown-menu">
@@ -323,13 +326,14 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   
                   <div className="dropdown-divider"></div>
                   
-                  <button className="dropdown-item dropdown-item-logout" onClick={() => setShowDropdown(false)}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M6 2H3v12h3" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M10 7l3-3-3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span>退出登录</span>
-                  </button>
+                  <Button
+                    variant="text"
+                    icon={<LogoutIcon />}
+                    className="dropdown-item dropdown-item-logout"
+                    onClick={() => setShowDropdown(false)}
+                  >
+                    退出登录
+                  </Button>
                 </div>
               )}
             </div>

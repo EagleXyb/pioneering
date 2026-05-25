@@ -7,6 +7,10 @@ declare module '*.webp';
 declare module '*.scss';
 declare module '*.css';
 
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
 declare function defineAppConfig(config: Record<string, any>): Record<string, any>;
 declare function definePageConfig(config: Record<string, any>): Record<string, any>;
 

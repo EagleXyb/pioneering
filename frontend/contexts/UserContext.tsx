@@ -73,7 +73,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
-        const data = await response.json();
+        const result = await response.json();
+        const data = result.data || result;
         if (data) {
           setUserState(prev => ({
             ...prev,
@@ -105,8 +106,10 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw new Error(error.message || `登录失败 (${response.status})`);
     }
 
-    const data = await response.json();
-    const { token, refreshToken, user } = data;
+    const result = await response.json();
+    // 兼容统一响应格式 { code, data, message } 和旧版直接返回
+    const payload = result.data || result;
+    const { token, refreshToken, user } = payload;
 
     // 存储 token
     localStorage.setItem('token', token);

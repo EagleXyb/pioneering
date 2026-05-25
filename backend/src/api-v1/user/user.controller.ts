@@ -8,6 +8,15 @@ import { QueryUsageDto } from './dto/usage.dto';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
+  @Get('list')
+  listUsers(@Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('search') search?: string) {
+    return this.userService.listUsers({
+      page: page ? parseInt(page, 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      search,
+    });
+  }
+
   @Get('profile')
   getProfile(@CurrentUser('sub') userId: string) {
     return this.userService.getProfile(userId);

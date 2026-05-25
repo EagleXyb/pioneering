@@ -5,6 +5,55 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class UserService {
   constructor(private prisma: PrismaService) {}
 
+  async listUsers(query: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  }) {
+    const page = query.page || 1;
+    const pageSize = query.pageSize || 20;
+    const where: any = {};
+    if (query.search) {
+      where.OR = [
+        { username: { contains: query.search } },
+        { nickname: { contains: query.search } },
+        { email: { contains: query.search } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { userQuota: true },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      list: users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        nickname: u.nickname,
+        email: u.email,
+        phone: u.phone,
+        avatar: u.avatar,
+        status: u.status,
+        totalTokens: u.userQuota ? Number(u.userQuota.totalTokens) : 0,
+        usedTokens: u.userQuota ? Number(u.userQuota.usedTokens) : 0,
+        dailyLimit: u.userQuota ? Number(u.userQuota.dailyLimit) : 0,
+        dailyUsed: u.userQuota ? Number(u.userQuota.dailyUsed) : 0,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {

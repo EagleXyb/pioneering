@@ -1,55 +1,106 @@
-import React, { useState, useEffect } from 'react';
+// 用户管理模块 - TDesign Table + 后端分页
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Table,
+  Input,
+  Button,
+  Tag,
+  Avatar,
+  Alert,
+  MessagePlugin,
+} from 'tdesign-react';
+import { SearchIcon, RefreshIcon } from 'tdesign-icons-react';
+import type { PrimaryTableCol, PageInfo } from 'tdesign-react/es/table';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
-interface Profile {
-  id: number;
-  name: string;
-  email: string;
+interface UserListItem {
+  id: string;
+  username: string;
+  nickname: string | null;
+  email: string | null;
   phone: string | null;
-  location: string | null;
-  bio: string | null;
-  company: string | null;
-  position: string | null;
-  joinDate: string;
-  skills: string[];
   avatar: string | null;
+  status: number;
+  totalTokens: number;
+  usedTokens: number;
+  dailyLimit: number;
+  dailyUsed: number;
   createdAt: string;
   updatedAt: string;
 }
 
+interface ListResponse {
+  list: UserListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<Profile[]>([]);
+  const [users, setUsers] = useState<UserListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const fetchUsers = useCallback(async (p?: number, ps?: number, search?: string) => {
+    const currentPage = p ?? page;
+    const currentPageSize = ps ?? pageSize;
+    const currentSearch = search ?? searchTerm;
+    try {
+      setLoading(true);
+      setError(null);
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(currentPageSize),
+      });
+      if (currentSearch) {
+        params.set('search', currentSearch);
+      }
+      const response = await fetch(`${API_BASE_URL}/user/list?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        throw new Error('获取用户列表失败');
+      }
+      const result = await response.json();
+      const payload: ListResponse = result.data || result;
+      setUsers(payload.list || []);
+      setTotal(payload.total || 0);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      setError(msg);
+      MessagePlugin.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, searchTerm]);
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/profile`);
-      if (!response.ok) {
-        throw new Error('获取用户列表失败');
-      }
-      const data = await response.json();
-      setUsers(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '未知错误');
-    } finally {
-      setLoading(false);
-    }
+  const handleSearch = () => {
+    setPage(1);
+    fetchUsers(1, pageSize, searchTerm);
   };
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.company && user.company.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const handleRefresh = () => {
+    setSearchTerm('');
+    setPage(1);
+    fetchUsers(1, pageSize, '');
+  };
+
+  const handlePageChange = (pageInfo: PageInfo) => {
+    setPage(pageInfo.current);
+    setPageSize(pageInfo.pageSize);
+    fetchUsers(pageInfo.current, pageInfo.pageSize, searchTerm);
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('zh-CN', {
@@ -59,382 +110,133 @@ export const UserManagement: React.FC = () => {
     });
   };
 
-  return (
-    <div className="user-management">
-      <style>{`
-        .user-management {
-          padding: 24px;
-        }
+  const formatTokens = (tokens: number) => {
+    if (tokens >= 1_000_000) {
+      return `${(tokens / 1_000_000).toFixed(1)}M`;
+    }
+    if (tokens >= 1_000) {
+      return `${(tokens / 1_000).toFixed(1)}K`;
+    }
+    return String(tokens);
+  };
 
-        .user-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-        }
-
-        .user-title {
-          font-size: 24px;
-          font-weight: 600;
-          color: #1f2937;
-        }
-
-        .user-subtitle {
-          font-size: 14px;
-          color: #6b7280;
-          margin-top: 4px;
-        }
-
-        .search-box {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .search-input {
-          width: 280px;
-          height: 40px;
-          padding: 0 16px;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 14px;
-          background: white;
-          transition: all 0.2s;
-        }
-
-        .search-input:focus {
-          outline: none;
-          border-color: #2490f8;
-          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
-        }
-
-        .refresh-btn {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 16px;
-          background: #f3f4f6;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 14px;
-          color: #374151;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .refresh-btn:hover {
-          background: #e5e7eb;
-        }
-
-        .user-stats {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-          margin-bottom: 24px;
-        }
-
-        .stat-card {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          padding: 20px;
-        }
-
-        .stat-value {
-          font-size: 28px;
-          font-weight: 700;
-          color: #1f2937;
-        }
-
-        .stat-label {
-          font-size: 14px;
-          color: #6b7280;
-          margin-top: 4px;
-        }
-
-        .user-table-container {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          overflow: hidden;
-        }
-
-        .user-table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        .user-table th {
-          background: #f9fafb;
-          padding: 12px 16px;
-          text-align: left;
-          font-size: 12px;
-          font-weight: 600;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .user-table td {
-          padding: 16px;
-          border-bottom: 1px solid #f3f4f6;
-          font-size: 14px;
-          color: #374151;
-        }
-
-        .user-table tr:last-child td {
-          border-bottom: none;
-        }
-
-        .user-table tr:hover {
-          background: #f9fafb;
-        }
-
-        .user-avatar {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          object-fit: cover;
-          background: #e5e7eb;
-        }
-
-        .user-avatar-placeholder {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #2490f8, #7c3aed);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: 600;
-          font-size: 16px;
-        }
-
-        .user-info {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .user-name {
-          font-weight: 500;
-          color: #1f2937;
-        }
-
-        .user-email {
-          font-size: 12px;
-          color: #6b7280;
-        }
-
-        .skill-tag {
-          display: inline-block;
-          padding: 4px 8px;
-          background: #eff6ff;
-          color: #2490f8;
-          border-radius: 4px;
-          font-size: 12px;
-          margin-right: 4px;
-          margin-bottom: 4px;
-        }
-
-        .no-skills {
-          color: #9ca3af;
-          font-size: 12px;
-        }
-
-        .status-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 10px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 500;
-        }
-
-        .status-active {
-          background: #dcfce7;
-          color: #16a34a;
-        }
-
-        .loading-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 60px;
-          color: #6b7280;
-        }
-
-        .loading-spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid #e5e7eb;
-          border-top-color: #2490f8;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-          margin-bottom: 16px;
-        }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        .error-message {
-          background: #fef2f2;
-          border: 1px solid #fecaca;
-          color: #dc2626;
-          padding: 16px;
-          border-radius: 8px;
-          margin-bottom: 24px;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 60px;
-          color: #6b7280;
-        }
-
-        .empty-icon {
-          width: 64px;
-          height: 64px;
-          margin: 0 auto 16px;
-          color: #d1d5db;
-        }
-      `}</style>
-
-      <div className="user-header">
+  const columns: PrimaryTableCol<UserListItem>[] = [
+    {
+      colKey: 'user',
+      title: '用户',
+      width: 220,
+      cell: ({ row }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Avatar size="40px">
+            {row.avatar ? (
+              <img
+                src={row.avatar}
+                alt={row.nickname || row.username}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              (row.nickname || row.username).charAt(0).toUpperCase()
+            )}
+          </Avatar>
+          <div>
+            <div style={{ fontWeight: 500, color: '#1f2937' }}>{row.nickname || row.username}</div>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>{row.email || row.username}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      colKey: 'phone',
+      title: '电话',
+      width: 140,
+      cell: ({ row }) => row.phone || '-',
+    },
+    {
+      colKey: 'quota',
+      title: 'Token 用量',
+      width: 140,
+      cell: ({ row }) => (
         <div>
-          <h1 className="user-title">用户管理</h1>
-          <p className="user-subtitle">管理系统中的所有用户信息</p>
+          <div style={{ fontSize: '13px' }}>
+            {formatTokens(row.usedTokens)} / {formatTokens(row.totalTokens)}
+          </div>
+          <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+            日限 {formatTokens(row.dailyLimit)}
+          </div>
         </div>
-        <div className="search-box">
-          <input
-            type="text"
-            className="search-input"
-            placeholder="搜索用户名、邮箱或公司..."
+      ),
+    },
+    {
+      colKey: 'createdAt',
+      title: '注册时间',
+      width: 120,
+      cell: ({ row }) => formatDate(row.createdAt),
+    },
+    {
+      colKey: 'status',
+      title: '状态',
+      width: 80,
+      cell: ({ row }) => (
+        <Tag theme={row.status === 1 ? 'success' : 'default'} variant="light" size="small">
+          {row.status === 1 ? '活跃' : '禁用'}
+        </Tag>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ padding: '24px' }}>
+      {/* 页头 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 600, color: '#1f2937', margin: 0 }}>用户管理</h1>
+          <p style={{ fontSize: '14px', color: '#6b7280', margin: '4px 0 0 0' }}>管理系统中的所有用户信息</p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <Input
+            prefixIcon={<SearchIcon />}
+            placeholder="搜索用户名、昵称或邮箱..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(val) => setSearchTerm(val as string)}
+            clearable
+            onEnter={handleSearch}
+            style={{ width: '280px' }}
           />
-          <button className="refresh-btn" onClick={fetchUsers}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M23 4v6h-6"/>
-              <path d="M1 20v-6h6"/>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
+          <Button icon={<SearchIcon />} onClick={handleSearch}>
+            搜索
+          </Button>
+          <Button icon={<RefreshIcon />} onClick={handleRefresh} variant="outline">
             刷新
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="user-stats">
-        <div className="stat-card">
-          <div className="stat-value">{users.length}</div>
-          <div className="stat-label">总用户数</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{users.filter(u => u.company).length}</div>
-          <div className="stat-label">已填写公司</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{users.filter(u => u.skills.length > 0).length}</div>
-          <div className="stat-label">已填写技能</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{users.filter(u => u.avatar).length}</div>
-          <div className="stat-label">已上传头像</div>
-        </div>
-      </div>
+      {/* 错误提示 */}
+      {error && (
+        <Alert theme="error" message={error} close onClose={() => setError(null)} style={{ marginBottom: '16px' }} />
+      )}
 
-      {error && <div className="error-message">{error}</div>}
-
-      <div className="user-table-container">
-        {loading ? (
-          <div className="loading-container">
-            <div className="loading-spinner"></div>
-            <p>加载中...</p>
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="empty-state">
-            <svg className="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-            <h3>暂无用户数据</h3>
-            <p>{searchTerm ? '没有找到匹配的用户' : '系统中还没有用户'}</p>
-          </div>
-        ) : (
-          <table className="user-table">
-            <thead>
-              <tr>
-                <th>用户</th>
-                <th>电话</th>
-                <th>公司</th>
-                <th>职位</th>
-                <th>技能</th>
-                <th>注册时间</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id}>
-                  <td>
-                    <div className="user-info">
-                      {user.avatar ? (
-                        <img 
-                          src={user.avatar} 
-                          alt={user.name} 
-                          className="user-avatar"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="user-avatar-placeholder">
-                          {user.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <div className="user-name">{user.name}</div>
-                        <div className="user-email">{user.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>{user.phone || '-'}</td>
-                  <td>{user.company || '-'}</td>
-                  <td>{user.position || '-'}</td>
-                  <td>
-                    {user.skills.length > 0 ? (
-                      user.skills.slice(0, 3).map((skill, index) => (
-                        <span key={index} className="skill-tag">{skill}</span>
-                      ))
-                    ) : (
-                      <span className="no-skills">暂无技能</span>
-                    )}
-                    {user.skills.length > 3 && (
-                      <span className="skill-tag">+{user.skills.length - 3}</span>
-                    )}
-                  </td>
-                  <td>{formatDate(user.joinDate)}</td>
-                  <td>
-                    <span className="status-badge status-active">
-                      <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-                        <circle cx="4" cy="4" r="4"/>
-                      </svg>
-                      活跃
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {/* 用户表格 */}
+      <Table
+        data={users}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        empty="暂无用户数据"
+        bordered
+        stripe
+        hover
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showJumper: true,
+          showPageSize: true,
+          pageSizeOptions: [10, 20, 50],
+        }}
+        onPageChange={handlePageChange}
+      />
     </div>
   );
 };

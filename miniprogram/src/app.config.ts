@@ -12,11 +12,11 @@ export default defineAppConfig({
     backgroundTextStyle: 'dark',
   },
   usingComponents: {
-    't-button': 'npm/tdesign-miniprogram/button/button',
-    't-drawer': 'npm/tdesign-miniprogram/drawer/drawer',
-    't-icon': 'npm/tdesign-miniprogram/icon/icon',
-    't-navbar': 'npm/tdesign-miniprogram/navbar/navbar',
-    't-chat-message': 'npm/tdesign-miniprogram/chat-message/chat-message',
-    't-chat-content': 'npm/tdesign-miniprogram/chat-content/chat-content',
+    't-button': 'tdesign-miniprogram/button/button',
+    't-drawer': 'tdesign-miniprogram/drawer/drawer',
+    't-icon': 'tdesign-miniprogram/icon/icon',
+    't-navbar': 'tdesign-miniprogram/navbar/navbar',
+    't-chat-message': 'tdesign-miniprogram/chat-message/chat-message',
+    't-chat-content': 'tdesign-miniprogram/chat-content/chat-content',
   },
 });

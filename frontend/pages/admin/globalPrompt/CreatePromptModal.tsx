@@ -1,6 +1,8 @@
 // 创建Prompt模态框组件
 
 import React, { useState } from 'react';
+import { Button } from 'tdesign-react';
+import { CloseIcon } from 'tdesign-icons-react';
 import type { CreatePromptFormData } from './types';
 import '../PromptManagement.css';
 
@@ -85,12 +87,7 @@ export const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>创建 Prompt</h3>
-          <button className="modal-close-btn" onClick={handleCancel}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          <Button variant="text" shape="square" icon={<CloseIcon />} onClick={handleCancel} />
         </div>
 
         <div className="modal-body">
@@ -148,12 +145,12 @@ export const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
         </div>
 
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel}>
             取消
-          </button>
-          <button className="btn-primary" onClick={handleConfirm}>
+          </Button>
+          <Button theme="primary" onClick={handleConfirm}>
             确认
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 // 模型管理模块
 
 import React from 'react';
+import { Button } from 'tdesign-react';
 import type { TestStatus, SaveStatus, TestResult, ProviderInfo, ModelInfo } from './types';
 import { PROVIDER_LIST, MODEL_MAP } from '@shared/constants';
 
@@ -125,20 +126,22 @@ const renderApiKeyConfig: React.FC<ApiKeyConfigProps> = ({
         </div>
       </div>
       <div className="form-actions">
-        <button
-          className="btn-secondary"
+        <Button
+          variant="outline"
           onClick={() => onTestConnection()}
           disabled={!isConfigValid() || testStatus === 'testing'}
+          loading={testStatus === 'testing'}
         >
-          {testStatus === 'testing' ? '测试中...' : '测试连接'}
-        </button>
-        <button
-          className="btn-primary"
+          测试连接
+        </Button>
+        <Button
+          theme="primary"
           onClick={() => onSaveConfig()}
           disabled={!isConfigValid() || saveStatus === 'saving'}
+          loading={saveStatus === 'saving'}
         >
-          {saveStatus === 'saving' ? '保存中...' : '保存配置'}
-        </button>
+          保存配置
+        </Button>
       </div>
     </div>
     {testResult && (
@@ -202,8 +205,8 @@ const renderProviderManagement = () => {
             <h3 className="provider-name">{provider.name}</h3>
             <p className="provider-models">{provider.models} 个模型</p>
             <div className="provider-actions">
-              <button className="btn-small">配置</button>
-              <button className="btn-small btn-outline">详情</button>
+              <Button size="small">配置</Button>
+              <Button size="small" variant="outline">详情</Button>
             </div>
           </div>
         ))}
@@ -247,7 +250,7 @@ const renderModelList = () => {
                 <td className="model-id">{model.id}</td>
                 <td><span className={`status-badge ${model.status}`}>{model.status === 'active' ? '启用' : '禁用'}</span></td>
                 <td>
-                  <button className="btn-small">测试</button>
+                  <Button size="small">测试</Button>
                 </td>
               </tr>
             ))}

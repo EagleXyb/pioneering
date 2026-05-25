@@ -18,7 +18,9 @@
     "react-router-dom": "^7.13.1",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "tdesign-icons-react": "^0.6.4",
+    "tdesign-react": "^1.17.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

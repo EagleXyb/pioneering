@@ -18,9 +18,12 @@ export interface ApiResponse<T = unknown> {
   message: string;
 }
 
+declare const __API_BASE_URL__: string | undefined;
+const API_BASE_URL = typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : 'http://localhost:3000';
+
 // ====== 默认配置 ======
 const DEFAULT_CONFIG: RequestConfig = {
-  baseURL: '',
+  baseURL: API_BASE_URL,
   timeout: 15000,
   header: {
     'Content-Type': 'application/json',
