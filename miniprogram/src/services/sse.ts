@@ -1,7 +1,7 @@
 import Taro from '@tarojs/taro';
 import type { SSEParams, SSEConnection, SSEChunk } from '@/types/chat';
+import { authService } from './auth';
 
-// ====== SSE 配置 ======
 const SSE_CONFIG = {
   timeout: 15000,        // 15s 无数据则超时
   maxRetries: 3,         // 最多重连 3 次
@@ -73,11 +73,17 @@ export function connectSSE(params: SSEParams): SSEConnection {
       url: '/chat/completions',
       method: 'POST',
       enableChunked: true,
-      header: { 'Content-Type': 'application/json' },
+      header: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authService.token}`,
+      },
       data: {
         sessionId,
         message: content,
         stream: true,
+        messageId: params.messageId,
+        ...(params.deepThink !== undefined && { deepThink: params.deepThink }),
+        ...(params.netSearch !== undefined && { netSearch: params.netSearch }),
       },
       success(res) {
         if (aborted) return;

@@ -3,7 +3,7 @@ import { withRetry } from '@/utils/retry';
 import { getMockHandler } from './mock';
 
 // ====== Mock 模式开关 ======
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 // ====== 类型定义 ======
 export interface RequestConfig {
@@ -103,6 +103,10 @@ class Request {
 
   post<T = unknown>(url: string, data?: Record<string, unknown>) {
     return this.request<T>({ url, data, method: 'POST' });
+  }
+
+  delete<T = unknown>(url: string, data?: Record<string, unknown>) {
+    return this.request<T>({ url, data, method: 'DELETE' });
   }
 }
 

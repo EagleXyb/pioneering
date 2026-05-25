@@ -4,7 +4,7 @@ import { chatApi } from '@/services';
 import { generateMockStream } from '@/services/mock';
 
 // ====== Mock 模式开关 ======
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 // ====== SSE 连接状态 ======
 export type SSEStatus = 'idle' | 'connecting' | 'streaming' | 'done' | 'error';
@@ -19,7 +19,7 @@ export function useSSE(sessionId: string) {
   const clearAbortController = useAppStore((s) => s.clearAbortController);
 
   const startStream = useCallback(
-    (messageId: string, userContent: string, deepThink: boolean) => {
+    (messageId: string, userContent: string, deepThink: boolean, netSearch: boolean) => {
       setStatus('connecting');
       setStreamingContent('');
       setThinkingContent('');
@@ -86,7 +86,7 @@ export function useSSE(sessionId: string) {
 
       // 真实 SSE 模式
       const conn = chatApi.sendMessageStream(
-        { sessionId, content: userContent, messageId, deepThink },
+        { sessionId, content: userContent, messageId, deepThink, netSearch },
         {
           onChunk: (data) => {
             if (ctrl.signal.aborted) return;

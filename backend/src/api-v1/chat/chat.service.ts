@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class ChatService {
-  private activeStreams = new Map<string, AbortController>();
+  private activeStreams = new Map<string, { controller: AbortController; sessionId: string }>();
 
   constructor(
     private prisma: PrismaService,
@@ -379,7 +379,7 @@ export class ChatService {
       if (match) {
         try {
           const parsed = JSON.parse(match[1]);
-          if (parsed.type === 'answer' && parsed.content) {
+          if (parsed.type === 'content' && parsed.content) {
             collectedChunks.push(parsed.content);
           }
         } catch {}
@@ -420,7 +420,7 @@ export class ChatService {
       originalEnd();
     };
 
-    this.activeStreams.set(assistantMsgId, new AbortController());
+    this.activeStreams.set(assistantMsgId, { controller: new AbortController(), sessionId });
 
     // 使用 LlmService 的 streamChat 进行流式输出
     await this.llmService.streamChat(messages, res, provider, model);
@@ -527,11 +527,24 @@ export class ChatService {
     return this.llmService.callNonStream(messages, overrideModel);
   }
 
-  async stopGeneration(_userId: string, _sessionId: string, messageId: string) {
-    const abortController = this.activeStreams.get(messageId);
-    if (abortController) {
-      abortController.abort();
-      this.activeStreams.delete(messageId);
+  async stopGeneration(_userId: string, sessionId: string, messageId?: string) {
+    // 有 messageId 时精确查找
+    if (messageId) {
+      const entry = this.activeStreams.get(messageId);
+      if (entry) {
+        entry.controller.abort();
+        this.activeStreams.delete(messageId);
+        return;
+      }
+    }
+
+    // 降级：无 messageId 时，遍历查找该 session 的活跃流
+    for (const [id, entry] of this.activeStreams) {
+      if (entry.sessionId === sessionId) {
+        entry.controller.abort();
+        this.activeStreams.delete(id);
+        return;
+      }
     }
   }
 

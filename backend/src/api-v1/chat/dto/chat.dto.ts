@@ -71,6 +71,20 @@ export class ChatCompletionDto {
   @IsOptional()
   @IsString()
   parentMessageId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  deepThink?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  netSearch?: boolean;
+
+  @IsOptional()
+  @IsString()
+  messageId?: string;
 }
 
 export class StopGenerationDto {
@@ -78,9 +92,9 @@ export class StopGenerationDto {
   @IsNotEmpty()
   sessionId: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  messageId: string;
+  messageId?: string;
 }
 
 export class FeedbackDto {

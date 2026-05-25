@@ -23,6 +23,21 @@ export interface SendChatResponse {
   phase: number;
 }
 
+export interface BackendSession {
+  id: string;
+  title: string;
+  preview: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export interface BackendMessage {
+  id: string;
+  content: string;
+  role: string;
+  createdAt: string;
+}
+
 // ====== 流式回调类型 ======
 export interface StreamCallbacks {
   onChunk: (data: SSEChunk) => void;
@@ -50,13 +65,37 @@ export const chatApi = {
     return conn;
   },
 
-  /** 停止生成 */
-  stopMessage(sessionId: string) {
-    return request.post('/chat/completions/stop', { sessionId });
+  /** 停止生成（messageId 可选） */
+  stopMessage(sessionId: string, messageId?: string) {
+    const payload: Record<string, string> = { sessionId };
+    if (messageId) payload.messageId = messageId;
+    return request.post('/chat/completions/stop', payload);
   },
 
-  /** 重新生成 */
-  regenerate(messageId: string) {
-    return request.post(`/chat/messages/${messageId}/regenerate`);
+  /** 重新生成（传入父消息 ID，即被重新生成的 AI 消息之前的那条用户消息 ID） */
+  regenerate(parentMessageId: string) {
+    return request.post(`/chat/messages/${parentMessageId}/regenerate`);
+  },
+
+  /** 获取会话列表 */
+  getSessions() {
+    return request.get<BackendSession[]>('/chat/sessions');
+  },
+
+  /** 创建会话 */
+  createSession(title?: string) {
+    return request.post<BackendSession>('/chat/sessions', {
+      title: title || '新的对话',
+    } as unknown as Record<string, unknown>);
+  },
+
+  /** 删除会话 */
+  deleteSession(sessionId: string) {
+    return request.delete<void>(`/chat/sessions/${sessionId}`);
+  },
+
+  /** 获取会话历史消息 */
+  getSessionMessages(sessionId: string) {
+    return request.get<BackendMessage[]>(`/chat/sessions/${sessionId}/messages`);
   },
 };

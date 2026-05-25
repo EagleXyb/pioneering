@@ -21,11 +21,13 @@ export interface AppStore {
   addSession: (session: SessionItem) => void;
   removeSession: (id: string) => void;
   updateSession: (id: string, partial: Partial<SessionItem>) => void;
+  setSessions: (sessions: SessionItem[]) => void;
 
   // 消息操作
   addMessage: (sessionId: string, msg: ChatMessage) => void;
   updateMessage: (sessionId: string, msgId: string, partial: Partial<ChatMessage>) => void;
   clearMessages: (sessionId: string) => void;
+  setMessages: (sessionId: string, messages: ChatMessage[]) => void;
 
   // 上下文窗口（自动截断最近 N 轮）
   getContextWindow: (sessionId: string, maxRounds?: number) => ChatMessage[];
@@ -60,6 +62,8 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       ),
     })),
 
+  setSessions: (sessions) => set({ sessions }),
+
   // ---- 消息操作 ----
   addMessage: (sessionId, msg) =>
     set((state) => ({
@@ -89,6 +93,14 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       delete next[sessionId];
       return { messagesMap: next };
     }),
+
+  setMessages: (sessionId, messages) =>
+    set((state) => ({
+      messagesMap: {
+        ...state.messagesMap,
+        [sessionId]: messages,
+      },
+    })),
 
   // ---- 上下文窗口 ----
   getContextWindow: (sessionId, maxRounds = 10) => {

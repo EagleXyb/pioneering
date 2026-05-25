@@ -271,7 +271,7 @@ export class LlmService implements OnModuleInit {
               }
               if (content) {
                 if (hasReasoningContent) {
-                  res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ type: 'content', content })}\n\n`);
                   res.flush?.();
                 } else {
                   const result = this.parseThinkTags(content, inThinkBlock);
@@ -367,7 +367,7 @@ export class LlmService implements OnModuleInit {
               }
               if (content) {
                 if (reasoningContent) {
-                  res.write(`data: ${JSON.stringify({ type: 'answer', content })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ type: 'content', content })}\n\n`);
                   res.flush?.();
                 } else {
                   const result = this.parseThinkTags(content, inThinkBlock);
@@ -420,13 +420,13 @@ export class LlmService implements OnModuleInit {
         if (openIdx !== -1) {
           const answerPart = remaining.slice(0, openIdx);
           if (answerPart) {
-            chunks.push({ type: 'answer', content: answerPart });
+            chunks.push({ type: 'content', content: answerPart });
           }
           const tagEnd = remaining.indexOf('>', openIdx);
           remaining = tagEnd !== -1 ? remaining.slice(tagEnd + 1) : remaining.slice(openIdx + '<think'.length);
           inThink = true;
         } else {
-          chunks.push({ type: 'answer', content: remaining });
+          chunks.push({ type: 'content', content: remaining });
           remaining = '';
         }
       }

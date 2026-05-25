@@ -1,6 +1,7 @@
 export default defineAppConfig({
   lazyCodeLoading: 'requiredComponents',
   pages: [
+    'pages/login/login',
     'pages/chat/chat',
   ],
   window: {
