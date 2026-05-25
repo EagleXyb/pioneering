@@ -55,9 +55,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const fetchConversations = useCallback(async () => {
     try {
       const list = await chatConversationService.getSessions();
-      setConversations(list);
+      setConversations(Array.isArray(list) ? list : []);
     } catch (e) {
       console.error('获取会话列表失败:', e);
+      setConversations([]);
     }
   }, []);
 

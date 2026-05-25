@@ -22,7 +22,6 @@ import {
   RegenerateDto,
   QueryMessagesDto,
   QuerySessionsDto,
-  DeleteSessionDto,
 } from './dto/chat.dto';
 
 @Controller('chat')
@@ -68,9 +67,10 @@ export class ChatController {
   deleteSession(
     @CurrentUser('sub') userId: string,
     @Param('sessionId') sessionId: string,
-    @Body() dto: DeleteSessionDto,
+    @Query('archive') archive?: string,
   ) {
-    return this.chatService.deleteSession(userId, sessionId, dto.archive);
+    const shouldArchive = archive === undefined ? undefined : archive === 'true';
+    return this.chatService.deleteSession(userId, sessionId, shouldArchive);
   }
 
   // ========== 消息 ==========

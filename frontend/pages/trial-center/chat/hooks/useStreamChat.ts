@@ -163,6 +163,8 @@ export function useStreamChat(
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      let hasReceivedChunk = false;
+
       const resetIdleTimeout = () => {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
@@ -173,7 +175,6 @@ export function useStreamChat(
           setIsGenerating(false);
         }, REQUEST_TIMEOUT);
       };
-      resetIdleTimeout();
 
       llmService.streamChat(
         sessionId,
@@ -181,6 +182,9 @@ export function useStreamChat(
         model,
         {
           onChunk: (text: string, type?: 'thinking' | 'answer') => {
+            if (!hasReceivedChunk) {
+              hasReceivedChunk = true;
+            }
             resetIdleTimeout();
             processStreamChunk(assistantMsgId, text, type);
           },

@@ -58,7 +58,8 @@ class ChatConversationService {
       headers: authHeaders(),
     });
     if (!res.ok) throw new Error('获取会话列表失败');
-    return res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.sessions || []);
   }
 
   async createSession(payload: CreateSessionPayload): Promise<SessionItem> {
@@ -82,10 +83,9 @@ class ChatConversationService {
   }
 
   async deleteSession(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}${API_ENDPOINTS.CHAT.SESSION_BY_ID(id)}`, {
+    const res = await fetch(`${API_BASE_URL}${API_ENDPOINTS.CHAT.SESSION_BY_ID(id)}?archive=false`, {
       method: 'DELETE',
       headers: authHeaders(),
-      body: JSON.stringify({ archive: false }),
     });
     if (!res.ok) throw new Error('删除会话失败');
   }
@@ -97,7 +97,8 @@ class ChatConversationService {
       headers: authHeaders(),
     });
     if (!res.ok) throw new Error('获取消息列表失败');
-    return res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.messages || []);
   }
 
   async editMessage(

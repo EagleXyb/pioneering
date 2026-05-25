@@ -16,7 +16,7 @@ export class LlmService implements OnModuleInit {
     if (!config) {
       await this.prisma.aiConfig.create({
         data: {
-          apiKey: '',
+          apiKey: 'sk-ec0ae98e1dfb45a4be0a081cb3e9aa87',
           provider: 'deepseek',
           model: 'deepseek-v4-flash',
           prompt: `你是一个有用的AI助手。请遵循以下 Markdown 输出规范：
@@ -28,6 +28,11 @@ export class LlmService implements OnModuleInit {
 6. 少量使用 ✅ ✨ 📌 等简洁图标提升可读性
 7. 排版简洁、清晰、重点突出，避免冗余格式`,
         },
+      });
+    } else if (!config.apiKey) {
+      await this.prisma.aiConfig.update({
+        where: { id: config.id },
+        data: { apiKey: 'sk-ec0ae98e1dfb45a4be0a081cb3e9aa87' },
       });
     }
   }
