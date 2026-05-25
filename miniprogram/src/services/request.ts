@@ -85,7 +85,7 @@ class Request {
       async () => {
         const response = await Taro.request(finalOptions);
         const data = response.data as ApiResponse;
-        if (data.code !== 0 && data.code !== 200) {
+        if (data.code < 200 || data.code >= 300) {
           throw new Error(data.message || '请求失败');
         }
         return data.data as T;

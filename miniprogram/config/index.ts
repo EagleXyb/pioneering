@@ -35,7 +35,7 @@ export default defineConfig(async (merge) => {
       type: 'webpack5',
       prebundle: {
         enable: true,
-        exclude: ['@tarojs/plugin-framework-react'],
+        exclude: ['@tarojs/plugin-framework-react', 'tdesign-miniprogram'],
       },
     },
     alias: {
@@ -45,6 +45,9 @@ export default defineConfig(async (merge) => {
       resource: [path.resolve(__dirname, '..', 'src/styles/variables.scss')],
     },
     mini: {
+      compile: {
+        exclude: [path.resolve(__dirname, '..', 'node_modules/tdesign-miniprogram')],
+      },
       postcss: {
         pxtransform: { enable: true, config: {} },
         cssModules: {
