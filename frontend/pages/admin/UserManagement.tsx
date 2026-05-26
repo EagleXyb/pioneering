@@ -186,14 +186,14 @@ export const UserManagement: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div>
       {/* 页头 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 600, color: '#1f2937', margin: 0 }}>用户管理</h1>
-          <p style={{ fontSize: '14px', color: '#6b7280', margin: '4px 0 0 0' }}>管理系统中的所有用户信息</p>
+          <h1 style={{ fontSize: 16, fontWeight: 600, color: 'rgba(0,0,0,0.9)', margin: 0 }}>用户管理</h1>
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.4)', margin: '4px 0 0 0' }}>管理系统中的所有用户信息</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <Input
             prefixIcon={<SearchIcon />}
             placeholder="搜索用户名、昵称或邮箱..."
@@ -201,7 +201,7 @@ export const UserManagement: React.FC = () => {
             onChange={(val) => setSearchTerm(val as string)}
             clearable
             onEnter={handleSearch}
-            style={{ width: '280px' }}
+            style={{ width: 280 }}
           />
           <Button icon={<SearchIcon />} onClick={handleSearch}>
             搜索
@@ -214,7 +214,7 @@ export const UserManagement: React.FC = () => {
 
       {/* 错误提示 */}
       {error && (
-        <Alert theme="error" message={error} close onClose={() => setError(null)} style={{ marginBottom: '16px' }} />
+        <Alert theme="error" message={error} close onClose={() => setError(null)} style={{ marginBottom: 16 }} />
       )}
 
       {/* 用户表格 */}

@@ -22,7 +22,7 @@ import {
   CloseIcon,
   AddIcon,
   MailIcon,
-  PhoneIcon,
+  CallIcon,
   LocationIcon,
   TimeIcon,
   UserIcon,
@@ -306,7 +306,7 @@ const Profile: React.FC = () => {
                 <Col xs={12} md={6}>
                   <div style={infoFieldStyle}>
                     <div style={infoLabelStyle}>
-                      <PhoneIcon size="16px" />
+                      <CallIcon size="16px" />
                       <span>电话</span>
                     </div>
                     {isEditing ? (

@@ -104,7 +104,7 @@ const Admin: React.FC = () => {
       </AdminLayout>
       
       <style>{`
-        /* ===== 各模块通用样式 ===== */
+        /* ===== 各模块通用样式（参照 TDesign Starter Dashboard 间距规范） ===== */
         .content-body {
           flex: 1;
           overflow-y: auto;
@@ -134,15 +134,12 @@ const Admin: React.FC = () => {
           overflow: auto !important;
         }
 
+        /* 面板头部 - 去掉边框，用间距分隔 */
         .panel-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 20px;
-          padding: 16px;
-          border: 1px solid #e5e7eb;
-          border-radius: 5px;
-          background: white;
+          margin-bottom: 16px;
         }
 
         .header-left {
@@ -153,7 +150,7 @@ const Admin: React.FC = () => {
         .panel-title {
           font-size: 16px;
           font-weight: 600;
-          color: #374151;
+          color: rgba(0, 0, 0, 0.9);
           margin: 0;
         }
 
@@ -164,16 +161,15 @@ const Admin: React.FC = () => {
 
         .panel-description {
           font-size: 14px;
-          color: #6b7280;
+          color: rgba(0, 0, 0, 0.4);
         }
 
-        /* ===== ModelManagement - 表单样式（P0-3 后将删除） ===== */
+        /* 表单卡片 - 白底圆角阴影 */
         .form-card {
-          background: white;
-          border-radius: 8px;
+          background: #fff;
+          border-radius: 6px;
           padding: 24px;
-          border: 1px solid #e5e7eb;
-          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
         }
 
         .form-group {
@@ -184,12 +180,12 @@ const Admin: React.FC = () => {
           display: block;
           font-size: 14px;
           font-weight: 500;
-          color: var(--text-primary);
+          color: rgba(0, 0, 0, 0.9);
           margin-bottom: 8px;
         }
 
         .label-required {
-          color: #e74c3c;
+          color: #e34d59;
           margin-left: 4px;
         }
 
@@ -197,12 +193,12 @@ const Admin: React.FC = () => {
         .form-select,
         .form-textarea {
           width: 100%;
-          padding: 12px 16px;
+          padding: 8px 12px;
           font-size: 14px;
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          background: var(--bg-primary);
-          color: var(--text-primary);
+          border: 1px solid #dcdcdc;
+          border-radius: 6px;
+          background: #fff;
+          color: rgba(0, 0, 0, 0.9);
           transition: border-color 0.2s ease;
         }
 
@@ -210,13 +206,14 @@ const Admin: React.FC = () => {
         .form-select:focus,
         .form-textarea:focus {
           outline: none;
-          border-color: #2490f8;
+          border-color: #0052d9;
+          box-shadow: 0 0 0 2px rgba(0, 82, 217, 0.1);
         }
 
         .form-hint {
           margin-top: 8px;
           font-size: 12px;
-          color: var(--text-secondary);
+          color: rgba(0, 0, 0, 0.4);
         }
 
         .form-row {
@@ -233,70 +230,68 @@ const Admin: React.FC = () => {
 
         .btn-primary {
           width: 120px;
-          height: 41px;
-          background: #2490f8;
+          height: 40px;
+          background: #0052d9;
           color: white;
           border: none;
-          border-radius: 4px;
+          border-radius: 6px;
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.3s ease;
-          box-shadow: 0 2px 8px rgba(36, 144, 248, 0.3);
+          transition: all 0.2s ease;
         }
 
         .btn-primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(36, 144, 248, 0.4);
+          background: #0034b5;
         }
 
         .btn-primary:disabled {
-          opacity: 0.6;
+          opacity: 0.5;
           cursor: not-allowed;
-          transform: none;
         }
 
         .btn-secondary {
           width: 120px;
-          height: 41px;
-          background: var(--bg-primary);
-          color: var(--text-primary);
-          border: 1px solid var(--border);
-          border-radius: 4px;
+          height: 40px;
+          background: #fff;
+          color: rgba(0, 0, 0, 0.9);
+          border: 1px solid #dcdcdc;
+          border-radius: 6px;
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.3s ease;
+          transition: all 0.2s ease;
         }
 
         .btn-secondary:hover {
-          background: var(--border-light);
+          border-color: #0052d9;
+          color: #0052d9;
         }
 
         .btn-secondary:disabled {
-          opacity: 0.6;
+          opacity: 0.5;
           cursor: not-allowed;
         }
 
         .test-result {
-          margin-top: 20px;
+          margin-top: 16px;
           padding: 16px;
-          border-radius: 8px;
+          border-radius: 6px;
           display: flex;
           align-items: flex-start;
           gap: 12px;
         }
 
         .test-result.success {
-          background: rgba(36, 144, 248, 0.1);
-          border: 1px solid rgba(36, 144, 248, 0.3);
-          color: #2490f8;
+          background: #e8f8f2;
+          border: 1px solid #2ba471;
+          color: #2ba471;
         }
 
         .test-result.error {
-          background: rgba(231, 76, 60, 0.1);
-          border: 1px solid rgba(231, 76, 60, 0.3);
-          color: #e74c3c;
+          background: #fcebe9;
+          border: 1px solid #e34d59;
+          color: #e34d59;
         }
 
         .result-info h4 {
@@ -308,7 +303,7 @@ const Admin: React.FC = () => {
         .result-info p {
           font-size: 14px;
           margin: 0;
-          color: var(--text-secondary);
+          color: rgba(0, 0, 0, 0.6);
         }
 
         .response-time {
@@ -319,16 +314,16 @@ const Admin: React.FC = () => {
         .provider-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 20px;
+          gap: 16px;
           width: 100%;
         }
 
         .provider-card {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
+          background: #fff;
+          border-radius: 6px;
           padding: 24px 20px;
-          transition: all 0.3s ease;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+          transition: all 0.2s ease;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -336,9 +331,7 @@ const Admin: React.FC = () => {
         }
 
         .provider-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-          border-color: #2490f8;
+          box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08);
         }
 
         .provider-header {
@@ -352,8 +345,8 @@ const Admin: React.FC = () => {
         .provider-icon {
           width: 48px;
           height: 48px;
-          border-radius: 12px;
-          background: #2490f8;
+          border-radius: 6px;
+          background: #0052d9;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -361,32 +354,32 @@ const Admin: React.FC = () => {
         }
 
         .status-badge {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 3px;
+          font-size: 12px;
+          font-weight: 500;
         }
 
         .status-badge.active {
-          background: rgba(36, 144, 248, 0.1);
-          color: #2490f8;
+          background: #e8f8f2;
+          color: #2ba471;
         }
 
         .status-badge.inactive {
-          background: rgba(149, 165, 166, 0.1);
-          color: #95a5a6;
+          background: #f3f3f3;
+          color: #999;
         }
 
         .provider-name {
           font-size: 16px;
           font-weight: 600;
-          color: var(--text-primary);
+          color: rgba(0, 0, 0, 0.9);
           margin-bottom: 4px;
         }
 
         .provider-models {
           font-size: 13px;
-          color: var(--text-secondary);
+          color: rgba(0, 0, 0, 0.4);
           margin-bottom: 12px;
         }
 
@@ -397,46 +390,40 @@ const Admin: React.FC = () => {
           margin-top: auto;
           padding-top: 16px;
           width: 100%;
-          border-top: 1px solid #f3f4f6;
+          border-top: 1px solid #f3f3f3;
         }
 
         .btn-small {
-          padding: 6px 12px;
+          padding: 4px 12px;
           font-size: 12px;
           font-weight: 500;
-          border-radius: 4px;
+          border-radius: 3px;
           border: none;
           cursor: pointer;
           transition: all 0.2s ease;
-          background: #2490f8;
+          background: #0052d9;
           color: white;
-          box-shadow: 0 1px 4px rgba(36, 144, 248, 0.3);
         }
 
         .btn-small:hover {
-          opacity: 0.9;
-          transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(36, 144, 248, 0.4);
+          background: #0034b5;
         }
 
         .btn-small.btn-outline {
           background: transparent;
-          border: 1px solid #2490f8;
-          color: #1a7de6;
-          box-shadow: none;
+          border: 1px solid #0052d9;
+          color: #0052d9;
         }
 
         .btn-small.btn-outline:hover {
-          background: rgba(36, 144, 248, 0.08);
-          opacity: 1;
-          transform: none;
-          box-shadow: none;
+          background: rgba(0, 82, 217, 0.06);
         }
 
+        /* 模型列表表格 - 白底圆角 */
         .model-table {
-          background: var(--bg-secondary);
-          border-radius: 12px;
-          border: 1px solid var(--border-light);
+          background: #fff;
+          border-radius: 6px;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
           overflow: hidden;
         }
 
@@ -447,21 +434,19 @@ const Admin: React.FC = () => {
 
         .model-table th {
           text-align: left;
-          padding: 14px 16px;
-          font-size: 12px;
+          padding: 12px 16px;
+          font-size: 14px;
           font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          color: var(--text-secondary);
-          background: var(--bg-primary);
-          border-bottom: 1px solid var(--border-light);
+          color: rgba(0, 0, 0, 0.9);
+          background: #fff;
+          border-bottom: 1px solid #e7e7e7;
         }
 
         .model-table td {
-          padding: 14px 16px;
+          padding: 12px 16px;
           font-size: 14px;
-          color: var(--text-primary);
-          border-bottom: 1px solid var(--border-light);
+          color: rgba(0, 0, 0, 0.6);
+          border-bottom: 1px solid #e7e7e7;
         }
 
         .model-table tr:last-child td {
@@ -469,39 +454,39 @@ const Admin: React.FC = () => {
         }
 
         .model-table tr:hover td {
-          background: var(--bg-primary);
+          background: #f3f3f3;
         }
 
         .model-id {
           font-family: monospace;
           font-size: 13px !important;
-          color: var(--text-secondary) !important;
+          color: rgba(0, 0, 0, 0.4) !important;
         }
 
-        /* ===== SecurityManagement - 占位样式（P1-8 后将删除） ===== */
+        /* ===== SecurityManagement - 占位样式 ===== */
         .coming-soon {
-          background: var(--bg-secondary);
-          border-radius: 12px;
-          border: 1px solid var(--border-light);
-          padding: 60px 40px;
+          background: #fff;
+          border-radius: 6px;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+          padding: 64px 40px;
           text-align: center;
         }
 
         .coming-soon-icon {
-          color: var(--border);
+          color: #dcdcdc;
           margin-bottom: 24px;
         }
 
         .coming-soon h3 {
-          font-size: 20px;
+          font-size: 16px;
           font-weight: 600;
-          color: var(--text-primary);
+          color: rgba(0, 0, 0, 0.9);
           margin-bottom: 8px;
         }
 
         .coming-soon p {
           font-size: 14px;
-          color: var(--text-secondary);
+          color: rgba(0, 0, 0, 0.4);
         }
 
         /* ===== 响应式 ===== */

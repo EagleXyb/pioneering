@@ -11,8 +11,8 @@ const AccessLog: React.FC = () => (
   <div className="content-panel">
     <div className="panel-header">
       <h2 className="panel-title">访问日志</h2>
-      <p className="panel-description">查看所有 API 访问记录</p>
     </div>
+    <p className="panel-description" style={{ marginBottom: 16 }}>查看所有 API 访问记录</p>
     <div className="coming-soon">
       <div className="coming-soon-icon">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -33,8 +33,8 @@ const ApiMonitor: React.FC = () => (
   <div className="content-panel">
     <div className="panel-header">
       <h2 className="panel-title">API 监控</h2>
-      <p className="panel-description">实时监控 API 调用情况</p>
     </div>
+    <p className="panel-description" style={{ marginBottom: 16 }}>实时监控 API 调用情况</p>
     <div className="coming-soon">
       <div className="coming-soon-icon">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -52,8 +52,8 @@ const RateLimit: React.FC = () => (
   <div className="content-panel">
     <div className="panel-header">
       <h2 className="panel-title">限流配置</h2>
-      <p className="panel-description">配置 API 调用频率限制</p>
     </div>
+    <p className="panel-description" style={{ marginBottom: 16 }}>配置 API 调用频率限制</p>
     <div className="coming-soon">
       <div className="coming-soon-icon">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
