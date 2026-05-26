@@ -1,10 +1,11 @@
-// 创建Prompt模态框组件
+// 创建Prompt对话框（TDesign 重构版）
 
-import React, { useState } from 'react';
-import { Button } from 'tdesign-react';
-import { CloseIcon } from 'tdesign-icons-react';
+import React, { useRef, useState } from 'react';
+import { Dialog, Form, Input, Textarea } from 'tdesign-react';
+import type { FormRule } from 'tdesign-react';
 import type { CreatePromptFormData } from './types';
-import '../PromptManagement.css';
+
+const { FormItem } = Form;
 
 interface CreatePromptModalProps {
   visible: boolean;
@@ -12,147 +13,107 @@ interface CreatePromptModalProps {
   onConfirm: (data: CreatePromptFormData) => void;
 }
 
+// 表单验证规则
+const FORM_RULES: Record<string, FormRule[]> = {
+  promptKey: [
+    { required: true, message: 'PromptKey不能为空' },
+    { pattern: /^[a-zA-Z0-9_-]+$/, message: '只能包含字母、数字、下划线和连字符' },
+    { min: 3, message: 'PromptKey长度不能少于3个字符' },
+    { max: 100, message: 'PromptKey长度不能超过100个字符' },
+  ],
+  name: [
+    { required: true, message: 'Prompt名称不能为空' },
+    { max: 100, message: 'Prompt名称最多100个字符' },
+  ],
+  description: [
+    { max: 500, message: 'Prompt描述最多500个字符' },
+  ],
+};
+
+const INITIAL_DATA: CreatePromptFormData = {
+  promptKey: '',
+  name: '',
+  description: '',
+};
+
 export const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
   visible,
   onClose,
   onConfirm,
 }) => {
-  const [formData, setFormData] = useState<CreatePromptFormData>({
-    promptKey: '',
-    name: '',
-    description: '',
-  });
-  const [errors, setErrors] = useState<Partial<Record<keyof CreatePromptFormData, string>>>({});
+  const [formData, setFormData] = useState<CreatePromptFormData>(INITIAL_DATA);
+  const formRef = useRef<any>(null);
 
-  // 表单验证
-  const validate = (): boolean => {
-    const newErrors: Partial<Record<keyof CreatePromptFormData, string>> = {};
-
-    // 验证 PromptKey
-    if (!formData.promptKey.trim()) {
-      newErrors.promptKey = 'PromptKey不能为空';
-    } else if (!/^[a-zA-Z0-9_-]+$/.test(formData.promptKey)) {
-      newErrors.promptKey = 'PromptKey只能包含字母、数字、下划线和连字符';
-    } else if (formData.promptKey.length < 3 || formData.promptKey.length > 100) {
-      newErrors.promptKey = 'PromptKey长度应在3-100个字符之间';
-    }
-
-    // 验证名称
-    if (!formData.name.trim()) {
-      newErrors.name = 'Prompt名称不能为空';
-    } else if (formData.name.length > 100) {
-      newErrors.name = 'Prompt名称最多100个字符';
-    }
-
-    // 描述可选，但如果填写了需要限制长度
-    if (formData.description && formData.description.length > 500) {
-      newErrors.description = 'Prompt描述最多500个字符';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const resetForm = () => {
+    setFormData(INITIAL_DATA);
+    formRef.current?.clearValidate();
   };
 
-  // 处理确认
-  const handleConfirm = () => {
-    if (validate()) {
+  const handleConfirm = async () => {
+    const validateResult = await formRef.current?.validate?.();
+    if (validateResult === true) {
       onConfirm(formData);
-      // 重置表单
-      setFormData({ promptKey: '', name: '', description: '' });
-      setErrors({});
+      resetForm();
     }
   };
 
-  // 处理取消
   const handleCancel = () => {
-    // 重置表单
-    setFormData({ promptKey: '', name: '', description: '' });
-    setErrors({});
+    resetForm();
     onClose();
   };
 
-  // 处理输入变化
-  const handleInputChange = (field: keyof CreatePromptFormData, value: string) => {
+  const handleFieldChange = (field: keyof CreatePromptFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // 清除该字段的错误
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
-    }
   };
 
-  if (!visible) return null;
-
   return (
-    <div className="modal-overlay" onClick={handleCancel}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>创建 Prompt</h3>
-          <Button variant="text" shape="square" icon={<CloseIcon />} onClick={handleCancel} />
-        </div>
+    <Dialog
+      header="创建 Prompt"
+      visible={visible}
+      onClose={handleCancel}
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+      confirmBtn="确认"
+      cancelBtn="取消"
+      width={520}
+      destroyOnClose
+    >
+      <Form
+        ref={formRef}
+        data={formData}
+        rules={FORM_RULES}
+        labelWidth={0}
+        layout="vertical"
+        style={{ padding: '8px 0' }}
+      >
+        <FormItem label="Prompt Key" name="promptKey" requiredMark>
+          <Input
+            placeholder="请输入 Prompt Key"
+            value={formData.promptKey}
+            onChange={(val) => handleFieldChange('promptKey', val as string)}
+            tips={`${formData.promptKey.length}/100`}
+          />
+        </FormItem>
 
-        <div className="modal-body">
-          <div className="form-group">
-            <label className="form-label">
-              Prompt Key
-              <span className="label-required">*</span>
-            </label>
-            <div className="input-wrapper">
-              <input
-                type="text"
-                className="form-input"
-                value={formData.promptKey}
-                onChange={(e) => handleInputChange('promptKey', e.target.value)}
-                placeholder="请输入 Prompt key"
-                autoFocus
-              />
-              <span className="char-count">{formData.promptKey.length}/100</span>
-            </div>
-            {errors.promptKey && <span className="form-error">{errors.promptKey}</span>}
-          </div>
+        <FormItem label="Prompt 名称" name="name" requiredMark>
+          <Input
+            placeholder="请输入 Prompt 名称"
+            value={formData.name}
+            onChange={(val) => handleFieldChange('name', val as string)}
+            tips={`${formData.name.length}/100`}
+          />
+        </FormItem>
 
-          <div className="form-group">
-            <label className="form-label">
-              Prompt 名称
-              <span className="label-required">*</span>
-            </label>
-            <div className="input-wrapper">
-              <input
-                type="text"
-                className="form-input"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                placeholder="请输入 Prompt 名称"
-              />
-              <span className="char-count">{formData.name.length}/100</span>
-            </div>
-            {errors.name && <span className="form-error">{errors.name}</span>}
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Prompt 描述</label>
-            <div className="input-wrapper">
-              <textarea
-                className="form-textarea"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="请输入 Prompt 描述"
-                rows={4}
-              />
-              <span className="char-count">{formData.description.length}/500</span>
-            </div>
-            {errors.description && <span className="form-error">{errors.description}</span>}
-          </div>
-        </div>
-
-        <div className="modal-footer">
-          <Button variant="outline" onClick={handleCancel}>
-            取消
-          </Button>
-          <Button theme="primary" onClick={handleConfirm}>
-            确认
-          </Button>
-        </div>
-      </div>
-    </div>
+        <FormItem label="Prompt 描述" name="description">
+          <Textarea
+            placeholder="请输入 Prompt 描述（选填）"
+            value={formData.description}
+            onChange={(val) => handleFieldChange('description', val as string)}
+            rows={4}
+            tips={`${formData.description.length}/500`}
+          />
+        </FormItem>
+      </Form>
+    </Dialog>
   );
 };

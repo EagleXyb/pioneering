@@ -1,19 +1,46 @@
+// 个人中心页（TDesign 重构版）
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Card,
+  Avatar,
+  Button,
+  Input,
+  Textarea,
+  Tag,
+  Loading,
+  Space,
+  Row,
+  Col,
+  MessagePlugin,
+} from 'tdesign-react';
+import {
+  ArrowLeftIcon,
+  EditIcon,
+  SaveIcon,
+  CloseIcon,
+  AddIcon,
+  MailIcon,
+  PhoneIcon,
+  LocationIcon,
+  TimeIcon,
+  UserIcon,
+  HomeIcon,
+} from 'tdesign-icons-react';
 import { useUser } from '../contexts/UserContext';
 import type { ProfileData } from '@shared/types/profile';
 import { DEFAULT_PROFILE } from '@shared/constants';
 import { API_ENDPOINTS } from '@shared/api/endpoints';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
 const defaultProfile: ProfileData = DEFAULT_PROFILE;
 
 const Profile: React.FC = () => {
   const { userState, setAvatar, setName, getToken } = useUser();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [userInfo, setUserInfo] = useState<ProfileData>(defaultProfile);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -28,7 +55,6 @@ const Profile: React.FC = () => {
   const fetchProfile = async () => {
     try {
       setIsLoading(true);
-      setError(null);
       const token = getToken();
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.BASE}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -46,12 +72,8 @@ const Profile: React.FC = () => {
             email: data.email || prev.email,
             phone: data.phone || prev.phone,
           }));
-          if (data.avatar) {
-            setAvatar(data.avatar);
-          }
-          if (data.nickname) {
-            setName(data.nickname);
-          }
+          if (data.avatar) setAvatar(data.avatar);
+          if (data.nickname) setName(data.nickname);
         }
       }
     } catch (err) {
@@ -65,10 +87,10 @@ const Profile: React.FC = () => {
     try {
       const token = getToken();
       if (!token) {
-        setError('请先登录再保存个人信息');
+        MessagePlugin.error('请先登录再保存个人信息');
         return;
       }
-      setError(null);
+      setIsSaving(true);
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.PROFILE.BASE}`, {
         method: 'PUT',
         headers: {
@@ -83,723 +105,434 @@ const Profile: React.FC = () => {
       if (response.ok) {
         setIsEditing(false);
         setName(userInfo.name);
+        MessagePlugin.success('保存成功');
         await fetchProfile();
       } else {
-        const errorText = await response.text();
-        console.error('保存失败:', response.status, errorText);
-        setError('保存失败，请重试');
+        console.error('保存失败:', response.status);
+        MessagePlugin.error('保存失败，请重试');
       }
     } catch (err) {
       console.error('保存个人信息失败:', err);
-      setError('保存失败，请检查网络连接');
+      MessagePlugin.error('保存失败，请检查网络连接');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleAvatarClick = () => {
-    if (isEditing) {
-      fileInputRef.current?.click();
-    }
+    if (isEditing) fileInputRef.current?.click();
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('请选择图片文件');
-        return;
-      }
+    if (!file) return;
 
-      if (file.size > 10 * 1024 * 1024) {
-        alert('图片大小不能超过 10MB');
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('avatar', file);
-
-      try {
-        // 本地读取为 base64，更新状态；通过 handleSave 持久化到后端
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = reader.result as string;
-          setAvatar(base64);
-          setUserInfo(prev => ({ ...prev, avatar: base64 }));
-        };
-        reader.readAsDataURL(file);
-      } catch (error) {
-        console.error('保存头像失败:', error);
-        alert('保存头像失败，请检查网络连接');
-      }
+    if (!file.type.startsWith('image/')) {
+      MessagePlugin.warning('请选择图片文件');
+      return;
     }
-    
+    if (file.size > 10 * 1024 * 1024) {
+      MessagePlugin.warning('图片大小不能超过 10MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setAvatar(base64);
+      setUserInfo(prev => ({ ...prev, avatar: base64 }));
+    };
+    reader.readAsDataURL(file);
     e.target.value = '';
   };
 
-  if (isLoading) {
-    return (
-      <div className="profile-container">
-        <nav className="nav">
-          <div className="nav-content">
-            <Link to="/" className="nav-back">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              <span>返回首页</span>
-            </Link>
-            <h1 className="nav-title">个人信息</h1>
-          </div>
-        </nav>
-        <main className="main">
-          <div className="main-content" style={{ textAlign: 'center', padding: '100px 0' }}>
-            <p>加载中...</p>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  const handleRemoveSkill = (index: number) => {
+    setUserInfo(prev => ({
+      ...prev,
+      skills: prev.skills.filter((_, i) => i !== index),
+    }));
+  };
 
-  if (!userState.isLoggedIn) {
+  const handleAddSkill = () => {
+    const newSkill = window.prompt('请输入新技能：');
+    if (newSkill?.trim()) {
+      setUserInfo(prev => ({
+        ...prev,
+        skills: [...prev.skills, newSkill.trim()],
+      }));
+    }
+  };
+
+  // ==================== 未登录状态 ====================
+  if (!userState.isLoggedIn && !isLoading) {
     return (
-      <div className="profile-container">
-        <nav className="nav">
-          <div className="nav-content">
-            <Link to="/" className="nav-back">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
+      <div style={containerStyle}>
+        <div style={navStyle}>
+          <div style={navContentStyle}>
+            <Link to="/" style={navBackStyle}>
+              <ArrowLeftIcon size="20px" />
               <span>返回首页</span>
             </Link>
-            <h1 className="nav-title">个人信息</h1>
+            <span style={navTitleStyle}>个人中心</span>
           </div>
-        </nav>
-        <main className="main">
-          <div className="main-content" style={{ textAlign: 'center', padding: '100px 0' }}>
-            <p>请先登录</p>
-            <Link to="/" style={{ color: '#2490f8', textDecoration: 'none', marginTop: '16px', display: 'inline-block' }}>
-              返回首页登录
-            </Link>
-          </div>
-        </main>
+        </div>
+        <div style={emptyStateStyle}>
+          <UserIcon size="64px" style={{ color: 'var(--td-text-color-placeholder)' }} />
+          <p style={{ marginTop: 16, color: 'var(--td-text-color-secondary)', fontSize: 16 }}>
+            请先登录后查看个人信息
+          </p>
+          <Link to="/">
+            <Button theme="primary" style={{ marginTop: 16 }}>返回首页登录</Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="profile-container">
-      <nav className="nav">
-        <div className="nav-content">
-          <Link to="/" className="nav-back">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M13 4L7 10L13 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
+    <div style={containerStyle}>
+      {/* 顶部导航 */}
+      <div style={navStyle}>
+        <div style={navContentStyle}>
+          <Link to="/" style={navBackStyle}>
+            <ArrowLeftIcon size="20px" />
             <span>返回首页</span>
           </Link>
-          <h1 className="nav-title">个人信息</h1>
-          <button
-            className="nav-action"
+          <span style={navTitleStyle}>个人中心</span>
+          <Button
+            variant="text"
+            theme="primary"
+            icon={isEditing ? <CloseIcon /> : <EditIcon />}
             onClick={() => setIsEditing(!isEditing)}
           >
             {isEditing ? '取消' : '编辑'}
-          </button>
+          </Button>
         </div>
-      </nav>
+      </div>
 
-      <main className="main">
-        <div className="main-content">
-          {error && (
-            <div style={{ padding: '12px', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '16px' }}>
-              {error}
-            </div>
-          )}
-
-          <section className="profile-header">
-            <div className="avatar-section">
-              <div className="avatar" onClick={handleAvatarClick} style={{ cursor: isEditing ? 'pointer' : 'default' }}>
-                {userState.avatar ? (
-                  <img 
-                    src={userState.avatar} 
-                    alt="用户头像" 
-                    className="avatar-image"
-                    onError={(e) => {
-                      console.error('头像加载失败');
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <div className="avatar-placeholder">
-                    {userInfo.name.charAt(0)}
-                  </div>
-                )}
-                {isEditing && (
-                  <button className="avatar-edit" type="button">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M11.5 2.5L13.5 4.5L5 13H3V11L11.5 2.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                  style={{ display: 'none' }}
-                />
-              </div>
-              <div className="user-basic">
-                {isEditing ? (
+      {/* 主内容区域 */}
+      <div style={mainStyle}>
+        <div style={mainContentStyle}>
+          <Loading loading={isLoading} size="large">
+            {/* 用户头部信息 */}
+            <Card bordered style={{ marginBottom: 24 }}>
+              <Space direction="horizontal" size={24} align="center">
+                <div
+                  onClick={handleAvatarClick}
+                  style={{ cursor: isEditing ? 'pointer' : 'default', position: 'relative' }}
+                >
+                  <Avatar
+                    size="120px"
+                    image={userState.avatar || undefined}
+                    shape="circle"
+                  >
+                    {!userState.avatar && userInfo.name.charAt(0)}
+                  </Avatar>
+                  {isEditing && (
+                    <div style={avatarEditOverlayStyle}>
+                      <EditIcon size="16px" />
+                    </div>
+                  )}
                   <input
-                    type="text"
-                    value={userInfo.name}
-                    onChange={(e) => setUserInfo({...userInfo, name: e.target.value})}
-                    className="name-input"
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    style={{ display: 'none' }}
                   />
-                ) : (
-                  <h2 className="user-name">{userInfo.name}</h2>
-                )}
-                <p className="user-title">{userInfo.position} · {userInfo.company}</p>
-              </div>
-            </div>
-          </section>
+                </div>
+                <div style={{ flex: 1 }}>
+                  {isEditing ? (
+                    <Input
+                      value={userInfo.name}
+                      onChange={(val) => setUserInfo({ ...userInfo, name: val as string })}
+                      size="large"
+                      style={{ fontSize: 24, fontWeight: 600 }}
+                      placeholder="输入姓名"
+                    />
+                  ) : (
+                    <h2 style={{ fontSize: 28, fontWeight: 600, margin: 0 }}>
+                      {userInfo.name}
+                    </h2>
+                  )}
+                  <p style={{ color: 'var(--td-text-color-secondary)', marginTop: 4, marginBottom: 0 }}>
+                    {userInfo.position} · {userInfo.company}
+                  </p>
+                </div>
+              </Space>
+            </Card>
 
-          <section className="stats-section">
-            <div className="stats-grid">
+            {/* 数据统计 */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
               {userInfo.achievements.map((stat, index) => (
-                <div key={index} className="stat-card">
-                  <div className="stat-value">{stat.value}</div>
-                  <div className="stat-label">{stat.label}</div>
-                </div>
+                <Col key={index} xs={6} sm={6} md={3}>
+                  <Card bordered style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--td-brand-color)' }}>
+                      {stat.value}
+                    </div>
+                    <div style={{ color: 'var(--td-text-color-secondary)', marginTop: 4 }}>
+                      {stat.label}
+                    </div>
+                  </Card>
+                </Col>
               ))}
-            </div>
-          </section>
+            </Row>
 
-          <section className="info-section">
-            <div className="info-card">
-              <h3 className="info-title">基本信息</h3>
-              <div className="info-grid">
-                <div className="info-item">
-                  <div className="info-label">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M2 3h12v10H2V3z" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M2 6h12" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                    <span>邮箱</span>
+            {/* 基本信息 */}
+            <Card
+              bordered
+              title="基本信息"
+              headerBordered
+              style={{ marginBottom: 16 }}
+            >
+              <Row gutter={[24, 16]}>
+                <Col xs={12} md={6}>
+                  <div style={infoFieldStyle}>
+                    <div style={infoLabelStyle}>
+                      <MailIcon size="16px" />
+                      <span>邮箱</span>
+                    </div>
+                    {isEditing ? (
+                      <Input
+                        value={userInfo.email}
+                        onChange={(val) => setUserInfo({ ...userInfo, email: val as string })}
+                        placeholder="请输入邮箱"
+                      />
+                    ) : (
+                      <div style={infoValueStyle}>{userInfo.email}</div>
+                    )}
                   </div>
-                  {isEditing ? (
-                    <input
-                      type="email"
-                      value={userInfo.email}
-                      onChange={(e) => setUserInfo({...userInfo, email: e.target.value})}
-                      className="info-input"
-                    />
-                  ) : (
-                    <div className="info-value">{userInfo.email}</div>
-                  )}
-                </div>
-
-                <div className="info-item">
-                  <div className="info-label">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M3 2h10v12l-5-3-5 3V2z" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                    <span>电话</span>
+                </Col>
+                <Col xs={12} md={6}>
+                  <div style={infoFieldStyle}>
+                    <div style={infoLabelStyle}>
+                      <PhoneIcon size="16px" />
+                      <span>电话</span>
+                    </div>
+                    {isEditing ? (
+                      <Input
+                        value={userInfo.phone}
+                        onChange={(val) => setUserInfo({ ...userInfo, phone: val as string })}
+                        placeholder="请输入电话"
+                      />
+                    ) : (
+                      <div style={infoValueStyle}>{userInfo.phone}</div>
+                    )}
                   </div>
-                  {isEditing ? (
-                    <input
-                      type="tel"
-                      value={userInfo.phone}
-                      onChange={(e) => setUserInfo({...userInfo, phone: e.target.value})}
-                      className="info-input"
-                    />
-                  ) : (
-                    <div className="info-value">{userInfo.phone}</div>
-                  )}
-                </div>
-
-                <div className="info-item">
-                  <div className="info-label">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 8a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                    <span>地址</span>
+                </Col>
+                <Col xs={12} md={6}>
+                  <div style={infoFieldStyle}>
+                    <div style={infoLabelStyle}>
+                      <LocationIcon size="16px" />
+                      <span>地址</span>
+                    </div>
+                    {isEditing ? (
+                      <Input
+                        value={userInfo.location}
+                        onChange={(val) => setUserInfo({ ...userInfo, location: val as string })}
+                        placeholder="请输入地址"
+                      />
+                    ) : (
+                      <div style={infoValueStyle}>{userInfo.location}</div>
+                    )}
                   </div>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      value={userInfo.location}
-                      onChange={(e) => setUserInfo({...userInfo, location: e.target.value})}
-                      className="info-input"
-                    />
-                  ) : (
-                    <div className="info-value">{userInfo.location}</div>
-                  )}
-                </div>
-
-                <div className="info-item">
-                  <div className="info-label">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M2 6h12M6 2v12" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                    <span>加入时间</span>
+                </Col>
+                <Col xs={12} md={6}>
+                  <div style={infoFieldStyle}>
+                    <div style={infoLabelStyle}>
+                      <TimeIcon size="16px" />
+                      <span>加入时间</span>
+                    </div>
+                    <div style={infoValueStyle}>{userInfo.joinDate}</div>
                   </div>
-                  <div className="info-value">{userInfo.joinDate}</div>
-                </div>
-              </div>
-            </div>
+                </Col>
+              </Row>
+            </Card>
 
-            <div className="info-card">
-              <h3 className="info-title">个人简介</h3>
+            {/* 个人简介 */}
+            <Card bordered title="个人简介" headerBordered style={{ marginBottom: 16 }}>
               {isEditing ? (
-                <textarea
+                <Textarea
                   value={userInfo.bio}
-                  onChange={(e) => setUserInfo({...userInfo, bio: e.target.value})}
-                  className="bio-textarea"
-                  rows={4}
+                  onChange={(val) => setUserInfo({ ...userInfo, bio: val as string })}
+                  placeholder="介绍一下自己..."
+                  autosize={{ minRows: 3, maxRows: 6 }}
                 />
               ) : (
-                <p className="bio-text">{userInfo.bio}</p>
+                <p style={{ margin: 0, lineHeight: 1.8, color: 'var(--td-text-color-primary)' }}>
+                  {userInfo.bio}
+                </p>
               )}
-            </div>
+            </Card>
 
-            <div className="info-card">
-              <h3 className="info-title">技能标签</h3>
-              <div className="skills-container">
+            {/* 技能标签 */}
+            <Card bordered title="技能标签" headerBordered style={{ marginBottom: 16 }}>
+              <Space direction="horizontal" size={8} style={{ flexWrap: 'wrap' }}>
                 {userInfo.skills.map((skill, index) => (
-                  <span key={index} className="skill-tag">
+                  <Tag
+                    key={index}
+                    theme="primary"
+                    variant="light"
+                    closable={isEditing}
+                    onClose={() => handleRemoveSkill(index)}
+                    style={{ padding: '4px 12px' }}
+                  >
                     {skill}
-                    {isEditing && (
-                      <button className="skill-remove">
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5"/>
-                        </svg>
-                      </button>
-                    )}
-                  </span>
+                  </Tag>
                 ))}
                 {isEditing && (
-                  <button className="skill-add">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
+                  <Tag
+                    theme="default"
+                    variant="outline"
+                    icon={<AddIcon />}
+                    onClick={handleAddSkill}
+                    style={{ cursor: 'pointer', padding: '4px 12px' }}
+                  >
                     添加技能
-                  </button>
+                  </Tag>
                 )}
+              </Space>
+            </Card>
+
+            {/* 保存按钮 */}
+            {isEditing && (
+              <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
+                <Space size={16}>
+                  <Button
+                    variant="outline"
+                    icon={<CloseIcon />}
+                    onClick={() => setIsEditing(false)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    theme="primary"
+                    icon={<SaveIcon />}
+                    onClick={handleSave}
+                    loading={isSaving}
+                  >
+                    保存修改
+                  </Button>
+                </Space>
               </div>
-            </div>
-          </section>
-
-          {isEditing && (
-            <div className="action-section">
-              <button className="btn-save" onClick={handleSave}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M13 3L6 10L3 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                保存修改
-              </button>
-            </div>
-          )}
+            )}
+          </Loading>
         </div>
-      </main>
+      </div>
 
-      <footer className="footer">
-        <div className="footer-content">
-          <p className="footer-text">© 2024 IAC Incubator. 保留所有权利。</p>
+      {/* 页脚 */}
+      <footer style={footerStyle}>
+        <div style={{ textAlign: 'center', color: 'var(--td-text-color-placeholder)', fontSize: 14 }}>
+          © 2024 IAC Incubator. 保留所有权利。
         </div>
       </footer>
-
-      <style>{`
-        .profile-container {
-          min-height: 100vh;
-          background: var(--bg-primary);
-          display: flex;
-          flex-direction: column;
-        }
-
-        .nav {
-          position: sticky;
-          top: 0;
-          z-index: 100;
-          background: rgba(255, 255, 255, 0.8);
-          backdrop-filter: saturate(180%) blur(20px);
-          border-bottom: 1px solid var(--border-light);
-        }
-
-        .nav-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 var(--spacing-xl);
-          height: 52px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .nav-back {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-xs);
-          color: var(--accent-blue);
-          text-decoration: none;
-          font-size: 14px;
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: 3px;
-          transition: background var(--transition-fast);
-        }
-
-        .nav-back:hover {
-          background: rgba(36, 144, 248, 0.1);
-          text-decoration: none;
-        }
-
-        .nav-title {
-          font-size: 17px;
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-
-        .nav-action {
-          font-size: 14px;
-          color: var(--accent-blue);
-          background: none;
-          border: none;
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: var(--radius-sm);
-          cursor: pointer;
-          transition: background var(--transition-fast);
-        }
-
-        .nav-action:hover {
-          background: rgba(36, 144, 248, 0.1);
-        }
-
-        .main {
-          flex: 1;
-          padding: var(--spacing-3xl) var(--spacing-xl);
-          background: var(--gradient-hero);
-        }
-
-        .main-content {
-          max-width: 980px;
-          margin: 0 auto;
-        }
-
-        .profile-header {
-          margin-bottom: var(--spacing-2xl);
-        }
-
-        .avatar-section {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-xl);
-        }
-
-        .avatar {
-          position: relative;
-          width: 120px;
-          height: 120px;
-        }
-
-        .avatar-image {
-          width: 100%;
-          height: 100%;
-          border-radius: 50%;
-          object-fit: cover;
-        }
-
-        .avatar-placeholder {
-          width: 100%;
-          height: 100%;
-          border-radius: 50%;
-          background: #2490f8;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 48px;
-          font-weight: 600;
-          color: white;
-        }
-
-        .avatar-edit {
-          position: absolute;
-          bottom: 0;
-          right: 0;
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: var(--bg-primary);
-          border: 2px solid var(--border);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-        }
-
-        .avatar-edit:hover {
-          background: var(--accent-blue);
-          color: white;
-          border-color: var(--accent-blue);
-        }
-
-        .user-basic {
-          flex: 1;
-        }
-
-        .user-name {
-          font-size: 32px;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin-bottom: var(--spacing-xs);
-        }
-
-        .name-input {
-          font-size: 32px;
-          font-weight: 600;
-          color: var(--text-primary);
-          background: transparent;
-          border: none;
-          border-bottom: 2px solid var(--accent-blue);
-          padding: 0;
-          width: 100%;
-        }
-
-        .name-input:focus {
-          outline: none;
-        }
-
-        .user-title {
-          font-size: 17px;
-          color: var(--text-secondary);
-        }
-
-        .stats-section {
-          margin-bottom: var(--spacing-2xl);
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: var(--spacing-md);
-        }
-
-        .stat-card {
-          background: var(--bg-primary);
-          padding: var(--spacing-xl);
-          border-radius: 8px;
-          text-align: center;
-          box-shadow: var(--shadow-sm);
-          border: 1px solid var(--border-light);
-          transition: all var(--transition-base);
-        }
-
-        .stat-card:hover {
-          transform: translateY(-2px);
-          box-shadow: var(--shadow-md);
-        }
-
-        .stat-value {
-          font-size: 32px;
-          font-weight: 600;
-          color: var(--accent-blue);
-          margin-bottom: var(--spacing-xs);
-        }
-
-        .stat-label {
-          font-size: 15px;
-          color: var(--text-secondary);
-        }
-
-        .info-section {
-          display: flex;
-          flex-direction: column;
-          gap: var(--spacing-xl);
-        }
-
-        .info-card {
-          background: var(--bg-primary);
-          padding: var(--spacing-2xl);
-          border-radius: 8px;
-          box-shadow: var(--shadow-sm);
-          border: 1px solid var(--border-light);
-        }
-
-        .info-title {
-          font-size: 21px;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin-bottom: var(--spacing-xl);
-        }
-
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: var(--spacing-xl);
-        }
-
-        .info-item {
-          display: flex;
-          flex-direction: column;
-          gap: var(--spacing-sm);
-        }
-
-        .info-label {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-sm);
-          font-size: 13px;
-          color: var(--text-secondary);
-        }
-
-        .info-value {
-          font-size: 17px;
-          color: var(--text-primary);
-        }
-
-        .info-input {
-          font-size: 17px;
-          color: var(--text-primary);
-          background: var(--bg-secondary);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 8px 12px;
-          transition: all var(--transition-fast);
-        }
-
-        .info-input:focus {
-          outline: none;
-          border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
-        }
-
-        .bio-text {
-          font-size: 17px;
-          line-height: 1.6;
-          color: var(--text-primary);
-        }
-
-        .bio-textarea {
-          font-size: 17px;
-          line-height: 1.6;
-          color: var(--text-primary);
-          background: var(--bg-secondary);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-          width: 100%;
-          resize: vertical;
-          font-family: inherit;
-        }
-
-        .bio-textarea:focus {
-          outline: none;
-          border-color: var(--accent-blue);
-          box-shadow: 0 0 0 3px rgba(36, 144, 248, 0.1);
-        }
-
-        .skills-container {
-          display: flex;
-          flex-wrap: wrap;
-          gap: var(--spacing-sm);
-        }
-
-        .skill-tag {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          background: rgba(36, 144, 248, 0.1);
-          color: var(--accent-blue);
-          border-radius: 16px;
-          font-size: 14px;
-          font-weight: 500;
-        }
-
-        .skill-remove {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 16px;
-          height: 16px;
-          border-radius: 50%;
-          background: transparent;
-          border: none;
-          color: var(--accent-blue);
-          cursor: pointer;
-          padding: 0;
-          transition: all var(--transition-fast);
-        }
-
-        .skill-remove:hover {
-          background: var(--accent-blue);
-          color: white;
-        }
-
-        .skill-add {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          background: transparent;
-          color: var(--text-secondary);
-          border: 1px dashed var(--border);
-          border-radius: 16px;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-        }
-
-        .skill-add:hover {
-          border-color: var(--accent-blue);
-          color: var(--accent-blue);
-        }
-
-        .action-section {
-          margin-top: var(--spacing-2xl);
-          display: flex;
-          justify-content: center;
-        }
-
-        .btn-save {
-          display: inline-flex;
-          align-items: center;
-          gap: var(--spacing-sm);
-          padding: 12px 32px;
-          background: var(--accent-blue);
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 16px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-        }
-
-        .btn-save:hover {
-          background: #1a7de6;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(36, 144, 248, 0.3);
-        }
-
-        .footer {
-          background: var(--bg-primary);
-          border-top: 1px solid var(--border-light);
-          padding: var(--spacing-xl);
-        }
-
-        .footer-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          text-align: center;
-        }
-
-        .footer-text {
-          font-size: 13px;
-          color: var(--text-secondary);
-        }
-      `}</style>
     </div>
   );
+};
+
+// ==================== 样式常量 ====================
+
+const containerStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  display: 'flex',
+  flexDirection: 'column',
+  background: 'var(--td-bg-color-page)',
+};
+
+const navStyle: React.CSSProperties = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 100,
+  background: 'rgba(255, 255, 255, 0.85)',
+  backdropFilter: 'saturate(180%) blur(20px)',
+  borderBottom: '1px solid var(--td-component-border)',
+};
+
+const navContentStyle: React.CSSProperties = {
+  maxWidth: 1100,
+  margin: '0 auto',
+  padding: '0 24px',
+  height: 56,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+};
+
+const navBackStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  color: 'var(--td-brand-color)',
+  textDecoration: 'none',
+  fontSize: 14,
+};
+
+const navTitleStyle: React.CSSProperties = {
+  fontSize: 17,
+  fontWeight: 600,
+  color: 'var(--td-text-color-primary)',
+};
+
+const mainStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '32px 24px',
+};
+
+const mainContentStyle: React.CSSProperties = {
+  maxWidth: 900,
+  margin: '0 auto',
+};
+
+const emptyStateStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flex: 1,
+  padding: '80px 24px',
+};
+
+const avatarEditOverlayStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 0,
+  right: 0,
+  width: 32,
+  height: 32,
+  borderRadius: '50%',
+  background: 'var(--td-bg-color-container)',
+  border: '2px solid var(--td-component-border)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: 'var(--td-brand-color)',
+};
+
+const infoFieldStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+};
+
+const infoLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 13,
+  color: 'var(--td-text-color-secondary)',
+};
+
+const infoValueStyle: React.CSSProperties = {
+  fontSize: 15,
+  color: 'var(--td-text-color-primary)',
+  minHeight: 32,
+  display: 'flex',
+  alignItems: 'center',
+};
+
+const footerStyle: React.CSSProperties = {
+  borderTop: '1px solid var(--td-component-border)',
+  padding: '24px',
 };
 
 export default Profile;
