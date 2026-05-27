@@ -5,15 +5,33 @@ import type { NavSection, PromptModule } from './types';
 import { AdminLayout } from './AdminLayout';
 import { ModelManagement } from './ModelManagement';
 import { PromptManagement } from './PromptManagement';
-import { SecurityManagement } from './SecurityManagement';
 import { UserManagement } from './UserManagement';
+import { DashboardOverview } from './DashboardOverview';
 import { useAIConfig, usePromptManagement } from './hooks';
 
-const Admin: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<NavSection>('model');
-  const [activeNavItem, setActiveNavItem] = useState<string>('config');
+// ==================== 占位组件（后续待开发） ====================
+const ComingSoonPlaceholder: React.FC = () => (
+  <div className="content-panel">
+    <div className="coming-soon">
+      <div className="coming-soon-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+      </div>
+      <h3>功能开发中</h3>
+      <p>该功能正在紧张开发中，敬请期待...</p>
+    </div>
+  </div>
+);
 
-  // AI 配置相关的状态和操作
+// ==================== Admin 主组件 ====================
+const Admin: React.FC = () => {
+  const [activeSection, setActiveSection] = useState<NavSection>('dashboard');
+  const [activeNavItem, setActiveNavItem] = useState<string>('overview');
+
+  // AI 配置相关的状态和操作（模型管理模块使用）
   const {
     apiKey, setApiKey,
     provider, setProvider,
@@ -41,14 +59,15 @@ const Admin: React.FC = () => {
   const handleNavItemClick = (section: NavSection, itemKey: string) => {
     setActiveSection(section);
     setActiveNavItem(itemKey);
-    if (section === 'prompt') {
-      setActiveModule(itemKey as PromptModule);
+    if (section === 'model-prompt' && itemKey === 'prompt') {
+      setActiveModule('global-settings' as PromptModule);
     }
   };
 
   // 渲染内容区域
   const renderContent = () => {
-    if (activeSection === 'model') {
+    // ----- 04. 模型与Prompt > 模型管理（已有代码）-----
+    if (activeSection === 'model-prompt' && activeNavItem === 'model') {
       return (
         <ModelManagement
           apiKey={apiKey}
@@ -57,7 +76,6 @@ const Admin: React.FC = () => {
           testStatus={testStatus}
           testResult={testResult}
           saveStatus={saveStatus}
-          activeNavItem={activeNavItem}
           onApiKeyChange={setApiKey}
           onProviderChange={setProvider}
           onModelChange={setModel}
@@ -68,7 +86,8 @@ const Admin: React.FC = () => {
       );
     }
 
-    if (activeSection === 'prompt') {
+    // ----- 04. 模型与Prompt > Prompt管理（已有代码）-----
+    if (activeSection === 'model-prompt' && activeNavItem === 'prompt') {
       return (
         <PromptManagement
           prompts={prompts}
@@ -82,15 +101,18 @@ const Admin: React.FC = () => {
       );
     }
 
-    if (activeSection === 'security') {
-      return <SecurityManagement activeSection={activeNavItem} />;
-    }
-
-    if (activeSection === 'users') {
+    // ----- 06. 用户与账户 > 用户与权限（已有代码）-----
+    if (activeSection === 'user-account' && activeNavItem === 'user-permission') {
       return <UserManagement />;
     }
 
-    return null;
+    // ----- 01. 仪表盘（系统概览/使用统计/关键指标）-----
+    if (activeSection === 'dashboard') {
+      return <DashboardOverview />;
+    }
+
+    // ----- 其余模块 / 子项：统一渲染占位 -----
+    return <ComingSoonPlaceholder />;
   };
 
   return (
@@ -102,7 +124,7 @@ const Admin: React.FC = () => {
       >
         {renderContent()}
       </AdminLayout>
-      
+
       <style>{`
         /* ===== 各模块通用样式（参照 TDesign Starter Dashboard 间距规范） ===== */
         .content-body {
@@ -134,7 +156,7 @@ const Admin: React.FC = () => {
           overflow: auto !important;
         }
 
-        /* 面板头部 - 去掉边框，用间距分隔 */
+        /* 面板头部 */
         .panel-header {
           display: flex;
           align-items: center;
@@ -164,7 +186,7 @@ const Admin: React.FC = () => {
           color: rgba(0, 0, 0, 0.4);
         }
 
-        /* 表单卡片 - 白底圆角阴影 */
+        /* 表单卡片 */
         .form-card {
           background: #fff;
           border-radius: 6px;
@@ -419,7 +441,7 @@ const Admin: React.FC = () => {
           background: rgba(0, 82, 217, 0.06);
         }
 
-        /* 模型列表表格 - 白底圆角 */
+        /* 模型列表表格 */
         .model-table {
           background: #fff;
           border-radius: 6px;
@@ -463,7 +485,7 @@ const Admin: React.FC = () => {
           color: rgba(0, 0, 0, 0.4) !important;
         }
 
-        /* ===== SecurityManagement - 占位样式 ===== */
+        /* ===== 占位样式 ===== */
         .coming-soon {
           background: #fff;
           border-radius: 6px;

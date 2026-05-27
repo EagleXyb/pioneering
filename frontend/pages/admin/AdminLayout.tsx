@@ -14,20 +14,18 @@ import type { DropdownOption } from 'tdesign-react/es/dropdown';
 import {
   LogoutIcon,
   AppIcon,
-  ViewListIcon,
-  SettingIcon,
-  InfoCircleIcon,
   SearchIcon,
-  ViewModuleIcon,
-  CheckCircleIcon,
-  FileIcon,
-  ChartLineIcon,
-  InternetIcon,
   UsergroupIcon,
   LayersIcon,
-  LockOnIcon,
   HomeIcon,
   NotificationFilledIcon,
+  DashboardIcon,
+  ControlPlatformIcon,
+  BookIcon,
+  SystemStorageIcon,
+  ChartLineIcon,
+  WalletIcon,
+  SecuredIcon,
 } from 'tdesign-icons-react';
 import { useUser } from '../../contexts/UserContext';
 import type { NavSection } from './types';
@@ -38,18 +36,33 @@ const { Header, Aside, Content, Footer } = Layout;
 
 // ==================== 面包屑映射 ====================
 const BREADCRUMB_MAP: Record<string, string> = {
-  config: 'API Key 配置',
-  provider: '服务商管理',
-  'model-list': '模型列表',
-  'global-settings': '全局设置',
-  perception: '问题感知模块',
-  retrieval: '知识检索模块',
-  generation: '创意生成模块',
-  evaluation: '评估反馈模块',
-  'access-log': '访问日志',
-  'api-monitor': 'API 监控',
-  'rate-limit': '限流配置',
-  'user-list': '用户列表',
+  // 仪表盘
+  'overview': '系统概览',
+  'usage-stats': '使用统计',
+  'key-metrics': '关键指标',
+  // 智能体管理
+  'agent-list-config': '智能体列表与配置',
+  'workflows': '工作流编排',
+  'components': '组件库管理',
+  // 知识管理
+  'kb-graph': '知识库与图谱',
+  'data': '数据管理',
+  'memory': '记忆管理',
+  // 模型与Prompt
+  'model': '模型管理',
+  'prompt': 'Prompt管理',
+  // 监控与运维
+  'log-audit': '日志与审计',
+  'perf-monitor': '性能监控',
+  'tests': '测试与评估',
+  // 用户与账户
+  'user-permission': '用户与权限',
+  'billing': '计费管理',
+  'token-stats': 'Token统计',
+  // 系统设置
+  'sys-config': '系统配置',
+  'notif-security': '通知与安全',
+  'integration': '集成设置',
 };
 
 // ==================== 顶部菜单配置（业务导航） ====================
@@ -61,7 +74,7 @@ const TOP_MENU_ITEMS: { value: string; label: string; to: string }[] = [
   { value: 'docs', label: '开发文档', to: '/trial-center' },
 ];
 
-// ==================== 侧边栏菜单配置（可折叠分组） ====================
+// ==================== 侧边栏菜单配置 ====================
 interface NavSubMenuItem {
   value: string;
   label: string;
@@ -75,44 +88,80 @@ interface NavGroupItem {
 }
 
 const SIDEBAR_GROUPS: NavGroupItem[] = [
+  // ---------- 01. 仪表盘 ----------
   {
-    key: 'model',
-    label: '模型管理',
-    icon: <AppIcon />,
+    key: 'dashboard',
+    label: '仪表盘',
+    icon: <DashboardIcon />,
     items: [
-      { value: 'config', label: 'API Key 配置' },
-      { value: 'provider', label: '服务商管理' },
-      { value: 'model-list', label: '模型列表' },
+      { value: 'overview', label: '系统概览' },
+      { value: 'usage-stats', label: '使用统计' },
+      { value: 'key-metrics', label: '关键指标' },
     ],
   },
+  // ---------- 02. 智能体管理 ----------
   {
-    key: 'prompt',
-    label: 'Prompt 管理',
-    icon: <SettingIcon />,
+    key: 'agents',
+    label: '智能体管理',
+    icon: <ControlPlatformIcon />,
     items: [
-      { value: 'global-settings', label: '全局设置' },
-      { value: 'perception', label: '问题感知模块' },
-      { value: 'retrieval', label: '知识检索模块' },
-      { value: 'generation', label: '创意生成模块' },
-      { value: 'evaluation', label: '评估反馈模块' },
+      { value: 'agent-list-config', label: '智能体列表与配置' },
+      { value: 'workflows', label: '工作流编排' },
+      { value: 'components', label: '组件库管理' },
     ],
   },
+  // ---------- 03. 知识管理 ----------
   {
-    key: 'users',
-    label: '用户管理',
+    key: 'knowledge',
+    label: '知识管理',
+    icon: <BookIcon />,
+    items: [
+      { value: 'kb-graph', label: '知识库与图谱' },
+      { value: 'data', label: '数据管理' },
+      { value: 'memory', label: '记忆管理' },
+    ],
+  },
+  // ---------- 04. 模型与Prompt（已有代码） ----------
+  {
+    key: 'model-prompt',
+    label: '模型与Prompt',
+    icon: <SystemStorageIcon />,
+    items: [
+      { value: 'model', label: '模型管理' },
+      { value: 'prompt', label: 'Prompt管理' },
+    ],
+  },
+  // ---------- 05. 监控与运维 ----------
+  {
+    key: 'monitor-ops',
+    label: '监控与运维',
+    icon: <ChartLineIcon />,
+    items: [
+      { value: 'log-audit', label: '日志与审计' },
+      { value: 'perf-monitor', label: '性能监控' },
+      { value: 'tests', label: '测试与评估' },
+    ],
+  },
+  // ---------- 06. 用户与账户 ----------
+  {
+    key: 'user-account',
+    label: '用户与账户',
     icon: <UsergroupIcon />,
     items: [
-      { value: 'user-list', label: '用户列表' },
+      { value: 'user-permission', label: '用户与权限' },
+      { value: 'billing', label: '计费管理' },
+      { value: 'token-stats', label: 'Token统计' },
     ],
   },
+  // ---------- 07. 系统设置 ----------
   {
-    key: 'security',
-    label: '安全管理',
-    icon: <FileIcon />,
+    key: 'settings',
+    label: '系统设置',
+    icon: <SecuredIcon />,
     items: [
-      { value: 'access-log', label: '访问日志' },
-      { value: 'api-monitor', label: 'API 监控' },
-      { value: 'rate-limit', label: '限流配置' },
+      { value: 'sys-config', label: '系统配置' },
+      { value: 'notif-security', label: '通知与安全' },
+      { value: 'integration', label: '集成设置' },
     ],
   },
 ];
@@ -187,7 +236,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* ========== 顶部导航（HeadMenu 组合导航） ========== */}
       <Header>
         <HeadMenu
@@ -237,9 +286,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         </HeadMenu>
       </Header>
 
-      <Layout>
+      <Layout style={{ minHeight: 0, flex: 1 }}>
         {/* ========== 侧边栏菜单 ========== */}
-        <Aside style={{ borderTop: '1px solid var(--component-border, #e5e7eb)' }}>
+        <Aside style={{ borderTop: '1px solid var(--component-border, #e5e7eb)', overflowY: 'auto' }}>
           <Menu
             value={menuValue}
             onChange={handleSideMenuChange}
@@ -269,9 +318,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         </Aside>
 
         {/* ========== 主内容区 ========== */}
-        <Layout>
-          <Content style={{ padding: '24px', overflow: 'auto', background: '#f0f2f5' }}>
+        <Layout style={{ minHeight: 0 }}>
+          <Content style={{ padding: '24px', overflowY: 'auto', background: '#f0f2f5' }}>
             <Breadcrumb style={{ marginBottom: 16 }}>
+              <BreadcrumbItem>管理后台</BreadcrumbItem>
               <BreadcrumbItem>{breadcrumbText}</BreadcrumbItem>
             </Breadcrumb>
             {children}

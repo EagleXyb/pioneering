@@ -1,7 +1,7 @@
 // 模型管理模块（TDesign 重构版）
 
 import React from 'react';
-import { Button, Form, Input, Select, Alert, Card } from 'tdesign-react';
+import { Button, Form, Input, Select, Alert, Card, Tabs, Switch } from 'tdesign-react';
 import {
   CheckCircleFilledIcon,
   CloseCircleFilledIcon,
@@ -13,6 +13,8 @@ import {
   ChartLineIcon,
   FileIcon,
   InternetIcon,
+  ChevronRightIcon,
+  CopyIcon,
 } from 'tdesign-icons-react';
 import type { TestStatus, SaveStatus, TestResult, ProviderInfo, ModelInfo } from './types';
 import { PROVIDER_LIST, MODEL_MAP } from '@shared/constants';
@@ -26,7 +28,6 @@ interface ModelManagementProps {
   testStatus: TestStatus;
   testResult: TestResult | null;
   saveStatus: SaveStatus;
-  activeNavItem: string;
   onApiKeyChange: (value: string) => void;
   onProviderChange: (value: string) => void;
   onModelChange: (value: string) => void;
@@ -36,13 +37,24 @@ interface ModelManagementProps {
 }
 
 export const ModelManagement: React.FC<ModelManagementProps> = (props) => {
-  const { activeNavItem } = props;
+  const [activeTab, setActiveTab] = React.useState<string>('config');
 
   return (
     <div className="content-body">
-      {activeNavItem === 'config' && <ApiKeyConfig {...props} />}
-      {activeNavItem === 'provider' && <ProviderManagement />}
-      {activeNavItem === 'model-list' && <ModelList />}
+      <Tabs
+        value={activeTab}
+        onChange={(val) => setActiveTab(val as string)}
+        theme="normal"
+        style={{ marginBottom: 16 }}
+      >
+        <Tabs.TabPanel value="config" label="API Key 配置" />
+        <Tabs.TabPanel value="provider" label="服务商管理" />
+        <Tabs.TabPanel value="model-list" label="模型列表" />
+      </Tabs>
+
+      {activeTab === 'config' && <ApiKeyConfig {...props} />}
+      {activeTab === 'provider' && <ProviderManagement />}
+      {activeTab === 'model-list' && <ModelList />}
     </div>
   );
 };
@@ -53,32 +65,38 @@ const ApiKeyConfig: React.FC<ModelManagementProps> = ({
   onApiKeyChange, onProviderChange, onModelChange, onTestConnection, onSaveConfig, isConfigValid,
 }) => {
   const providerOptions = PROVIDER_LIST.map(p => ({ label: p.name, value: p.id }));
-  const modelOptions = provider
-    ? MODEL_MAP[provider]?.map(m => ({ label: m.name, value: m.id })) ?? []
-    : [];
+
+  const [apiEndpoint, setApiEndpoint] = React.useState('');
+  const [contextInput, setContextInput] = React.useState('64096');
+  const [contextOutput, setContextOutput] = React.useState('8192');
+  const [showApiKey, setShowApiKey] = React.useState(false);
+  const [advancedExpanded, setAdvancedExpanded] = React.useState(false);
+  const [toolCallEnabled, setToolCallEnabled] = React.useState(false);
+  const [imageInputEnabled, setImageInputEnabled] = React.useState(false);
+  const [reasoningMode, setReasoningMode] = React.useState('');
+  const [customProtocol, setCustomProtocol] = React.useState('');
+  const [compatProtocol, setCompatProtocol] = React.useState('');
+
+  const selectedModelInfo = provider && model
+    ? MODEL_MAP[provider]?.find(m => m.id === model)
+    : null;
+
+  const handleCopyApiKey = () => {
+    navigator.clipboard.writeText(apiKey);
+  };
 
   return (
     <div>
-      <div className="panel-header">
-        <div className="header-left">
-          <h2 className="panel-title">API Key 配置</h2>
-        </div>
-      </div>
-      <p className="panel-description" style={{ marginBottom: 16 }}>配置 AI 服务商的连接信息</p>
-
-      <div className="form-card">
-        <Form layout="vertical" labelWidth={0}>
-          <FormItem label="API Key" requiredMark>
-            <Input
-              type="password"
-              placeholder="请输入您的 API Key"
-              value={apiKey}
-              onChange={(value) => onApiKeyChange(value as string)}
-            />
-          </FormItem>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {/* ===== 左栏：基础连接 ===== */}
+        <div className="form-card">
+          <div className="config-section-header">
+            <span className="section-title">基础连接</span>
+            <span className="section-priority">P0</span>
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <FormItem label="服务商" requiredMark>
+            <FormItem label="供应商名称" requiredMark>
               <Select
                 placeholder="请选择服务商"
                 value={provider}
@@ -89,37 +107,189 @@ const ApiKeyConfig: React.FC<ModelManagementProps> = ({
                 }}
               />
             </FormItem>
-
-            <FormItem label="模型" requiredMark>
-              <Select
-                placeholder="请选择模型"
-                value={model}
-                options={modelOptions}
-                disabled={!provider}
-                onChange={(value) => onModelChange(value as string)}
+            <FormItem label="API Endpoint" requiredMark>
+              <Input
+                placeholder="https://api.example.com/v1"
+                value={apiEndpoint}
+                onChange={(val) => setApiEndpoint(val as string)}
               />
             </FormItem>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-            <Button
-              variant="outline"
-              onClick={onTestConnection}
-              disabled={!isConfigValid() || testStatus === 'testing'}
-              loading={testStatus === 'testing'}
-            >
-              测试连接
-            </Button>
-            <Button
-              theme="primary"
-              onClick={onSaveConfig}
-              disabled={!isConfigValid() || saveStatus === 'saving'}
-              loading={saveStatus === 'saving'}
-            >
-              保存配置
-            </Button>
+          <FormItem label="API Key" requiredMark>
+            <Input
+              type={showApiKey ? 'text' : 'password'}
+              placeholder="请输入您的 API Key"
+              value={apiKey}
+              onChange={(value) => onApiKeyChange(value as string)}
+              suffixIcon={
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <BrowseIcon
+                    style={{ cursor: 'pointer', color: '#999' }}
+                    onClick={() => setShowApiKey(!showApiKey)}
+                  />
+                  <CopyIcon
+                    style={{ cursor: 'pointer', color: '#999' }}
+                    onClick={handleCopyApiKey}
+                  />
+                </div>
+              }
+            />
+          </FormItem>
+
+          <div style={{ marginTop: 4 }}>
+            <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.5)' }}>连接测试</span>
+            <div style={{ marginTop: 8 }}>
+              <Button
+                theme="primary"
+                size="small"
+                onClick={onTestConnection}
+                disabled={!isConfigValid() || testStatus === 'testing'}
+                loading={testStatus === 'testing'}
+              >
+                测试连接
+              </Button>
+            </div>
           </div>
-        </Form>
+        </div>
+
+        {/* ===== 右栏：模型定义 + 高级配置 ===== */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 模型定义 */}
+          <div className="form-card">
+            <div className="config-section-header">
+              <span className="section-title">模型定义</span>
+              <span className="section-priority">P0</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <FormItem label="模型名称" requiredMark>
+                <Input
+                  placeholder="请输入模型名称"
+                  value={selectedModelInfo?.name || ''}
+                  suffixIcon={
+                    selectedModelInfo?.id
+                      ? <span style={{ fontSize: 12, color: '#999' }}>({selectedModelInfo.id})</span>
+                      : undefined
+                  }
+                />
+              </FormItem>
+              <FormItem label="模型标识" requiredMark>
+                <Input
+                  placeholder="请输入模型标识"
+                  value={model}
+                  onChange={(value) => onModelChange(value as string)}
+                />
+              </FormItem>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <FormItem label="上下文窗口 — 输入容量" requiredMark>
+                <Input
+                  placeholder="请输入"
+                  value={contextInput}
+                  onChange={(val) => setContextInput(val as string)}
+                  suffix={<span style={{ color: '#999', fontSize: 13 }}>tokens</span>}
+                />
+              </FormItem>
+              <FormItem label="上下文窗口 — 最大输出" requiredMark>
+                <Input
+                  placeholder="请输入"
+                  value={contextOutput}
+                  onChange={(val) => setContextOutput(val as string)}
+                  suffix={<span style={{ color: '#999', fontSize: 13 }}>tokens</span>}
+                />
+              </FormItem>
+            </div>
+          </div>
+
+          {/* 高级配置 */}
+          <div
+            className="form-card"
+            style={{ cursor: 'pointer' }}
+            onClick={() => setAdvancedExpanded(!advancedExpanded)}
+          >
+            <div className="config-section-header">
+              <span className="section-title">高级配置</span>
+              <span className="section-priority">P1</span>
+              <ChevronRightIcon
+                size="16px"
+                style={{
+                  marginLeft: 'auto',
+                  transition: 'transform 0.2s',
+                  transform: advancedExpanded ? 'rotate(90deg)' : 'none',
+                  color: '#999',
+                }}
+              />
+            </div>
+
+            {advancedExpanded && (
+              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+                    <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>工具调用</span>
+                    <Switch size="small" value={toolCallEnabled} onChange={(val) => setToolCallEnabled(val as boolean)} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+                    <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>图片输入</span>
+                    <Switch size="small" value={imageInputEnabled} onChange={(val) => setImageInputEnabled(val as boolean)} />
+                  </div>
+                </div>
+
+                <FormItem label="推理模式">
+                  <Select
+                    placeholder="请选择推理模式"
+                    value={reasoningMode}
+                    options={[
+                      { label: '标准模式', value: 'standard' },
+                      { label: '思维链', value: 'chain-of-thought' },
+                      { label: '深度推理', value: 'deep-reasoning' },
+                    ]}
+                    onChange={(val) => setReasoningMode(val as string)}
+                  />
+                </FormItem>
+
+                <FormItem label="自定义协议">
+                  <Input
+                    placeholder="请输入自定义协议地址"
+                    value={customProtocol}
+                    onChange={(val) => setCustomProtocol(val as string)}
+                  />
+                </FormItem>
+
+                <FormItem label="兼容协议">
+                  <Input
+                    placeholder="如 openai-compatible 等"
+                    value={compatProtocol}
+                    onChange={(val) => setCompatProtocol(val as string)}
+                  />
+                </FormItem>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 操作按钮行 */}
+      <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+        <Button
+          variant="outline"
+          onClick={onTestConnection}
+          disabled={!isConfigValid() || testStatus === 'testing'}
+          loading={testStatus === 'testing'}
+        >
+          测试连接
+        </Button>
+        <Button
+          theme="primary"
+          onClick={onSaveConfig}
+          disabled={!isConfigValid() || saveStatus === 'saving'}
+          loading={saveStatus === 'saving'}
+        >
+          保存配置
+        </Button>
       </div>
 
       {/* 测试结果 */}
@@ -438,6 +608,36 @@ const ProviderManagement: React.FC = () => {
             width: 100% !important;
           }
         }
+
+        /* ===== API Key 配置：双栏布局 ===== */
+        .config-section-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+        .section-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: rgba(0, 0, 0, 0.9);
+        }
+        .section-priority {
+          display: inline-flex;
+          align-items: center;
+          padding: 1px 8px;
+          border-radius: 3px;
+          background: #f0f2f5;
+          color: #999;
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 18px;
+        }
+
+        @media (max-width: 960px) {
+          div[style*="grid-template-columns: 1fr 1fr"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
       `}</style>
     </div>
   );
@@ -455,12 +655,6 @@ const ModelList: React.FC = () => {
 
   return (
     <div>
-      <div className="panel-header">
-        <div className="header-left">
-          <h2 className="panel-title">模型列表</h2>
-        </div>
-        <p className="panel-description">查看所有可用的 AI 模型</p>
-      </div>
       <div className="model-table">
         <table>
           <thead>

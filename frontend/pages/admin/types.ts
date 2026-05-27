@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 
-export type NavSection = 'model' | 'prompt' | 'users' | 'security';
+// 一级菜单 Key（7 个核心模块）
+export type NavSection =
+  | 'dashboard'       // 01. 仪表盘
+  | 'agents'          // 02. 智能体管理
+  | 'knowledge'       // 03. 知识管理
+  | 'model-prompt'    // 04. 模型与Prompt
+  | 'monitor-ops'     // 05. 监控与运维
+  | 'user-account'    // 06. 用户与账户
+  | 'settings';       // 07. 系统设置
 export type PromptModule = 'perception' | 'retrieval' | 'generation' | 'evaluation' | 'global-settings';
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
