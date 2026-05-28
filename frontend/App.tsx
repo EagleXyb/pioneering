@@ -10,6 +10,7 @@ import Profile from './pages/Profile'
 import BasicAssessment from './pages/BasicAssessment'
 import Login from './pages/Login'
 import TrialCenter from './pages/TrialCenter'
+import AgentChatbot from './pages/agent'
 import { UserProvider } from './contexts/UserContext'
 import './App.css'
 
@@ -29,6 +30,7 @@ function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/basic-assessment" element={<BasicAssessment />} />
           <Route path="/trial-center" element={<TrialCenter />} />
+          <Route path="/agent" element={<AgentChatbot />} />
         </Routes>
       </Router>
     </UserProvider>
