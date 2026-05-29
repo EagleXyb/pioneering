@@ -118,12 +118,6 @@ class BaseLLMReasoner(BaseReasoningEngine):
         if self._system_prompt:
             messages.append({"role": "system", "content": self._system_prompt})
 
-        history = context.get("history")
-        if isinstance(history, list):
-            for entry in history:
-                if isinstance(entry, dict) and "role" in entry and "content" in entry:
-                    messages.append({"role": entry["role"], "content": entry["content"]})
-
         memory_context = context.get("memory_context")
         if memory_context:
             messages.append({
@@ -137,6 +131,12 @@ class BaseLLMReasoner(BaseReasoningEngine):
                 "role": "system",
                 "content": f"Available tools:\n{tool_descriptions}",
             })
+
+        history = context.get("history")
+        if isinstance(history, list):
+            for entry in history:
+                if isinstance(entry, dict) and "role" in entry and "content" in entry:
+                    messages.append({"role": entry["role"], "content": entry["content"]})
 
         messages.append({"role": "user", "content": prompt})
         return messages

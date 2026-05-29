@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -40,7 +41,16 @@ class ToolAdapter:
             }
 
         try:
-            result = tool.invoke(params=params, context=context)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(tool.invoke, params=params, context=context)
+                result = future.result(timeout=timeout_ms / 1000.0)
+        except concurrent.futures.TimeoutError:
+            logger.error("Tool execution timeout: %s (timeout=%dms)", tool_name, timeout_ms)
+            return {
+                "status": "error",
+                "error_code": ErrorCode.TOOL_SERVICE_TIMEOUT,
+                "data": {"message": f"Tool execution timed out after {timeout_ms}ms: {tool_name}"},
+            }
         except Exception as e:
             logger.error("Tool invocation error: %s - %s", tool_name, str(e))
             return {

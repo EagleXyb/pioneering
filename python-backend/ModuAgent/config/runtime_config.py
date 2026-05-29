@@ -13,6 +13,10 @@ _DEFAULT_CONFIG = {
         "default_provider": "qwen",
         "temperature": 0.7,
         "max_tokens": 512,
+        "prompt_template": "",
+        "tool_call_pattern": r"```tool_call\s*\n(.*?)\n```",
+        "max_reasoning_iterations": 3,
+        "max_format_retries": 2,
     },
     "memory": {
         "default_strategy": "cache",
@@ -22,8 +26,16 @@ _DEFAULT_CONFIG = {
     "tools": {
         "default_timeout_ms": 3000,
     },
+    "streaming": {
+        "chunk_size": 4,
+    },
     "event_bus": {
         "max_log_size": 1000,
+    },
+    "perception": {
+        "default_processor": "text_preprocessor",
+        "max_length": 2048,
+        "sensitivity_threshold": 5,
     },
     "feedback": {
         "evolution_threshold": 0.6,
