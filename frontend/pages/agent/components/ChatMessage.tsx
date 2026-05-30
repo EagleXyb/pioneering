@@ -7,7 +7,6 @@ import {
   ThumbDownIcon,
   CopyIcon,
   RefreshIcon,
-  UserIcon,
 } from 'tdesign-icons-react'
 import type { ChatMessage } from '../types'
 
@@ -50,24 +49,6 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
 
   return (
     <div className={`agent-message-row ${isUser ? 'agent-user-row' : 'agent-assistant-row'}`}>
-      {!isUser && (
-        <div className="agent-avatar">
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              backgroundColor: 'var(--td-brand-color)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>AI</span>
-          </div>
-        </div>
-      )}
-
       <div className={`agent-bubble ${isUser ? 'agent-user-bubble' : 'agent-assistant-bubble'}`}>
         <div className="agent-bubble-header">
           <span className="agent-bubble-role">
@@ -161,24 +142,6 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
         )}
       </div>
 
-      {isUser && (
-        <div className="agent-avatar agent-user-avatar">
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              backgroundColor: 'var(--td-bg-color-component)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid var(--td-component-border)',
-            }}
-          >
-            <UserIcon size="18px" />
-          </div>
-        </div>
-      )}
-    </div>
+      </div>
   )
 }
