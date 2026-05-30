@@ -323,6 +323,241 @@
   display: block;
 }
 
+/* ========== Chat Sender 样式优化 ========== */
+
+/* 关键：覆盖 TDesign 组件的 CSS 变量来控制内部样式 */
+.agent-input-container t-chat-sender {
+  --td-chat-input-padding: 8px 12px 6px;
+  --td-chat-input-radius: 12px;
+  --td-chat-input-content-default-border: 1.5px solid #c9d8ff;
+  --td-chat-input-hover-border: 1.5px solid #4a90e2;
+  --td-chat-input-background: #ffffff;
+  --td-chat-input-box-shadow: 0 1px 8px rgba(0, 40, 120, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.5);
+  --td-chat-input-shadow: 0 2px 16px rgba(0, 82, 217, 0.12), 0 0 0 3px rgba(74, 144, 226, 0.10);
+  --td-chat-input-font-size: 15px;
+  --td-chat-input-textarea-max-height: 140px;
+  --td-chat-input-actions-item-wh: 34px;
+  --td-chat-input-actions-item-radius: 50%;
+  --td-chat-input-actions-item-bg: linear-gradient(135deg, #eaf0fe 0%, #f3ecfd 100%);
+  --td-chat-input-actions-item-hover-bg: linear-gradient(135deg, #dde8fc 0%, #ede4fa 100%);
+  --td-chat-input-actions-item-color: #5b8def;
+  --td-chat-input-button-default-bg: linear-gradient(135deg, #3377ff 0%, #7c5cfc 100%);
+  --td-chat-input-button-default-color: #ffffff;
+  --td-comp-size-s: 34px;
+  --td-comp-paddingTB-s: 4px;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  transition: all 0.3s ease !important;
+}
+
+.agent-input-container t-chat-sender:focus-within {
+  --td-chat-input-content-default-border: 1.5px solid #4a90e2;
+  --td-chat-input-box-shadow: 0 2px 16px rgba(0, 82, 217, 0.12), 0 0 0 3px rgba(74, 144, 226, 0.10);
+}
+
+/* 使用 ::part() 穿透 Shadow DOM - 进一步微调样式 */
+.agent-input-container t-chat-sender::part(t-chat__input) {
+  padding: 6px !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__content) {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  position: relative !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__textarea__wrapper) {
+  padding: 6px 4px 2px !important;
+  flex: 1 !important;
+  min-height: 28px !important;
+}
+
+.agent-input-container t-chat-sender::part(t-textarea) {
+  flex: 1 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+}
+
+.agent-input-container t-chat-sender::part(t-textarea__inner) {
+  font-size: 15px !important;
+  line-height: 1.65 !important;
+  padding: 0 0 4px 2px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--td-text-color-primary) !important;
+  caret-color: var(--td-brand-color) !important;
+  min-height: 56px !important;
+}
+
+.agent-input-container t-chat-sender::part(t-textarea__inner)::placeholder {
+  color: rgba(149, 158, 177, 0.85) !important;
+  font-weight: 400 !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__footer) {
+  padding: 4px 12px 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 32px !important;
+  margin-top: 4px !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__footer__left) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex: 1 !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__footer__right) {
+  display: flex !important;
+  align-items: center !important;
+  margin-left: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+/* 模型选择标签 - 在 Light DOM 中，普通选择器有效 */
+.agent-input-container [slot="input-prefix"] {
+  display: none !important;
+}
+
+.agent-input-container [slot="input-prefix"] .t-tag {
+  font-size: 13px !important;
+  padding: 4px 12px !important;
+  white-space: nowrap !important;
+  max-width: 220px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  border-radius: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  flex-shrink: 0 !important;
+  margin-top: 5px !important;
+  letter-spacing: -0.01em !important;
+}
+
+.agent-input-container [slot="input-prefix"] .t-tag:hover {
+  background: rgba(0, 82, 217, 0.12) !important;
+  transform: scale(1.03) !important;
+}
+
+/* 底部操作按钮 - 在 Light DOM 中，普通选择器有效 */
+.agent-input-container [slot="footer-prefix"] .t-space-item .t-button--variant-outline {
+  border: 1.15px solid #d8dce6 !important;
+  color: #5a6478 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  height: 30px !important;
+  line-height: 1 !important;
+  background: transparent !important;
+  border-radius: 14px !important;
+  letter-spacing: -0.01em !important;
+}
+
+.agent-input-container [slot="footer-prefix"] .t-space-item .t-button--variant-outline:hover {
+  border-color: #4a90e2 !important;
+  color: #0052D9 !important;
+  background: rgba(0, 82, 217, 0.03) !important;
+}
+
+.agent-input-container [slot="footer-prefix"] .t-space-item .t-button--variant-outline:active {
+  transform: scale(0.97) !important;
+}
+
+.agent-input-container [slot="footer-prefix"] .t-space-item .t-button--theme-primary {
+  border-color: #4a90e2 !important;
+  color: #0052D9 !important;
+  background: rgba(0, 82, 217, 0.05) !important;
+}
+
+.agent-input-container [slot="footer-prefix"] .t-space-item .t-button .t-icon {
+  font-size: 15px !important;
+  vertical-align: middle !important;
+}
+
+/* 发送按钮区域 - 使用 ::part() 穿透 Shadow DOM */
+.agent-input-container t-chat-sender::part(t-chat__input__actions) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: absolute !important;
+  right: 12px !important;
+  bottom: 10px !important;
+}
+
+/* 发送按钮容器 - 调整定位 */
+.agent-input-container t-chat-sender::part(t-chat__input__actions__item__wrapper) {
+  width: 34px !important;
+  height: 34px !important;
+  background: linear-gradient(135deg, #eaf0fe 0%, #f3ecfd 100%) !important;
+  border-radius: 50% !important;
+  color: #5b8def !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 0 1px 4px rgba(91, 141, 239, 0.12) !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__actions__item__wrapper):hover {
+  transform: scale(1.08) translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(91, 141, 239, 0.25) !important;
+  background: linear-gradient(135deg, #dde8fc 0%, #ede4fa 100%) !important;
+}
+
+.agent-input-container t-chat-sender::part(t-chat__input__actions__item__wrapper):active {
+  transform: scale(0.96) !important;
+}
+
+/* 发送按钮内的图标 */
+.agent-input-container t-chat-sender::part(t-chat__input__button) {
+  width: 34px !important;
+  height: 34px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 自定义按钮样式 - 穿透到 slot="actions" 中的 Button 组件 */
+.agent-input-container t-chat-sender::part(t-button) {
+  transform: none !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #3377ff 0%, #7c5cfc 100%) !important;
+  color: #ffffff !important;
+  border-width: 0 !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 0 2px 8px rgba(51, 119, 255, 0.30) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+}
+
+.agent-input-container t-chat-sender::part(t-button):hover {
+  transform: scale(1.08) translateY(-1px) !important;
+  box-shadow: 0 4px 16px rgba(51, 119, 255, 0.40) !important;
+}
+
+.agent-input-container t-chat-sender::part(t-button):active {
+  transform: scale(0.96) !important;
+}
+
+/* footer 右侧区域 - 确保按钮正确对齐 */
+.agent-input-container t-chat-sender::part(t-chat__input__footer__right) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+}
+
 /* ========== Sidebar ========== */
 
 .agent-sidebar {
