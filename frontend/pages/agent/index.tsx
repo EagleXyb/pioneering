@@ -21,6 +21,7 @@ const AgentChatbot: React.FC = () => {
     handleSend,
     handleStop,
     handleNewChat,
+    handleRegenerate,
     handleInputChange,
     currentSessionId,
     sessions,
@@ -125,6 +126,7 @@ const AgentChatbot: React.FC = () => {
                 <ChatMessageBubble
                   key={msg.id}
                   message={msg}
+                  onRegenerate={handleRegenerate}
                 />
               ))}
               <div ref={messagesEndRef} />

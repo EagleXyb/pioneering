@@ -1,13 +1,7 @@
-import React, { useCallback, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Button, Tag, Tooltip, MessagePlugin } from 'tdesign-react'
-import {
-  ThumbUpIcon,
-  ThumbDownIcon,
-  CopyIcon,
-  RefreshIcon,
-} from 'tdesign-icons-react'
+import React, { useCallback, useMemo } from 'react'
+import { ChatMessage as TdChatMessage } from '@tdesign-react/chat'
+import { Button, Tag, MessagePlugin } from 'tdesign-react'
+import { RefreshIcon } from 'tdesign-icons-react'
 import type { ChatMessage } from '../types'
 
 interface ChatMessageBubbleProps {
@@ -15,18 +9,15 @@ interface ChatMessageBubbleProps {
   onRegenerate?: () => void
 }
 
-function formatTime(ts: number): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
 export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   message,
   onRegenerate,
 }) => {
-  const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null)
   const isUser = message.role === 'user'
-  const isLoading = message.status === 'loading'
+  const hasThinkingContent = !!message.thinkingContent
+  const hasToolCalls = !!(message.toolCalls && message.toolCalls.length > 0)
+  const hasAnswerContent = !!(message.answerContent || message.content)
+  const isThinking = message.currentPhase === 'thinking'
 
   const handleCopy = useCallback(async () => {
     try {
@@ -38,110 +29,128 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   }, [message.content])
 
   const handleLike = useCallback(() => {
-    setFeedback((prev) => (prev === 'like' ? null : 'like'))
     MessagePlugin.success('感谢反馈')
   }, [])
 
   const handleDislike = useCallback(() => {
-    setFeedback((prev) => (prev === 'dislike' ? null : 'dislike'))
     MessagePlugin.info('我们会努力改进')
   }, [])
 
-  return (
-    <div className={`agent-message-row ${isUser ? 'agent-user-row' : 'agent-assistant-row'}`}>
-      <div className={`agent-bubble ${isUser ? 'agent-user-bubble' : 'agent-assistant-bubble'}`}>
-        <div className="agent-bubble-header">
-          <span className="agent-bubble-role">
-            {isUser ? '你' : 'AI 助手'}
-          </span>
-          <span className="agent-bubble-time">{formatTime(message.timestamp)}</span>
-        </div>
+  const handleShare = useCallback(() => {
+    const shareData = { text: message.content }
+    if (navigator.share) {
+      navigator.share(shareData).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(message.content)
+        .then(() => MessagePlugin.success('已复制到剪贴板'))
+        .catch(() => MessagePlugin.error('复制失败'))
+    }
+  }, [message.content])
 
-        <div className="agent-bubble-body">
-          {isLoading && !message.content ? (
-            <div className="agent-loading">
-              <span className="agent-loading-dot" />
-              <span className="agent-loading-dot" />
-              <span className="agent-loading-dot" />
-            </div>
-          ) : isUser ? (
-            <div className="agent-content-text">{message.content}</div>
-          ) : (
-            <div className="agent-content-markdown">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content || '思考中...'}
-              </ReactMarkdown>
-            </div>
+  const mapStatus = useMemo(() => {
+    if (message.status === 'error') return 'error' as const
+    if (message.status === 'loading') {
+      if (hasAnswerContent || hasThinkingContent) return 'streaming' as const
+      return 'pending' as const
+    }
+    return 'complete' as const
+  }, [message.status, hasAnswerContent, hasThinkingContent])
+
+  const assistantContent = useMemo(() => {
+    const items: any[] = []
+
+    if (hasThinkingContent) {
+      items.push({
+        type: 'thinking',
+        data: { text: message.thinkingContent || '', title: '思考过程' },
+        status: isThinking ? 'streaming' : 'complete',
+      })
+    }
+
+    if (hasToolCalls) {
+      message.toolCalls!.forEach((tc) => {
+        items.push({
+          type: 'toolcall',
+          data: {
+            toolCallId: tc.id,
+            toolCallName: tc.name,
+            args: tc.arguments,
+            result: tc.result,
+          },
+        })
+      })
+    }
+
+    if (hasAnswerContent) {
+      items.push({
+        type: 'markdown',
+        data: message.answerContent || message.content || '',
+      })
+    }
+
+    return items
+  }, [message.thinkingContent, message.toolCalls, message.answerContent, message.content, hasThinkingContent, hasToolCalls, hasAnswerContent, isThinking])
+
+  if (isUser) {
+    return (
+      <div className="agent-message-row agent-user-row">
+        <TdChatMessage
+          role="user"
+          content={[{ type: 'text', data: message.content }]}
+          placement="right"
+          variant="outline"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="agent-message-row agent-assistant-row">
+      <TdChatMessage
+        role="assistant"
+        content={assistantContent.length > 0 ? assistantContent : undefined}
+        status={mapStatus}
+        placement="left"
+        variant="base"
+        actions={['copy', 'good', 'bad', 'share', 'replay']}
+        handleActions={{
+          copy: handleCopy,
+          good: handleLike,
+          bad: handleDislike,
+          share: handleShare,
+          replay: onRegenerate,
+        }}
+        chatContentProps={{
+          thinking: { maxHeight: 400, animation: 'dots', layout: 'border' },
+          markdown: {
+            options: {
+              syntax: {
+                mathBlock: { engine: 'katex' },
+                inlineMath: { engine: 'katex' },
+              },
+            },
+          },
+        }}
+      />
+
+      {message.status === 'error' && (
+        <div className="agent-error">
+          <Tag theme="danger" variant="light" size="small">
+            {message.error || '生成失败'}
+          </Tag>
+          {onRegenerate && (
+            <Button
+              theme="primary"
+              variant="text"
+              size="small"
+              icon={<RefreshIcon />}
+              onClick={onRegenerate}
+            >
+              重新生成
+            </Button>
           )}
         </div>
-
-        {message.status === 'error' && (
-          <div className="agent-error">
-            <Tag theme="danger" variant="light" size="small">
-              {message.error || '生成失败'}
-            </Tag>
-            {onRegenerate && (
-              <Button
-                theme="primary"
-                variant="text"
-                size="small"
-                icon={<RefreshIcon />}
-                onClick={onRegenerate}
-              >
-                重新生成
-              </Button>
-            )}
-          </div>
-        )}
-
-        {!isUser && !isLoading && message.status !== 'error' && (
-          <div className="agent-bubble-actions">
-            <Tooltip content="复制">
-              <Button
-                theme="default"
-                variant="text"
-                size="small"
-                shape="square"
-                icon={<CopyIcon />}
-                onClick={handleCopy}
-              />
-            </Tooltip>
-            <Tooltip content="赞同">
-              <Button
-                theme={feedback === 'like' ? 'primary' : 'default'}
-                variant="text"
-                size="small"
-                shape="square"
-                icon={<ThumbUpIcon />}
-                onClick={handleLike}
-              />
-            </Tooltip>
-            <Tooltip content="不赞同">
-              <Button
-                theme={feedback === 'dislike' ? 'danger' : 'default'}
-                variant="text"
-                size="small"
-                shape="square"
-                icon={<ThumbDownIcon />}
-                onClick={handleDislike}
-              />
-            </Tooltip>
-            {onRegenerate && (
-              <Tooltip content="重新生成">
-                <Button
-                  theme="default"
-                  variant="text"
-                  size="small"
-                  shape="square"
-                  icon={<RefreshIcon />}
-                  onClick={onRegenerate}
-                />
-              </Tooltip>
-            )}
-          </div>
-        )}
-      </div>
-
-      </div>
+      )}
+    </div>
   )
 }

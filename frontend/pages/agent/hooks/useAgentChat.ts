@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ChatSession } from '../types'
+import type { ChatMessage, ChatSession, StreamEvent } from '../types'
 import { API_ENDPOINTS } from '@shared/api/endpoints'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
@@ -168,7 +168,107 @@ export function useAgentChat() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let fullContent = ''
+
+      const applyStreamEvent = (event: StreamEvent) => {
+        setMessages((prev) => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          if (!last || last.role !== 'assistant' || last.status !== 'loading') return updated
+
+          switch (event.type) {
+            case 'status':
+              updated[updated.length - 1] = {
+                ...last,
+                currentPhase: (event.status as ChatMessage['currentPhase']) || last.currentPhase,
+              }
+              break
+
+            case 'thinking_delta':
+              updated[updated.length - 1] = {
+                ...last,
+                currentPhase: 'thinking',
+                thinkingContent: (last.thinkingContent || '') + (event.content || ''),
+              }
+              break
+
+            case 'thinking_done':
+              updated[updated.length - 1] = {
+                ...last,
+                currentPhase: 'generating',
+              }
+              break
+
+            case 'tool_call_start':
+              updated[updated.length - 1] = {
+                ...last,
+                currentPhase: 'tool_calling',
+                toolCalls: [
+                  ...(last.toolCalls || []),
+                  {
+                    id: event.id || '',
+                    name: event.name || '',
+                    arguments: event.arguments || '',
+                    status: 'running' as const,
+                  },
+                ],
+              }
+              break
+
+            case 'tool_call_delta': {
+              const toolId = event.id || ''
+              updated[updated.length - 1] = {
+                ...last,
+                toolCalls: (last.toolCalls || []).map((tc) =>
+                  tc.id === toolId
+                    ? { ...tc, result: (tc.result || '') + (event.content || '') }
+                    : tc,
+                ),
+              }
+              break
+            }
+
+            case 'tool_call_end': {
+              const toolEndId = event.id || ''
+              updated[updated.length - 1] = {
+                ...last,
+                toolCalls: (last.toolCalls || []).map((tc) =>
+                  tc.id === toolEndId
+                    ? { ...tc, result: event.result || tc.result, status: 'success' as const }
+                    : tc,
+                ),
+              }
+              break
+            }
+
+            case 'answer_delta':
+              updated[updated.length - 1] = {
+                ...last,
+                currentPhase: 'generating',
+                answerContent: (last.answerContent || '') + (event.content || ''),
+                content: last.content + (event.content || ''),
+              }
+              break
+
+            case 'answer_done':
+              updated[updated.length - 1] = {
+                ...last,
+                currentPhase: 'done',
+                status: 'success',
+              }
+              break
+
+            case 'error':
+              updated[updated.length - 1] = {
+                ...last,
+                status: 'error',
+                error: event.message || '生成失败',
+              }
+              throw new Error(event.message || '生成失败')
+          }
+
+          return updated
+        })
+      }
 
       while (true) {
         const { done, value } = await reader.read()
@@ -187,36 +287,24 @@ export function useAgentChat() {
             if (data === '[DONE]') continue
 
             try {
-              const parsed = JSON.parse(data)
+              const parsed: StreamEvent = JSON.parse(data)
+
               if (parsed.error) {
                 throw new Error(parsed.error)
               }
-              if (parsed.content) {
-                fullContent += parsed.content
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  if (last && last.role === 'assistant' && last.status === 'loading') {
-                    updated[updated.length - 1] = { ...last, content: fullContent }
-                  }
-                  return updated
-                })
+
+              if (parsed.type) {
+                applyStreamEvent(parsed)
+              } else if (parsed.content) {
+                applyStreamEvent({ type: 'answer_delta', content: parsed.content })
               }
-            } catch {
-              if (data.includes('"content"')) {
+            } catch (parseErr) {
+              if ((parseErr as Error).message !== '生成失败' && !data.includes('"type"')) {
                 try {
                   const match = data.match(/"content":\s*"([^"]*)"/)
                   if (match) {
                     const content = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
-                    fullContent += content
-                    setMessages((prev) => {
-                      const updated = [...prev]
-                      const last = updated[updated.length - 1]
-                      if (last && last.role === 'assistant' && last.status === 'loading') {
-                        updated[updated.length - 1] = { ...last, content: fullContent }
-                      }
-                      return updated
-                    })
+                    applyStreamEvent({ type: 'answer_delta', content })
                   }
                 } catch {
                   // ignore
@@ -231,7 +319,11 @@ export function useAgentChat() {
         const updated = [...prev]
         const last = updated[updated.length - 1]
         if (last && last.role === 'assistant' && last.status === 'loading') {
-          updated[updated.length - 1] = { ...last, content: fullContent, status: 'success' }
+          updated[updated.length - 1] = {
+            ...last,
+            currentPhase: 'done',
+            status: 'success',
+          }
         }
         return updated
       })
@@ -275,6 +367,17 @@ export function useAgentChat() {
     setInputValue('')
   }, [])
 
+  const handleRegenerate = useCallback(() => {
+    if (isGenerating) return
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUserMsg) return
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === lastUserMsg.id)
+      return prev.slice(0, idx + 1)
+    })
+    setTimeout(() => handleSend(lastUserMsg.content), 50)
+  }, [isGenerating, messages, handleSend])
+
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value)
   }, [])
@@ -287,6 +390,7 @@ export function useAgentChat() {
     handleSend,
     handleStop,
     handleNewChat,
+    handleRegenerate,
     handleInputChange,
     currentSessionId,
     sessions,

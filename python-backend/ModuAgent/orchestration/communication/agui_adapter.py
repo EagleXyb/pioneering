@@ -1,0 +1,396 @@
+from __future__ import annotations
+
+import json
+import logging
+import uuid
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class AGUIEventType(str, Enum):
+    RUN_STARTED = "RUN_STARTED"
+    RUN_FINISHED = "RUN_FINISHED"
+    RUN_ERROR = "RUN_ERROR"
+    TEXT_MESSAGE_START = "TEXT_MESSAGE_START"
+    TEXT_MESSAGE_CONTENT = "TEXT_MESSAGE_CONTENT"
+    TEXT_MESSAGE_END = "TEXT_MESSAGE_END"
+    TEXT_MESSAGE_CHUNK = "TEXT_MESSAGE_CHUNK"
+    THINKING_START = "THINKING_START"
+    THINKING_END = "THINKING_END"
+    THINKING_TEXT_MESSAGE_START = "THINKING_TEXT_MESSAGE_START"
+    THINKING_TEXT_MESSAGE_CONTENT = "THINKING_TEXT_MESSAGE_CONTENT"
+    THINKING_TEXT_MESSAGE_END = "THINKING_TEXT_MESSAGE_END"
+    TOOL_CALL_START = "TOOL_CALL_START"
+    TOOL_CALL_ARGS = "TOOL_CALL_ARGS"
+    TOOL_CALL_END = "TOOL_CALL_END"
+    TOOL_CALL_CHUNK = "TOOL_CALL_CHUNK"
+    TOOL_CALL_RESULT = "TOOL_CALL_RESULT"
+    STATE_SNAPSHOT = "STATE_SNAPSHOT"
+    STATE_DELTA = "STATE_DELTA"
+    MESSAGES_SNAPSHOT = "MESSAGES_SNAPSHOT"
+
+
+@dataclass
+class RunStartedEvent:
+    thread_id: str = ""
+    run_id: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.RUN_STARTED,
+            {"threadId": self.thread_id, "runId": self.run_id},
+        )
+
+
+@dataclass
+class RunFinishedEvent:
+    thread_id: str = ""
+    run_id: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.RUN_FINISHED,
+            {"threadId": self.thread_id, "runId": self.run_id},
+        )
+
+
+@dataclass
+class RunErrorEvent:
+    code: str = ""
+    message: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.RUN_ERROR,
+            {"code": self.code, "message": self.message},
+        )
+
+
+@dataclass
+class TextMessageStartEvent:
+    message_id: str = ""
+    role: str = "assistant"
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TEXT_MESSAGE_START,
+            {"messageId": self.message_id, "role": self.role},
+        )
+
+
+@dataclass
+class TextMessageContentEvent:
+    message_id: str = ""
+    delta: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TEXT_MESSAGE_CONTENT,
+            {"messageId": self.message_id, "delta": self.delta},
+        )
+
+
+@dataclass
+class TextMessageEndEvent:
+    message_id: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TEXT_MESSAGE_END,
+            {"messageId": self.message_id},
+        )
+
+
+@dataclass
+class ThinkingStartEvent:
+    title: str = "深度思考"
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.THINKING_START,
+            {"title": self.title},
+        )
+
+
+@dataclass
+class ThinkingContentEvent:
+    delta: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT,
+            {"delta": self.delta},
+        )
+
+
+@dataclass
+class ThinkingEndEvent:
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(AGUIEventType.THINKING_END, {})
+
+
+@dataclass
+class ToolCallStartEvent:
+    tool_call_id: str = ""
+    tool_call_name: str = ""
+    parent_message_id: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TOOL_CALL_START,
+            {
+                "toolCallId": self.tool_call_id,
+                "toolCallName": self.tool_call_name,
+                "parentMessageId": self.parent_message_id,
+            },
+        )
+
+
+@dataclass
+class ToolCallArgsEvent:
+    tool_call_id: str = ""
+    delta: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TOOL_CALL_ARGS,
+            {"toolCallId": self.tool_call_id, "delta": self.delta},
+        )
+
+
+@dataclass
+class ToolCallEndEvent:
+    tool_call_id: str = ""
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TOOL_CALL_END,
+            {"toolCallId": self.tool_call_id},
+        )
+
+
+@dataclass
+class ToolCallResultEvent:
+    message_id: str = ""
+    tool_call_id: str = ""
+    tool_call_name: str = ""
+    content: str = ""
+    role: str = "tool"
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.TOOL_CALL_RESULT,
+            {
+                "messageId": self.message_id,
+                "toolCallId": self.tool_call_id,
+                "toolCallName": self.tool_call_name,
+                "content": self.content,
+                "role": self.role,
+            },
+        )
+
+
+@dataclass
+class ToolCallRecord:
+    tool_name: str
+    params: Dict[str, Any] = field(default_factory=dict)
+    result: Dict[str, Any] = field(default_factory=dict)
+
+
+class AGUIEncoder:
+    @staticmethod
+    def to_sse(event_type: AGUIEventType, data: Dict[str, Any]) -> str:
+        payload = json.dumps({"type": event_type.value, **data}, ensure_ascii=False)
+        return f"data: {payload}\n\n"
+
+
+class AGUIStreamAdapter:
+    """
+    将 ModuAgent Coordinator 的 stream_request() 输出转换为 AG-UI 标准 SSE 事件流。
+
+    当前 Coordinator 的输出格式：
+      frame = {"event": "token|error|done", "data": "<json_string>"}
+
+    其中 done 事件的 data 格式：
+      {"trace_id": "...", "tool_results": [{"tool": "name", "params": {...}, "result": {...}}, ...]}
+
+    注意：tool_results 中每项的 tool/params/result 字段需要 Coordinator 在编码 done
+    事件时显式提供。如果 Coordinator 仅输出原始 tool_result dict 列表（不含 tool/params），
+    则适配器将跳过工具调用事件的生成。
+    """
+
+    def __init__(self, trace_id: str = ""):
+        self._trace_id: str = trace_id
+        self._message_id: str = ""
+        self._tool_call_records: List[ToolCallRecord] = []
+
+    async def transform(
+        self,
+        coordinator_stream: AsyncGenerator[Dict[str, Any], None],
+    ) -> AsyncGenerator[str, None]:
+        """
+        消费 Coordinator 的原始 SSE frame 流，产出 AG-UI 格式的 SSE 字符串流。
+
+        用法：
+            coordinator = Coordinator()
+            adapter = AGUIStreamAdapter(trace_id="xxx")
+            async for agui_frame in adapter.transform(
+                coordinator.stream_request(user_id=..., session_id=..., input_data=...)
+            ):
+                yield agui_frame
+        """
+        if not self._trace_id:
+            self._trace_id = str(uuid.uuid4())
+        self._message_id = str(uuid.uuid4())
+
+        yield RunStartedEvent(
+            thread_id=self._trace_id,
+            run_id=self._trace_id,
+        ).to_sse()
+
+        tool_records: List[ToolCallRecord] = []
+        response_text = ""
+        has_error = False
+        error_code = ""
+        error_message = ""
+
+        async for frame in coordinator_stream:
+            event_type = frame.get("event", "")
+            data_str = frame.get("data", "{}")
+
+            try:
+                data = json.loads(data_str) if isinstance(data_str, str) else data_str
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse Coordinator frame data: %s", data_str[:200])
+                continue
+
+            if event_type == "error":
+                has_error = True
+                error_code = data.get("error_code", "")
+                error_message = data.get("message", "")
+                yield RunErrorEvent(code=error_code, message=error_message).to_sse()
+                return
+
+            elif event_type == "token":
+                response_text += data.get("token", "")
+
+            elif event_type == "done":
+                raw_tool_results = data.get("tool_results", [])
+                tool_records = self._parse_tool_records(raw_tool_results)
+
+        if has_error:
+            return
+
+        for tool_record in tool_records:
+            tool_call_id = str(uuid.uuid4())
+            self._tool_call_records.append(tool_record)
+
+            yield ToolCallStartEvent(
+                tool_call_id=tool_call_id,
+                tool_call_name=tool_record.tool_name,
+                parent_message_id=self._message_id,
+            ).to_sse()
+
+            params_json = json.dumps(tool_record.params, ensure_ascii=False)
+            if params_json and params_json != "{}":
+                yield ToolCallArgsEvent(
+                    tool_call_id=tool_call_id,
+                    delta=params_json,
+                ).to_sse()
+
+            yield ToolCallEndEvent(tool_call_id=tool_call_id).to_sse()
+
+            result_content = json.dumps(tool_record.result, ensure_ascii=False)
+            yield ToolCallResultEvent(
+                message_id=self._message_id,
+                tool_call_id=tool_call_id,
+                tool_call_name=tool_record.tool_name,
+                content=result_content,
+            ).to_sse()
+
+        yield TextMessageStartEvent(message_id=self._message_id).to_sse()
+
+        if response_text:
+            yield TextMessageContentEvent(
+                message_id=self._message_id,
+                delta=response_text,
+            ).to_sse()
+
+        yield TextMessageEndEvent(message_id=self._message_id).to_sse()
+
+        yield RunFinishedEvent(
+            thread_id=self._trace_id,
+            run_id=self._trace_id,
+        ).to_sse()
+
+    @staticmethod
+    def _parse_tool_records(
+        raw_tool_results: List[Any],
+    ) -> List[ToolCallRecord]:
+        records: List[ToolCallRecord] = []
+        for item in raw_tool_results:
+            if not isinstance(item, dict):
+                continue
+            tool_name = item.get("tool", item.get("tool_name", ""))
+            params = item.get("params", item.get("parameters", {}))
+            result = item.get("result", item)
+
+            if not tool_name and isinstance(result, dict):
+                tool_name = result.get("tool", "")
+
+            if tool_name:
+                records.append(
+                    ToolCallRecord(
+                        tool_name=tool_name,
+                        params=params if isinstance(params, dict) else {},
+                        result=result if isinstance(result, dict) else {"data": str(result)},
+                    )
+                )
+        return records
+
+    @property
+    def trace_id(self) -> str:
+        return self._trace_id
+
+    @property
+    def message_id(self) -> str:
+        return self._message_id
+
+    @property
+    def tool_call_records(self) -> List[ToolCallRecord]:
+        return self._tool_call_records
+
+
+def encode_thinking_block(title: str, content: str) -> str:
+    """
+    为已有的完整思考内容生成 AG-UI 思考块事件序列。
+    用于将 Coordinator 中的推理过程作为事后输出。
+    """
+    frames: List[str] = []
+    if title:
+        frames.append(AGUIEncoder.to_sse(
+            AGUIEventType.THINKING_START, {"title": title},
+        ))
+    if content:
+        chunk_size = 30
+        for i in range(0, len(content), chunk_size):
+            frames.append(AGUIEncoder.to_sse(
+                AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT,
+                {"delta": content[i:i + chunk_size]},
+            ))
+    frames.append(AGUIEncoder.to_sse(AGUIEventType.THINKING_END, {}))
+    return "".join(frames)
+
+
+@dataclass
+class AGUIMessagesSnapshot:
+    messages: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_sse(self) -> str:
+        return AGUIEncoder.to_sse(
+            AGUIEventType.MESSAGES_SNAPSHOT,
+            {"messages": self.messages},
+        )
