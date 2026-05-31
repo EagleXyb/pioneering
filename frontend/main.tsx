@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'tdesign-react/es/style/index.css'
+import '@tdesign-react/chat/es/style/index.js'
 import './index.css'
 import App from './App.tsx'
 

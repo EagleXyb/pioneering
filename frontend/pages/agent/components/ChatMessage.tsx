@@ -98,7 +98,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
           role="user"
           content={[{ type: 'text', data: message.content }]}
           placement="right"
-          variant="outline"
+          variant="base"
         />
       </div>
     )

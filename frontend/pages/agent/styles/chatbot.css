@@ -136,6 +136,14 @@
   margin-top: 4px;
 }
 
+/* ========== 用户消息气泡样式（CSS 变量穿透 Shadow DOM） ========== */
+
+.agent-user-row t-chat-item {
+  --td-chat-item-primary-bg: #F0F2F5;
+  --td-chat-item-content-radius: 16px;
+  --td-chat-item-content-base-padding: 14px 20px;
+}
+
 /* ========== Error ========== */
 
 .agent-error {
