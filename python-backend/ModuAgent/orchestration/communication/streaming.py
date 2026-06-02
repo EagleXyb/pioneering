@@ -38,6 +38,62 @@ class SSEEncoder:
         }
 
     @staticmethod
+    def encode_status(phase: str, trace_id: str) -> Dict[str, Any]:
+        return {
+            "event": "status",
+            "data": json.dumps({"phase": phase, "trace_id": trace_id}, ensure_ascii=False),
+        }
+
+    @staticmethod
+    def encode_thinking(content: str, trace_id: str) -> Dict[str, Any]:
+        return {
+            "event": "thinking",
+            "data": json.dumps({"content": content, "trace_id": trace_id}, ensure_ascii=False),
+        }
+
+    @staticmethod
+    def encode_tool_call_start(tool_id: str, name: str, arguments: str, trace_id: str) -> Dict[str, Any]:
+        return {
+            "event": "tool_call_start",
+            "data": json.dumps(
+                {"id": tool_id, "name": name, "arguments": arguments, "trace_id": trace_id},
+                ensure_ascii=False,
+            ),
+        }
+
+    @staticmethod
+    def encode_tool_call_end(tool_id: str, name: str, arguments: str, trace_id: str) -> Dict[str, Any]:
+        return {
+            "event": "tool_call_end",
+            "data": json.dumps(
+                {"id": tool_id, "name": name, "arguments": arguments, "trace_id": trace_id},
+                ensure_ascii=False,
+            ),
+        }
+
+    @staticmethod
+    def encode_tool_result(
+        tool_id: str, name: str, result: str, status: str, trace_id: str
+    ) -> Dict[str, Any]:
+        return {
+            "event": "tool_result",
+            "data": json.dumps(
+                {"id": tool_id, "name": name, "result": result, "status": status, "trace_id": trace_id},
+                ensure_ascii=False,
+            ),
+        }
+
+    @staticmethod
+    def encode_reasoning_iteration(index: int, max_iterations: int, trace_id: str) -> Dict[str, Any]:
+        return {
+            "event": "reasoning_iteration",
+            "data": json.dumps(
+                {"index": index, "max": max_iterations, "trace_id": trace_id},
+                ensure_ascii=False,
+            ),
+        }
+
+    @staticmethod
     def to_sse_message(frame: Dict[str, Any]) -> str:
         event = frame.get("event", "message")
         data = frame.get("data", "")

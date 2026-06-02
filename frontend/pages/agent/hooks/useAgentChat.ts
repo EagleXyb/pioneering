@@ -1,5 +1,17 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ChatSession, StreamEvent } from '../types'
+import type {
+  ChatMessage,
+  ChatSession,
+  StreamEvent,
+  AgentStep,
+  ThinkingStep,
+  ToolCallStep,
+  ToolResultStep,
+  TextStreamStep,
+  ReasoningIterationStep,
+  ErrorStep,
+} from '../types'
+import { StepType, type StepTypeValue } from '../types'
 import { API_ENDPOINTS } from '@shared/api/endpoints'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
@@ -9,6 +21,13 @@ function authHeaders(): Record<string, string> {
   return token
     ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
     : { 'Content-Type': 'application/json' }
+}
+
+function rebuildAnswerContent(steps: AgentStep[]): string {
+  return steps
+    .filter(s => s.type === StepType.TEXT_STREAM)
+    .map(s => (s as TextStreamStep).content)
+    .join('')
 }
 
 export function useAgentChat() {
@@ -45,8 +64,16 @@ export function useAgentChat() {
       })
       if (res.ok) {
         const data = await res.json()
-        const list = Array.isArray(data) ? data : (data.sessions || [])
-        setSessions(list)
+        const raw = Array.isArray(data) ? data : (data.sessions || [])
+        const mapped: ChatSession[] = raw.map((s: Record<string, unknown>) => ({
+          id: s.id as string,
+          title: s.title as string,
+          model: s.model as string,
+          messageCount: (s.message_count ?? s.messageCount ?? 0) as number,
+          createdAt: (s.created_at ?? s.createdAt ?? '') as string,
+          updatedAt: (s.updated_at ?? s.updatedAt ?? '') as string,
+        }))
+        setSessions(mapped)
       }
     } catch {
       console.error('获取会话列表失败')
@@ -66,21 +93,89 @@ export function useAgentChat() {
         { headers: authHeaders() },
       )
       if (res.ok) {
-        const data: Array<{
-          id: string
-          sessionId: string
-          role: 'user' | 'assistant' | 'system'
-          content: string
-          createdAt: string
-        }> = await res.json()
+        const rawData: Array<Record<string, unknown>> = await res.json()
 
-        const msgs: ChatMessage[] = data.map((m) => ({
-          id: `db_${m.id}`,
-          role: m.role,
-          content: m.content,
-          status: 'success',
-          timestamp: new Date(m.createdAt).getTime(),
+        const data = rawData.map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          sessionId: m.session_id as string,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content as string,
+          thinkingContent: (m.thinking_content ?? m.thinkingContent ?? '') as string,
+          answerContent: (m.answer_content ?? m.answerContent ?? '') as string,
+          toolCalls: (m.tool_calls ?? m.toolCalls ?? []) as Array<{
+            id: string
+            name: string
+            arguments: string
+            result?: string
+            status: 'pending' | 'running' | 'success' | 'error'
+          }>,
+          createdAt: (m.created_at ?? m.createdAt ?? '') as string,
         }))
+
+        const msgs: ChatMessage[] = data.map(m => {
+          const steps: AgentStep[] = []
+
+          if (m.thinkingContent) {
+            steps.push({
+              id: `thinking_${m.id}`,
+              type: StepType.THINKING,
+              content: m.thinkingContent,
+              status: 'success',
+              startTime: new Date(m.createdAt).getTime(),
+              endTime: new Date(m.createdAt).getTime(),
+            } as ThinkingStep)
+          }
+
+          if (m.toolCalls && m.toolCalls.length > 0) {
+            for (const tc of m.toolCalls) {
+              steps.push({
+                id: tc.id,
+                type: StepType.TOOL_CALL,
+                toolName: tc.name,
+                arguments: tc.arguments,
+                status: tc.status === 'pending' || tc.status === 'running' ? 'streaming' : tc.status === 'error' ? 'error' : 'success',
+                startTime: new Date(m.createdAt).getTime(),
+                endTime: tc.result ? new Date(m.createdAt).getTime() : undefined,
+              } as ToolCallStep)
+
+              if (tc.result) {
+                steps.push({
+                  id: `${tc.id}_result`,
+                  type: StepType.TOOL_RESULT,
+                  toolCallId: tc.id,
+                  toolName: tc.name,
+                  result: tc.result,
+                  status: 'success',
+                  startTime: new Date(m.createdAt).getTime(),
+                  endTime: new Date(m.createdAt).getTime(),
+                } as ToolResultStep)
+              }
+            }
+          }
+
+          if (m.answerContent) {
+            steps.push({
+              id: `text_${m.id}`,
+              type: StepType.TEXT_STREAM,
+              content: m.answerContent,
+              status: 'success',
+              startTime: new Date(m.createdAt).getTime(),
+              endTime: new Date(m.createdAt).getTime(),
+            } as TextStreamStep)
+          }
+
+          return {
+            id: `db_${m.id}`,
+            role: m.role,
+            content: m.content,
+            steps,
+            status: 'success',
+            timestamp: new Date(m.createdAt).getTime(),
+            thinkingContent: m.thinkingContent,
+            answerContent: m.answerContent,
+            toolCalls: m.toolCalls,
+          }
+        })
         setMessages(msgs)
         setCurrentSessionId(sessionId)
       }
@@ -93,6 +188,286 @@ export function useAgentChat() {
     return content.replace(/[\n\r]/g, ' ').slice(0, 30)
   }, [])
 
+  const applyStreamEvent = useCallback((event: StreamEvent) => {
+    setMessages((prev) => {
+      const updated = [...prev]
+      const last = updated[updated.length - 1]
+      if (!last || last.role !== 'assistant' || last.status !== 'loading') return updated
+
+      const steps: AgentStep[] = [...last.steps]
+      const stepId = event.stepId
+
+      switch (event.type) {
+        case 'status': {
+          if (event.status) {
+            const statusToPhase: Record<string, StepTypeValue> = {
+              perception: StepType.THINKING,
+              memory: StepType.THINKING,
+              reasoning: StepType.THINKING,
+              tool_calling: StepType.TOOL_CALL,
+              generating: StepType.TEXT_STREAM,
+              done: StepType.TEXT_STREAM,
+            }
+            const phase = statusToPhase[event.status]
+            if (phase) {
+              const id = `phase_${phase}_${Date.now()}`
+              if (!steps.some(s => s.id === id && s.status === 'streaming')) {
+                steps.push({
+                  id,
+                  type: phase,
+                  content: '',
+                  status: 'pending',
+                  startTime: Date.now(),
+                  toolName: phase === StepType.TOOL_CALL ? '' : undefined,
+                  arguments: phase === StepType.TOOL_CALL ? '' : undefined,
+                } as unknown as AgentStep)
+              }
+            }
+          }
+          break
+        }
+
+        case 'thinking_delta': {
+          if (stepId) {
+            const idx = steps.findIndex(s => s.id === stepId)
+            if (idx >= 0 && steps[idx].type === StepType.THINKING) {
+              const t = steps[idx] as ThinkingStep
+              steps[idx] = { ...t, content: t.content + (event.content || ''), status: 'streaming' }
+            } else {
+              steps.push({
+                id: stepId,
+                type: StepType.THINKING,
+                content: event.content || '',
+                status: 'streaming',
+                startTime: Date.now(),
+              } as ThinkingStep)
+            }
+          } else {
+            const idx = steps.findIndex(
+              s => s.type === StepType.THINKING && s.status === 'streaming',
+            )
+            if (idx >= 0) {
+              const t = steps[idx] as ThinkingStep
+              steps[idx] = { ...t, content: t.content + (event.content || '') }
+            } else {
+              steps.push({
+                id: `thinking_${Date.now()}`,
+                type: StepType.THINKING,
+                content: event.content || '',
+                status: 'streaming',
+                startTime: Date.now(),
+              } as ThinkingStep)
+            }
+          }
+          break
+        }
+
+        case 'thinking_done': {
+          if (stepId) {
+            const idx = steps.findIndex(s => s.id === stepId)
+            if (idx >= 0) {
+              steps[idx] = { ...steps[idx], status: 'success', endTime: Date.now() } as ThinkingStep
+            }
+          } else {
+            for (let i = steps.length - 1; i >= 0; i--) {
+              if (steps[i].type === StepType.THINKING && steps[i].status === 'streaming') {
+                steps[i] = { ...steps[i], status: 'success', endTime: Date.now() } as ThinkingStep
+                break
+              }
+            }
+          }
+          break
+        }
+
+        case 'tool_call_start': {
+          steps.push({
+            id: event.id || `tool_${Date.now()}`,
+            type: StepType.TOOL_CALL,
+            toolName: event.name || 'unknown',
+            arguments: event.arguments || '',
+            status: 'streaming',
+            startTime: Date.now(),
+          } as ToolCallStep)
+          break
+        }
+
+        case 'tool_call_delta': {
+          if (event.id) {
+            const idx = steps.findIndex(
+              s => s.type === StepType.TOOL_CALL && (s as ToolCallStep).id === event.id,
+            )
+            if (idx >= 0) {
+              const tc = steps[idx] as ToolCallStep
+              steps[idx] = { ...tc, arguments: tc.arguments + (event.content || '') }
+            }
+          }
+          break
+        }
+
+        case 'tool_call_end': {
+          if (event.id) {
+            const idx = steps.findIndex(
+              s => s.type === StepType.TOOL_CALL && (s as ToolCallStep).id === event.id,
+            )
+            if (idx >= 0) {
+              const tc = steps[idx] as ToolCallStep
+              steps[idx] = {
+                ...tc,
+                arguments: event.arguments || tc.arguments,
+                status: 'success',
+                endTime: Date.now(),
+                errorCode: event.errorCode,
+              } as ToolCallStep
+            }
+          }
+          break
+        }
+
+        case 'tool_result_start': {
+          steps.push({
+            id: event.id || `tool_result_${Date.now()}`,
+            type: StepType.TOOL_RESULT,
+            toolCallId: event.id || '',
+            toolName: event.name || 'unknown',
+            result: '',
+            status: 'streaming',
+            startTime: Date.now(),
+          } as ToolResultStep)
+          break
+        }
+
+        case 'tool_result_delta': {
+          if (event.id) {
+            const idx = steps.findIndex(
+              s => s.type === StepType.TOOL_RESULT && (s as ToolResultStep).id === event.id,
+            )
+            if (idx >= 0) {
+              const tr = steps[idx] as ToolResultStep
+              steps[idx] = { ...tr, result: tr.result + (event.content || '') }
+            }
+          }
+          break
+        }
+
+        case 'tool_result_end': {
+          if (event.id) {
+            const idx = steps.findIndex(
+              s => s.type === StepType.TOOL_RESULT && (s as ToolResultStep).id === event.id,
+            )
+            if (idx >= 0) {
+              const tr = steps[idx] as ToolResultStep
+              steps[idx] = {
+                ...tr,
+                result: event.result || tr.result,
+                status: event.errorCode ? 'error' : 'success',
+                endTime: Date.now(),
+                duration: Date.now() - tr.startTime,
+              } as ToolResultStep
+            }
+          }
+          break
+        }
+
+        case 'answer_delta': {
+          if (stepId) {
+            const idx = steps.findIndex(s => s.id === stepId)
+            if (idx >= 0 && steps[idx].type === StepType.TEXT_STREAM) {
+              const ts = steps[idx] as TextStreamStep
+              steps[idx] = { ...ts, content: ts.content + (event.content || ''), status: 'streaming' }
+            } else {
+              steps.push({
+                id: stepId,
+                type: StepType.TEXT_STREAM,
+                content: event.content || '',
+                status: 'streaming',
+                startTime: Date.now(),
+              } as TextStreamStep)
+            }
+          } else {
+            const idx = steps.findIndex(
+              s => s.type === StepType.TEXT_STREAM && s.status === 'streaming',
+            )
+            if (idx >= 0) {
+              const ts = steps[idx] as TextStreamStep
+              steps[idx] = { ...ts, content: ts.content + (event.content || '') }
+            } else {
+              steps.push({
+                id: `text_${Date.now()}`,
+                type: StepType.TEXT_STREAM,
+                content: event.content || '',
+                status: 'streaming',
+                startTime: Date.now(),
+              } as TextStreamStep)
+            }
+          }
+          break
+        }
+
+        case 'answer_done': {
+          if (stepId) {
+            const idx = steps.findIndex(s => s.id === stepId)
+            if (idx >= 0) {
+              steps[idx] = { ...steps[idx], status: 'success', endTime: Date.now() } as TextStreamStep
+            }
+          } else {
+            for (let i = steps.length - 1; i >= 0; i--) {
+              if (steps[i].type === StepType.TEXT_STREAM && steps[i].status === 'streaming') {
+                steps[i] = { ...steps[i], status: 'success', endTime: Date.now() } as TextStreamStep
+                break
+              }
+            }
+          }
+          break
+        }
+
+        case 'reasoning_iteration': {
+          steps.push({
+            id: `iteration_${event.iterationIndex || 1}_${Date.now()}`,
+            type: StepType.REASONING_ITERATION,
+            iterationIndex: event.iterationIndex || 1,
+            maxIterations: event.maxIterations || 3,
+            status: 'success',
+            startTime: Date.now(),
+            endTime: Date.now(),
+          } as ReasoningIterationStep)
+          break
+        }
+
+        case 'error': {
+          steps.push({
+            id: `error_${Date.now()}`,
+            type: StepType.ERROR,
+            errorCode: event.errorCode || 'UNKNOWN',
+            message: event.message || event.error || '未知错误',
+            status: 'error',
+            startTime: Date.now(),
+            recoverable: event.recoverable ?? false,
+            suggestedAction: event.suggestedAction,
+          } as ErrorStep)
+          break
+        }
+      }
+
+      const fullContent = rebuildAnswerContent(steps)
+
+      updated[updated.length - 1] = {
+        ...last,
+        steps,
+        content: fullContent,
+        answerContent: fullContent,
+        currentPhase:
+          event.type === 'thinking_delta' || event.type === 'thinking_done'
+            ? 'thinking'
+            : event.type.startsWith('tool_')
+            ? 'tool_calling'
+            : event.type.startsWith('answer_')
+            ? 'generating'
+            : last.currentPhase,
+      }
+      return updated
+    })
+  }, [])
+
   const handleSend = useCallback(async (value?: string) => {
     const trimmed = (value ?? inputValue).trim()
     if (!trimmed || isGenerating) return
@@ -103,6 +478,7 @@ export function useAgentChat() {
       id: `user_${Date.now()}`,
       role: 'user',
       content: trimmed,
+      steps: [],
       status: 'success',
       timestamp: Date.now(),
     }
@@ -112,6 +488,7 @@ export function useAgentChat() {
       id: `assistant_${Date.now()}`,
       role: 'assistant',
       content: '',
+      steps: [],
       status: 'loading',
       timestamp: Date.now(),
     }
@@ -169,107 +546,6 @@ export function useAgentChat() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      const applyStreamEvent = (event: StreamEvent) => {
-        setMessages((prev) => {
-          const updated = [...prev]
-          const last = updated[updated.length - 1]
-          if (!last || last.role !== 'assistant' || last.status !== 'loading') return updated
-
-          switch (event.type) {
-            case 'status':
-              updated[updated.length - 1] = {
-                ...last,
-                currentPhase: (event.status as ChatMessage['currentPhase']) || last.currentPhase,
-              }
-              break
-
-            case 'thinking_delta':
-              updated[updated.length - 1] = {
-                ...last,
-                currentPhase: 'thinking',
-                thinkingContent: (last.thinkingContent || '') + (event.content || ''),
-              }
-              break
-
-            case 'thinking_done':
-              updated[updated.length - 1] = {
-                ...last,
-                currentPhase: 'generating',
-              }
-              break
-
-            case 'tool_call_start':
-              updated[updated.length - 1] = {
-                ...last,
-                currentPhase: 'tool_calling',
-                toolCalls: [
-                  ...(last.toolCalls || []),
-                  {
-                    id: event.id || '',
-                    name: event.name || '',
-                    arguments: event.arguments || '',
-                    status: 'running' as const,
-                  },
-                ],
-              }
-              break
-
-            case 'tool_call_delta': {
-              const toolId = event.id || ''
-              updated[updated.length - 1] = {
-                ...last,
-                toolCalls: (last.toolCalls || []).map((tc) =>
-                  tc.id === toolId
-                    ? { ...tc, result: (tc.result || '') + (event.content || '') }
-                    : tc,
-                ),
-              }
-              break
-            }
-
-            case 'tool_call_end': {
-              const toolEndId = event.id || ''
-              updated[updated.length - 1] = {
-                ...last,
-                toolCalls: (last.toolCalls || []).map((tc) =>
-                  tc.id === toolEndId
-                    ? { ...tc, result: event.result || tc.result, status: 'success' as const }
-                    : tc,
-                ),
-              }
-              break
-            }
-
-            case 'answer_delta':
-              updated[updated.length - 1] = {
-                ...last,
-                currentPhase: 'generating',
-                answerContent: (last.answerContent || '') + (event.content || ''),
-                content: last.content + (event.content || ''),
-              }
-              break
-
-            case 'answer_done':
-              updated[updated.length - 1] = {
-                ...last,
-                currentPhase: 'done',
-                status: 'success',
-              }
-              break
-
-            case 'error':
-              updated[updated.length - 1] = {
-                ...last,
-                status: 'error',
-                error: event.message || '生成失败',
-              }
-              throw new Error(event.message || '生成失败')
-          }
-
-          return updated
-        })
-      }
-
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -309,6 +585,8 @@ export function useAgentChat() {
                 } catch {
                   // ignore
                 }
+              } else {
+                throw parseErr
               }
             }
           }
@@ -338,6 +616,7 @@ export function useAgentChat() {
             ...last,
             status: 'error',
             error: (err as Error).message,
+            currentPhase: 'done',
           }
         }
         return updated
@@ -346,7 +625,7 @@ export function useAgentChat() {
       setIsGenerating(false)
       abortRef.current = null
     }
-  }, [inputValue, isGenerating, currentSessionId, selectedModel, deepThinking, webSearch, generateTitle, fetchSessions])
+  }, [inputValue, isGenerating, currentSessionId, selectedModel, deepThinking, webSearch, generateTitle, fetchSessions, applyStreamEvent])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -355,7 +634,7 @@ export function useAgentChat() {
       const updated = [...prev]
       const last = updated[updated.length - 1]
       if (last && last.status === 'loading') {
-        updated[updated.length - 1] = { ...last, status: 'success' }
+        updated[updated.length - 1] = { ...last, status: 'success', currentPhase: 'done' }
       }
       return updated
     })

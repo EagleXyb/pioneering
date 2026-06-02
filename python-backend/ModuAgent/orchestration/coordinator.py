@@ -382,6 +382,8 @@ class Coordinator:
                 )
                 return
 
+        yield SSEEncoder.encode_status("perception", trace_id)
+
         cleaned_text = None
         if perception_result and perception_result.get("parsed_content"):
             cleaned_text = perception_result["parsed_content"].get("text")
@@ -399,6 +401,8 @@ class Coordinator:
         context["history"] = memory_data.get("history", [])
         context["knowledge"] = memory_data.get("knowledge", [])
 
+        yield SSEEncoder.encode_status("memory", trace_id)
+
         if not prompt:
             yield SSEEncoder.encode_error("INPUT_001", "prompt is required", trace_id)
             return
@@ -415,6 +419,8 @@ class Coordinator:
         max_format_retries = config.get("llm.max_format_retries", 2)
         tool_call_pattern = config.get("llm.tool_call_pattern", r"```tool_call\s*\n(.*?)\n```")
 
+        yield SSEEncoder.encode_status("thinking", trace_id)
+
         try:
             response = self._llm_adapter.generate(
                 prompt=prompt,
@@ -427,9 +433,13 @@ class Coordinator:
             yield SSEEncoder.encode_error(ErrorCode.LLM_GENERATION_FAILED, str(e), trace_id)
             return
 
+        yield SSEEncoder.encode_thinking(response, trace_id)
+
         format_retries = 0
         needs_stream_final = True
         for iteration in range(max_iterations):
+            yield SSEEncoder.encode_reasoning_iteration(iteration + 1, max_iterations, trace_id)
+
             tool_calls, parse_errors = self._parse_tool_calls_with_errors(response, tool_call_pattern)
 
             if not tool_calls and not parse_errors:
@@ -457,6 +467,7 @@ class Coordinator:
                             temperature=config.get("llm.temperature", 0.7),
                             max_tokens=config.get("llm.max_tokens", 512),
                         )
+                        yield SSEEncoder.encode_thinking(response, trace_id)
                         format_retries += 1
                         continue
                     except Exception as e:
@@ -478,6 +489,10 @@ class Coordinator:
                 if not tool_name:
                     continue
 
+                tool_id = str(uuid.uuid4())
+                tool_args_str = json.dumps(tool_params, ensure_ascii=False)
+                yield SSEEncoder.encode_tool_call_start(tool_id, tool_name, tool_args_str, trace_id)
+
                 tool_result = self._tool_adapter.invoke_tool(
                     tool_name=tool_name,
                     params=tool_params,
@@ -486,6 +501,14 @@ class Coordinator:
                 )
                 iteration_results.append({"tool": tool_name, "result": tool_result})
                 tool_results.append(tool_result)
+
+                yield SSEEncoder.encode_tool_call_end(tool_id, tool_name, tool_args_str, trace_id)
+                yield SSEEncoder.encode_tool_result(
+                    tool_id, tool_name,
+                    json.dumps(tool_result.get("data", {}), ensure_ascii=False),
+                    tool_result.get("status", "unknown"),
+                    trace_id,
+                )
 
                 tool_call_event = AgentEvent(
                     trace_id=trace_id,
@@ -555,6 +578,7 @@ class Coordinator:
                     temperature=config.get("llm.temperature", 0.7),
                     max_tokens=config.get("llm.max_tokens", 512),
                 )
+                yield SSEEncoder.encode_thinking(response, trace_id)
             except Exception as e:
                 logger.error("LLM re-generation failed at iteration %d: %s", iteration + 1, str(e))
                 needs_stream_final = False

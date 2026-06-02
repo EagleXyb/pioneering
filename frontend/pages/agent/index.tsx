@@ -1,12 +1,15 @@
-import React from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { Layout, Button, Divider } from 'tdesign-react'
-import { ArrowLeftIcon } from 'tdesign-icons-react'
+import { ArrowLeftIcon, ArrowDownIcon } from 'tdesign-icons-react'
 import { useNavigate } from 'react-router-dom'
 
 import { useAgentChat } from './hooks/useAgentChat'
+import { useSmartScroll } from './hooks/useSmartScroll'
 import { ChatSidebar } from './components/ChatSidebar'
 import { ChatMessageBubble } from './components/ChatMessage'
 import { ChatInput } from './components/ChatInput'
+import { BottomPanel } from './components/BottomPanel'
+import { ParamPanel, useAgentParams, type AgentParams } from './components/ParamPanel'
 import './styles/chatbot.css'
 
 const { Header, Content } = Layout
@@ -34,9 +37,52 @@ const AgentChatbot: React.FC = () => {
     setWebSearch,
     loadSession,
     fetchSessions,
-    messagesEndRef,
     isInChatMode,
   } = useAgentChat()
+
+  const [paramVisible, setParamVisible] = useState(false)
+  const { params, setParams } = useAgentParams()
+
+  const lastAssistantMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i]
+    }
+    return null
+  }, [messages])
+
+  const { containerRef, scrollToBottom, userScrolledUpRef } = useSmartScroll([messages])
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!userScrolledUpRef.current && isInChatMode) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      })
+    }
+  }, [messages, isInChatMode, userScrolledUpRef])
+
+  const handleExport = () => {
+    const content = messages
+      .map((m) => {
+        const role = m.role === 'user' ? '你' : m.role === 'assistant' ? 'AI' : '系统'
+        return `### ${role} (${new Date(m.timestamp).toLocaleString()})\n\n${m.content}\n`
+      })
+      .join('\n---\n\n')
+
+    const blob = new Blob([`# AI 对话导出\n\n${content}`], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ai-chat-${Date.now()}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleClear = () => {
+    if (confirm('确定要清空当前对话吗？')) {
+      handleNewChat()
+    }
+  }
 
   return (
     <Layout className="agent-layout">
@@ -121,7 +167,7 @@ const AgentChatbot: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="agent-messages-container">
+            <div className="agent-messages-container" ref={containerRef}>
               {messages.map((msg) => (
                 <ChatMessageBubble
                   key={msg.id}
@@ -130,26 +176,63 @@ const AgentChatbot: React.FC = () => {
                 />
               ))}
               <div ref={messagesEndRef} />
+              {userScrolledUpRef.current && isInChatMode && (
+                <Button
+                  className="agent-scroll-to-bottom"
+                  theme="primary"
+                  shape="circle"
+                  size="small"
+                  icon={<ArrowDownIcon />}
+                  onClick={() => {
+                    userScrolledUpRef.current = false
+                    scrollToBottom()
+                  }}
+                >
+                  回到最新
+                </Button>
+              )}
             </div>
           )}
         </Content>
 
-        <div className="agent-input-container">
-          <ChatInput
-            inputValue={inputValue}
-            onInputChange={handleInputChange}
-            onSend={handleSend}
-            onStop={handleStop}
+        <div className="agent-bottom-wrapper">
+          <BottomPanel
+            lastMessage={lastAssistantMessage}
             isGenerating={isGenerating}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
             deepThinking={deepThinking}
-            onDeepThinkingChange={setDeepThinking}
             webSearch={webSearch}
+            onDeepThinkingChange={setDeepThinking}
             onWebSearchChange={setWebSearch}
+            onOpenParams={() => setParamVisible(true)}
+            onClear={handleClear}
+            onRegenerate={handleRegenerate}
+            onExport={handleExport}
           />
+
+          <div className="agent-input-container">
+            <ChatInput
+              inputValue={inputValue}
+              onInputChange={handleInputChange}
+              onSend={handleSend}
+              onStop={handleStop}
+              isGenerating={isGenerating}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              deepThinking={deepThinking}
+              onDeepThinkingChange={setDeepThinking}
+              webSearch={webSearch}
+              onWebSearchChange={setWebSearch}
+            />
+          </div>
         </div>
       </Layout>
+
+      <ParamPanel
+        visible={paramVisible}
+        onClose={() => setParamVisible(false)}
+        params={params}
+        onChange={(p) => setParams(p as AgentParams)}
+      />
     </Layout>
   )
 }

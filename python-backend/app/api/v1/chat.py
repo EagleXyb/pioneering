@@ -23,7 +23,7 @@ from app.schemas.chat import (
     QuerySessionsParams,
 )
 from app.api.deps import get_current_user
-from app.core.llm import llm_service
+from app.core.agent_bridge import stream_chat_completion
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -241,6 +241,9 @@ async def get_messages(
             role=m.role.value,
             content=m.content,
             content_blocks=m.content_blocks,
+            thinking_content=m.thinking_content,
+            answer_content=m.answer_content,
+            tool_calls=m.tool_calls,
             token_count=m.token_count,
             feedback=m.feedback.value if m.feedback else "none",
             metadata=m.extra_metadata,
@@ -281,6 +284,9 @@ async def edit_message(
         role=msg.role.value,
         content=msg.content,
         content_blocks=msg.content_blocks,
+        thinking_content=msg.thinking_content,
+        answer_content=msg.answer_content,
+        tool_calls=msg.tool_calls,
         token_count=msg.token_count,
         feedback=msg.feedback.value if msg.feedback else "none",
         metadata=msg.extra_metadata,
@@ -299,19 +305,20 @@ async def chat_completion(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.config import settings
+
     session_id = dto.session_id
     if not session_id:
         session = ChatSession(
             id=_gen_id("sess_"),
             user_id=current_user.id,
             title=dto.message[:50],
-            model=dto.model or "gpt-4o-mini",
+            model=dto.model or settings.llm_default_model,
         )
         db.add(session)
         await db.flush()
         session_id = session.id
 
-    # save user message
     user_msg = ChatMessage(
         id=_gen_id("msg_"),
         session_id=session_id,
@@ -322,7 +329,6 @@ async def chat_completion(
     )
     db.add(user_msg)
 
-    # update session
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     session = result.scalar_one_or_none()
     if session:
@@ -330,41 +336,54 @@ async def chat_completion(
 
     await db.flush()
 
-    # build message history
-    history_result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.asc())
-    )
-    history = history_result.scalars().all()
-
-    messages_for_llm = []
-    for m in history:
-        messages_for_llm.append({"role": m.role.value, "content": m.content})
-
     if dto.stream:
         async def event_generator():
             full_content = ""
-            async for chunk in llm_service.chat_completion(
-                messages=messages_for_llm,
+            thinking_content = ""
+            answer_content = ""
+            tool_calls_data = None
+
+            async for sse_line in stream_chat_completion(
+                message=dto.message,
+                session_id=session_id,
+                user_id=current_user.id,
                 model=dto.model,
+                system_prompt=dto.system_prompt,
                 temperature=dto.temperature,
                 max_tokens=dto.max_tokens,
-                stream=True,
             ):
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                content = delta.get("content", "")
-                if content:
-                    full_content += content
-                    yield {"event": "delta", "data": json.dumps({"content": content})}
+                if "__metadata__" in sse_line:
+                    try:
+                        data_str = sse_line.split("data: ", 1)[1].strip()
+                        meta = json.loads(data_str)
+                        payload = meta.get("payload", {})
+                        thinking_content = payload.get("thinkingContent", "")
+                        answer_content = payload.get("answerContent", "")
+                        tool_calls_data = payload.get("toolCalls")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+                    continue
 
-            # save assistant message
+                if "answer_delta" in sse_line or "answer_done" in sse_line or "thinking_":
+                    try:
+                        data_str = sse_line.split("data: ", 1)[1].strip()
+                        parsed = json.loads(data_str)
+                        if parsed.get("type") == "answer_delta":
+                            full_content += parsed.get("content", "")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+
+                yield sse_line
+
             assistant_msg = ChatMessage(
                 id=_gen_id("msg_"),
                 session_id=session_id,
                 user_id=current_user.id,
                 role=MessageRole.assistant,
-                content=full_content,
+                content=full_content or thinking_content or answer_content,
+                thinking_content=thinking_content or None,
+                answer_content=answer_content or full_content or None,
+                tool_calls=tool_calls_data,
                 parent_message_id=user_msg.id,
             )
             db.add(assistant_msg)
@@ -373,40 +392,67 @@ async def chat_completion(
                 session.last_message_id = assistant_msg.id
             await db.commit()
 
-            yield {"event": "done", "data": json.dumps({"message_id": assistant_msg.id})}
-
         return EventSourceResponse(event_generator())
 
-    # non-streaming
-    result_data = await llm_service.chat_completion(
-        messages=messages_for_llm,
+    full_content = ""
+    thinking_content = ""
+    answer_content = ""
+    tool_calls_data = None
+
+    async for sse_line in stream_chat_completion(
+        message=dto.message,
+        session_id=session_id,
+        user_id=current_user.id,
         model=dto.model,
+        system_prompt=dto.system_prompt,
         temperature=dto.temperature,
         max_tokens=dto.max_tokens,
-        stream=False,
-    )
-    content = result_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    ):
+        if "__metadata__" in sse_line:
+            try:
+                data_str = sse_line.split("data: ", 1)[1].strip()
+                meta = json.loads(data_str)
+                payload = meta.get("payload", {})
+                thinking_content = payload.get("thinkingContent", "")
+                answer_content = payload.get("answerContent", "")
+                tool_calls_data = payload.get("toolCalls")
+            except (json.JSONDecodeError, KeyError):
+                pass
+            continue
+
+        try:
+            data_str = sse_line.split("data: ", 1)[1].strip()
+            parsed = json.loads(data_str)
+            if parsed.get("type") == "answer_delta":
+                full_content += parsed.get("content", "")
+        except (json.JSONDecodeError, KeyError):
+            pass
 
     assistant_msg = ChatMessage(
         id=_gen_id("msg_"),
         session_id=session_id,
         user_id=current_user.id,
         role=MessageRole.assistant,
-        content=content,
+        content=full_content or thinking_content or answer_content,
+        thinking_content=thinking_content or None,
+        answer_content=answer_content or full_content or None,
+        tool_calls=tool_calls_data,
         parent_message_id=user_msg.id,
     )
     db.add(assistant_msg)
     if session:
         session.message_count = (session.message_count or 0) + 1
         session.last_message_id = assistant_msg.id
-    await db.flush()
+    await db.commit()
 
     return MessageResponse(
         id=assistant_msg.id,
         session_id=assistant_msg.session_id,
         role=assistant_msg.role.value,
         content=assistant_msg.content,
-        token_count=result_data.get("usage", {}).get("total_tokens"),
+        thinking_content=assistant_msg.thinking_content,
+        answer_content=assistant_msg.answer_content,
+        tool_calls=assistant_msg.tool_calls,
         parent_message_id=assistant_msg.parent_message_id,
         created_at=assistant_msg.created_at,
         updated_at=assistant_msg.updated_at,

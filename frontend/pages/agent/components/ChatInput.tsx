@@ -61,8 +61,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     onStop()
   }
 
-  const handleModelSwitch = (data: { value: string }) => {
-    onModelChange(data.value)
+  const handleModelSwitch = (data: unknown) => {
+    const v = (data as { value?: string | number }).value
+    if (v != null) onModelChange(String(v))
   }
 
   const onAttachClick = () => {

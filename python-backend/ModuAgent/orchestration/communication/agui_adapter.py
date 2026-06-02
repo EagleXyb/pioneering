@@ -226,6 +226,7 @@ class AGUIStreamAdapter:
         self._trace_id: str = trace_id
         self._message_id: str = ""
         self._tool_call_records: List[ToolCallRecord] = []
+        self._pending_tool_calls: Dict[str, Dict[str, Any]] = {}
 
     async def transform(
         self,
@@ -267,7 +268,34 @@ class AGUIStreamAdapter:
                 logger.warning("Failed to parse Coordinator frame data: %s", data_str[:200])
                 continue
 
-            if event_type == "error":
+            if event_type == "status" or event_type == "reasoning_iteration":
+                continue
+
+            elif event_type == "thinking":
+                response_text += data.get("content", "")
+
+            elif event_type == "tool_call_start":
+                tc_data = {"tool_name": data.get("name", ""), "arguments": data.get("arguments", "{}")}
+                pending_tc_id = data.get("id", str(uuid.uuid4()))
+                self._pending_tool_calls[pending_tc_id] = tc_data
+
+            elif event_type == "tool_call_end":
+                pass
+
+            elif event_type == "tool_result":
+                rec_tool_name = data.get("name", "")
+                tc_id = data.get("id", "")
+                if tc_id in self._pending_tool_calls:
+                    rec_tool_name = rec_tool_name or self._pending_tool_calls[tc_id]["tool_name"]
+                result_str = data.get("result", "{}")
+                result_status = data.get("status", "unknown")
+                tool_records.append(ToolCallRecord(
+                    tool_name=rec_tool_name,
+                    params=json.loads(self._pending_tool_calls.get(tc_id, {}).get("arguments", "{}")),
+                    result={"data": result_str, "status": result_status},
+                ))
+
+            elif event_type == "error":
                 has_error = True
                 error_code = data.get("error_code", "")
                 error_message = data.get("message", "")
@@ -279,7 +307,12 @@ class AGUIStreamAdapter:
 
             elif event_type == "done":
                 raw_tool_results = data.get("tool_results", [])
-                tool_records = self._parse_tool_records(raw_tool_results)
+                extra_records = self._parse_tool_records(raw_tool_results)
+                existing_names = {r.tool_name for r in tool_records}
+                for rec in extra_records:
+                    if rec.tool_name not in existing_names:
+                        tool_records.append(rec)
+                break
 
         if has_error:
             return
