@@ -42,9 +42,6 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     content_blocks: list | None = None
-    thinking_content: str | None = None
-    answer_content: str | None = None
-    tool_calls: list | None = None
     token_count: int | None = None
     feedback: str = "none"
     metadata: dict | None = None

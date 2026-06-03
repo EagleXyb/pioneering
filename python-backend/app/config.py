@@ -2,14 +2,14 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/iac_incubator"
+    database_url: str = "postgresql+asyncpg://postgres:root@localhost:5432/pioneering"
 
     jwt_secret: str = "default-secret-change-in-production"
     jwt_expiration_hours: int = 2
     refresh_token_expiration_days: int = 30
 
     llm_api_key: str = ""
-    llm_base_url: str = "https://api.deepseek.com"
+    llm_base_url: str = "https://api.deepseek.com/v1"
     llm_default_model: str = "deepseek-v4-flash"
 
     host: str = "0.0.0.0"

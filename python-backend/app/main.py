@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     try:
         await init_db()
-        logger.info("数据库表创建成功")
+        logger.info("数据库连接成功")
     except Exception as e:
         logger.warning("数据库连接失败，服务将以无数据库模式启动: %s", e)
     yield
