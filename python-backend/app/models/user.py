@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from decimal import Decimal as PyDecimal
 
-from sqlalchemy import Column, DateTime, String, Text, SmallInteger, Float, BigInteger, Boolean, JSON, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, DateTime, String, Text, SmallInteger, Integer, Float, BigInteger, Boolean, JSON, ForeignKey, Enum as SAEnum
 from sqlalchemy import DECIMAL
 from sqlalchemy.orm import relationship
 import enum

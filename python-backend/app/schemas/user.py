@@ -22,9 +22,9 @@ class RefreshTokenRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    expires_in: int
+    token: str
+    refreshToken: str
+    user: dict | None = None
 
 
 class UserProfile(BaseModel):

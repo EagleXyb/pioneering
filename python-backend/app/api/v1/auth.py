@@ -43,9 +43,16 @@ async def _generate_auth_response(db: AsyncSession, user: User) -> TokenResponse
     access_token = create_access_token(sub=user.id, extra_claims={"username": user.username})
     refresh_token = await _create_refresh_token(db, user.id)
     return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=settings.jwt_expiration_hours * 3600,
+        token=access_token,
+        refreshToken=refresh_token,
+        user={
+            "id": user.id,
+            "username": user.username,
+            "nickname": user.nickname,
+            "avatar": user.avatar,
+            "email": user.email,
+            "phone": user.phone,
+        },
     )
 
 

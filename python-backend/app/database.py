@@ -24,7 +24,8 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    async with engine.connect() as conn:
-        from sqlalchemy import text
-        await conn.execute(text("SELECT 1"))
-        await conn.commit()
+    """初始化数据库连接并创建表"""
+    async with engine.begin() as conn:
+        # 导入所有模型以确保它们被注册到 Base.metadata
+        import app.models.user  # noqa: F401
+        await conn.run_sync(Base.metadata.create_all)
