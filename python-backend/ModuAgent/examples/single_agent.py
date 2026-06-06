@@ -9,10 +9,8 @@ from components.action.executors.synchronous import SyncActionExecutor
 from components.action.tools.calculator import CalculatorTool
 from components.action.tools.search import SearchTool
 from components.memory.cache.redis_adapter import InMemoryShortTermMemory
-from components.memory.vector.chroma import ChromaLongTermMemory
 from components.perception.text.rule_based import TextPreprocessor
-from components.reasoning.llm.gpt import GPTLLMReasoner
-from components.reasoning.llm.qwen import QwenLLMReasoner
+from components.reasoning.llm.deepseek import DeepSeekLLMReasoner
 from config.runtime_config import get_config
 from core.registry import get_registry
 from orchestration.coordinator import Coordinator
@@ -29,11 +27,9 @@ def register_components() -> None:
 
     registry.register_perception("text_preprocessor", TextPreprocessor())
 
-    registry.register_reasoning_engine("qwen", QwenLLMReasoner())
-    registry.register_reasoning_engine("gpt", GPTLLMReasoner())
+    registry.register_reasoning_engine("deepseek", DeepSeekLLMReasoner())
 
     registry.register_memory("short_term", InMemoryShortTermMemory())
-    registry.register_memory("long_term", ChromaLongTermMemory())
 
     registry.register_tool(SearchTool())
     registry.register_tool(CalculatorTool())
@@ -89,8 +85,8 @@ async def run_llm_swap_flow() -> None:
     user_id = "demo_user"
     session_id = "demo_session_003"
 
-    logger.info("=== Using Qwen engine ===")
-    result_qwen = await coordinator.process_request(
+    logger.info("=== Using DeepSeek engine ===")
+    result = await coordinator.process_request(
         user_id=user_id,
         session_id=session_id,
         input_data={
@@ -99,21 +95,7 @@ async def run_llm_swap_flow() -> None:
             "required_fields": ["user_intent"],
         },
     )
-    logger.info("Qwen result: %s", json.dumps(result_qwen, ensure_ascii=False, indent=2))
-
-    registry.swap_component("reasoning_engine", "qwen", GPTLLMReasoner())
-    logger.info("=== Switched to GPT engine ===")
-
-    result_gpt = await coordinator.process_request(
-        user_id=user_id,
-        session_id=session_id,
-        input_data={
-            "input_type": "text",
-            "prompt": "1+1等于几？",
-            "required_fields": ["user_intent"],
-        },
-    )
-    logger.info("GPT result: %s", json.dumps(result_gpt, ensure_ascii=False, indent=2))
+    logger.info("DeepSeek result: %s", json.dumps(result, ensure_ascii=False, indent=2))
 
 
 async def run_perception_demo() -> None:
@@ -130,7 +112,6 @@ async def run_perception_demo() -> None:
 async def run_memory_demo() -> None:
     registry = get_registry()
     short_term = registry.get_memory("short_term")
-    long_term = registry.get_memory("long_term")
 
     short_term.update(
         user_id="demo_user",
@@ -149,19 +130,6 @@ async def run_memory_demo() -> None:
         required_fields=["role", "content"],
     )
     logger.info("Short-term memory: %s", json.dumps(result, ensure_ascii=False, indent=2))
-
-    long_term.update(
-        user_id="demo_user",
-        new_data={"text": "用户偏好使用中文交流"},
-        metadata={"source_type": "preference", "doc_id": "pref_001"},
-    )
-
-    lt_result = long_term.query(
-        user_id="demo_user",
-        context_window="用户语言偏好",
-        required_fields=["source_type"],
-    )
-    logger.info("Long-term memory: %s", json.dumps(lt_result, ensure_ascii=False, indent=2))
 
 
 async def main() -> None:
@@ -186,7 +154,7 @@ async def main() -> None:
     logger.info("4. Basic Flow Demo (requires LLM API key)")
     logger.info("=" * 60)
     config = get_config()
-    provider = config.get("llm.default_provider", "qwen")
+    provider = config.get("llm.default_provider", "deepseek")
     if provider:
         try:
             await run_basic_flow()
@@ -196,12 +164,12 @@ async def main() -> None:
         logger.info("No LLM provider configured, skipping basic flow")
 
     logger.info("=" * 60)
-    logger.info("5. LLM Swap Demo (requires both API keys)")
+    logger.info("5. DeepSeek Reasoning Demo")
     logger.info("=" * 60)
     try:
         await run_llm_swap_flow()
     except Exception as e:
-        logger.warning("LLM swap demo skipped: %s", e)
+        logger.warning("DeepSeek reasoning demo skipped: %s", e)
 
     logger.info("All demos completed")
 

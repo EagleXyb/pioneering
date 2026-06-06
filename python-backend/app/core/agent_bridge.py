@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import sys
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -12,11 +14,16 @@ logger = logging.getLogger(__name__)
 
 _registered = False
 
+_MODUAGENT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ModuAgent")
+
 
 def _init_moduagent() -> None:
     global _registered
     if _registered:
         return
+
+    if _MODUAGENT_DIR not in sys.path:
+        sys.path.insert(0, _MODUAGENT_DIR)
 
     from components.action.executors.synchronous import SyncActionExecutor
     from components.action.tools.calculator import CalculatorTool

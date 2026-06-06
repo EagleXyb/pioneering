@@ -1,10 +1,10 @@
 import React, { useCallback } from 'react'
-import { ChatMessage as TdChatMessage } from '@tdesign-react/chat'
-import { Button, Tag, Loading, MessagePlugin } from 'tdesign-react'
-import { RefreshIcon } from 'tdesign-icons-react'
+import { ChatMessage as TdChatMessage, ChatActionBar } from '@tdesign-react/chat'
+import { Tag, Loading, MessagePlugin } from 'tdesign-react'
 import type { ChatMessage, TextStreamStep } from '../types'
 import { StepType } from '../types'
 import { StepRenderer } from './StepRenderer'
+import type { TdChatActionsName } from 'tdesign-web-components/lib/chat-action'
 
 interface ChatMessageBubbleProps {
   message: ChatMessage
@@ -17,22 +17,22 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
 }) => {
   const isUser = message.role === 'user'
 
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(message.content)
-      MessagePlugin.success('已复制到剪贴板')
-    } catch {
-      MessagePlugin.error('复制失败')
-    }
-  }, [message.content])
-
-  const handleLike = useCallback(() => {
-    MessagePlugin.success('感谢反馈')
-  }, [])
-
-  const handleDislike = useCallback(() => {
-    MessagePlugin.info('我们会努力改进')
-  }, [])
+  const handleAction = useCallback(
+    (name: TdChatActionsName) => {
+      switch (name) {
+        case 'good':
+          MessagePlugin.success('感谢反馈')
+          break
+        case 'bad':
+          MessagePlugin.info('我们会努力改进')
+          break
+        case 'replay':
+          onRegenerate?.()
+          break
+      }
+    },
+    [onRegenerate],
+  )
 
   if (isUser) {
     return (
@@ -84,53 +84,16 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
             <Tag theme="danger" variant="light" size="small">
               {message.error}
             </Tag>
-            {onRegenerate && (
-              <Button
-                theme="primary"
-                variant="text"
-                size="small"
-                icon={<RefreshIcon />}
-                onClick={onRegenerate}
-              >
-                重新生成
-              </Button>
-            )}
           </div>
         )}
 
         {message.status !== 'error' && message.content && (
-          <div className="agent-message-actions">
-            <Button
-              theme="default"
-              variant="text"
-              size="small"
-              onClick={handleCopy}
-            >
-              复制
-            </Button>
-            <Button theme="default" variant="text" size="small" onClick={handleLike}>
-              点赞
-            </Button>
-            <Button
-              theme="default"
-              variant="text"
-              size="small"
-              onClick={handleDislike}
-            >
-              反馈
-            </Button>
-            {onRegenerate && (
-              <Button
-                theme="default"
-                variant="text"
-                size="small"
-                icon={<RefreshIcon />}
-                onClick={onRegenerate}
-              >
-                重新生成
-              </Button>
-            )}
-          </div>
+          <ChatActionBar
+            copyText={message.content}
+            handleAction={handleAction}
+            actionBar={['copy', 'good', 'bad', ...(onRegenerate ? ['replay'] : [])] as TdChatActionsName[]}
+            tooltipProps={{ theme: 'light', showArrow: false }}
+          />
         )}
       </div>
     </div>

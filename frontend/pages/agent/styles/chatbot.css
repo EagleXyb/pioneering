@@ -560,19 +560,6 @@
   border-radius: 6px;
 }
 
-.agent-message-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-}
-
-.agent-message-actions:hover {
-  opacity: 1;
-}
-
 @keyframes stepFadeIn {
   from {
     opacity: 0;
@@ -1016,19 +1003,6 @@
   padding: 8px 12px;
   background: var(--td-error-color-1);
   border-radius: 6px;
-}
-
-.agent-message-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-}
-
-.agent-message-actions:hover {
-  opacity: 1;
 }
 
 @keyframes stepFadeIn {

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG = {
     "llm": {
-        "default_provider": "qwen",
+        "default_provider": "deepseek",
         "temperature": 0.7,
         "max_tokens": 512,
         "prompt_template": "",
