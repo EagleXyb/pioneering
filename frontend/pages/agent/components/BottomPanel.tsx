@@ -3,10 +3,12 @@ import { Button, Switch, Tooltip, Space, Divider } from 'tdesign-react'
 import { SettingIcon, RefreshIcon, DeleteIcon, DownloadIcon } from 'tdesign-icons-react'
 import { StatusBar } from './StatusBar'
 import type { ChatMessage } from '../types'
+import type { RunState } from '../hooks/useAgentRun'
 
 interface BottomPanelProps {
   lastMessage: ChatMessage | null
   isGenerating: boolean
+  runState?: RunState | null
   deepThinking: boolean
   webSearch: boolean
   onDeepThinkingChange: (v: boolean) => void
@@ -20,6 +22,7 @@ interface BottomPanelProps {
 export const BottomPanel: React.FC<BottomPanelProps> = ({
   lastMessage,
   isGenerating,
+  runState,
   deepThinking,
   webSearch,
   onDeepThinkingChange,
@@ -59,7 +62,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         </Space>
 
         <div className="bottom-panel-actions">
-          <StatusBar message={lastMessage} isGenerating={isGenerating} />
+          <StatusBar message={lastMessage} isGenerating={isGenerating} runState={runState} />
           <Divider layout="vertical" />
           <Tooltip content="参数配置">
             <Button

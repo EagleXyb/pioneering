@@ -949,6 +949,100 @@
   overflow-y: hidden;
 }
 
+/* ========== Activity Panel ========== */
+.agent-activity-panel-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  margin: 16px 0;
+  z-index: 5;
+}
+
+.activity-panel {
+  width: 340px;
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-border);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.activity-panel-empty {
+  text-align: center;
+  padding: 12px;
+}
+
+.activity-panel-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+}
+
+.activity-panel-phase-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+}
+
+.activity-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.activity-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.activity-panel-steps {
+  margin-bottom: 8px;
+}
+
+.activity-step-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.activity-step-title .t-icon {
+  font-size: 16px;
+}
+
+.activity-panel-iteration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--td-component-border);
+}
+
+/* ========== Status Bar Progress ========== */
+.status-bar-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.status-bar-progress .t-progress {
+  flex: 1;
+}
+
+.status-text-iteration {
+  font-size: 11px;
+  color: var(--td-brand-color);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 
 /* ========== White-box Trajectory (Steps) ========== */
 
@@ -1372,4 +1466,98 @@
   margin: 0.8em 0;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* ========== Activity Panel ========== */
+.agent-activity-panel-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  margin: 16px 0;
+  z-index: 5;
+}
+
+.activity-panel {
+  width: 340px;
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-border);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.activity-panel-empty {
+  text-align: center;
+  padding: 12px;
+}
+
+.activity-panel-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+}
+
+.activity-panel-phase-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+}
+
+.activity-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.activity-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.activity-panel-steps {
+  margin-bottom: 8px;
+}
+
+.activity-step-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.activity-step-title .t-icon {
+  font-size: 16px;
+}
+
+.activity-panel-iteration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--td-component-border);
+}
+
+/* ========== Status Bar Progress ========== */
+.status-bar-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.status-bar-progress .t-progress {
+  flex: 1;
+}
+
+.status-text-iteration {
+  font-size: 11px;
+  color: var(--td-brand-color);
+  font-weight: 500;
+  white-space: nowrap;
 }

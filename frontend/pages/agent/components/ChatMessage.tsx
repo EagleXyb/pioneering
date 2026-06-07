@@ -20,11 +20,16 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   const handleAction = useCallback(
     (name: TdChatActionsName) => {
       switch (name) {
+        case 'copy':
+          break
         case 'good':
           MessagePlugin.success('感谢反馈')
           break
         case 'bad':
           MessagePlugin.info('我们会努力改进')
+          break
+        case 'share':
+          MessagePlugin.info('分享功能')
           break
         case 'replay':
           onRegenerate?.()
@@ -91,7 +96,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
           <ChatActionBar
             copyText={message.content}
             handleAction={handleAction}
-            actionBar={['copy', 'good', 'bad', ...(onRegenerate ? ['replay'] : [])] as TdChatActionsName[]}
+            actionBar={['copy', 'good', 'bad', 'share', ...(onRegenerate ? ['replay'] : [])] as TdChatActionsName[]}
             tooltipProps={{ theme: 'light', showArrow: false }}
           />
         )}

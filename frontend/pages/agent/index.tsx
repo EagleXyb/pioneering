@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom'
 
 import { useAgentChat } from './hooks/useAgentChat'
 import { useSmartScroll } from './hooks/useSmartScroll'
+import { useAgentRun } from './hooks/useAgentRun'
+import { ActivityPanel } from './components/ActivityPanel'
 import { ChatSidebar } from './components/ChatSidebar'
 import { ChatMessageBubble } from './components/ChatMessage'
 import { ChatInput } from './components/ChatInput'
@@ -42,6 +44,7 @@ const AgentChatbot: React.FC = () => {
 
   const [paramVisible, setParamVisible] = useState(false)
   const { params, setParams } = useAgentParams()
+  const { runState } = useAgentRun()
 
   const lastAssistantMessage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -191,6 +194,11 @@ const AgentChatbot: React.FC = () => {
                   回到最新
                 </Button>
               )}
+              {runState && (
+                <div className="agent-activity-panel-wrapper">
+                  <ActivityPanel runState={runState} />
+                </div>
+              )}
             </div>
           )}
         </Content>
@@ -199,6 +207,7 @@ const AgentChatbot: React.FC = () => {
           <BottomPanel
             lastMessage={lastAssistantMessage}
             isGenerating={isGenerating}
+            runState={runState}
             deepThinking={deepThinking}
             webSearch={webSearch}
             onDeepThinkingChange={setDeepThinking}

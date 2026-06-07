@@ -384,6 +384,198 @@ class AGUIStreamAdapter:
                 )
         return records
 
+    async def transform_streaming(
+        self,
+        coordinator_stream: AsyncGenerator[Dict[str, Any], None],
+    ) -> AsyncGenerator[str, None]:
+        """
+        流式转换：逐帧消费 Coordinator 输出，实时产出 AG-UI SSE 事件流。
+
+        与 transform() 的区别：
+        - transform() 先收集所有事件再一次性输出
+        - transform_streaming() 边消费边输出，实现真正的实时流式体验
+        """
+        if not self._trace_id:
+            self._trace_id = str(uuid.uuid4())
+        self._message_id = str(uuid.uuid4())
+
+        # 初始化状态
+        has_error = False
+        response_text = ""
+        thinking_started = False
+        text_message_started = False
+        current_iteration = 0
+        max_iterations = 3
+
+        yield RunStartedEvent(
+            thread_id=self._trace_id,
+            run_id=self._trace_id,
+        ).to_sse()
+
+        async for frame in coordinator_stream:
+            event_type = frame.get("event", "")
+            data_str = frame.get("data", "{}")
+
+            try:
+                data = json.loads(data_str) if isinstance(data_str, str) else data_str
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse Coordinator frame data: %s", data_str[:200])
+                continue
+
+            if event_type == "status":
+                # 阶段切换 → 用于前端 Activity 面板状态更新
+                phase = data.get("phase", "")
+                yield AGUIEncoder.to_sse(
+                    AGUIEventType.STATE_DELTA,
+                    {"phase": phase, "traceId": self._trace_id},
+                )
+
+            elif event_type == "reasoning_iteration":
+                current_iteration = data.get("index", 0)
+                max_iterations = data.get("max", 3)
+                yield AGUIEncoder.to_sse(
+                    AGUIEventType.STATE_DELTA,
+                    {
+                        "iteration": current_iteration,
+                        "maxIterations": max_iterations,
+                        "traceId": self._trace_id,
+                    },
+                )
+
+            elif event_type == "thinking":
+                # 思考内容 → 流式输出 Thinking 事件
+                content = data.get("content", "")
+                if not thinking_started:
+                    yield ThinkingStartEvent(title="深度思考").to_sse()
+                    thinking_started = True
+
+                # 分块输出思考内容
+                chunk_size = 30
+                for i in range(0, len(content), chunk_size):
+                    yield ThinkingContentEvent(
+                        delta=content[i:i + chunk_size],
+                    ).to_sse()
+
+            elif event_type == "tool_call_start":
+                tool_id = data.get("id", str(uuid.uuid4()))
+                tool_name = data.get("name", "unknown")
+                args_str = data.get("arguments", "{}")
+                self._pending_tool_calls[tool_id] = {
+                    "tool_name": tool_name,
+                    "arguments": args_str,
+                }
+                yield ToolCallStartEvent(
+                    tool_call_id=tool_id,
+                    tool_call_name=tool_name,
+                    parent_message_id=self._message_id,
+                ).to_sse()
+
+                # 流式输出参数
+                if args_str and args_str != "{}":
+                    yield ToolCallArgsEvent(
+                        tool_call_id=tool_id,
+                        delta=args_str,
+                    ).to_sse()
+
+            elif event_type == "tool_call_end":
+                tool_id = data.get("id", "")
+                if tool_id in self._pending_tool_calls:
+                    yield ToolCallEndEvent(tool_call_id=tool_id).to_sse()
+
+            elif event_type == "tool_result":
+                tool_id = data.get("id", "")
+                tool_name = data.get("name", "")
+                result_str = data.get("result", "{}")
+                result_status = data.get("status", "unknown")
+
+                if tool_id in self._pending_tool_calls:
+                    tool_name = tool_name or self._pending_tool_calls[tool_id]["tool_name"]
+                    params = json.loads(self._pending_tool_calls[tool_id].get("arguments", "{}"))
+                    self._tool_call_records.append(ToolCallRecord(
+                        tool_name=tool_name,
+                        params=params,
+                        result={"data": result_str, "status": result_status},
+                    ))
+
+                yield ToolCallResultEvent(
+                    message_id=self._message_id,
+                    tool_call_id=tool_id,
+                    tool_call_name=tool_name,
+                    content=result_str,
+                ).to_sse()
+
+            elif event_type == "error":
+                has_error = True
+                error_code = data.get("error_code", "")
+                error_message = data.get("message", "")
+                yield RunErrorEvent(code=error_code, message=error_message).to_sse()
+                return
+
+            elif event_type == "token":
+                token = data.get("token", "")
+                response_text += token
+                if not text_message_started:
+                    yield TextMessageStartEvent(
+                        message_id=self._message_id,
+                        role="assistant",
+                    ).to_sse()
+                    text_message_started = True
+                yield TextMessageContentEvent(
+                    message_id=self._message_id,
+                    delta=token,
+                ).to_sse()
+
+            elif event_type == "done":
+                # 处理 done 事件中附加的 tool_results
+                raw_tool_results = data.get("tool_results", [])
+                extra_records = self._parse_tool_records(raw_tool_results)
+                existing_names = {r.tool_name for r in self._tool_call_records}
+                for rec in extra_records:
+                    if rec.tool_name not in existing_names:
+                        self._tool_call_records.append(rec)
+                        yield ToolCallStartEvent(
+                            tool_call_id=str(uuid.uuid4()),
+                            tool_call_name=rec.tool_name,
+                            parent_message_id=self._message_id,
+                        ).to_sse()
+                        yield ToolCallEndEvent(
+                            tool_call_id=str(uuid.uuid4()),
+                        ).to_sse()
+                        yield ToolCallResultEvent(
+                            message_id=self._message_id,
+                            tool_call_id=str(uuid.uuid4()),
+                            tool_call_name=rec.tool_name,
+                            content=json.dumps(rec.result, ensure_ascii=False),
+                        ).to_sse()
+                break
+
+        if has_error:
+            return
+
+        # 结束思考块
+        if thinking_started:
+            yield ThinkingEndEvent().to_sse()
+
+        # 结束文本消息
+        if text_message_started:
+            yield TextMessageEndEvent(message_id=self._message_id).to_sse()
+        elif response_text:
+            # 如果思考过程中包含了回答但未启动 text message
+            yield TextMessageStartEvent(
+                message_id=self._message_id,
+                role="assistant",
+            ).to_sse()
+            yield TextMessageContentEvent(
+                message_id=self._message_id,
+                delta=response_text,
+            ).to_sse()
+            yield TextMessageEndEvent(message_id=self._message_id).to_sse()
+
+        yield RunFinishedEvent(
+            thread_id=self._trace_id,
+            run_id=self._trace_id,
+        ).to_sse()
+
     @property
     def trace_id(self) -> str:
         return self._trace_id

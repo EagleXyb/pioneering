@@ -12,6 +12,7 @@ import type {
   ErrorStep,
 } from '../types'
 import { StepType, type StepTypeValue } from '../types'
+import { agentEventBus } from './useAgentEventBus'
 import { API_ENDPOINTS } from '@shared/api/endpoints'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
@@ -188,6 +189,76 @@ export function useAgentChat() {
     return content.replace(/[\n\r]/g, ' ').slice(0, 30)
   }, [])
 
+  function emitEventBusEvent(event: StreamEvent) {
+    const runId = (event as unknown as Record<string, unknown>).trace_id as string || ''
+    switch (event.type) {
+      case 'status':
+        if (event.status) {
+          const phaseMap: Record<string, string> = {
+            perception: 'phase:perception',
+            memory: 'phase:memory',
+            thinking: 'phase:thinking',
+            tool_calling: 'phase:tool_calling',
+            generating: 'phase:generating',
+            done: 'phase:done',
+          }
+          const phaseEvent = phaseMap[event.status]
+          if (phaseEvent) {
+            agentEventBus.emit(phaseEvent as import('./useAgentEventBus').AgentRunEventType, { runId })
+          }
+        }
+        break
+      case 'thinking_delta':
+        agentEventBus.emit('thinking:delta', { delta: event.content || '', runId })
+        break
+      case 'thinking_done':
+        agentEventBus.emit('thinking:completed', { runId })
+        break
+      case 'tool_call_start':
+        agentEventBus.emit('tool_call:started', {
+          toolName: event.name || 'unknown',
+          toolId: event.id || '',
+          runId,
+        })
+        break
+      case 'tool_call_end':
+        agentEventBus.emit('tool_call:completed', {
+          toolName: event.name || 'unknown',
+          toolId: event.id || '',
+          runId,
+        })
+        break
+      case 'tool_result_end':
+        agentEventBus.emit('tool_result:received', {
+          toolName: event.name || 'unknown',
+          toolId: event.id || '',
+          status: event.errorCode ? 'error' : 'success',
+          runId,
+        })
+        break
+      case 'answer_delta':
+        agentEventBus.emit('answer:delta', { delta: event.content || '', runId })
+        break
+      case 'answer_done':
+        agentEventBus.emit('answer:completed', { runId })
+        break
+      case 'reasoning_iteration':
+        agentEventBus.emit('reasoning:iteration', {
+          iteration: event.iterationIndex || 1,
+          maxIterations: event.maxIterations || 3,
+          runId,
+        })
+        break
+      case 'error':
+        agentEventBus.emit('error:occurred', {
+          errorCode: event.errorCode || 'UNKNOWN',
+          message: event.message || event.error || '未知错误',
+          runId,
+        })
+        break
+    }
+  }
+
   const applyStreamEvent = useCallback((event: StreamEvent) => {
     setMessages((prev) => {
       const updated = [...prev]
@@ -324,10 +395,11 @@ export function useAgentChat() {
         }
 
         case 'tool_result_start': {
+          const resultId = event.id || `tool_result_${Date.now()}`
           steps.push({
-            id: event.id || `tool_result_${Date.now()}`,
+            id: `result_${resultId}`,
             type: StepType.TOOL_RESULT,
-            toolCallId: event.id || '',
+            toolCallId: resultId,
             toolName: event.name || 'unknown',
             result: '',
             status: 'streaming',
@@ -339,7 +411,7 @@ export function useAgentChat() {
         case 'tool_result_delta': {
           if (event.id) {
             const idx = steps.findIndex(
-              s => s.type === StepType.TOOL_RESULT && (s as ToolResultStep).id === event.id,
+              s => s.type === StepType.TOOL_RESULT && (s as ToolResultStep).toolCallId === event.id,
             )
             if (idx >= 0) {
               const tr = steps[idx] as ToolResultStep
@@ -352,7 +424,7 @@ export function useAgentChat() {
         case 'tool_result_end': {
           if (event.id) {
             const idx = steps.findIndex(
-              s => s.type === StepType.TOOL_RESULT && (s as ToolResultStep).id === event.id,
+              s => s.type === StepType.TOOL_RESULT && (s as ToolResultStep).toolCallId === event.id,
             )
             if (idx >= 0) {
               const tr = steps[idx] as ToolResultStep
@@ -363,6 +435,18 @@ export function useAgentChat() {
                 endTime: Date.now(),
                 duration: Date.now() - tr.startTime,
               } as ToolResultStep
+            } else {
+              steps.push({
+                id: `result_${event.id}`,
+                type: StepType.TOOL_RESULT,
+                toolCallId: event.id,
+                toolName: event.name || 'unknown',
+                result: event.result || '',
+                status: event.errorCode ? 'error' : 'success',
+                startTime: Date.now(),
+                endTime: Date.now(),
+                duration: 0,
+              } as ToolResultStep)
             }
           }
           break
@@ -466,6 +550,8 @@ export function useAgentChat() {
       }
       return updated
     })
+
+    emitEventBusEvent(event)
   }, [])
 
   const handleSend = useCallback(async (value?: string) => {
@@ -495,6 +581,9 @@ export function useAgentChat() {
     setMessages((prev) => [...prev, assistantMsg])
 
     setIsGenerating(true)
+
+    const runId = `run_${Date.now()}`
+    agentEventBus.emit('run:started', { runId })
 
     const abortController = new AbortController()
     abortRef.current = abortController
@@ -605,8 +694,12 @@ export function useAgentChat() {
         }
         return updated
       })
+      agentEventBus.emit('run:finished', { runId })
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
+
+      const errorMsg = (err as Error).message
+      agentEventBus.emit('run:error', { runId, message: errorMsg })
 
       setMessages((prev) => {
         const updated = [...prev]

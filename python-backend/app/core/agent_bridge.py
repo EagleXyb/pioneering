@@ -224,11 +224,11 @@ async def stream_chat_completion(
                     has_error = True
                     error_info = {"errorCode": event.get("errorCode", ""), "message": event.get("message", "")}
 
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                yield {"data": json.dumps(event, ensure_ascii=False)}
     except Exception as e:
         logger.error("Agent stream error: %s", str(e))
         error_event = {"type": "error", "errorCode": "AGENT_ERROR", "message": str(e)}
-        yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+        yield {"data": json.dumps(error_event, ensure_ascii=False)}
 
     metadata = {
         "thinkingContent": thinking_content,
@@ -239,4 +239,4 @@ async def stream_chat_completion(
         "errorInfo": error_info,
     }
 
-    yield f"data: {json.dumps({'type': '__metadata__', 'payload': metadata}, ensure_ascii=False)}\n\n"
+    yield {"data": json.dumps({"type": "__metadata__", "payload": metadata}, ensure_ascii=False)}

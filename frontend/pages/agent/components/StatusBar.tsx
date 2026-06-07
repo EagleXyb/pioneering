@@ -1,7 +1,8 @@
-import React from 'react'
-import { Tag } from 'tdesign-react'
+import React, { useMemo } from 'react'
+import { Tag, Progress } from 'tdesign-react'
 import type { ChatMessage } from '../types'
 import { getToolCallCount, getCurrentPhase } from '../types'
+import type { RunState } from '../hooks/useAgentRun'
 
 const PHASE_LABEL: Record<string, { label: string; theme: 'default' | 'primary' | 'warning' | 'success' | 'danger' }> = {
   idle: { label: '空闲', theme: 'default' },
@@ -16,9 +17,24 @@ const PHASE_LABEL: Record<string, { label: string; theme: 'default' | 'primary' 
 interface StatusBarProps {
   message: ChatMessage | null
   isGenerating: boolean
+  runState?: RunState | null
 }
 
-export const StatusBar: React.FC<StatusBarProps> = ({ message, isGenerating }) => {
+function computeProgress(runState: RunState | null | undefined): number {
+  if (!runState) return 0
+  const total = runState.phases.length
+  const finished = runState.phases.filter(
+    (p) => p.status === 'finish' || p.status === 'error',
+  ).length
+  const inProgress = runState.phases.filter(
+    (p) => p.status === 'process',
+  ).length
+  return Math.round(((finished + inProgress * 0.5) / total) * 100)
+}
+
+export const StatusBar: React.FC<StatusBarProps> = ({ message, isGenerating, runState }) => {
+  const progressPercent = useMemo(() => computeProgress(runState), [runState])
+
   if (!message) {
     return (
       <div className="status-bar">
@@ -48,6 +64,20 @@ export const StatusBar: React.FC<StatusBarProps> = ({ message, isGenerating }) =
       <span className="status-text">
         步骤数: {stepCount}
       </span>
+      {isGenerating && runState && (
+        <div className="status-bar-progress">
+          <Progress
+            percentage={progressPercent}
+            size="small"
+            label={false}
+          />
+          {runState.currentIteration > 0 && (
+            <span className="status-text status-text-iteration">
+              {runState.currentIteration}/{runState.maxIterations}
+            </span>
+          )}
+        </div>
+      )}
       {message.status === 'loading' && isGenerating && (
         <span className="status-text status-text-pulse">
           Agent 正在推理...

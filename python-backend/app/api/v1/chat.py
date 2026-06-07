@@ -330,6 +330,15 @@ async def chat_completion(
 
     await db.flush()
 
+    def _parse_event(sse_line: dict | str) -> dict | None:
+        """Parse event dict from stream_chat_completion (which now yields dicts)."""
+        if isinstance(sse_line, dict) and "data" in sse_line:
+            try:
+                return json.loads(sse_line["data"])
+            except (json.JSONDecodeError, KeyError):
+                return None
+        return None
+
     if dto.stream:
         async def event_generator():
             full_content = ""
@@ -346,26 +355,20 @@ async def chat_completion(
                 temperature=dto.temperature,
                 max_tokens=dto.max_tokens,
             ):
-                if "__metadata__" in sse_line:
-                    try:
-                        data_str = sse_line.split("data: ", 1)[1].strip()
-                        meta = json.loads(data_str)
-                        payload = meta.get("payload", {})
-                        thinking_content = payload.get("thinkingContent", "")
-                        answer_content = payload.get("answerContent", "")
-                        tool_calls_data = payload.get("toolCalls")
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                event = _parse_event(sse_line)
+                if event is None:
+                    yield sse_line
                     continue
 
-                if "answer_delta" in sse_line or "answer_done" in sse_line or "thinking_":
-                    try:
-                        data_str = sse_line.split("data: ", 1)[1].strip()
-                        parsed = json.loads(data_str)
-                        if parsed.get("type") == "answer_delta":
-                            full_content += parsed.get("content", "")
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                if event.get("type") == "__metadata__":
+                    payload = event.get("payload", {})
+                    thinking_content = payload.get("thinkingContent", "")
+                    answer_content = payload.get("answerContent", "")
+                    tool_calls_data = payload.get("toolCalls")
+                    continue
+
+                if event.get("type") == "answer_delta":
+                    full_content += event.get("content", "")
 
                 yield sse_line
 
@@ -399,25 +402,19 @@ async def chat_completion(
         temperature=dto.temperature,
         max_tokens=dto.max_tokens,
     ):
-        if "__metadata__" in sse_line:
-            try:
-                data_str = sse_line.split("data: ", 1)[1].strip()
-                meta = json.loads(data_str)
-                payload = meta.get("payload", {})
-                thinking_content = payload.get("thinkingContent", "")
-                answer_content = payload.get("answerContent", "")
-                tool_calls_data = payload.get("toolCalls")
-            except (json.JSONDecodeError, KeyError):
-                pass
+        event = _parse_event(sse_line)
+        if event is None:
             continue
 
-        try:
-            data_str = sse_line.split("data: ", 1)[1].strip()
-            parsed = json.loads(data_str)
-            if parsed.get("type") == "answer_delta":
-                full_content += parsed.get("content", "")
-        except (json.JSONDecodeError, KeyError):
-            pass
+        if event.get("type") == "__metadata__":
+            payload = event.get("payload", {})
+            thinking_content = payload.get("thinkingContent", "")
+            answer_content = payload.get("answerContent", "")
+            tool_calls_data = payload.get("toolCalls")
+            continue
+
+        if event.get("type") == "answer_delta":
+            full_content += event.get("content", "")
 
     assistant_msg = ChatMessage(
         id=_gen_id("msg_"),
