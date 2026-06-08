@@ -32,7 +32,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     <div className="agent-sidebar">
       <div className="agent-sidebar-header">
         <h3 className="agent-sidebar-title">
-          <ChatIcon style={{ marginRight: 8 }} />
+          <ChatIcon style={{ marginRight: 8, color: 'var(--ag-accent, #4f46e5)' }} />
           对话历史
         </h3>
         <div className="agent-sidebar-actions">

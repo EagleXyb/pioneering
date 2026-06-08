@@ -91,8 +91,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <Tag
             shape="round"
             variant="light"
-            color="#0052D9"
-            style={{ marginRight: 4, cursor: 'pointer' }}
+            style={{
+              marginRight: 4,
+              cursor: 'pointer',
+              background: 'var(--ag-accent-soft, #eef0ff)',
+              color: 'var(--ag-accent, #4f46e5)',
+              border: '1px solid rgba(79, 70, 229, 0.12)',
+              fontWeight: 500,
+            }}
           >
             {currentModelLabel}
           </Tag>

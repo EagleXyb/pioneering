@@ -3,7 +3,7 @@ import { ChatMessage as TdChatMessage, ChatActionBar } from '@tdesign-react/chat
 import { Tag, Loading, MessagePlugin } from 'tdesign-react'
 import type { ChatMessage, TextStreamStep } from '../types'
 import { StepType } from '../types'
-import { StepRenderer } from './StepRenderer'
+import { StepRenderer } from './steps'
 import type { TdChatActionsName } from 'tdesign-web-components/lib/chat-action'
 
 interface ChatMessageBubbleProps {
@@ -98,6 +98,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
             handleAction={handleAction}
             actionBar={['copy', 'good', 'bad', 'share', ...(onRegenerate ? ['replay'] : [])] as TdChatActionsName[]}
             tooltipProps={{ theme: 'light', showArrow: false }}
+            style={{ marginTop: 4, opacity: 0.7 }}
           />
         )}
       </div>

@@ -70,6 +70,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ message, isGenerating, run
             percentage={progressPercent}
             size="small"
             label={false}
+            strokeWidth={2}
           />
           {runState.currentIteration > 0 && (
             <span className="status-text status-text-iteration">

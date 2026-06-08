@@ -1,0 +1,92 @@
+/* ========== Welcome Page ========== */
+.agent-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.agent-welcome::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(79, 70, 229, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 60%, rgba(245, 158, 11, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 80%, rgba(79, 70, 229, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.agent-welcome-icon {
+  margin-bottom: 28px;
+  position: relative;
+  z-index: 1;
+}
+
+.agent-welcome-icon > div {
+  box-shadow: 0 8px 32px rgba(79, 70, 229, 0.18), 0 2px 8px rgba(79, 70, 229, 0.08) !important;
+  animation: welcomeFloat 4s ease-in-out infinite;
+}
+
+@keyframes welcomeFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.agent-welcome-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ag-text-primary);
+  margin: 0 0 10px 0;
+  letter-spacing: -0.02em;
+  position: relative;
+  z-index: 1;
+}
+
+.agent-welcome-desc {
+  font-size: 15px;
+  color: var(--ag-text-secondary);
+  margin: 0 0 40px 0;
+  position: relative;
+  z-index: 1;
+  letter-spacing: -0.005em;
+}
+
+.agent-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  max-width: 680px;
+  position: relative;
+  z-index: 1;
+}
+
+.agent-suggestion-btn {
+  border-radius: 12px !important;
+  font-size: 13px !important;
+  padding: 10px 20px !important;
+  border: 1px solid var(--ag-border) !important;
+  background: var(--ag-bg-card) !important;
+  color: var(--ag-text-secondary) !important;
+  transition: all var(--ag-transition) !important;
+  font-weight: 450 !important;
+  letter-spacing: -0.005em !important;
+}
+
+.agent-suggestion-btn:hover {
+  border-color: var(--ag-accent) !important;
+  color: var(--ag-accent) !important;
+  background: var(--ag-accent-soft) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--ag-shadow-md);
+}

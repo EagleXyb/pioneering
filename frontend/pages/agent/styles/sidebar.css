@@ -1,0 +1,110 @@
+/* ========== Sidebar ========== */
+.agent-sidebar {
+  width: 256px;
+  height: 100vh;
+  background: #eceff6;
+  border-right: 1px solid var(--ag-border-light);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  box-shadow: var(--ag-shadow-sm);
+}
+
+.agent-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 16px;
+}
+
+.agent-sidebar-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ag-text-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  letter-spacing: -0.01em;
+}
+
+.agent-sidebar-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.agent-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 4px 0;
+}
+
+.agent-sidebar-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 16px;
+  gap: 12px;
+  text-align: center;
+}
+
+.agent-sidebar-empty p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ag-text-muted);
+}
+
+/* ========== Session List ========== */
+.agent-session-list {
+  padding: 6px 8px;
+}
+
+.agent-session-item {
+  padding: 12px 14px;
+  border-radius: var(--ag-radius-sm);
+  cursor: pointer;
+  transition: all var(--ag-transition);
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+}
+
+.agent-session-item:hover {
+  background: var(--ag-bg-card-alt);
+  border-color: var(--ag-border-light);
+}
+
+.agent-session-item.active {
+  background: var(--ag-accent-soft);
+  border-color: rgba(79, 70, 229, 0.12);
+}
+
+.agent-session-item.active .agent-session-title {
+  color: var(--ag-accent);
+}
+
+.agent-session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-session-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ag-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--ag-transition);
+}
+
+.agent-session-meta {
+  display: none;
+}
+
+.agent-session-msg-count {
+  font-size: 11px;
+  color: var(--ag-text-muted);
+}
