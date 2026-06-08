@@ -36,6 +36,7 @@ export const MODEL_MAP: Record<string, { id: string; name: string }[]> = {
     { id: 'deepseek-v4-pro', name: 'Deepseek-V4-Pro' },
   ],
   glm: [
+    { id: 'glm-4-flash', name: 'GLM-4-Flash' },
     { id: 'glm-5.1', name: 'GLM-5.1' },
     { id: 'glm-5v-turbo', name: 'GLM-5v-Turbo' },
     { id: 'glm-5.0-turbo', name: 'GLM-5.0-Turbo' },

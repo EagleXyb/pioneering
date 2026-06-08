@@ -33,7 +33,7 @@ export class UserService {
     ]);
 
     return {
-      list: users.map((u) => ({
+      list: users.map((u: any) => ({
         id: u.id,
         username: u.username,
         nickname: u.nickname,
@@ -143,7 +143,7 @@ export class UserService {
       this.prisma.tokenUsage.count({ where }),
     ]);
 
-    const formattedRecords = records.map((r) => ({
+    const formattedRecords = records.map((r: any) => ({
       id: Number(r.id),
       sessionId: r.sessionId,
       model: r.model,

@@ -3,14 +3,19 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
+
+# 加载环境变量
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 from components.action.executors.synchronous import SyncActionExecutor
 from components.action.tools.calculator import CalculatorTool
 from components.action.tools.search import SearchTool
 from components.memory.cache.redis_adapter import InMemoryShortTermMemory
 from components.perception.text.rule_based import TextPreprocessor
-from components.reasoning.llm.deepseek import DeepSeekLLMReasoner
+from components.reasoning.llm.glm import GLMLLMReasoner
 from config.runtime_config import get_config
 from core.registry import get_registry
 from orchestration.coordinator import Coordinator
@@ -27,7 +32,7 @@ def register_components() -> None:
 
     registry.register_perception("text_preprocessor", TextPreprocessor())
 
-    registry.register_reasoning_engine("deepseek", DeepSeekLLMReasoner())
+    registry.register_reasoning_engine("glm", GLMLLMReasoner())
 
     registry.register_memory("short_term", InMemoryShortTermMemory())
 
@@ -85,7 +90,7 @@ async def run_llm_swap_flow() -> None:
     user_id = "demo_user"
     session_id = "demo_session_003"
 
-    logger.info("=== Using DeepSeek engine ===")
+    logger.info("=== Using GLM engine ===")
     result = await coordinator.process_request(
         user_id=user_id,
         session_id=session_id,
@@ -95,7 +100,7 @@ async def run_llm_swap_flow() -> None:
             "required_fields": ["user_intent"],
         },
     )
-    logger.info("DeepSeek result: %s", json.dumps(result, ensure_ascii=False, indent=2))
+    logger.info("GLM result: %s", json.dumps(result, ensure_ascii=False, indent=2))
 
 
 async def run_perception_demo() -> None:
@@ -164,12 +169,12 @@ async def main() -> None:
         logger.info("No LLM provider configured, skipping basic flow")
 
     logger.info("=" * 60)
-    logger.info("5. DeepSeek Reasoning Demo")
+    logger.info("5. GLM Reasoning Demo")
     logger.info("=" * 60)
     try:
         await run_llm_swap_flow()
     except Exception as e:
-        logger.warning("DeepSeek reasoning demo skipped: %s", e)
+        logger.warning("GLM reasoning demo skipped: %s", e)
 
     logger.info("All demos completed")
 

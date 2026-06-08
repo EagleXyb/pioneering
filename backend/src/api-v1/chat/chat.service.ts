@@ -47,7 +47,7 @@ export class ChatService {
     ]);
 
     return {
-      sessions: sessions.map((s) => ({
+      sessions: sessions.map((s: any) => ({
         id: s.id,
         title: s.title,
         model: s.model,
@@ -224,7 +224,7 @@ export class ChatService {
       : null;
 
     return {
-      messages: resultMessages.map((m) => ({
+      messages: resultMessages.map((m: any) => ({
         id: m.id,
         sessionId: m.sessionId,
         role: m.role,
@@ -511,7 +511,7 @@ export class ChatService {
     });
 
     messages.push(
-      ...historyMessages.reverse().map((m) => ({ role: m.role, content: m.content })),
+      ...historyMessages.reverse().map((m: any) => ({ role: m.role, content: m.content })),
     );
 
     return messages;
