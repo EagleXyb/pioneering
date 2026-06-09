@@ -40,11 +40,12 @@
 
 /* ========== User Message Bubble ========== */
 .agent-user-row t-chat-item {
-  --td-chat-item-primary-bg: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  --td-chat-item-content-radius: 18px 18px 4px 18px;
+  --td-chat-item-primary-bg: #f1f2f4;
+  --td-chat-item-content-radius: 16px;
   --td-chat-item-content-base-padding: 12px 18px;
-  --td-chat-item-primary-text-color: #ffffff;
+  --td-chat-item-primary-text-color: #1f2329;
   --td-chat-item-font-size: 14px;
+  --td-chat-item-content-bg: #f1f2f4;
 }
 
 /* ========== Assistant Message Card ========== */

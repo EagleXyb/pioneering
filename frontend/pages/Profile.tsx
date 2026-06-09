@@ -33,7 +33,7 @@ import type { ProfileData } from '@shared/types/profile';
 import { DEFAULT_PROFILE } from '@shared/constants';
 import { API_ENDPOINTS } from '@shared/api/endpoints';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const defaultProfile: ProfileData = DEFAULT_PROFILE;
 
 const Profile: React.FC = () => {

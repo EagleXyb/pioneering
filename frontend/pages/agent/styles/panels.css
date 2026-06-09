@@ -3,7 +3,7 @@
   width: 320px;
   background: var(--ag-bg-card);
   border: 1px solid var(--ag-border-light);
-  border-radius: 3px;
+  border-radius: 5px;
   padding: 18px 20px 16px;
   box-shadow:
     0 1px 0 rgba(17, 24, 39, 0.02),
@@ -500,7 +500,7 @@
   padding-left: 24px;
 }
 
-/* Timeline vertical line */
+/* Timeline vertical line - gradient */
 .agent-steps-panel-list::before {
   content: '';
   position: absolute;
@@ -508,8 +508,15 @@
   top: 4px;
   bottom: 4px;
   width: 2px;
-  background: var(--ag-border-light);
+  background: linear-gradient(
+    180deg,
+    var(--step-thinking-accent) 0%,
+    var(--step-action-accent) 30%,
+    var(--step-observation-accent) 60%,
+    var(--step-result-accent) 100%
+  );
   border-radius: 1px;
+  opacity: 0.35;
 }
 
 .agent-steps-panel-empty {
@@ -532,53 +539,74 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
-/* Connector dot */
+/* Connector dot - enhanced */
 .step-connector {
   position: absolute;
-  left: -13px;
+  left: -18px;
   top: 16px;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   z-index: 2;
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow 0.3s ease, transform 0.3s ease, background 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-connector::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.step-card:not(.collapsed) .step-connector::after {
+  opacity: 1;
 }
 
 .step-card[data-type="thinking"] .step-connector {
   background: var(--step-thinking-accent);
-  box-shadow: 0 0 0 3px var(--step-thinking-bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-thinking-accent) 18%, transparent);
 }
 .step-card[data-type="action"] .step-connector {
   background: var(--step-action-accent);
-  box-shadow: 0 0 0 3px var(--step-action-bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-action-accent) 18%, transparent);
 }
 .step-card[data-type="observation"] .step-connector {
   background: var(--step-observation-accent);
-  box-shadow: 0 0 0 3px var(--step-observation-bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-observation-accent) 18%, transparent);
 }
 .step-card[data-type="result"] .step-connector {
   background: var(--step-result-accent);
-  box-shadow: 0 0 0 3px var(--step-result-bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-result-accent) 18%, transparent);
 }
 .step-card[data-type="error"] .step-connector {
   background: var(--step-error-accent);
-  box-shadow: 0 0 0 3px var(--step-error-bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-error-accent) 18%, transparent);
+}
+
+.step-card:hover .step-connector {
+  transform: scale(1.15);
 }
 
 .step-card[data-status="streaming"] .step-connector {
-  animation: pulse-ring 1.5s infinite;
+  animation: connector-streaming 1.6s ease-in-out infinite;
 }
 
-@keyframes pulse-ring {
-  0%   { box-shadow: 0 0 0 3px var(--step-thinking-bg), 0 0 0 6px rgba(79,70,229,0.18); }
-  50%  { box-shadow: 0 0 0 3px var(--step-thinking-bg), 0 0 0 12px rgba(79,70,229,0); }
-  100% { box-shadow: 0 0 0 3px var(--step-thinking-bg), 0 0 0 6px rgba(79,70,229,0.18); }
+@keyframes connector-streaming {
+  0%   { box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-thinking-accent) 18%, transparent), 0 0 0 7px color-mix(in srgb, var(--step-thinking-accent) 10%, transparent); }
+  50%  { box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-thinking-accent) 18%, transparent), 0 0 0 12px color-mix(in srgb, var(--step-thinking-accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-thinking-accent) 18%, transparent), 0 0 0 7px color-mix(in srgb, var(--step-thinking-accent) 10%, transparent); }
 }
 
 /* Step inner card */
 .step-inner {
   border: 1px solid;
-  border-radius: var(--ag-radius-sm, 8px);
+  border-radius: 5px;
   overflow: hidden;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
@@ -771,7 +799,7 @@
 /* ─── Tool Call Block ─── */
 .step-tool-block {
   margin-top: 6px;
-  border-radius: 6px;
+  border-radius: 5px;
   border: 1px solid var(--ag-border);
   background: var(--ag-bg-card);
   overflow: hidden;
@@ -821,7 +849,7 @@
   padding: 8px 10px;
   background: var(--step-error-bg);
   border: 1px solid var(--step-error-border);
-  border-radius: 6px;
+  border-radius: 5px;
   font-size: 12px;
   color: var(--step-error-accent);
   font-family: var(--ag-font-mono);

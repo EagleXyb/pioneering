@@ -12,7 +12,7 @@ import type {
 } from '../types'
 import { StepType } from '../types'
 import { agentEventBus } from './useAgentEventBus'
-import { rebuildAnswerContent, statusToPhase } from '../utils/stepHelpers'
+import { rebuildAnswerContent } from '../utils/stepHelpers'
 
 function emitEventBusEvent(event: StreamEvent) {
   const runId = (event as unknown as Record<string, unknown>).trace_id as string || ''
@@ -97,43 +97,9 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
 
   switch (event.type) {
     case 'status': {
-      if (event.status) {
-        const phase = statusToPhase(event.status)
-        if (phase) {
-          // TEXT_STREAM 类型的 status（generating/done）使用更宽松的去重：
-          // 检查是否已有 pending 或 streaming 的 TEXT_STREAM step，有则不再重复创建
-          if (phase === StepType.TEXT_STREAM) {
-            const existing = steps.some(
-              s =>
-                s.type === StepType.TEXT_STREAM &&
-                (s.status === 'streaming' || s.status === 'pending'),
-            )
-            if (!existing) {
-              steps.push({
-                id: `text_phase_${Date.now()}`,
-                type: StepType.TEXT_STREAM,
-                content: '',
-                status: 'pending',
-                startTime: Date.now(),
-              } as TextStreamStep)
-            }
-          } else {
-            // 非 TEXT_STREAM 类型（如 THINKING, TOOL_CALL）保持原有逻辑
-            const id = `phase_${phase}_${Date.now()}`
-            if (!steps.some(s => s.id === id && s.status === 'streaming')) {
-              steps.push({
-                id,
-                type: phase,
-                content: '',
-                status: 'pending',
-                startTime: Date.now(),
-                toolName: phase === StepType.TOOL_CALL ? '' : undefined,
-                arguments: phase === StepType.TOOL_CALL ? '' : undefined,
-              } as unknown as AgentStep)
-            }
-          }
-        }
-      }
+      // status 事件不再创建 step，只通过 currentPhase 反映当前阶段。
+      // step 的创建由具体的 delta 事件（thinking_delta / tool_call_start / answer_delta）负责，
+      // 避免 status 事件创建占位 step 与 delta 事件创建的 step 因 ID 不匹配而产生重复。
       break
     }
 
@@ -144,13 +110,22 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
           const t = steps[idx] as ThinkingStep
           steps[idx] = { ...t, content: t.content + (event.content || ''), status: 'streaming' }
         } else {
-          steps.push({
-            id: stepId,
-            type: StepType.THINKING,
-            content: event.content || '',
-            status: 'streaming',
-            startTime: Date.now(),
-          } as ThinkingStep)
+          // 如果 stepId 没有命中已有的 THINKING，优先追加到当前 streaming 的 THINKING
+          const fallbackIdx = steps.findIndex(
+            s => s.type === StepType.THINKING && s.status === 'streaming',
+          )
+          if (fallbackIdx >= 0) {
+            const t = steps[fallbackIdx] as ThinkingStep
+            steps[fallbackIdx] = { ...t, content: t.content + (event.content || ''), status: 'streaming' }
+          } else {
+            steps.push({
+              id: stepId,
+              type: StepType.THINKING,
+              content: event.content || '',
+              status: 'streaming',
+              startTime: Date.now(),
+            } as ThinkingStep)
+          }
         }
       } else {
         const idx = steps.findIndex(
@@ -298,13 +273,22 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
           const ts = steps[idx] as TextStreamStep
           steps[idx] = { ...ts, content: ts.content + (event.content || ''), status: 'streaming' }
         } else {
-          steps.push({
-            id: stepId,
-            type: StepType.TEXT_STREAM,
-            content: event.content || '',
-            status: 'streaming',
-            startTime: Date.now(),
-          } as TextStreamStep)
+          // 如果 stepId 没有命中已有的 TEXT_STREAM，优先追加到当前 streaming/pending 的 TEXT_STREAM
+          const fallbackIdx = steps.findIndex(
+            s => s.type === StepType.TEXT_STREAM && (s.status === 'streaming' || s.status === 'pending'),
+          )
+          if (fallbackIdx >= 0) {
+            const ts = steps[fallbackIdx] as TextStreamStep
+            steps[fallbackIdx] = { ...ts, content: (ts.content || '') + (event.content || ''), status: 'streaming' }
+          } else {
+            steps.push({
+              id: stepId,
+              type: StepType.TEXT_STREAM,
+              content: event.content || '',
+              status: 'streaming',
+              startTime: Date.now(),
+            } as TextStreamStep)
+          }
         }
       } else {
         const idx = steps.findIndex(
