@@ -100,17 +100,37 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
       if (event.status) {
         const phase = statusToPhase(event.status)
         if (phase) {
-          const id = `phase_${phase}_${Date.now()}`
-          if (!steps.some(s => s.id === id && s.status === 'streaming')) {
-            steps.push({
-              id,
-              type: phase,
-              content: '',
-              status: 'pending',
-              startTime: Date.now(),
-              toolName: phase === StepType.TOOL_CALL ? '' : undefined,
-              arguments: phase === StepType.TOOL_CALL ? '' : undefined,
-            } as unknown as AgentStep)
+          // TEXT_STREAM 类型的 status（generating/done）使用更宽松的去重：
+          // 检查是否已有 pending 或 streaming 的 TEXT_STREAM step，有则不再重复创建
+          if (phase === StepType.TEXT_STREAM) {
+            const existing = steps.some(
+              s =>
+                s.type === StepType.TEXT_STREAM &&
+                (s.status === 'streaming' || s.status === 'pending'),
+            )
+            if (!existing) {
+              steps.push({
+                id: `text_phase_${Date.now()}`,
+                type: StepType.TEXT_STREAM,
+                content: '',
+                status: 'pending',
+                startTime: Date.now(),
+              } as TextStreamStep)
+            }
+          } else {
+            // 非 TEXT_STREAM 类型（如 THINKING, TOOL_CALL）保持原有逻辑
+            const id = `phase_${phase}_${Date.now()}`
+            if (!steps.some(s => s.id === id && s.status === 'streaming')) {
+              steps.push({
+                id,
+                type: phase,
+                content: '',
+                status: 'pending',
+                startTime: Date.now(),
+                toolName: phase === StepType.TOOL_CALL ? '' : undefined,
+                arguments: phase === StepType.TOOL_CALL ? '' : undefined,
+              } as unknown as AgentStep)
+            }
           }
         }
       }
@@ -288,11 +308,11 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
         }
       } else {
         const idx = steps.findIndex(
-          s => s.type === StepType.TEXT_STREAM && s.status === 'streaming',
+          s => s.type === StepType.TEXT_STREAM && (s.status === 'streaming' || s.status === 'pending'),
         )
         if (idx >= 0) {
           const ts = steps[idx] as TextStreamStep
-          steps[idx] = { ...ts, content: ts.content + (event.content || '') }
+          steps[idx] = { ...ts, content: (ts.content || '') + (event.content || ''), status: 'streaming' }
         } else {
           steps.push({
             id: `text_${Date.now()}`,

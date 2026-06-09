@@ -39,6 +39,9 @@ const AgentChatbot: React.FC = () => {
     loadSession,
     fetchSessions,
     isInChatMode,
+    removeSession,
+    togglePinSession,
+    renameSession,
   } = useAgentChat()
 
   const [paramVisible, setParamVisible] = useState(false)
@@ -93,6 +96,9 @@ const AgentChatbot: React.FC = () => {
         onSelectSession={loadSession}
         onNewChat={handleNewChat}
         onRefresh={fetchSessions}
+        onRemoveSession={removeSession}
+        onTogglePin={togglePinSession}
+        onRenameSession={renameSession}
       />
 
       <div className="agent-center-right-container">

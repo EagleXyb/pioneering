@@ -1,47 +1,40 @@
 import React from 'react'
-import { Card, Tag, Loading } from 'tdesign-react'
-import { ToolsIcon, CloseCircleIcon } from 'tdesign-icons-react'
+import { Loading } from 'tdesign-react'
 import type { ToolCallStep } from '../../types'
-import { formatJson, statusToTagTheme, statusToLabel } from '../../utils/formatters'
+import { formatJson } from '../../utils/formatters'
 
 export const ToolCallStepView: React.FC<{ step: ToolCallStep }> = React.memo(({ step }) => {
   const isStreaming = step.status === 'streaming' || step.status === 'pending'
 
   return (
-    <div className="step-tool-call">
-      <Card bordered className="step-tool-call-card">
-        <div className="step-tool-call-header">
-          <div className="step-tool-call-left">
-            {isStreaming ? (
-              <Loading size="small" />
-            ) : step.status === 'error' ? (
-              <CloseCircleIcon style={{ color: 'var(--td-error-color)' }} />
-            ) : (
-              <ToolsIcon style={{ color: 'var(--td-warning-color)' }} />
-            )}
-            <Tag theme="warning" variant="light" size="small">
-              调用工具
-            </Tag>
-            <span className="step-tool-call-name">{step.toolName}</span>
-            <Tag theme={statusToTagTheme(step.status)} variant="light" size="small">
-              {statusToLabel(step.status, '已完成')}
-            </Tag>
-          </div>
+    <div className="step-content">
+      {isStreaming && step.status === 'pending' ? (
+        <div className="step-pending-text">
+          <Loading size="small" /> 准备调用 {step.toolName}...
         </div>
-        {step.arguments && (
-          <div className="step-tool-call-args">
-            <div className="step-tool-call-label">参数</div>
-            <pre className="step-tool-call-code">{formatJson(step.arguments)}</pre>
+      ) : (
+        <>
+          <div className="step-tool-block">
+            <div className="step-tool-block-header">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+              </svg>
+              <span className="tool-name">{step.toolName}</span>
+              <span>调用</span>
+            </div>
+            {step.arguments && (
+              <div className="step-tool-block-body">{formatJson(step.arguments)}</div>
+            )}
           </div>
-        )}
-        {step.errorCode && (
-          <div className="step-tool-call-error">
-            <Tag theme="danger" variant="light" size="small">
-              {step.errorCode}
-            </Tag>
-          </div>
-        )}
-      </Card>
+          {step.errorCode && (
+            <div className="step-error-block">
+              <span className="error-code">{step.errorCode}</span>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 })
+
+ToolCallStepView.displayName = 'ToolCallStepView'

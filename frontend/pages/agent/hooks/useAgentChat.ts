@@ -23,6 +23,9 @@ export function useAgentChat() {
     loadSession: loadSessionRaw,
     createNewSession,
     resetSession,
+    removeSession,
+    togglePinSession,
+    renameSession,
   } = useSessionManager()
 
   const { applyStreamEvent } = useStreamParser(setMessages)
@@ -245,5 +248,8 @@ export function useAgentChat() {
     loadSession,
     fetchSessions,
     isInChatMode,
+    removeSession,
+    togglePinSession,
+    renameSession,
   }
 }

@@ -1,15 +1,6 @@
 import React, { useMemo } from 'react'
-import { Steps, Progress, Tag } from 'tdesign-react'
-import {
-  BrowseIcon,
-  BrowseOffIcon,
-  RootListIcon,
-  ToolsIcon,
-  FileIcon,
-  CheckCircleIcon,
-  ErrorCircleIcon,
-  TimeIcon,
-} from 'tdesign-icons-react'
+import { Tag } from 'tdesign-react'
+import { CheckCircleFilledIcon, TimeIcon } from 'tdesign-icons-react'
 import type { RunState, RunPhase } from '../hooks/useAgentRun'
 
 interface ActivityPanelProps {
@@ -19,81 +10,67 @@ interface ActivityPanelProps {
 
 const PHASE_CONFIG: Record<
   RunPhase,
-  { title: string; icon: React.ReactNode; description: string }
+  { title: string; description: string }
 > = {
   idle: {
     title: '等待',
-    icon: <TimeIcon />,
     description: '等待用户输入',
   },
   perception: {
-    title: '感知解析',
-    icon: <BrowseIcon />,
-    description: '解析用户输入意图',
+    title: '解析目的地信息',
+    description: '了解北京的景点、交通和天气',
   },
   memory: {
-    title: '记忆检索',
-    icon: <BrowseOffIcon />,
+    title: '查找过往旅行记录',
     description: '检索相关上下文',
   },
   thinking: {
-    title: '深度思考',
-    icon: <RootListIcon />,
+    title: '规划每日行程',
     description: '分析问题并推理',
   },
   tool_calling: {
     title: '调用工具',
-    icon: <ToolsIcon />,
     description: '执行外部工具调用',
   },
   generating: {
     title: '生成回答',
-    icon: <FileIcon />,
     description: '生成最终回复',
   },
   done: {
     title: '完成',
-    icon: <CheckCircleIcon />,
     description: '回答已生成',
   },
   error: {
     title: '异常',
-    icon: <ErrorCircleIcon />,
     description: '运行出错',
   },
-}
-
-function getCurrentStepIndex(phases: RunState['phases']): number {
-  for (let i = phases.length - 1; i >= 0; i--) {
-    if (phases[i].status !== 'wait') {
-      return phases[i].status === 'finish' || phases[i].status === 'error'
-        ? i + 1
-        : i
-    }
-  }
-  return 0
 }
 
 export const ActivityPanel: React.FC<ActivityPanelProps> = ({
   runState,
   collapsed = false,
 }) => {
-  const currentStep = useMemo(() => {
-    if (!runState) return 0
-    return getCurrentStepIndex(runState.phases)
-  }, [runState])
-
-  const progressPercent = useMemo(() => {
-    if (!runState) return 0
+  const progress = useMemo(() => {
+    if (!runState) {
+      return { finished: 0, total: 0, percent: 0 }
+    }
     const total = runState.phases.length
     const finished = runState.phases.filter(
       (p) => p.status === 'finish' || p.status === 'error',
     ).length
-    const inProgress = runState.phases.filter(
-      (p) => p.status === 'process',
-    ).length
-    return Math.round(((finished + inProgress * 0.5) / total) * 100)
+    const percent = total > 0 ? Math.round((finished / total) * 100) : 0
+    return { finished, total, percent }
   }, [runState])
+
+  const isAllDone =
+    runState && progress.finished === progress.total && progress.total > 0
+  const statusTag = !runState
+    ? { theme: 'default' as const, text: '待开始' }
+    : isAllDone
+      ? { theme: 'success' as const, text: '已完成' }
+      : runState.currentPhase === 'error'
+        ? { theme: 'danger' as const, text: '失败' }
+        : { theme: 'primary' as const, text: '进行中' }
 
   if (!runState) {
     return (
@@ -108,90 +85,104 @@ export const ActivityPanel: React.FC<ActivityPanelProps> = ({
   if (collapsed) {
     return (
       <div className="activity-panel activity-panel-collapsed">
-        <Progress
-          percentage={progressPercent}
-          size="small"
-          label={false}
-        />
-        <span className="activity-panel-phase-label">
-          {PHASE_CONFIG[runState.currentPhase]?.title || '运行中'}
-        </span>
-        {runState.currentIteration > 0 && (
-          <Tag size="small" variant="light" theme="primary">
-            第 {runState.currentIteration}/{runState.maxIterations} 轮
-          </Tag>
-        )}
+        <Tag theme={statusTag.theme} variant="light" size="small">
+          {statusTag.text}
+        </Tag>
+        <div className="activity-panel-collapsed-progress">
+          <div
+            className="activity-panel-collapsed-bar"
+            style={{ width: `${progress.percent}%` }}
+          />
+        </div>
       </div>
     )
   }
 
   return (
     <div className="activity-panel">
+      {/* 头部：标题 + 状态标签 */}
       <div className="activity-panel-header">
-        <span className="activity-panel-title">Agent 执行流程</span>
-        <Progress
-          percentage={progressPercent}
-          size="small"
-          label={false}
-          style={{ width: 80, flexShrink: 0 }}
-        />
+        <div className="activity-panel-header-title-group">
+          <span className="activity-panel-title">Agent 执行流程</span>
+          <span className="activity-panel-meta">
+            {progress.finished}/{progress.total} 步骤
+          </span>
+        </div>
+        <Tag theme={statusTag.theme} variant="light" size="small">
+          {statusTag.text}
+        </Tag>
       </div>
 
-      <Steps
-        current={currentStep}
-        layout="vertical"
-        theme="dot"
-        className="activity-panel-steps"
-      >
-        {runState.phases.map((phaseInfo) => {
-          const config = PHASE_CONFIG[phaseInfo.phase]
-          const stepStatus =
-            phaseInfo.status === 'error'
-              ? 'error'
-              : phaseInfo.status === 'finish'
-                ? 'finish'
-                : phaseInfo.status === 'process'
-                  ? 'process'
-                  : 'default'
+      {/* 进度条 */}
+      <div className="activity-panel-progress">
+        <div className="activity-panel-progress-bar">
+          <div
+            className="activity-panel-progress-fill"
+            style={{ width: `${progress.percent}%` }}
+          />
+        </div>
+        <span className="activity-panel-progress-label">
+          {progress.percent}%
+        </span>
+      </div>
+
+      {/* 步骤列表 */}
+      <ol className="activity-panel-list">
+        {runState.phases.map((phaseInfo, index) => {
+          const config = PHASE_CONFIG[phaseInfo.phase] || {
+            title: phaseInfo.phase,
+            description: '',
+          }
+          const isFinished = phaseInfo.status === 'finish'
+          const isError = phaseInfo.status === 'error'
+          const isProcess = phaseInfo.status === 'process'
+          const isPending =
+            !isFinished && !isError && !isProcess
 
           return (
-            <Steps.StepItem
+            <li
               key={phaseInfo.phase}
-              status={stepStatus}
-              title={
-                <div className="activity-step-title">
-                  {config.icon}
-                  <span>{config.title}</span>
-                  {phaseInfo.status === 'process' && (
-                    <Tag size="small" variant="light" theme="warning">
-                      进行中
-                    </Tag>
-                  )}
-                  {phaseInfo.status === 'finish' && phaseInfo.endTime && phaseInfo.startTime && (
-                    <Tag size="small" variant="light" theme="success">
-                      {((phaseInfo.endTime - phaseInfo.startTime) / 1000).toFixed(1)}s
-                    </Tag>
+              className={[
+                'activity-list-item',
+                isFinished && 'is-finished',
+                isError && 'is-error',
+                isProcess && 'is-process',
+                isPending && 'is-pending',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{ animationDelay: `${index * 40}ms` }}
+            >
+              <span className="activity-list-marker">
+                <span className="activity-list-marker-dot" />
+                {isProcess && (
+                  <span className="activity-list-marker-pulse" />
+                )}
+              </span>
+              <div className="activity-list-content">
+                <div className="activity-list-title-row">
+                  <span className="activity-list-title">{config.title}</span>
+                  {isFinished && (
+                    <CheckCircleFilledIcon className="activity-list-check" />
                   )}
                 </div>
-              }
-              content={
-                phaseInfo.status !== 'wait' ? config.description : undefined
-              }
-            />
+                {config.description && (
+                  <div className="activity-list-description">
+                    {config.description}
+                  </div>
+                )}
+              </div>
+            </li>
           )
         })}
-      </Steps>
+      </ol>
 
       {runState.currentIteration > 0 && (
         <div className="activity-panel-iteration">
-          <Tag theme="primary" variant="light" size="small">
-            推理迭代: {runState.currentIteration}/{runState.maxIterations}
-          </Tag>
-          {runState.toolCallCount > 0 && (
-            <Tag theme="warning" variant="light" size="small">
-              工具调用: {runState.toolCallCount} 次
-            </Tag>
-          )}
+          <span className="activity-panel-iteration-text">
+            <TimeIcon /> 推理迭代 {runState.currentIteration}/
+            {runState.maxIterations} · 工具调用 {runState.toolCallCount} 次
+          </span>
         </div>
       )}
     </div>

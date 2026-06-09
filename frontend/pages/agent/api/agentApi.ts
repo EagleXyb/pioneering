@@ -145,4 +145,13 @@ export function createChatRequest(body: {
   })
 }
 
+/** 删除会话 */
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${API_ENDPOINTS.CHAT.SESSION_BY_ID(sessionId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('删除会话失败')
+}
+
 export { authHeaders, API_BASE_URL }

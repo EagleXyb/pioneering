@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Button, Tooltip, Empty } from 'tdesign-react'
 import { StepRenderer } from './steps'
 import {
@@ -6,6 +6,7 @@ import {
   ChevronLeftDoubleIcon,
   ChevronRightDoubleIcon,
 } from 'tdesign-icons-react'
+import { formatDuration } from '../utils/formatters'
 import type { ChatMessage } from '../types'
 
 interface AgentStepsPanelProps {
@@ -23,7 +24,44 @@ export const AgentStepsPanel: React.FC<AgentStepsPanelProps> = ({
 }) => {
   const setCollapsed = onToggleCollapsed || (() => {})
 
-  const hasSteps = message && message.steps.length > 0
+  const steps = message?.steps ?? []
+  const hasSteps = steps.length > 0
+
+  // 统计：已完成 / 总计
+  const completedCount = steps.filter(
+    (s) => s.status === 'success' || s.status === 'error',
+  ).length
+
+  // 实时计时
+  const [elapsedMs, setElapsedMs] = useState(0)
+
+  const getFirstStepTime = useCallback(() => {
+    if (steps.length === 0) return 0
+    return steps[0].startTime
+  }, [steps])
+
+  useEffect(() => {
+    if (!isGenerating || steps.length === 0) {
+      // 取最后一个 step 的 endTime 或 startTime 算最终耗时
+      const lastStep = steps[steps.length - 1]
+      if (lastStep && 'endTime' in lastStep && lastStep.endTime && 'startTime' in lastStep) {
+        setElapsedMs(lastStep.endTime - lastStep.startTime)
+      } else if (lastStep) {
+        setElapsedMs(0)
+      }
+      return
+    }
+
+    const firstTime = getFirstStepTime()
+    if (!firstTime) return
+
+    const tick = () => setElapsedMs(Date.now() - firstTime)
+    tick()
+    const id = setInterval(tick, 200)
+    return () => clearInterval(id)
+  }, [isGenerating, steps, getFirstStepTime])
+
+  const elapsedStr = elapsedMs > 0 ? formatDuration(elapsedMs) : ''
 
   if (collapsed) {
     return (
@@ -72,11 +110,25 @@ export const AgentStepsPanel: React.FC<AgentStepsPanelProps> = ({
         </div>
       </header>
 
+      {hasSteps && (
+        <div className="agent-steps-panel-stats">
+          <div className="agent-steps-panel-stats-progress">
+            <span>步骤</span>
+            <span className="agent-steps-panel-stats-count">
+              {completedCount}/{steps.length}
+            </span>
+          </div>
+          {elapsedStr && (
+            <span className="agent-steps-panel-stats-elapsed">{elapsedStr}</span>
+          )}
+        </div>
+      )}
+
       <div className="agent-steps-panel-body">
         {hasSteps ? (
           <div className="agent-steps-panel-list">
-            {message!.steps.map((step) => (
-              <StepRenderer key={step.id} step={step} />
+            {steps.map((step, idx) => (
+              <StepRenderer key={step.id} step={step} index={idx} />
             ))}
           </div>
         ) : (

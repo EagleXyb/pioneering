@@ -12,7 +12,7 @@ export const TextStreamStepView: React.FC<{ step: TextStreamStep }> = React.memo
   const isStreaming = step.status === 'streaming'
 
   return (
-    <div className={`step-text-stream ${isStreaming ? 'streaming' : ''}`}>
+    <div className={`step-content ${isStreaming ? 'streaming' : ''}`}>
       {throttledContent ? (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
@@ -34,7 +34,11 @@ export const TextStreamStepView: React.FC<{ step: TextStreamStep }> = React.memo
         >
           {throttledContent}
         </ReactMarkdown>
+      ) : isStreaming ? (
+        <span className="step-empty">生成中...</span>
       ) : null}
     </div>
   )
 })
+
+TextStreamStepView.displayName = 'TextStreamStepView'

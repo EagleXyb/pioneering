@@ -105,12 +105,13 @@
 }
 
 .agent-session-item {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: var(--ag-radius-sm);
   cursor: pointer;
   transition: all var(--ag-transition);
   margin-bottom: 2px;
   border: 1px solid transparent;
+  position: relative;
 }
 
 .agent-session-item:hover {
@@ -127,13 +128,41 @@
   color: var(--ag-accent);
 }
 
+.agent-session-item.pinned::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--ag-accent-warm, #f59e0b);
+  border-radius: 0 2px 2px 0;
+}
+
 .agent-session-info {
   display: flex;
   flex-direction: column;
+  gap: 5px;
+}
+
+.agent-session-title-row {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  min-width: 0;
+  position: relative;
+}
+
+.agent-session-pin-icon {
+  flex-shrink: 0;
+  font-size: 12px !important;
+  color: var(--ag-accent-warm, #f59e0b);
+  transform: rotate(45deg);
 }
 
 .agent-session-title {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 500;
   color: var(--ag-text-primary);
@@ -143,6 +172,39 @@
   transition: color var(--ag-transition);
 }
 
+.agent-session-action-trigger {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ag-text-muted);
+  opacity: 0;
+  transition: all var(--ag-transition);
+  padding: 0;
+}
+
+.agent-session-item:hover .agent-session-action-trigger,
+.agent-session-action-trigger.is-open {
+  opacity: 1;
+}
+
+.agent-session-action-trigger:hover,
+.agent-session-action-trigger.is-open {
+  background: var(--ag-bg-card);
+  color: var(--ag-text-primary);
+  box-shadow: 0 0 0 1px var(--ag-border-light);
+}
+
+.agent-session-action-trigger .t-icon {
+  font-size: 16px;
+}
+
 .agent-session-meta {
   display: none;
 }
@@ -150,4 +212,113 @@
 .agent-session-msg-count {
   font-size: 11px;
   color: var(--ag-text-muted);
+}
+
+/* ========== Action Menu (floating) ========== */
+.agent-session-action-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 200px;
+  background: var(--ag-bg-card);
+  border: 1px solid var(--ag-border-light);
+  border-radius: var(--ag-radius-sm);
+  box-shadow:
+    0 1px 0 rgba(17, 24, 39, 0.02),
+    0 6px 18px -4px rgba(17, 24, 39, 0.14),
+    0 16px 40px -8px rgba(17, 24, 39, 0.18);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: menuIn 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top left;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.agent-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--ag-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.agent-menu-item:hover {
+  background: var(--ag-bg-card-alt);
+}
+
+.agent-menu-item.is-danger {
+  color: var(--ag-error, #dc3545);
+}
+
+.agent-menu-item.is-danger:hover {
+  background: #fef2f2;
+}
+
+.agent-menu-item.has-submenu {
+  justify-content: space-between;
+}
+
+.agent-menu-icon {
+  font-size: 15px !important;
+  flex-shrink: 0;
+  color: var(--ag-text-secondary);
+}
+
+.agent-menu-item.is-danger .agent-menu-icon {
+  color: var(--ag-error, #dc3545);
+}
+
+.agent-menu-arrow {
+  font-size: 14px;
+  color: var(--ag-text-muted);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.agent-menu-divider {
+  height: 1px;
+  background: var(--ag-border-light);
+  margin: 4px 0;
+}
+
+/* ========== Rename Dialog ========== */
+.agent-rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.agent-rename-label {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ag-text-primary);
+  letter-spacing: -0.005em;
+}
+
+.agent-rename-hint {
+  font-size: 11.5px;
+  color: var(--ag-text-muted);
+  line-height: 1.5;
 }

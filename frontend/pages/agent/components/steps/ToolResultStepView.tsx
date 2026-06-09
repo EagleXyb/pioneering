@@ -1,48 +1,34 @@
 import React from 'react'
-import { Tag, Loading, Timeline } from 'tdesign-react'
-import { CheckCircleIcon, CloseCircleIcon, TimeIcon } from 'tdesign-icons-react'
+import { Loading } from 'tdesign-react'
 import type { ToolResultStep } from '../../types'
-import { formatJson, formatDuration } from '../../utils/formatters'
+import { formatJson } from '../../utils/formatters'
 
 export const ToolResultStepView: React.FC<{ step: ToolResultStep }> = React.memo(({ step }) => {
   const isStreaming = step.status === 'streaming'
   const isError = step.status === 'error'
 
   return (
-    <div className="step-tool-result">
-      <Timeline layout="vertical" className="step-tool-result-timeline">
-        <Timeline.Item
-          label={step.duration ? formatDuration(step.duration) : ''}
-          dot={
-            isError ? (
-              <CloseCircleIcon style={{ color: 'var(--td-error-color)' }} />
-            ) : (
-              <CheckCircleIcon style={{ color: 'var(--td-success-color)' }} />
-            )
-          }
-        >
-          <div className="step-tool-result-header">
-            <Tag theme={isError ? 'danger' : 'success'} variant="light" size="small">
-              工具结果
-            </Tag>
-            <span className="step-tool-result-name">{step.toolName}</span>
-            {step.duration && (
-              <Tag size="small" variant="outline" theme="default">
-                <TimeIcon style={{ marginRight: 2 }} />
-                {step.duration}ms
-              </Tag>
-            )}
-          </div>
-          {step.result && (
-            <pre className="step-tool-call-code">{formatJson(step.result)}</pre>
-          )}
-          {isStreaming && (
-            <div className="step-tool-result-loading">
-              <Loading size="small" text="接收结果中..." />
-            </div>
-          )}
-        </Timeline.Item>
-      </Timeline>
+    <div className="step-content">
+      {isStreaming && (
+        <div className="step-pending-text">
+          <Loading size="small" /> 接收结果中...
+        </div>
+      )}
+      <div className="step-tool-block">
+        <div className="step-tool-block-header">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <span className="tool-name">{step.toolName}</span>
+          <span>返回结果</span>
+        </div>
+        {step.result && (
+          <div className="step-tool-block-body">{formatJson(step.result)}</div>
+        )}
+      </div>
     </div>
   )
 })
+
+ToolResultStepView.displayName = 'ToolResultStepView'
