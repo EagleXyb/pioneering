@@ -9,9 +9,63 @@
 .agent-main-layout {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   height: 100vh;
   overflow: hidden;
   background: var(--ag-bg-root);
+}
+
+/* ========== Center + Right Resizable Container ========== */
+.agent-center-right-container {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ========== Resizer Handle ========== */
+.agent-resizer {
+  position: relative;
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  z-index: 5;
+  transition: background 0.15s ease;
+}
+
+.agent-resizer:hover,
+.agent-resizer:active {
+  background: var(--ag-accent-soft);
+}
+
+.agent-resizer .agent-resizer-line {
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  border-radius: 1px;
+  transition: background 0.15s ease;
+}
+
+.agent-resizer:hover .agent-resizer-line,
+.agent-resizer:active .agent-resizer-line {
+  background: var(--ag-accent);
+}
+
+.agent-resizer.collapsed .agent-resizer-line {
+  background: transparent;
+}
+
+/* ========== Right Panel Wrapper ========== */
+.agent-right-panel-wrapper {
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
 }
 
 /* ========== Header ========== */
@@ -67,17 +121,6 @@
   scroll-behavior: smooth;
   background: rgb(255, 255, 255);
   animation: fadeIn 0.25s ease-out;
-}
-
-/* ========== Bottom Wrapper ========== */
-.agent-bottom-wrapper {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  background: var(--ag-bg-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-top: 1px solid var(--ag-border-light);
 }
 
 /* ========== Scroll to Bottom ========== */

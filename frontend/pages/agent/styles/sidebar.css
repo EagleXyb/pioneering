@@ -8,6 +8,12 @@
   flex-direction: column;
   flex-shrink: 0;
   box-shadow: var(--ag-shadow-sm);
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.agent-sidebar.collapsed {
+  width: 56px;
 }
 
 .agent-sidebar-header {
@@ -16,6 +22,11 @@
   justify-content: space-between;
   height: 56px;
   padding: 0 16px;
+}
+
+.agent-sidebar.collapsed .agent-sidebar-header {
+  justify-content: center;
+  padding: 0;
 }
 
 .agent-sidebar-title {
@@ -54,6 +65,38 @@
   margin: 0;
   font-size: 13px;
   color: var(--ag-text-muted);
+}
+
+/* ========== Collapsed Sidebar ========== */
+.agent-sidebar-collapsed-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+}
+
+.agent-sidebar-icon-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0;
+}
+
+.agent-sidebar-session-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ag-accent, #4f46e5);
+  margin-top: 8px;
+  box-shadow: 0 0 6px rgba(79, 70, 229, 0.4);
+  animation: pulse-indicator 2s ease-in-out infinite;
+}
+
+@keyframes pulse-indicator {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
 }
 
 /* ========== Session List ========== */

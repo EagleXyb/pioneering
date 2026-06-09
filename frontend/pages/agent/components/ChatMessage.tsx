@@ -1,19 +1,33 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react'
 import { ChatMessage as TdChatMessage, ChatActionBar } from '@tdesign-react/chat'
-import { Tag, Loading, MessagePlugin } from 'tdesign-react'
+import { Tag, Loading, MessagePlugin, Button } from 'tdesign-react'
+import { ChevronDownIcon } from 'tdesign-icons-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeKatex from 'rehype-katex'
+import remarkMath from 'remark-math'
 import type { ChatMessage, TextStreamStep } from '../types'
 import { StepType } from '../types'
-import { StepRenderer } from './steps'
+import { useThrottledContent } from '../hooks/useThrottledContent'
+import { ExecutionCard } from './ExecutionCard'
+import { CodeBlock } from './steps/CodeBlock'
 import type { TdChatActionsName } from 'tdesign-web-components/lib/chat-action'
+import type { RunState } from '../hooks/useAgentRun'
+
+const COLLAPSE_MAX_HEIGHT = 300
 
 interface ChatMessageBubbleProps {
   message: ChatMessage
   onRegenerate?: () => void
+  executionState?: RunState | null
+  isGenerating?: boolean
 }
 
 export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   message,
   onRegenerate,
+  executionState,
+  isGenerating,
 }) => {
   const isUser = message.role === 'user'
 
@@ -39,6 +53,35 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
     [onRegenerate],
   )
 
+  // Combine all TEXT_STREAM step contents into a single block
+  const textStreamSteps = useMemo(
+    () => message.steps.filter((s) => s.type === StepType.TEXT_STREAM),
+    [message.steps],
+  )
+  const rawCombinedContent = useMemo(
+    () => textStreamSteps.map((s) => (s as TextStreamStep).content).join(''),
+    [textStreamSteps],
+  )
+  const throttledContent = useThrottledContent(rawCombinedContent, 50)
+  const hasTextOutput = throttledContent.length > 0
+
+  const isStreaming = textStreamSteps.some((s) => s.status === 'streaming')
+
+  // Collapse state
+  const [expanded, setExpanded] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [needsCollapse, setNeedsCollapse] = useState(false)
+
+  useEffect(() => {
+    if (contentRef.current && !isStreaming) {
+      setNeedsCollapse(contentRef.current.scrollHeight > COLLAPSE_MAX_HEIGHT)
+    }
+    if (isStreaming) {
+      setNeedsCollapse(false)
+      setExpanded(false)
+    }
+  }, [throttledContent, isStreaming])
+
   if (isUser) {
     return (
       <div className="agent-message-row agent-user-row">
@@ -63,24 +106,80 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
 
         {message.steps.length === 0 && message.status !== 'loading' && message.content && (
           <div className="agent-text-only">
-            <StepRenderer
-              step={{
-                id: `legacy_${message.id}`,
-                type: StepType.TEXT_STREAM,
-                content: message.content,
-                status: 'success',
-                startTime: message.timestamp,
-                endTime: message.timestamp,
-              } as TextStreamStep}
-            />
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '')
+                  const codeStr = String(children).replace(/\n$/, '')
+                  if (match) {
+                    return <CodeBlock language={match[1]} value={codeStr} />
+                  }
+                  return (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  )
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
           </div>
         )}
 
-        {message.steps.length > 0 && (
-          <div className="agent-steps">
-            {message.steps.map((step) => (
-              <StepRenderer key={step.id} step={step} />
-            ))}
+        {executionState && (
+          <ExecutionCard runState={executionState} message={message} isGenerating={!!isGenerating} />
+        )}
+
+        {hasTextOutput && (
+          <div className={`agent-steps ${isStreaming ? 'streaming' : ''}`}>
+            <div
+              ref={contentRef}
+              className="agent-output-content"
+              style={{
+                maxHeight: expanded ? 'none' : COLLAPSE_MAX_HEIGHT,
+                overflow: 'hidden',
+              }}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  code({ className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    const codeStr = String(children).replace(/\n$/, '')
+                    if (match) {
+                      return <CodeBlock language={match[1]} value={codeStr} />
+                    }
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    )
+                  },
+                }}
+              >
+                {throttledContent}
+              </ReactMarkdown>
+            </div>
+            {needsCollapse && !expanded && (
+              <div className="agent-output-fade" />
+            )}
+            {needsCollapse && (
+              <div className="agent-output-expand">
+                <Button
+                  theme="default"
+                  variant="text"
+                  size="small"
+                  icon={<ChevronDownIcon />}
+                  onClick={() => setExpanded(!expanded)}
+                >
+                  {expanded ? '收起' : '查看更多'}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
