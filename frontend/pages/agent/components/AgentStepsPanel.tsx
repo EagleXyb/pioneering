@@ -3,11 +3,15 @@ import { Button, Tooltip, Empty } from 'tdesign-react'
 import { StepRenderer } from './steps'
 import {
   RootListIcon,
-  ChevronLeftDoubleIcon,
-  ChevronRightDoubleIcon,
 } from 'tdesign-icons-react'
 import { formatDuration } from '../utils/formatters'
 import type { ChatMessage } from '../types'
+
+const MinusIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14" />
+  </svg>
+)
 
 interface AgentStepsPanelProps {
   message: ChatMessage | null
@@ -97,13 +101,13 @@ export const AgentStepsPanel: React.FC<AgentStepsPanelProps> = ({
           )}
         </div>
         <div className="agent-steps-panel-actions">
-          <Tooltip content="收起面板" placement="bottom">
+          <Tooltip content="隐藏面板" placement="bottom">
             <Button
               theme="default"
               variant="text"
               shape="square"
               size="small"
-              icon={<ChevronRightDoubleIcon />}
+              icon={<MinusIcon />}
               onClick={() => setCollapsed(true)}
             />
           </Tooltip>

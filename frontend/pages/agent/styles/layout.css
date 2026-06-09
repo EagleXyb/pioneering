@@ -111,6 +111,22 @@
   gap: 8px;
 }
 
+/* Icon buttons in header & sidebar: 32x32, 3px radius, hover bg */
+.agent-header-right .t-button--variant-text.t-size-s,
+.agent-sidebar .t-button--variant-text.t-size-s {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  padding: 0 !important;
+  border-radius: 3px !important;
+  transition: all 0.15s ease !important;
+}
+
+.agent-header-right .t-button--variant-text.t-size-s:hover,
+.agent-sidebar .t-button--variant-text.t-size-s:hover {
+  background: #F3F4F6 !important;
+}
+
 /* ========== Content ========== */
 .agent-content {
   flex: 1;
