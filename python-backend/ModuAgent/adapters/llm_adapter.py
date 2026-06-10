@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from core.interfaces.reasoning import BaseReasoningEngine
 from core.registry import get_registry
@@ -35,7 +35,7 @@ class LLMAdapter:
         context: Dict[str, Any],
         temperature: float = 0.7,
         max_tokens: int = 512,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, int]]:
         if self.engine is None:
             raise RuntimeError("No reasoning engine available")
         if "trace_id" not in context:

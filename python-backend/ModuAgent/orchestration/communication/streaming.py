@@ -28,13 +28,13 @@ class SSEEncoder:
         }
 
     @staticmethod
-    def encode_done(trace_id: str, tool_results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def encode_done(trace_id: str, tool_results: Optional[List[Dict[str, Any]]] = None, usage: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+        data = {"trace_id": trace_id, "tool_results": tool_results or []}
+        if usage:
+            data["usage"] = usage
         return {
             "event": "done",
-            "data": json.dumps(
-                {"trace_id": trace_id, "tool_results": tool_results or []},
-                ensure_ascii=False,
-            ),
+            "data": json.dumps(data, ensure_ascii=False),
         }
 
     @staticmethod

@@ -79,6 +79,7 @@ class ChatSession(Base):
     message_count = Column("message_count", Integer, default=0)
     last_message_id = Column("last_message_id", String(64), nullable=True)
     is_archived = Column("is_archived", Boolean, default=False)
+    agent_mode = Column("agent_mode", String(50), nullable=True)
     created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column("updated_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -99,6 +100,16 @@ class ChatMessage(Base):
     token_count = Column("token_count", Integer, nullable=True)
     feedback = Column(SAEnum(Feedback, name="Feedback"), default=Feedback.none)
     extra_metadata = Column("metadata", JSON, nullable=True)
+
+    # LLM 可观测性指标
+    prompt_tokens = Column("prompt_tokens", Integer, nullable=True)
+    completion_tokens = Column("completion_tokens", Integer, nullable=True)
+    latency_ms = Column("latency_ms", Integer, nullable=True)
+
+    # 用户反馈闭环
+    user_rating = Column("user_rating", SmallInteger, nullable=True)
+    user_feedback = Column("user_feedback", Text, nullable=True)
+
     created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column("updated_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -169,3 +180,30 @@ class AiConfig(Base):
     last_test_time = Column("last_test_time", DateTime(timezone=True), nullable=True)
     created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column("updated_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AgentToolExecution(Base):
+    __tablename__ = "agent_tool_executions"
+
+    id = Column(String(64), primary_key=True, default=lambda: gen_id("exec_"))
+    message_id = Column("message_id", String(64), ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=False)
+    session_id = Column("session_id", String(64), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column("user_id", String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    tool_name = Column("tool_name", String(100), nullable=False)
+    tool_call_id = Column("tool_call_id", String(100), nullable=True)
+
+    input_params = Column("input_params", JSON, nullable=True)
+    output_result = Column("output_result", Text, nullable=True)
+    output_summary = Column("output_summary", Text, nullable=True)
+
+    status = Column(String(20), default="pending")
+    error_message = Column("error_message", Text, nullable=True)
+
+    start_time = Column("start_time", DateTime(timezone=True), nullable=True)
+    end_time = Column("end_time", DateTime(timezone=True), nullable=True)
+    # duration_ms is a GENERATED ALWAYS column in DB, computed from start_time/end_time
+    duration_ms = Column("duration_ms", Integer, nullable=True, insertable=False, updatable=False)
+
+    metadata_ = Column("metadata", JSON, nullable=True)
+    created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

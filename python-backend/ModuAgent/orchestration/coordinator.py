@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import re
+import time
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from adapters.llm_adapter import LLMAdapter
@@ -151,17 +153,21 @@ class Coordinator:
         await self._event_bus.publish(reasoning_event)
 
         tool_results: List[Dict[str, Any]] = []
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         max_iterations = config.get("llm.max_reasoning_iterations", 3)
         max_format_retries = config.get("llm.max_format_retries", 2)
         tool_call_pattern = config.get("llm.tool_call_pattern", r"```tool_call\s*\n(.*?)\n```")
 
         try:
-            response = self._llm_adapter.generate(
+            response, _llm_usage = self._llm_adapter.generate(
                 prompt=prompt,
                 context=context,
                 temperature=config.get("llm.temperature", 0.7),
                 max_tokens=config.get("llm.max_tokens", 512),
             )
+            total_usage["prompt_tokens"] += _llm_usage.get("prompt_tokens", 0)
+            total_usage["completion_tokens"] += _llm_usage.get("completion_tokens", 0)
+            total_usage["total_tokens"] += _llm_usage.get("total_tokens", 0)
         except Exception as e:
             logger.error("LLM generation failed: %s", str(e))
             return {"status": "error", "error_code": "LLM_001", "data": {"message": str(e)}}
@@ -188,7 +194,7 @@ class Coordinator:
                         )},
                     ])
                     try:
-                        response = self._llm_adapter.generate(
+                        response, _ = self._llm_adapter.generate(
                             prompt="Please correct your tool call format and try again.",
                             context=context,
                             temperature=config.get("llm.temperature", 0.7),
@@ -278,7 +284,7 @@ class Coordinator:
             )
 
             try:
-                response = self._llm_adapter.generate(
+                response, _ = self._llm_adapter.generate(
                     prompt=continuation_prompt,
                     context=context,
                     temperature=config.get("llm.temperature", 0.7),
@@ -422,7 +428,7 @@ class Coordinator:
         yield SSEEncoder.encode_status("thinking", trace_id)
 
         try:
-            response = self._llm_adapter.generate(
+            response, _llm_usage = self._llm_adapter.generate(
                 prompt=prompt,
                 context=context,
                 temperature=config.get("llm.temperature", 0.7),
@@ -461,12 +467,15 @@ class Coordinator:
                         )},
                     ])
                     try:
-                        response = self._llm_adapter.generate(
+                        response, _usage = self._llm_adapter.generate(
                             prompt="Please correct your tool call format and try again.",
                             context=context,
                             temperature=config.get("llm.temperature", 0.7),
                             max_tokens=config.get("llm.max_tokens", 512),
                         )
+                        total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
+                        total_usage["completion_tokens"] += _usage.get("completion_tokens", 0)
+                        total_usage["total_tokens"] += _usage.get("total_tokens", 0)
                         yield SSEEncoder.encode_thinking(response, trace_id)
                         format_retries += 1
                         continue
@@ -491,6 +500,7 @@ class Coordinator:
 
                 tool_id = str(uuid.uuid4())
                 tool_args_str = json.dumps(tool_params, ensure_ascii=False)
+                tool_start_time = datetime.now(timezone.utc)
                 yield SSEEncoder.encode_tool_call_start(tool_id, tool_name, tool_args_str, trace_id)
 
                 tool_result = self._tool_adapter.invoke_tool(
@@ -499,6 +509,15 @@ class Coordinator:
                     context=context,
                     timeout_ms=config.get("tools.default_timeout_ms", 3000),
                 )
+                tool_end_time = datetime.now(timezone.utc)
+                tool_duration_ms = int((tool_end_time - tool_start_time).total_seconds() * 1000)
+
+                tool_result["execution_id"] = tool_id
+                tool_result["start_time"] = tool_start_time.isoformat()
+                tool_result["end_time"] = tool_end_time.isoformat()
+                tool_result["duration_ms"] = tool_duration_ms
+                tool_result["input_params"] = tool_params
+
                 iteration_results.append({"tool": tool_name, "result": tool_result})
                 tool_results.append(tool_result)
 
@@ -572,12 +591,15 @@ class Coordinator:
                 break
 
             try:
-                response = self._llm_adapter.generate(
+                response, _usage = self._llm_adapter.generate(
                     prompt=continuation_prompt,
                     context=context,
                     temperature=config.get("llm.temperature", 0.7),
                     max_tokens=config.get("llm.max_tokens", 512),
                 )
+                total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
+                total_usage["completion_tokens"] += _usage.get("completion_tokens", 0)
+                total_usage["total_tokens"] += _usage.get("total_tokens", 0)
                 yield SSEEncoder.encode_thinking(response, trace_id)
             except Exception as e:
                 logger.error("LLM re-generation failed at iteration %d: %s", iteration + 1, str(e))
@@ -652,7 +674,7 @@ class Coordinator:
             metadata={"session_id": session_id, "trace_id": trace_id},
         ))
 
-        yield SSEEncoder.encode_done(trace_id, tool_results)
+        yield SSEEncoder.encode_done(trace_id, tool_results, total_usage)
 
     def _build_tool_descriptions(self) -> str:
         available_tools = self._tool_adapter.list_available_tools()

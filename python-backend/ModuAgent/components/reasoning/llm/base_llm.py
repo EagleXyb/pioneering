@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import httpx
 
@@ -43,7 +43,7 @@ class BaseLLMReasoner(BaseReasoningEngine):
         prompt: str,
         context: Dict[str, Any],
         **kwargs: Any,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, int]]:
         messages = self._build_messages(prompt, context)
         temperature = kwargs.get("temperature", 0.7)
         max_tokens = kwargs.get("max_tokens", 512)
@@ -65,12 +65,18 @@ class BaseLLMReasoner(BaseReasoningEngine):
             data = response.json()
 
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage_data = data.get("usage", {})
+        usage = {
+            "prompt_tokens": usage_data.get("prompt_tokens", 0),
+            "completion_tokens": usage_data.get("completion_tokens", 0),
+            "total_tokens": usage_data.get("total_tokens", 0),
+        }
         logger.debug(
             "LLM response: model=%s tokens=%s",
             data.get("model", model),
-            data.get("usage", {}).get("total_tokens", 0),
+            usage,
         )
-        return content
+        return content, usage
 
     def stream(
         self,

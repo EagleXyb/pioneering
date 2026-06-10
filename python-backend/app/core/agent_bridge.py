@@ -240,3 +240,217 @@ async def stream_chat_completion(
     }
 
     yield {"data": json.dumps({"type": "__metadata__", "payload": metadata}, ensure_ascii=False)}
+
+
+async def stream_agent_completion(
+    message: str,
+    session_id: str,
+    user_id: str,
+    model: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> AsyncGenerator[str, None]:
+    """Agent ReAct 流式对话，SSE 事件对齐 API YAML 规范。
+
+    事件类型: thinking / tool_call / tool_result / text / done / error
+    最后一条 done 事件包含 metadata (用于 DB 持久化):
+      { type: "done", contentBlocks, promptTokens, completionTokens, latencyMs,
+        toolExecutions: [{executionId, toolName, inputParams, outputResult, outputSummary, status, startTime, endTime, durationMs}] }
+    """
+    import time as _time
+
+    _init_moduagent()
+
+    from core.registry import get_registry
+    from orchestration.coordinator import Coordinator
+
+    registry = get_registry()
+
+    if model and model != settings.llm_default_model:
+        from components.reasoning.llm.base_llm import BaseLLMReasoner
+        registry.register_reasoning_engine(
+            "agent_dynamic",
+            BaseLLMReasoner(
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                default_model=model,
+                system_prompt=system_prompt,
+            ),
+        )
+        from adapters.llm_adapter import LLMAdapter
+        dynamic_adapter = LLMAdapter(engine_name="agent_dynamic")
+    else:
+        dynamic_adapter = None
+
+    coordinator = Coordinator()
+    if dynamic_adapter:
+        coordinator._llm_adapter = dynamic_adapter
+
+    content_blocks: List[Dict[str, Any]] = []
+    tool_executions: List[Dict[str, Any]] = []
+    full_text = ""
+    has_error = False
+    error_info: Dict[str, str] = {}
+    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    start_time = _time.time()
+
+    # 当前正在构建的 content block
+    current_thinking: Optional[Dict[str, Any]] = None
+    current_text_stream: Optional[Dict[str, Any]] = None
+
+    try:
+        async for frame in coordinator.stream_request(
+            user_id=user_id,
+            session_id=session_id,
+            input_data={"input_type": "text", "prompt": message},
+        ):
+            event_type = frame.get("event", "")
+            data_str = frame.get("data", "{}")
+            try:
+                data = json.loads(data_str) if isinstance(data_str, str) else data_str
+            except json.JSONDecodeError:
+                continue
+
+            # --- thinking 事件 ---
+            if event_type == "thinking":
+                content = data.get("content", "")
+                if not content:
+                    continue
+                current_thinking = {
+                    "type": "thinking",
+                    "status": "success",
+                    "summary": content[:200] + ("..." if len(content) > 200 else ""),
+                }
+                content_blocks.append(current_thinking)
+                yield _agent_sse("thinking", current_thinking)
+
+            # --- reasoning_iteration (忽略，融入 thinking) ---
+            elif event_type == "reasoning_iteration":
+                pass
+
+            # --- status 事件 (perception/memory/thinking 等状态) ---
+            elif event_type == "status":
+                phase = data.get("phase", "")
+                if phase == "thinking":
+                    pass  # 忽略内部阶段标记
+                elif phase in ("perception", "memory"):
+                    pass
+
+            # --- tool_call_start ---
+            elif event_type == "tool_call_start":
+                block = {
+                    "type": "tool_call",
+                    "status": "running",
+                    "toolName": data.get("name", ""),
+                    "executionId": data.get("id", ""),
+                    "summary": f"调用工具 {data.get('name', '')}",
+                }
+                content_blocks.append(block)
+                yield _agent_sse("tool_call", block)
+
+            # --- tool_call_end (忽略) ---
+            elif event_type == "tool_call_end":
+                pass
+
+            # --- tool_result ---
+            elif event_type == "tool_result":
+                exec_id = data.get("id", "")
+                tool_name = data.get("name", "")
+                result_str = data.get("result", "{}")
+                status_str = data.get("status", "unknown")
+                # 查找 tool_results 中的详细信息
+                tool_detail = {}
+                for tr in data.get("_tool_results", []):
+                    if tr.get("execution_id") == exec_id:
+                        tool_detail = tr
+                        break
+
+                # 更新之前的 tool_call block 状态
+                for b in reversed(content_blocks):
+                    if b.get("type") == "tool_call" and b.get("executionId") == exec_id:
+                        b["status"] = "success" if status_str == "success" else "error"
+                        break
+
+                block_result = {
+                    "type": "tool_result",
+                    "status": "success" if status_str == "success" else "error",
+                    "toolName": tool_name,
+                    "executionId": exec_id,
+                    "summary": result_str[:200] if result_str else "",
+                }
+                content_blocks.append(block_result)
+                yield _agent_sse("tool_result", block_result)
+
+            # --- token (流式文本) ---
+            elif event_type == "token":
+                token = data.get("token", "")
+                if not token:
+                    continue
+                if current_text_stream is None or current_text_stream.get("type") != "text_stream":
+                    current_text_stream = {"type": "text_stream", "status": "running", "text": ""}
+                    content_blocks.append(current_text_stream)
+                current_text_stream["text"] = (current_text_stream.get("text", "") or "") + token
+                full_text += token
+                yield _agent_sse("text", {"type": "text_stream", "text": token})
+
+            # --- done ---
+            elif event_type == "done":
+                if "usage" in data:
+                    total_usage["prompt_tokens"] = data["usage"].get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] = data["usage"].get("completion_tokens", 0)
+
+                # 提取工具执行明细
+                for tr in data.get("tool_results", []):
+                    tool_executions.append({
+                        "executionId": tr.get("execution_id", ""),
+                        "toolName": tr.get("tool", ""),
+                        "toolCallId": "",
+                        "inputParams": tr.get("input_params", {}),
+                        "outputResult": json.dumps(tr.get("data", {}), ensure_ascii=False) if tr.get("data") else "",
+                        "outputSummary": json.dumps(tr.get("data", {}), ensure_ascii=False)[:500] if tr.get("data") else "",
+                        "status": tr.get("status", "unknown"),
+                        "errorMessage": tr.get("error_code", ""),
+                        "startTime": tr.get("start_time", ""),
+                        "endTime": tr.get("end_time", ""),
+                        "durationMs": tr.get("duration_ms", 0),
+                    })
+
+                # 标记 text_stream 完成
+                if current_text_stream:
+                    current_text_stream["status"] = "success"
+
+                latency_ms = int((_time.time() - start_time) * 1000)
+                yield _agent_sse("done", {})
+
+            # --- error ---
+            elif event_type == "error":
+                has_error = True
+                error_info = {"code": data.get("error_code", "UNKNOWN"), "message": data.get("message", "")}
+                yield _agent_sse("error", error_info)
+
+    except Exception as e:
+        logger.error("Agent stream error: %s", str(e))
+        has_error = True
+        error_info = {"code": "AGENT_ERROR", "message": str(e)}
+        yield _agent_sse("error", error_info)
+
+    # 延迟到 done 之后的 metadata（作为最后一条 SSE 消息，前端可据此持久化）
+    latency_ms = int((_time.time() - start_time) * 1000)
+    metadata = {
+        "type": "__agent_metadata__",
+        "contentBlocks": content_blocks,
+        "answerContent": full_text,
+        "promptTokens": total_usage.get("prompt_tokens", 0),
+        "completionTokens": total_usage.get("completion_tokens", 0),
+        "latencyMs": latency_ms,
+        "toolExecutions": tool_executions,
+        "hasError": has_error,
+        "errorInfo": error_info,
+    }
+    yield {"data": json.dumps(metadata, ensure_ascii=False)}
+
+
+def _agent_sse(event: str, data: dict) -> dict:
+    """生成 Agent API 标准 SSE 格式"""
+    return {"data": json.dumps(data, ensure_ascii=False)}

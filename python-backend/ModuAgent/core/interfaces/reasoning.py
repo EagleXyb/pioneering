@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 
 class BaseReasoningEngine(ABC):
@@ -11,7 +11,7 @@ class BaseReasoningEngine(ABC):
         prompt: str,
         context: Dict[str, Any],
         **kwargs,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, int]]:
         pass
 
     @abstractmethod
