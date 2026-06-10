@@ -1,0 +1,505 @@
+openapi: 3.0.0
+info:
+  title: AI Agent (ReAct 模式) API
+  version: 1.0.0
+  description: 基于 ReAct (Reasoning and Acting) 范式的单 Agent 闭环与基础可观测性接口定义
+
+servers:
+  - url: https://api.yourdomain.com/v1
+    description: 生产环境
+  - url: https://dev-api.yourdomain.com/v1
+    description: 开发环境
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ========== 通用响应 ==========
+    ErrorResponse:
+      type: object
+      description: 通用错误响应结构
+      properties:
+        code:
+          type: integer
+          description: 业务状态码
+          example: 400
+        message:
+          type: string
+          description: 错误提示信息
+          example: 请求参数错误
+        details:
+          type: string
+          description: 详细错误信息（调试用）
+        requestId:
+          type: string
+          description: 请求唯一标识（用于问题追踪）
+          example: "req_20260523a1b2c3d4"
+
+    # ========== Agent 会话相关 ==========
+    AgentSession:
+      type: object
+      description: Agent 会话信息
+      properties:
+        id:
+          type: string
+          description: 会话唯一标识
+          example: "sess_20260523a1b2c3"
+        title:
+          type: string
+          description: 会话标题
+          example: "LangGraph 源码分析任务"
+        agentMode:
+          type: string
+          description: Agent 模式标识 (如: react_agent, rag_agent)
+          example: "react_agent"
+        model:
+          type: string
+          description: 使用的模型标识
+          example: "gpt-4o"
+        modelConfig:
+          type: object
+          description: 模型参数配置
+          properties:
+            temperature:
+              type: number
+              example: 0.2
+            maxTokens:
+              type: integer
+              example: 4000
+        systemPrompt:
+          type: string
+          description: 系统提示词
+          example: "你是一个具备联网搜索和代码执行能力的 AI 助手..."
+        messageCount:
+          type: integer
+          description: 消息数量
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAgentSessionRequest:
+      type: object
+      description: 创建 Agent 会话请求参数
+      properties:
+        agentMode:
+          type: string
+          enum: [react_agent, rag_agent]
+          default: "react_agent"
+          description: 指定的 Agent 运行模式
+          example: "react_agent"
+        title:
+          type: string
+          description: 会话标题
+        model:
+          type: string
+          default: "gpt-4o"
+          description: 使用的模型标识
+        systemPrompt:
+          type: string
+          description: 自定义 System Prompt
+        tools:
+          type: array
+          description: 允许该会话使用的工具列表 (为空则使用系统默认工具集)
+          items:
+            type: string
+            example: "search_web"
+
+    # ========== Agent 消息与轨迹相关 ==========
+    AgentMessage:
+      type: object
+      description: Agent 消息完整信息 (包含可观测性指标)
+      properties:
+        id:
+          type: string
+          description: 消息唯一标识
+          example: "msg_20260523x7y8z9"
+        sessionId:
+          type: string
+          example: "sess_20260523a1b2c3"
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+          example: "assistant"
+        content:
+          type: string
+          description: 最终回复的纯文本内容 (Markdown)
+          example: "根据搜索结果，LangGraph 的核心概念包括..."
+        contentBlocks:
+          type: array
+          description: "核心：Agent 执行步骤轨迹 (前端 UI 渲染思考过程、工具调用用)"
+          items:
+            $ref: '#/components/schemas/AgentContentBlock'
+        
+        # LLM 基础可观测性指标
+        promptTokens:
+          type: integer
+          description: 本次请求消耗的 Prompt Token 数
+          example: 1250
+        completionTokens:
+          type: integer
+          description: 本次请求消耗的 Completion Token 数
+          example: 840
+        latencyMs:
+          type: integer
+          description: LLM 接口响应总延迟 (毫秒)
+          example: 4500
+        
+        # 用户反馈闭环
+        userRating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 用户评分 (1-5星)
+          example: 5
+        userFeedback:
+          type: string
+          description: 用户具体反馈/纠错文本
+          example: "搜索的结果有点旧了，希望能限定在近一年的资料。"
+        
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentContentBlock:
+      type: object
+      description: "Agent 执行步骤节点 (Phase 1 标准约定)"
+      properties:
+        type:
+          type: string
+          enum: [thinking, tool_call, text_stream]
+          description: 节点类型
+          example: "tool_call"
+        status:
+          type: string
+          enum: [pending, running, success, error]
+          description: 该步骤的执行状态
+          example: "success"
+        
+        # thinking 专属
+        summary:
+          type: string
+          description: 思考过程摘要或工具调用摘要
+          example: "需要查询 LangGraph 的最新官方文档"
+        
+        # tool_call 专属
+        toolName:
+          type: string
+          description: 调用的工具名称
+          example: "search_web"
+        executionId:
+          type: string
+          description: 关联的工具执行明细 ID (用于查询大 payload)
+          example: "exec_8899"
+        
+        # text_stream 专属
+        text:
+          type: string
+          description: 流式输出的文本片段
+          example: "根据搜索结果..."
+
+    ToolExecutionDetail:
+      type: object
+      description: Agent 工具执行明细 (对应 agent_tool_executions 表)
+      properties:
+        id:
+          type: string
+          description: 执行记录唯一 ID
+          example: "exec_8899"
+        messageId:
+          type: string
+          example: "msg_20260523x7y8z9"
+        toolName:
+          type: string
+          description: 工具名称
+          example: "search_web"
+        toolCallId:
+          type: string
+          description: LLM 生成的 tool_call_id
+          example: "call_abc123xyz"
+        inputParams:
+          type: object
+          description: 工具输入参数 (JSON)
+          example: {"query": "LangGraph 核心概念", "limit": 5}
+        outputSummary:
+          type: string
+          description: 工具结果摘要 (供前端展示)
+          example: "找到 5 条相关结果，主要来自 GitHub 和官方文档..."
+        outputResult:
+          type: string
+          description: 工具执行原始结果 (可能极大，按需获取)
+        status:
+          type: string
+          enum: [pending, running, success, error, timeout, canceled]
+          example: "success"
+        errorMessage:
+          type: string
+          description: 错误信息 (status 为 error 时返回)
+        durationMs:
+          type: integer
+          description: 执行耗时 (毫秒)
+          example: 1250
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+
+    # ========== Agent 对话请求/响应 ==========
+    AgentChatRequest:
+      type: object
+      description: Agent 对话请求参数
+      properties:
+        sessionId:
+          type: string
+          description: 会话 ID (新建会话时可为空)
+          example: "sess_20260523a1b2c3"
+        message:
+          type: string
+          description: 用户指令
+          example: "帮我调研一下 LangGraph 和 AutoGen 的区别，并给出选型建议。"
+        stream:
+          type: boolean
+          default: true
+          description: 是否流式输出 (SSE)
+          example: true
+      required: [message]
+
+    AgentFeedbackRequest:
+      type: object
+      description: Agent 消息深度反馈请求 (区别于普通对话的点赞/踩)
+      properties:
+        messageId:
+          type: string
+          description: 消息 ID
+          example: "msg_20260523x7y8z9"
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 评分 (1-5星)
+          example: 4
+        feedbackText:
+          type: string
+          description: 具体纠错或建议文本
+          example: "第二步搜索的关键词不够精准，导致遗漏了重要论文。"
+
+paths:
+  # ========== Agent 会话管理 ==========
+  /agent/sessions:
+    post:
+      summary: 创建 Agent 会话
+      tags: [Agent Session]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentSessionRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /agent/sessions/{sessionId}:
+    get:
+      summary: 获取 Agent 会话详情
+      tags: [Agent Session]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '404':
+          description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== Agent 对话与执行 ==========
+  /agent/completions:
+    post:
+      summary: Agent 对话 (触发 ReAct 循环)
+      description: 发送用户指令，后端自动执行 Reasoning -> Acting -> Observation 循环，支持 SSE 流式返回思考与工具调用轨迹。
+      tags: [Agent Chat]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentChatRequest'
+      responses:
+        '200':
+          description: 非流式响应 (完整 AgentMessage)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentMessage'
+        '206':
+          description: 流式响应 (SSE)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "SSE 事件流。事件类型包括: `thinking` (思考中), `tool_call` (调用工具), `tool_result` (工具返回), `text` (最终文本生成), `done` (结束)。"
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 配额不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器内部错误或 Agent 执行死循环被强制中断
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 工具执行轨迹查询 ==========
+  /agent/messages/{messageId}/executions:
+    get:
+      summary: 获取消息关联的工具执行明细
+      description: 查询某条 Assistant 消息在 ReAct 循环中产生的所有工具调用详情 (输入参数、原始输出、耗时等)。
+      tags: [Agent Trace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          description: Assistant 消息 ID
+          schema:
+            type: string
+            example: "msg_20260523x7y8z9"
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ToolExecutionDetail'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 消息不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /agent/executions/{executionId}/result:
+    get:
+      summary: 获取工具执行的原始大 Payload
+      description: 针对 output_result 极大的情况 (如网页源码、长 PDF 解析结果)，提供独立的懒加载接口。
+      tags: [Agent Trace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: executionId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "exec_8899"
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executionId:
+                    type: string
+                  outputResult:
+                    type: string
+                    description: 原始大文本结果
+        '404':
+          description: 执行记录不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== 深度反馈闭环 ==========
+  /agent/messages/{messageId}/feedback:
+    post:
+      summary: 提交 Agent 回答深度反馈
+      description: 针对 Agent 的回答进行评分和文本纠错，用于后续的 RLHF 或 Prompt 优化。
+      tags: [Agent Feedback]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentFeedbackRequest'
+      responses:
+        '200':
+          description: 反馈提交成功
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
