@@ -1023,3 +1023,387 @@ const TextStreamStepView: React.FC<{ step: TextStreamStep }> = React.memo(({ ste
 - 提供**思考过程折叠**、**工具调用卡片**、**结果 Timeline** 等差异化视觉
 - 通过**底部面板**实时查看执行流程图和事件日志
 - 通过**智能滚动**和**Markdown 节流**保障流畅体验
+
+---
+
+## 附录：前后端 Agent 接口数据流全链路分析
+
+> 基于 `frontend/pages/agent/` 前端代码与 `python-backend/` 后端代码的深度分析，阐述后端 Agent (ModuAgent) 对接前端 Agent 页面的完整接口数据流。
+
+---
+
+### 一、整体架构概览
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  前端 frontend/pages/agent/                                       │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────────────┐           │
+│  │ChatInput │→│useAgentChat  │→│createChatRequest  │── POST ──┐ │
+│  │          │  │.handleSend() │  │(agentApi.ts:139)  │          │ │
+│  └──────────┘  └──────┬───────┘  └──────────────────┘          │ │
+│                        ↓                                         │ │
+│  ┌──────────────────────────────────────────┐                   │ │
+│  │ SSE Stream 解析 (ReadableStream reader)  │                   │ │
+│  │ → useStreamParser.applyStreamEvent()     │                   │ │
+│  │ → applyEventToMessages() 更新 steps[]    │                   │ │
+│  │ → emitEventBusEvent() 广播到 EventBus    │                   │ │
+│  └──────┬───────────────────┬───────────────┘                   │ │
+│         ↓                   ↓                                    │ │
+│  ┌──────────────┐  ┌────────────────┐                           │ │
+│  │ChatMessage   │  │ExecutionCard   │                           │ │
+│  │Bubble        │  │+ ActivityPanel │                           │ │
+│  │(文本渲染)    │  │+ StatusBar     │                           │ │
+│  └──────────────┘  └────────────────┘                           │ │
+│         ↓                   ↓                                    │ │
+│  ┌──────────────────────────────────┐                           │ │
+│  │     AgentStepsPanel (右侧面板)    │                           │ │
+│  │     StepRenderer 逐步骤渲染       │                           │ │
+│  └──────────────────────────────────┘                           │ │
+└──────────────────────────────────────────────────────────────────┘
+         │                        ▲
+         │  POST /chat/completions│ SSE {data: json}
+         ↓                        │
+┌──────────────────────────────────────────────────────────────────┐
+│  python-backend                                                   │
+│  ┌────────────────────────────────────────────────────┐          │
+│  │ app/api/v1/chat.py → chat_completion()             │          │
+│  │  - 创建/使用 session                                │          │
+│  │  - 创建 user message                               │          │
+│  │  - 调用 agent_bridge.stream_chat_completion()      │          │
+│  │  - 遍历 sse_line，解析 event，透传 SSE              │          │
+│  │  - EventSourceResponse 返回流                      │          │
+│  └──────────┬─────────────────────────────────────────┘          │
+│             ↓                                                     │
+│  ┌────────────────────────────────────────────────────┐          │
+│  │ app/core/agent_bridge.py → stream_chat_completion()│          │
+│  │  - 初始化 ModuAgent (registry, reasoner, tools)    │          │
+│  │  - 创建 Coordinator                                │          │
+│  │  - coordinator.stream_request() → AsyncGenerator   │          │
+│  │  - _coordinator_frame_to_frontend_event() 映射     │          │
+│  │    coordinator frame → frontend StreamEvent        │          │
+│  │  - yield {"data": json.dumps(event)}               │          │
+│  └──────────┬─────────────────────────────────────────┘          │
+│             ↓                                                     │
+│  ┌────────────────────────────────────────────────────┐          │
+│  │ ModuAgent/orchestration/coordinator.py              │          │
+│  │  stream_request() → AsyncGenerator[SSE frame]      │          │
+│  │                                                     │          │
+│  │  执行流程:                                          │          │
+│  │  1. Perception (敏感词检测)   → status frame       │          │
+│  │  2. Memory (上下文查询)       → status frame       │          │
+│  │  3. Reasoning (LLM 调用)      → thinking frame     │          │
+│  │  4. ReAct Loop (工具调用轮次)  → tool_call/reasoning│          │
+│  │     iteration frames                               │          │
+│  │  5. Stream Final Answer       → token frames       │          │
+│  │  6. Done                      → done frame         │          │
+│  │                                                     │          │
+│  │  使用 SSEEncoder 编码:                              │          │
+│  │  - encode_status(phase)        → {event, data}     │          │
+│  │  - encode_thinking(content)    → {event, data}     │          │
+│  │  - encode_tool_call_start/end  → {event, data}     │          │
+│  │  - encode_tool_result(...)     → {event, data}     │          │
+│  │  - encode_token(token)         → {event, data}     │          │
+│  │  - encode_reasoning_iteration  → {event, data}     │          │
+│  │  - encode_done(...)            → {event, data}     │          │
+│  └────────────────────────────────────────────────────┘          │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 二、核心数据流转详解
+
+#### 2.1 前端发起请求
+
+**入口**: [ChatInput](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/components/ChatInput.tsx) 用户输入 → [useAgentChat.handleSend()](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/hooks/useAgentChat.ts#L46)
+
+```typescript
+// useAgentChat.ts handleSend() 核心逻辑
+const handleSend = async (value?: string) => {
+  // 1. 创建 user message + assistant placeholder
+  const userMsg: ChatMessage = { id: 'user_...', role: 'user', ... }
+  const assistantMsg: ChatMessage = { id: 'assistant_...', role: 'assistant', steps: [], status: 'loading', ... }
+
+  // 2. 如果没有 session，先创建
+  if (!sessionId) sessionId = await createNewSession(title, model)
+
+  // 3. POST /chat/completions (SSE 流)
+  const response = await createChatRequest({
+    sessionId, message, model, stream: true, deepThinking, webSearch, signal
+  })
+
+  // 4. 逐行读取 SSE 流
+  const reader = response.body.getReader()
+  // 解析 "data: {...}" 行 → 解析 JSON → applyStreamEvent(parsed)
+}
+```
+
+**API 调用层**: [agentApi.ts](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/api/agentApi.ts#L139-L147)
+
+```typescript
+export function createChatRequest(body) {
+  return fetch(`${API_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(body),  // { sessionId, message, model, stream, deepThinking, webSearch }
+    signal: body.signal,
+  })
+}
+```
+
+API 路径定义在 [shared/api/endpoints.ts](file:///d:/Administrator/Desktop/pioneering/shared/api/endpoints.ts#L42-L48):
+```typescript
+CHAT: {
+  SESSIONS: '/chat/sessions',
+  MESSAGES: (sessionId) => `/chat/sessions/${sessionId}/messages`,
+  COMPLETIONS: '/chat/completions',
+}
+```
+
+#### 2.2 后端 API 层接收
+
+**路由**: [chat.py - chat_completion()](file:///d:/Administrator/Desktop/pioneering/python-backend/app/api/v1/chat.py#L296-L340)
+
+```python
+@router.post("/completions")
+async def chat_completion(dto: ChatCompletionRequest, current_user, db):
+    # 1. 没有 session_id → 自动创建 ChatSession
+    # 2. 创建 user message (role=user)
+    # 3. stream=True → 返回 EventSourceResponse
+
+    async def event_generator():
+        async for sse_line in stream_chat_completion(...):
+            event = _parse_event(sse_line)  # 解析 {"data": "..."}
+            # 收集 thinking_content, answer_content, tool_calls
+            yield sse_line  # 透传 SSE
+
+        # 流结束后创建 assistant message 并 commit DB
+        assistant_msg = ChatMessage(role=MessageRole.assistant, ...)
+        db.add(assistant_msg)
+        await db.commit()
+
+    return EventSourceResponse(event_generator())
+```
+
+请求体 [ChatCompletionRequest](file:///d:/Administrator/Desktop/pioneering/python-backend/app/schemas/chat.py#L63-L76):
+```python
+class ChatCompletionRequest(BaseModel):
+    session_id: str | None
+    message: str
+    model: str | None
+    stream: bool = True
+    deep_think: bool = False
+    net_search: bool = False
+```
+
+#### 2.3 Agent Bridge - 桥接层
+
+**核心文件**: [agent_bridge.py](file:///d:/Administrator/Desktop/pioneering/python-backend/app/core/agent_bridge.py)
+
+这是前端和后端 Agent 之间的 **关键转换层**，做了两件事：
+
+**(A) 初始化 ModuAgent 组件** ([line 14-49](file:///d:/Administrator/Desktop/pioneering/python-backend/app/core/agent_bridge.py#L14-L49)):
+```python
+def _init_moduagent():
+    registry = get_registry()
+    registry.register_reasoning_engine("default", BaseLLMReasoner(api_key, base_url, model))
+    registry.register_perception("text_preprocessor", TextPreprocessor())
+    registry.register_memory("short_term", InMemoryShortTermMemory())
+    registry.register_tool(CalculatorTool())
+    registry.register_tool(SearchTool())
+    registry.register_action_executor("sync", SyncActionExecutor())
+```
+
+**(B) Coordinator Frame → Frontend StreamEvent 映射** ([line 54-132](file:///d:/Administrator/Desktop/pioneering/python-backend/app/core/agent_bridge.py#L54-L132)):
+
+这是桥梁的核心 — 将 Coordinator 内部的 `{event, data}` 帧转换为前端可识别的 `StreamEvent`:
+
+| Coordinator Frame (event) | 转换后 Frontend StreamEvent.type |
+|---|---|
+| `status` (phase=`perception`/`memory`) | `null` (过滤掉) |
+| `status` (其他 phase) | `"status"` |
+| `thinking` | `"thinking_delta"` + `"thinking_done"` |
+| `reasoning_iteration` | `"reasoning_iteration"` |
+| `tool_call_start` | `"tool_call_start"` |
+| `tool_call_end` | `"tool_call_end"` |
+| `tool_result` | `"tool_result_end"` |
+| `token` | `"answer_delta"` |
+| `done` | `"answer_done"` |
+| `error` | `"error"` |
+
+**(C) 流式调用 Coordinator** ([line 144-240](file:///d:/Administrator/Desktop/pioneering/python-backend/app/core/agent_bridge.py#L144-L240)):
+
+```python
+async def stream_chat_completion(message, session_id, user_id, model, ...):
+    coordinator = Coordinator()
+    step_id = str(uuid.uuid4())
+
+    async for frame in coordinator.stream_request(
+        user_id=user_id, session_id=session_id,
+        input_data={"input_type": "text", "prompt": message},
+    ):
+        events = _coordinator_frame_to_frontend_event(frame, step_id)
+        for event in events:
+            yield {"data": json.dumps(event)}  # SSE 格式输出
+
+    # 流结束后附加 __metadata__ 事件
+    yield {"data": json.dumps({"type": "__metadata__", "payload": {
+        "thinkingContent": "...", "answerContent": "...", "toolCalls": [...]
+    }})}
+```
+
+#### 2.4 ModuAgent Coordinator - Agent 执行引擎
+
+**文件**: [coordinator.py stream_request()](file:///d:/Administrator/Desktop/pioneering/python-backend/ModuAgent/orchestration/coordinator.py#L346-L655)
+
+执行流程 (通过 `yield` 实时流式输出 SSE 帧):
+
+```
+Step 1: Perception (感知)
+  → yield SSEEncoder.encode_status("perception", trace_id)
+  → 敏感词检测，如果触发则直接返回 error
+
+Step 2: Memory (记忆)
+  → yield SSEEncoder.encode_status("memory", trace_id)
+  → 查询历史对话 / 知识库
+
+Step 3: Reasoning (推理)
+  → yield SSEEncoder.encode_status("thinking", trace_id)
+  → LLM 生成 → yield SSEEncoder.encode_thinking(response, trace_id)
+
+Step 4: ReAct Loop (工具调用迭代)
+  → 每轮迭代 yield SSEEncoder.encode_reasoning_iteration(index, max)
+  → 解析 tool_call → yield encode_tool_call_start / encode_tool_call_end
+  → 执行 tool → yield encode_tool_result(...)
+  → 如果还有工具调用 → 下一轮迭代 (max 3 轮)
+
+Step 5: Stream Final Answer (流式最终输出)
+  → 逐 token 调用 llm_adapter.stream()
+  → yield SSEEncoder.encode_token(token, trace_id)
+
+Step 6: Done
+  → yield SSEEncoder.encode_done(trace_id, tool_results)
+```
+
+**SSEEncoder** ([streaming.py](file:///d:/Administrator/Desktop/pioneering/python-backend/ModuAgent/orchestration/communication/streaming.py#L12-L110)) 编码格式:
+```python
+# 每个帧的格式: {"event": "<type>", "data": "<json字符串>"}
+SSEEncoder.encode_token("Hello", trace_id)
+# → {"event": "token", "data": '{"token": "Hello", "trace_id": "..."}'}
+```
+
+#### 2.5 前端 SSE 解析 & 状态更新
+
+**核心**: [useStreamParser.ts applyEventToMessages()](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/hooks/useStreamParser.ts#L88-L370)
+
+每条从 SSE 解析出的 `StreamEvent` 都会调用此函数，更新消息的 `steps[]` 数组：
+
+| StreamEvent.type | 对 steps[] 的操作 |
+|---|---|
+| `status` | 不创建 step，仅更新 `currentPhase` |
+| `thinking_delta` | 创建/追加 `ThinkingStep` (type=`thinking`) |
+| `thinking_done` | 标记 ThinkingStep 状态为 `success` |
+| `tool_call_start` | 创建 `ToolCallStep` (type=`tool_call`) |
+| `tool_call_end` | 标记 ToolCallStep 完成 |
+| `tool_result_end` | 创建/更新 `ToolResultStep` (type=`tool_result`) |
+| `answer_delta` | 创建/追加 `TextStreamStep` (type=`text_stream`) |
+| `answer_done` | 标记 TextStreamStep 状态为 `success` |
+| `reasoning_iteration` | 创建 `ReasoningIterationStep` |
+| `error` | 创建 `ErrorStep` (type=`error`) |
+
+同时通过 [emitEventBusEvent()](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/hooks/useStreamParser.ts#L16-L85) 广播到 `agentEventBus`。
+
+#### 2.6 前端渲染层
+
+有三条渲染路径，消费同一份数据：
+
+**(A) 聊天消息气泡** - [ChatMessage.tsx](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/components/ChatMessage.tsx)
+- 提取 `TEXT_STREAM` 类型 steps → 拼接内容 → ReactMarkdown 渲染
+- 流式输出时使用 `useThrottledContent` 节流 (50ms)
+
+**(B) 执行过程卡片** - [ExecutionCard.tsx](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/components/ExecutionCard.tsx)
+- 订阅 `agentEventBus` 事件 → `useAgentRun` Hook 维护 `RunState`
+- 展示 Phase 时间线 (perception → memory → thinking → tool_calling → generating → done)
+- `ActivityPanel` + `StatusBar` 渲染
+
+**(C) 右侧步骤面板** - [AgentStepsPanel.tsx](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/components/AgentStepsPanel.tsx)
+- 直接读取 `message.steps[]` 数组
+- `StepRenderer` 按步骤类型渲染: `ThinkingStepView` / `ToolCallStepView` / `ToolResultStepView` / `TextStreamStepView` / `ReasoningIterationStepView` / `ErrorStepView`
+- 显示实时进度 (已完成/总计)
+
+---
+
+### 三、关键类型映射总结
+
+```
+后端 Coordinator Frame           agent_bridge 转换        前端 StreamEvent          前端 Steps
+─────────────────────────────────────────────────────────────────────────────────────────
+event="status"                  → type="status"           → currentPhase 更新
+  data={"phase":"thinking"}
+
+event="thinking"                → type="thinking_delta"   → ThinkingStep
+  data={"content":"..."}          + thinking_done           (type='thinking')
+
+event="tool_call_start"         → type="tool_call_start"  → ToolCallStep
+  data={"id":"..","name":".."}                               (type='tool_call')
+
+event="tool_result"             → type="tool_result_end"  → ToolResultStep
+  data={"id":"..","result":"."}                              (type='tool_result')
+
+event="token"                   → type="answer_delta"     → TextStreamStep
+  data={"token":"..."}                                        (type='text_stream')
+
+event="reasoning_iteration"     → type="reasoning_        → ReasoningIterationStep
+  data={"index":1,"max":3}        iteration"
+
+event="done"                    → type="answer_done"      → 标记完成
+  data={...}
+
+event="error"                   → type="error"            → ErrorStep
+  data={"error_code":"..."}                                   (type='error')
+```
+
+---
+
+### 四、会话持久化 & 历史加载
+
+1. **创建/列表**: `POST/GET /chat/sessions` → 操作 PostgreSQL `ChatSession` 表
+2. **消息历史加载**: `GET /chat/sessions/{id}/messages` → 从 `ChatMessage` 表读取 → 前端 [fetchSessionMessages()](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/api/agentApi.ts#L44-L112) 将 DB 字段 (`thinking_content`, `tool_calls`, `answer_content`) 还原为 `AgentStep[]` 数组
+3. **流结束后持久化**: `chat.py` event_generator 在流结束时创建 `assistant` 的 `ChatMessage` 记录并 commit
+4. **`__metadata__`**: 流结束后额外发送的元数据事件，汇总 `thinkingContent`, `answerContent`, `toolCalls` 供后端持久化使用
+
+---
+
+### 五、数据流中的关键设计点
+
+1. **双层事件体系**: `agent_bridge.py` 中的 `_coordinator_frame_to_frontend_event()` 是前后端协议转换的单一入口，将 ModuAgent 内部帧格式转换为前端 `StreamEvent` 格式
+2. **EventBus 解耦**: 前端 `agentEventBus` 允许 `AgentStepsPanel`、`ExecutionCard`、`StatusBar` 等组件独立订阅同一份流式数据，互不耦合
+3. **SSE 逐 token 输出**: `Coordinator.stream_request()` 中最终回答通过字符级分块 (`chunk_size=4`) 或 LLM stream token 逐 token yield，前端通过 `useThrottledContent(50ms)` 节流渲染
+4. **ReAct 工具循环**: Coordinator 支持最多 3 轮推理迭代，每轮都可调用工具，工具结果作为 observation 反馈给 LLM 继续推理
+
+---
+
+### 六、涉及的源代码文件清单
+
+| 层级 | 文件 | 行数 | 核心职责 |
+|------|------|------|---------|
+| **前端 - 页面入口** | `frontend/pages/agent/index.tsx` | ~192 | 组装布局（侧边栏+聊天+右侧步骤面板+参数面板） |
+| **前端 - API 层** | `frontend/pages/agent/api/agentApi.ts` | ~157 | GET/POST 会话和消息、SSE 流请求 |
+| **前端 - 状态管理** | `frontend/pages/agent/hooks/useAgentChat.ts` | ~200+ | 消息管理、SSE 读取、发送/停止/重生成 |
+| **前端 - SSE 解析** | `frontend/pages/agent/hooks/useStreamParser.ts` | ~390 | `StreamEvent` 解析 → `steps[]` 增量更新 + EventBus 广播 |
+| **前端 - 执行状态** | `frontend/pages/agent/hooks/useAgentRun.ts` | ~200+ | 订阅 EventBus → 维护 RunState (Phase 时间线) |
+| **前端 - 会话管理** | `frontend/pages/agent/hooks/useSessionManager.ts` | ~120 | 会话 CRUD、置顶/重命名 |
+| **前端 - 类型定义** | `frontend/pages/agent/types/*.ts` | ~180 | `ChatMessage`, `AgentStep`, `StreamEvent`, `ChatSession` |
+| **前端 - 聊天气泡** | `frontend/pages/agent/components/ChatMessage.tsx` | ~200+ | Markdown 渲染 + 执行卡片 + 操作栏 |
+| **前端 - 步骤面板** | `frontend/pages/agent/components/AgentStepsPanel.tsx` | ~151 | 右侧面板：实时步骤列表、进度统计 |
+| **前端 - 执行卡片** | `frontend/pages/agent/components/ExecutionCard.tsx` | ~29 | 活动面板 + 状态栏容器 |
+| **前端 - API 端点** | `shared/api/endpoints.ts` | ~61 | 所有 REST API 路径定义 |
+| **后端 - API 层** | `python-backend/app/api/v1/chat.py` | ~400+ | SSE 路由、会话/消息 CRUD |
+| **后端 - 请求体** | `python-backend/app/schemas/chat.py` | ~95 | Pydantic 请求/响应模型 |
+| **后端 - Agent 桥** | `python-backend/app/core/agent_bridge.py` | ~242 | ModuAgent 初始化、Coordinator → StreamEvent 转换 |
+| **后端 - Coordinator** | `python-backend/ModuAgent/orchestration/coordinator.py` | ~700 | Agent 执行引擎 (Perception → Memory → ReAct → Stream) |
+| **后端 - SSE 编码** | `python-backend/ModuAgent/orchestration/communication/streaming.py` | ~131 | SSEEncoder + StreamPublisher |
+| **后端 - 事件协议** | `python-backend/ModuAgent/orchestration/communication/agui_adapter.py` | ~200+ | AGUI 事件类型定义及序列化 |
+| **后端 - 协议定义** | `python-backend/ModuAgent/orchestration/communication/protocol.py` | ~200+ | AgentEvent、ErrorCode、EventDomain 等核心协议 |
+| **后端 - LLM 适配** | `python-backend/ModuAgent/adapters/llm_adapter.py` | ~66 | LLM generate/stream 适配层 |
+| **后端 - 配置** | `python-backend/app/config.py` | ~25 | 数据库、JWT、LLM 参数配置 |
