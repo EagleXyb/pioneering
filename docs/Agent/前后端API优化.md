@@ -969,3 +969,422 @@ yield f"data: {json.dumps({'type': '__metadata__', 'payload': metadata})}\n\n"
 | 前端类型 | [types.ts](../../frontend/pages/agent/types.ts) | `AgentStep` / `StreamEvent` 类型定义 | L1-L175 |
 | 前端渲染 | [StepRenderer.tsx](../../frontend/pages/agent/components/StepRenderer.tsx) | 步骤可视化渲染组件 | L1-L200 |
 | 共享端点 | [endpoints.ts](../../shared/api/endpoints.ts) | API 端点常量定义 | L1-L61 |
+
+---
+
+## 八、前端 UI 复用 + 后端接口分离方案
+
+> 基于 `docs/Interface Document/Agent (ReAct 模式) API.yaml` 接口文档与当前代码的深度差异分析
+> 日期：2026-06-10
+
+### 8.1 方案核心思想
+
+**前端聊天窗口组件复用，后端接口独立分离**。发送消息时根据用户选择的模式（普通模式 vs 专业模式/Agent）动态切换请求地址，前端 SSE 解析器与消息渲染组件完全复用。
+
+```
+const apiUrl = mode === 'agent'
+  ? '/v1/agent/completions'
+  : '/v1/chat/completions';
+```
+
+### 8.2 当前代码复用能力分析
+
+#### 8.2.1 可直接复用的前端模块
+
+| 模块 | 文件 | 复用理由 |
+|------|------|----------|
+| `ChatSidebar.tsx` | `frontend/pages/agent/components/ChatSidebar.tsx` | 会话列表不区分模式，只需按 `agentMode` 过滤/标记 |
+| `ChatInput.tsx` | `frontend/pages/agent/components/ChatInput.tsx` | 输入框在两种模式下完全一致 |
+| `WelcomePage.tsx` | `frontend/pages/agent/components/WelcomePage.tsx` | 欢迎页无需区分模式 |
+| `ChatMessage.tsx` | `frontend/pages/agent/components/ChatMessage.tsx` | 已支持根据 `steps` 数组动态渲染（有 steps 渲染复杂步骤，纯 text 渲染文本） |
+| `useSmartScroll.ts` | `frontend/pages/agent/hooks/useSmartScroll.ts` | 滚动逻辑通用 |
+| `useResizablePanel.ts` | `frontend/pages/agent/hooks/useResizablePanel.ts` | 面板拖拽通用 |
+| `useSessionManager.ts` | `frontend/pages/agent/hooks/useSessionManager.ts` | 会话 CRUD 通用，只需 session 创建时区分 `agentMode` |
+
+#### 8.2.2 `ChatMessage.tsx` 的天然适配能力
+
+当前组件渲染逻辑（[ChatMessage.tsx L63-L80](file:///d:/Administrator/Desktop/pioneering/frontend/pages/agent/components/ChatMessage.tsx#L63-L80)）：
+
+```typescript
+// 从 steps 中提取 text_stream 类型的步骤
+const textStreamSteps = message.steps.filter(s => s.type === TEXT_STREAM)
+const throttledContent = textStreamSteps.map(s => s.content).join('')
+```
+
+- **普通模式**：后端只发 `answer_delta` → `useStreamParser` 只创建 `TEXT_STREAM` step → 组件只渲染纯文本 Markdown
+- **Agent 模式**：后端发 `thinking_delta` + `tool_call_start` + `answer_delta` 等 → `useStreamParser` 创建混合 steps → 组件渲染完整执行轨迹
+
+`useStreamParser` 已包含所有事件类型的处理函数，两种模式共享同一份解析器实例，**无需改动**。
+
+### 8.3 代码实现差异总览
+
+| 维度 | 接口文档要求 (`/agent/*`) | 当前实现 (`/chat/*`) | 差异等级 |
+|------|--------------------------|----------------------|----------|
+| 会话创建入参 | agentMode, tools, systemPrompt | title, model, system_prompt | **P0** |
+| 会话类型字段 | `chat_sessions.agent_mode` | 不存在 | **P0** |
+| SSE 事件 | thinking → tool_call → tool_result → text → done | 细粒度~12种事件（已覆盖） | **P1** |
+| 流结束写入 | content_blocks + agent_tool_executions | 仅 content + content_blocks | **P0** |
+| 工具执行明细表 | `agent_tool_executions` | 不存在 | **P0** |
+| 可观测性字段 | prompt_tokens, completion_tokens, latency_ms | 不存在 | **P1** |
+| 深度反馈 | rating (1-5) + feedbackText | 仅 like/dislike | **P2** |
+| 执行结果懒加载 | `GET /agent/executions/{id}/result` | 不存在 | **P2** |
+
+### 8.4 后端实施方案
+
+#### 8.4.1 Phase 1：新建 `/agent/completions` 端点（P0）
+
+**文件**: `python-backend/app/api/v1/agent.py`（新建）
+
+与 `/chat/completions` 的差异：
+
+| 维度 | `/chat/completions`（普通模式） | `/agent/completions`（Agent 模式） |
+|------|-------------------------------|-----------------------------------|
+| 入参 | `ChatCompletionRequest`（含 model, deep_think, net_search） | `AgentChatRequest`（sessionId, message, stream） |
+| SSE 事件 | 纯 `answer_delta` + `answer_done` | 完整 ReAct 轨迹（thinking → tool_call → tool_result → answer_delta） |
+| 流结束后 | 仅保存 assistant 消息 content | 保存 content + content_blocks + 写入 agent_tool_executions 表 |
+| 可观测性 | 无 | 记录 prompt_tokens / completion_tokens / latency_ms |
+
+核心伪代码：
+
+```python
+# app/api/v1/agent.py
+
+@router.post("/completions")
+async def agent_completion(
+    dto: AgentChatRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = await get_session(db, dto.session_id)
+    user_msg = ChatMessage(session_id=session.id, role="user", content=dto.message)
+    db.add(user_msg)
+    await db.commit()
+
+    async def event_stream():
+        tool_executions = []
+        thinking_content, answer_content = "", ""
+        prompt_tokens = completion_tokens = 0
+        start_time = datetime.now(timezone.utc)
+
+        # 1. 调用 ModuAgent stream_request()
+        async for frame in coord.stream_request(...):
+            event = _coordinator_frame_to_frontend_event(frame)
+            yield f"data: {json.dumps(event)}\n\n"
+
+            # 2. 收集工具执行数据
+            if event["type"] == "tool_call_start":
+                tool_executions.append({...})
+            elif event["type"] == "tool_result_end":
+                # 更新对应的 execution 记录
+                pass
+
+        # 3. 流结束后持久化
+        latency = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+        assistant_msg = ChatMessage(
+            session_id=session.id, role="assistant",
+            content=answer_content or thinking_content,
+            thinking_content=thinking_content,
+            answer_content=answer_content,
+            tool_calls_data=tool_executions,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=int(latency),
+        )
+        db.add(assistant_msg)
+        # 批量写入 agent_tool_executions 表
+        for exec in tool_executions:
+            db.add(AgentToolExecution(**exec))
+        await db.commit()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+```
+
+#### 8.4.2 Phase 1：普通模式 `/chat/completions` 简化（P0）
+
+当前 `/chat/completions` 实际走了 ModuAgent 的 ReAct 循环（通过 `stream_chat_completion`）。普通模式下应跳过 ReAct 循环，直接调用 LLM 流式输出。
+
+**文件**: `python-backend/app/core/agent_bridge.py`
+
+新增 `stream_normal_chat()`：
+
+```python
+async def stream_normal_chat(message, history, model_config, ...):
+    """普通对话模式：纯 LLM 流式输出，无 ReAct 循环"""
+    llm = get_llm_adapter()
+    async for token in llm.stream(prompt=message, context=history):
+        yield {"data": json.dumps({"type": "answer_delta", "content": token})}
+    yield {"data": json.dumps({"type": "answer_done"})}
+```
+
+#### 8.4.3 Phase 1：数据模型新增字段（P0）
+
+**文件**: `python-backend/app/models/user.py`
+
+```python
+# ChatSession 新增
+agent_mode = Column("agent_mode", String(50), nullable=True)
+# NULL = 普通对话, "react_agent" = Agent 专业模式
+
+# ChatMessage 新增
+prompt_tokens = Column("prompt_tokens", Integer, nullable=True)
+completion_tokens = Column("completion_tokens", Integer, nullable=True)
+latency_ms = Column("latency_ms", Integer, nullable=True)
+user_rating = Column("user_rating", SmallInteger, nullable=True)    # 1-5
+user_feedback = Column("user_feedback", Text, nullable=True)
+
+# 新增 AgentToolExecution 模型
+class AgentToolExecution(Base):
+    __tablename__ = "agent_tool_executions"
+    id = Column(String(64), primary_key=True)
+    session_id = Column(String(64), ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    message_id = Column(String(64), ForeignKey("chat_messages.id"), nullable=False, index=True)
+    tool_name = Column(String(100), nullable=False)
+    execution_order = Column(Integer, default=0)
+    input_arguments = Column(JSON, nullable=True)
+    output_summary = Column(Text, nullable=True)    # 前端展示用
+    output_result = Column(JSON, nullable=True)     # 原始大 Payload，懒加载
+    status = Column(String(20), default="pending")
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+```
+
+#### 8.4.4 Phase 2：新建 Agent 会话管理端点（P1）
+
+```python
+# app/api/v1/agent.py 中新增
+
+@router.post("/sessions")
+async def create_agent_session(dto: CreateAgentSessionRequest, ...):
+    """创建 Agent 会话，支持 agentMode, tools, systemPrompt"""
+    session = ChatSession(
+        title=dto.title or "新对话",
+        agent_mode="react_agent",
+        system_prompt=dto.systemPrompt,
+        model_config={...},
+        user_id=current_user.id,
+    )
+    db.add(session)
+    await db.commit()
+    return SessionResponse.model_validate(session)
+
+@router.get("/sessions/{session_id}")
+async def get_agent_session(session_id: str, ...):
+    """获取 Agent 会话详情（含 agentMode, modelConfig, systemPrompt）"""
+    ...
+
+@router.get("/messages/{message_id}/executions")
+async def get_message_executions(message_id: str, ...):
+    """查询某条消息的工具执行明细列表"""
+    ...
+
+@router.get("/executions/{execution_id}/result")
+async def get_execution_result(execution_id: str, ...):
+    """懒加载原始大 Payload（output_result 字段）"""
+    ...
+
+@router.post("/messages/{message_id}/feedback")
+async def submit_agent_feedback(message_id: str, dto: AgentFeedbackRequest, ...):
+    """深度反馈：评分(1-5) + 文本纠错"""
+    ...
+```
+
+#### 8.4.5 Phase 3：深度反馈 + 执行懒加载（P2）
+
+深度反馈端点：
+
+```python
+class AgentFeedbackRequest(BaseModel):
+    rating: int = Field(..., ge=1, le=5)        # 1-5 星评分
+    feedback_text: str | None = None            # 可选的文本纠错
+
+@router.post("/messages/{message_id}/feedback")
+async def submit_agent_feedback(...):
+    msg = await db.get(ChatMessage, message_id)
+    msg.user_rating = dto.rating
+    msg.user_feedback = dto.feedback_text
+    await db.commit()
+    return {"status": "ok"}
+```
+
+### 8.5 前端实施方案
+
+#### 8.5.1 Phase 1：mode 状态 + 动态路由（P0）
+
+**文件**: `frontend/pages/agent/hooks/useAgentChat.ts`
+
+```typescript
+// 新增 mode 状态
+const [chatMode, setChatMode] = useState<'chat' | 'agent'>('chat')
+
+// handleSend 中动态选择 endpoint 和 body
+const endpoint = chatMode === 'agent'
+  ? API_ENDPOINTS.AGENT.COMPLETIONS
+  : API_ENDPOINTS.CHAT.COMPLETIONS
+
+const body = chatMode === 'agent'
+  ? { sessionId, message, stream: true }
+  : { sessionId, message, model, stream: true, deepThinking, webSearch }
+```
+
+SSE 解析层 (`useStreamParser`) **完全不需要改动** — 它已按 `event.type` switch 处理，普通模式只收到 `answer_delta` / `answer_done` 事件，自动就是纯文本渲染。
+
+#### 8.5.2 Phase 1：新增 AGENT 路由常量（P0）
+
+**文件**: `shared/api/endpoints.ts`
+
+```typescript
+AGENT: {
+  SESSIONS: '/agent/sessions',
+  SESSION_BY_ID: (id: string) => `/agent/sessions/${id}`,
+  COMPLETIONS: '/agent/completions',
+  MESSAGES: (sessionId: string) => `/agent/sessions/${sessionId}/messages`,
+  EXECUTIONS: (messageId: string) => `/agent/messages/${messageId}/executions`,
+  EXECUTION_RESULT: (executionId: string) => `/agent/executions/${executionId}/result`,
+  FEEDBACK: (messageId: string) => `/agent/messages/${messageId}/feedback`,
+},
+```
+
+**文件**: `frontend/pages/agent/api/agentApi.ts`
+
+```typescript
+// 新增 API 函数
+export const createAgentRequest = (data: AgentChatRequest) => {...}
+export const fetchToolExecutions = (messageId: string) => {...}
+export const fetchExecutionResult = (executionId: string) => {...}
+export const submitAgentFeedback = (messageId: string, rating: number, text?: string) => {...}
+```
+
+#### 8.5.3 Phase 1：会话创建时传入 agentMode（P0）
+
+**文件**: `frontend/pages/agent/hooks/useSessionManager.ts`
+
+```typescript
+const createNewSession = async (mode: 'chat' | 'agent') => {
+  const endpoint = mode === 'agent'
+    ? API_ENDPOINTS.AGENT.SESSIONS
+    : API_ENDPOINTS.CHAT.SESSIONS
+  const body = mode === 'agent'
+    ? { title: '新对话', agentMode: 'react_agent', tools: [...], systemPrompt: '...' }
+    : { title: '新对话' }
+  ...
+}
+```
+
+#### 8.5.4 Phase 2：mode 切换 UI（P1）
+
+**位置**: `ChatInput.tsx` 或 `ChatHeader.tsx` 中新增 Toggle/Segment 控件
+
+```
+[ 普通模式 ] [ Agent 模式 ]
+```
+
+- 切换时清除当前消息（或提示用户新建会话）
+- Agent 模式下隐藏 `deepThinking` / `webSearch` 开关
+- Agent 模式下右侧 `AgentStepsPanel` 展示，普通模式下自动折叠
+
+#### 8.5.5 Phase 2：消息历史加载适配（P1）
+
+**文件**: `frontend/pages/agent/api/agentApi.ts` 的 `fetchSessionMessages`
+
+Agent 模式下后端返回 `content_blocks`（`AgentContentBlock[]`），前端直接映射到 `steps`。需要区分两种数据来源：
+
+```typescript
+// 普通模式：当前逻辑（只有 text content）
+// Agent 模式：从 content_blocks 解析构建 steps
+if (mode === 'agent' && msg.content_blocks) {
+  steps = msg.content_blocks.map(block => convertBlockToStep(block))
+}
+```
+
+#### 8.5.6 Phase 3：深度反馈 UI（P2）
+
+**文件**: `frontend/pages/agent/components/ChatMessage.tsx`
+
+在 feedback action 中增加五星评分 + 文本纠错输入框，调用 `POST /agent/messages/{mid}/feedback`：
+
+```tsx
+// 新增反馈弹窗
+<Rate onChange={(value) => setRating(value)} />
+<TextArea placeholder="如果有误，请纠正..." />
+<Button onClick={submitFeedback}>提交反馈</Button>
+```
+
+#### 8.5.7 Phase 3：工具执行详情面板（P2）
+
+**文件**: `frontend/pages/agent/components/ExecutionCard.tsx`
+
+点击 `ExecutionCard` 时调用 `GET /agent/executions/{id}/result` 获取原始大文本，在弹窗或侧边栏中展示。
+
+### 8.6 SSE 事件兼容性保证
+
+前端 `useStreamParser` 按 `event.type` 分发，天然兼容两种模式：
+
+| 前端 event.type | 普通模式 | Agent 模式 | 渲染结果 |
+|----------------|----------|------------|----------|
+| `answer_delta` | ✅ 有 | ✅ 有 | `TEXT_STREAM` step → Markdown 渲染 |
+| `answer_done` | ✅ 有 | ✅ 有 | 标记完成 |
+| `thinking_delta` | ❌ 无 | ✅ 有 | `ThinkingStep` → 思考中折叠面板 |
+| `tool_call_start` | ❌ 无 | ✅ 有 | `ToolCallStep` → 工具调用卡片 |
+| `tool_result_end` | ❌ 无 | ✅ 有 | `ToolResultStep` → 工具结果卡片 |
+| `reasoning_iteration` | ❌ 无 | ✅ 有 | 迭代序号标记 |
+
+**核心结论**：`useStreamParser` 和 `ChatMessage` **均无需改动**，它们天然兼容两种模式。只需在 `useAgentChat` 中根据 mode 切换请求地址即可。
+
+### 8.7 兼容性保证
+
+1. **`agent_mode = NULL` 表示普通对话**，向下兼容现有 `/chat/*` 路由
+2. **`agent_tool_executions.output_result`** 独立懒加载，不在消息列表接口中返回
+3. **会话列表通用**：`agentMode` 字段为 `NULL` 时为普通会话，为 `react_agent` 时为 Agent 会话，列表渲染时可按 mode 过滤
+4. **后端不破坏现有 `/chat/*` 路由**，新建独立的 `/agent/*` 路由模块并行运行
+
+### 8.8 实施优先级总览
+
+| 阶段 | 主要内容 | 改动文件数 | 工作量 |
+|------|---------|-----------|--------|
+| **Phase 1 (P0)** | 后: ChatMessage 模型新增字段 + AgentToolExecution 表 + `/agent/completions` 端点 + 简化普通模式<br>前: mode 状态 + 动态路由 + 路由常量 + 会话创建传参 | ~6 个文件 | ~350 行 |
+| **Phase 2 (P1)** | 后: Agent 会话管理端点 (sessions CRUD)<br>前: mode 切换 UI + 消息历史适配 | ~5 个文件 | ~250 行 |
+| **Phase 3 (P2)** | 后: 工具执行明细/结果懒加载/深度反馈端点<br>前: 深度反馈 UI + 执行详情面板 | ~5 个文件 | ~300 行 |
+
+#### Phase 1 详细任务分解
+
+| 序号 | 任务 | 文件 | 预估行数 |
+|------|------|------|---------|
+| 1.1 | ChatSession 新增 `agent_mode` 字段 | `python-backend/app/models/user.py` | ~5 |
+| 1.2 | ChatMessage 新增可观测性 + 反馈字段 | `python-backend/app/models/user.py` | ~10 |
+| 1.3 | 新建 AgentToolExecution 模型 | `python-backend/app/models/user.py` | ~30 |
+| 1.4 | 新建 `/agent` 路由模块 + `/agent/completions` | `python-backend/app/api/v1/agent.py` (新建) | ~120 |
+| 1.5 | 简化 `/chat/completions` 为纯 LLM 模式 | `python-backend/app/core/agent_bridge.py` | ~40 |
+| 1.6 | 注册 `/agent` 路由 | `python-backend/app/api/v1/__init__.py` | ~5 |
+| 1.7 | 新增 AGENT 路由常量 | `shared/api/endpoints.ts` | ~15 |
+| 1.8 | useAgentChat 新增 mode 状态 + 动态路由 | `frontend/pages/agent/hooks/useAgentChat.ts` | ~40 |
+| 1.9 | agentApi.ts 新增 agent 专属 API 函数 | `frontend/pages/agent/api/agentApi.ts` | ~40 |
+| 1.10 | useSessionManager 会话创建传参 | `frontend/pages/agent/hooks/useSessionManager.ts` | ~20 |
+
+#### Phase 2 详细任务分解
+
+| 序号 | 任务 | 文件 | 预估行数 |
+|------|------|------|---------|
+| 2.1 | Agent 会话 CRUD 端点 | `python-backend/app/api/v1/agent.py` | ~80 |
+| 2.2 | Agent 相关 Schema 定义 | `python-backend/app/schemas/chat.py` | ~40 |
+| 2.3 | mode 切换 UI (Toggle/Segment) | `frontend/pages/agent/components/ChatInput.tsx` | ~50 |
+| 2.4 | 消息历史加载适配 | `frontend/pages/agent/api/agentApi.ts` | ~30 |
+| 2.5 | AgentMode 类型定义 | `frontend/pages/agent/types/session.ts` | ~10 |
+
+#### Phase 3 详细任务分解
+
+| 序号 | 任务 | 文件 | 预估行数 |
+|------|------|------|---------|
+| 3.1 | 工具执行明细/结果懒加载/反馈端点 | `python-backend/app/api/v1/agent.py` | ~80 |
+| 3.2 | AgentFeedbackRequest Schema | `python-backend/app/schemas/chat.py` | ~10 |
+| 3.3 | 深度反馈 UI | `frontend/pages/agent/components/ChatMessage.tsx` | ~60 |
+| 3.4 | 执行详情面板 | `frontend/pages/agent/components/ExecutionCard.tsx` | ~50 |
+| 3.5 | 新增前端类型定义 | `frontend/pages/agent/types/` | ~30 |
+
+### 8.9 关键风险与注意事项
+
+1. **数据库迁移风险**：ChatMessage 表已有生产数据，新增字段需用 `ALTER TABLE ADD COLUMN ... DEFAULT NULL`，不可用 NOT NULL
+2. **SSE 事件格式一致性**：确保 `/agent/completions` 发出的 SSE 事件 key 与前端 `useStreamParser` 中定义的事件类型完全匹配
+3. **工具执行结果大小**：`output_result` 可能极大（如网页源码），需在前端 `ExecutionCard` 中展示 `output_summary`，点击后才请求原始 `output_result`
+4. **普通模式与 Agent 模式的切换时机**：建议切换 mode 时自动新建会话，避免同一会话中混合两种模式的请求
