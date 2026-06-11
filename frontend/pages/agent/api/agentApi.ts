@@ -154,4 +154,124 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error('删除会话失败')
 }
 
+/** 创建 Agent 会话 (POST /agent/sessions) */
+export async function createAgentSession(title: string, model: string): Promise<{ id: string }> {
+  const res = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AGENT.SESSIONS}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ title, model, agentMode: 'react_agent' }),
+  })
+  if (!res.ok) throw new Error('创建Agent会话失败')
+  return res.json()
+}
+
+/** 加载 Agent 会话消息 (GET /agent/sessions/{sessionId}/messages) */
+export async function fetchAgentSessionMessages(sessionId: string): Promise<ChatMessage[]> {
+  const res = await fetch(
+    `${API_BASE_URL}${API_ENDPOINTS.AGENT.MESSAGES(sessionId)}`,
+    { headers: authHeaders() },
+  )
+  if (!res.ok) throw new Error('加载Agent会话消息失败')
+
+  const rawData: Array<Record<string, unknown>> = await res.json()
+
+  return rawData.map((m: Record<string, unknown>) => {
+    const content = (m.content ?? '') as string
+    const contentBlocks = (m.contentBlocks ?? []) as Array<{
+      type: string
+      status: string
+      text?: string
+      toolName?: string
+      executionId?: string
+      summary?: string
+    }>
+    const createdAt = (m.createdAt ?? '') as string
+    const role = (m.role ?? 'assistant') as string
+
+    const steps: AgentStep[] = []
+
+    if (contentBlocks && contentBlocks.length > 0) {
+      for (const block of contentBlocks) {
+        const blockStatus: 'pending' | 'streaming' | 'success' | 'error' =
+          block.status === 'error' ? 'error' : block.status === 'running' ? 'streaming' : 'success'
+
+        if (block.type === 'thinking') {
+          steps.push({
+            id: `thinking_${m.id}_${steps.length}`,
+            type: StepType.THINKING,
+            content: block.summary || '',
+            status: blockStatus,
+            startTime: new Date(createdAt).getTime(),
+            endTime: new Date(createdAt).getTime(),
+          } as import('../types').ThinkingStep)
+        } else if (block.type === 'tool_call') {
+          steps.push({
+            id: block.executionId || `tool_${m.id}_${steps.length}`,
+            type: StepType.TOOL_CALL,
+            toolName: block.toolName || 'unknown',
+            arguments: block.summary || '',
+            status: blockStatus,
+            startTime: new Date(createdAt).getTime(),
+            endTime: blockStatus !== 'streaming' ? new Date(createdAt).getTime() : undefined,
+          } as import('../types').ToolCallStep)
+        } else if (block.type === 'tool_result') {
+          steps.push({
+            id: `${block.executionId || 'result'}_${steps.length}`,
+            type: StepType.TOOL_RESULT,
+            toolCallId: block.executionId || '',
+            toolName: block.toolName || 'unknown',
+            result: block.summary || '',
+            status: blockStatus,
+            startTime: new Date(createdAt).getTime(),
+            endTime: new Date(createdAt).getTime(),
+          } as import('../types').ToolResultStep)
+        } else if (block.type === 'text_stream') {
+          steps.push({
+            id: `text_${m.id}_${steps.length}`,
+            type: StepType.TEXT_STREAM,
+            content: block.text || '',
+            status: blockStatus,
+            startTime: new Date(createdAt).getTime(),
+            endTime: blockStatus !== 'streaming' ? new Date(createdAt).getTime() : undefined,
+          } as import('../types').TextStreamStep)
+        }
+      }
+    } else if (content) {
+      // 兼容仅有 content 的消息
+      steps.push({
+        id: `text_${m.id}`,
+        type: StepType.TEXT_STREAM,
+        content,
+        status: 'success',
+        startTime: new Date(createdAt).getTime(),
+        endTime: new Date(createdAt).getTime(),
+      } as import('../types').TextStreamStep)
+    }
+
+    return {
+      id: `agent_${m.id}`,
+      role: role as 'user' | 'assistant' | 'system',
+      content,
+      steps,
+      status: 'success' as const,
+      timestamp: new Date(createdAt).getTime(),
+    }
+  })
+}
+
+/** 发送 Agent 请求 (SSE 流) POST /agent/completions */
+export function createAgentRequest(body: {
+  sessionId: string | null
+  message: string
+  stream: boolean
+  signal?: AbortSignal
+}): Promise<Response> {
+  return fetch(`${API_BASE_URL}${API_ENDPOINTS.AGENT.COMPLETIONS}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ sessionId: body.sessionId, message: body.message, stream: body.stream }),
+    signal: body.signal,
+  })
+}
+
 export { authHeaders, API_BASE_URL }

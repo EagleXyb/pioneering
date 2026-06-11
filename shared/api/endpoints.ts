@@ -52,6 +52,17 @@ export const API_ENDPOINTS = {
     CONFIG: '/system/config',
   },
 
+  // Agent
+  AGENT: {
+    SESSIONS: '/agent/sessions',
+    SESSION_BY_ID: (id: string) => `/agent/sessions/${id}`,
+    MESSAGES: (sessionId: string) => `/agent/sessions/${sessionId}/messages`,
+    COMPLETIONS: '/agent/completions',
+    EXECUTIONS: (messageId: string) => `/agent/messages/${messageId}/executions`,
+    EXECUTION_RESULT: (executionId: string) => `/agent/executions/${executionId}/result`,
+    FEEDBACK: (messageId: string) => `/agent/messages/${messageId}/feedback`,
+  },
+
   // Health
   HEALTH: '/health',
 

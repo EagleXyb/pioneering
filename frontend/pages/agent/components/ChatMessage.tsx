@@ -8,6 +8,7 @@ import rehypeKatex from 'rehype-katex'
 import remarkMath from 'remark-math'
 import type { ChatMessage, TextStreamStep } from '../types'
 import { StepType } from '../types'
+import type { ChatMode } from '../hooks/useAgentChat'
 import { useThrottledContent } from '../hooks/useThrottledContent'
 import { ExecutionCard } from './ExecutionCard'
 import { CodeBlock } from './steps/CodeBlock'
@@ -21,6 +22,7 @@ interface ChatMessageBubbleProps {
   onRegenerate?: () => void
   executionState?: RunState | null
   isGenerating?: boolean
+  chatMode?: ChatMode
 }
 
 export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
@@ -28,6 +30,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   onRegenerate,
   executionState,
   isGenerating,
+  chatMode,
 }) => {
   const isUser = message.role === 'user'
 
@@ -129,7 +132,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
           </div>
         )}
 
-        {executionState && (
+        {chatMode === 'professional' && executionState && (
           <ExecutionCard runState={executionState} message={message} isGenerating={!!isGenerating} />
         )}
 

@@ -1,6 +1,14 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { ChatSession } from '../types'
-import { fetchSessions, fetchSessionMessages, createSession, deleteSession } from '../api/agentApi'
+import {
+  fetchSessions,
+  fetchSessionMessages,
+  createSession,
+  deleteSession,
+  createAgentSession,
+  fetchAgentSessionMessages,
+} from '../api/agentApi'
+import type { ChatMode } from './useAgentChat'
 
 export function useSessionManager() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
@@ -34,9 +42,11 @@ export function useSessionManager() {
     refreshSessions()
   }, [refreshSessions])
 
-  const loadSession = useCallback(async (sessionId: string) => {
+  const loadSession = useCallback(async (sessionId: string, mode?: ChatMode) => {
     try {
-      const msgs = await fetchSessionMessages(sessionId)
+      const msgs = mode === 'professional'
+        ? await fetchAgentSessionMessages(sessionId)
+        : await fetchSessionMessages(sessionId)
       setCurrentSessionId(sessionId)
       return msgs
     } catch {
@@ -45,9 +55,11 @@ export function useSessionManager() {
     }
   }, [])
 
-  const createNewSession = useCallback(async (title: string, model: string) => {
+  const createNewSession = useCallback(async (title: string, model: string, mode?: ChatMode) => {
     try {
-      const session = await createSession(title, model)
+      const session = mode === 'professional'
+        ? await createAgentSession(title, model)
+        : await createSession(title, model)
       setCurrentSessionId(session.id)
       refreshSessions()
       return session.id

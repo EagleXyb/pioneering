@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react'
-import type { ChatMessage, StreamEvent } from '../types'
+import type { ChatMessage, StreamEvent, AgentStep, ThinkingStep, ToolCallStep, ToolResultStep, TextStreamStep, ErrorStep } from '../types'
+import { StepType } from '../types'
 import { agentEventBus } from './useAgentEventBus'
 import { useSessionManager } from './useSessionManager'
 import { useStreamParser } from './useStreamParser'
-import { createChatRequest } from '../api/agentApi'
+import { createChatRequest, createAgentRequest } from '../api/agentApi'
 
 // 自增计数器，确保同一毫秒内生成的 ID 不会重复
 let _idCounter = 0
@@ -47,15 +48,23 @@ export function useAgentChat() {
   }, [])
 
   const loadSession = useCallback(async (sessionId: string) => {
-    const msgs = await loadSessionRaw(sessionId)
+    const msgs = await loadSessionRaw(sessionId, chatMode)
     if (msgs) {
       setMessages(msgs)
     }
-  }, [loadSessionRaw])
+  }, [loadSessionRaw, chatMode])
 
   const handleSend = useCallback(async (value?: string) => {
     const trimmed = (value ?? inputValue).trim()
     if (!trimmed || isGenerating) return
+
+    // 任务模式占位
+    if (chatMode === 'task') {
+      setInputValue('')
+      const { MessagePlugin } = await import('tdesign-react')
+      MessagePlugin.info('任务模式即将上线，敬请期待')
+      return
+    }
 
     setInputValue('')
 
@@ -90,80 +99,241 @@ export function useAgentChat() {
     try {
       let sessionId = currentSessionId
       if (!sessionId) {
-        sessionId = await createNewSession(generateTitle(trimmed), selectedModel)
+        sessionId = await createNewSession(generateTitle(trimmed), selectedModel, chatMode)
       }
 
       const fetchSessionId = sessionId || currentSessionId
 
-      const response = await createChatRequest({
-        sessionId: fetchSessionId,
-        message: trimmed,
-        model: selectedModel,
-        stream: true,
-        deepThinking,
-        webSearch,
-        signal: abortController.signal,
-      })
+      if (chatMode === 'professional') {
+        // ===== 专业模式：调用 Agent API =====
+        const response = await createAgentRequest({
+          sessionId: fetchSessionId,
+          message: trimmed,
+          stream: true,
+          signal: abortController.signal,
+        })
 
-      if (!response.ok) {
-        throw new Error(`请求失败: ${response.status}`)
-      }
+        if (!response.ok) throw new Error(`Agent请求失败: ${response.status}`)
+        if (!response.body) throw new Error('无法读取Agent响应流')
 
-      if (!response.body) {
-        throw new Error('无法读取响应流')
-      }
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+        // Agent SSE 事件 → steps 的局部解析器
+        const applyAgentEvent = (parsed: Record<string, unknown>) => {
+          const etype = parsed.type as string | undefined
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+          setMessages((prev) => {
+            const updated = [...prev]
+            const last = updated[updated.length - 1]
+            if (!last || last.role !== 'assistant' || last.status !== 'loading') return updated
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+            const steps: AgentStep[] = [...last.steps]
+            let fullContent = ''
 
-        for (const line of lines) {
-          const trimmedLine = line.trim()
-          if (!trimmedLine || trimmedLine === ':') continue
-
-          if (trimmedLine.startsWith('data: ')) {
-            const data = trimmedLine.slice(6)
-            if (data === '[DONE]') continue
-
-            try {
-              const parsed: StreamEvent = JSON.parse(data)
-
-              if (parsed.error) {
-                throw new Error(parsed.error)
+            switch (etype) {
+              case 'thinking': {
+                steps.push({
+                  id: nextId('thinking_'),
+                  type: StepType.THINKING,
+                  content: (parsed.summary as string) || '',
+                  status: (parsed.status as string) === 'running' ? 'streaming' : 'success',
+                  startTime: Date.now(),
+                  endTime: (parsed.status as string) !== 'running' ? Date.now() : undefined,
+                } as ThinkingStep)
+                break
               }
-
-              if (parsed.type) {
-                applyStreamEvent(parsed)
-              } else if (parsed.content) {
-                applyStreamEvent({ type: 'answer_delta', content: parsed.content })
+              case 'tool_call': {
+                steps.push({
+                  id: (parsed.executionId as string) || nextId('tool_'),
+                  type: StepType.TOOL_CALL,
+                  toolName: (parsed.toolName as string) || 'unknown',
+                  arguments: (parsed.summary as string) || '',
+                  status: (parsed.status as string) === 'running' ? 'streaming' : 'success',
+                  startTime: Date.now(),
+                } as ToolCallStep)
+                break
               }
-            } catch (parseErr) {
-              if ((parseErr as Error).message !== '生成失败' && !data.includes('"type"')) {
-                try {
-                  const match = data.match(/"content":\s*"([^"]*)"/)
-                  if (match) {
-                    const content = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
-                    applyStreamEvent({ type: 'answer_delta', content })
+              case 'tool_result': {
+                // 更新对应 tool_call 的 endTime
+                const execId = parsed.executionId as string
+                for (let i = steps.length - 1; i >= 0; i--) {
+                  if (steps[i].type === StepType.TOOL_CALL && (steps[i] as ToolCallStep).id === execId) {
+                    steps[i] = { ...steps[i], status: 'success', endTime: Date.now() } as ToolCallStep
+                    break
                   }
-                } catch {
-                  // ignore
                 }
-              } else {
-                throw parseErr
+                steps.push({
+                  id: `${execId || 'result'}_${steps.length}`,
+                  type: StepType.TOOL_RESULT,
+                  toolCallId: execId || '',
+                  toolName: (parsed.toolName as string) || 'unknown',
+                  result: (parsed.summary as string) || '',
+                  status: 'success',
+                  startTime: Date.now(),
+                  endTime: Date.now(),
+                } as ToolResultStep)
+                break
+              }
+              case 'text_stream': {
+                // 后端 Agent API 发送 type: "text_stream" 的增量文本
+                const token = (parsed.text as string) || ''
+                const existingIdx = steps.findIndex(s => s.type === StepType.TEXT_STREAM && s.status === 'streaming')
+                if (existingIdx >= 0) {
+                  const ts = steps[existingIdx] as TextStreamStep
+                  steps[existingIdx] = { ...ts, content: ts.content + token }
+                } else {
+                  steps.push({
+                    id: nextId('text_'),
+                    type: StepType.TEXT_STREAM,
+                    content: token,
+                    status: 'streaming',
+                    startTime: Date.now(),
+                  } as TextStreamStep)
+                }
+                break
+              }
+              default: {
+                // 处理无 type 字段的事件：done(空对象) / error(有 errorCode) / 未知
+                if (parsed.errorCode !== undefined || parsed.message !== undefined) {
+                  // error 事件: {errorCode: "...", message: "..."}
+                  steps.push({
+                    id: nextId('error_'),
+                    type: StepType.ERROR,
+                    errorCode: (parsed.errorCode as string) || 'UNKNOWN',
+                    message: (parsed.message as string) || '',
+                    status: 'error',
+                    startTime: Date.now(),
+                    recoverable: false,
+                  } as ErrorStep)
+                }
+                // done 事件: {} 空对象，不做额外处理，后续统一标记 success
+                break
+              }
+            }
+
+            // 判断是否为 done（空对象或 type 为 undefined 且无 errorCode）
+            const isDone = etype === undefined && parsed.errorCode === undefined
+
+            if (isDone || etype === 'done') {
+              // 标记所有 streaming step 为 success
+              for (let i = steps.length - 1; i >= 0; i--) {
+                if (steps[i].status === 'streaming') {
+                  steps[i] = { ...steps[i], status: 'success', endTime: Date.now() }
+                }
+              }
+            }
+
+            fullContent = steps
+              .filter(s => s.type === StepType.TEXT_STREAM)
+              .map(s => (s as TextStreamStep).content)
+              .join('')
+
+            updated[updated.length - 1] = {
+              ...last,
+              steps,
+              content: fullContent || last.content,
+            }
+            return updated
+          })
+        }
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const trimmedLine = line.trim()
+            if (!trimmedLine || trimmedLine === ':') continue
+
+            if (trimmedLine.startsWith('data: ')) {
+              const data = trimmedLine.slice(6)
+              try {
+                const parsed = JSON.parse(data)
+                // 跳过 metadata 消息
+                if (parsed.type === '__agent_metadata__') continue
+                applyAgentEvent(parsed)
+              } catch {
+                // 忽略解析失败的行
+              }
+            }
+          }
+        }
+
+        agentEventBus.emit('run:finished', { runId })
+      } else {
+        // ===== 普通模式：调用 Chat API（现有逻辑） =====
+        const response = await createChatRequest({
+          sessionId: fetchSessionId,
+          message: trimmed,
+          model: selectedModel,
+          stream: true,
+          deepThinking,
+          webSearch,
+          signal: abortController.signal,
+        })
+
+        if (!response.ok) throw new Error(`请求失败: ${response.status}`)
+        if (!response.body) throw new Error('无法读取响应流')
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const trimmedLine = line.trim()
+            if (!trimmedLine || trimmedLine === ':') continue
+
+            if (trimmedLine.startsWith('data: ')) {
+              const data = trimmedLine.slice(6)
+              if (data === '[DONE]') continue
+
+              try {
+                const parsed: StreamEvent = JSON.parse(data)
+
+                if (parsed.error) throw new Error(parsed.error)
+
+                if (parsed.type === '__metadata__') continue
+
+                if (parsed.type) {
+                  applyStreamEvent(parsed)
+                } else if (parsed.content) {
+                  applyStreamEvent({ type: 'answer_delta', content: parsed.content })
+                }
+              } catch (parseErr) {
+                if ((parseErr as Error).message !== '生成失败' && !data.includes('"type"')) {
+                  try {
+                    const match = data.match(/"content":\s*"([^"]*)"/)
+                    if (match) {
+                      const content = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+                      applyStreamEvent({ type: 'answer_delta', content })
+                    }
+                  } catch {
+                    // ignore
+                  }
+                } else {
+                  throw parseErr
+                }
               }
             }
           }
         }
       }
 
+      // 标记完成
       setMessages((prev) => {
         const updated = [...prev]
         const last = updated[updated.length - 1]
@@ -176,7 +346,9 @@ export function useAgentChat() {
         }
         return updated
       })
-      agentEventBus.emit('run:finished', { runId })
+      if (chatMode !== 'professional') {
+        agentEventBus.emit('run:finished', { runId })
+      }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
 
@@ -200,7 +372,11 @@ export function useAgentChat() {
       setIsGenerating(false)
       abortRef.current = null
     }
-  }, [inputValue, isGenerating, currentSessionId, selectedModel, deepThinking, webSearch, generateTitle, createNewSession, applyStreamEvent])
+  }, [
+    inputValue, isGenerating, currentSessionId, selectedModel,
+    deepThinking, webSearch, chatMode,
+    generateTitle, createNewSession, applyStreamEvent,
+  ])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()

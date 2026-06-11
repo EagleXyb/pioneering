@@ -130,6 +130,7 @@ const AgentChatbot: React.FC = () => {
                     onRegenerate={handleRegenerate}
                     executionState={msg.id === lastAssistantMessage?.id ? runState : null}
                     isGenerating={isGenerating}
+                    chatMode={chatMode}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -171,25 +172,29 @@ const AgentChatbot: React.FC = () => {
           </div>
         </Layout>
 
-        <div
-          className={`agent-resizer ${rightPanel.collapsed ? 'collapsed' : ''}`}
-          onMouseDown={rightPanel.handleMouseDown}
-          onDoubleClick={rightPanel.toggleCollapsed}
-        >
-          <div className="agent-resizer-line" />
-        </div>
+        {chatMode === 'professional' && (
+          <>
+            <div
+              className={`agent-resizer ${rightPanel.collapsed ? 'collapsed' : ''}`}
+              onMouseDown={rightPanel.handleMouseDown}
+              onDoubleClick={rightPanel.toggleCollapsed}
+            >
+              <div className="agent-resizer-line" />
+            </div>
 
-        <div
-          className="agent-right-panel-wrapper"
-          style={{ width: rightPanel.width }}
-        >
-          <AgentStepsPanel
-            message={lastAssistantMessage}
-            isGenerating={isGenerating}
-            collapsed={rightPanel.collapsed}
-            onToggleCollapsed={rightPanel.toggleCollapsed}
-          />
-        </div>
+            <div
+              className="agent-right-panel-wrapper"
+              style={{ width: rightPanel.width }}
+            >
+              <AgentStepsPanel
+                message={lastAssistantMessage}
+                isGenerating={isGenerating}
+                collapsed={rightPanel.collapsed}
+                onToggleCollapsed={rightPanel.toggleCollapsed}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <ParamPanel
