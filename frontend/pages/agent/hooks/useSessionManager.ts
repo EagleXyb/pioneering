@@ -15,7 +15,14 @@ export function useSessionManager() {
     setSessionsLoading(true)
     try {
       const mapped = await fetchSessions()
-      setSessions(mapped)
+      // 按 id 去重，避免 React key 重复警告
+      const seen = new Set<string>()
+      const deduplicated = mapped.filter(s => {
+        if (seen.has(s.id)) return false
+        seen.add(s.id)
+        return true
+      })
+      setSessions(deduplicated)
     } catch {
       console.error('获取会话列表失败')
     } finally {

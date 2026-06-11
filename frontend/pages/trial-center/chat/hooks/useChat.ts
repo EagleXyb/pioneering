@@ -8,6 +8,12 @@ import chatConversationService from '../../../../services/chatConversationServic
 
 type MsgIdMap = Map<string, string>;
 
+// 自增计数器，确保同一毫秒内生成的 ID 不会重复
+let _msgIdCounter = 0
+function nextMsgId(prefix: string): string {
+  return `${prefix}${Date.now()}_${++_msgIdCounter}`
+}
+
 export function useChat() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -98,7 +104,7 @@ export function useChat() {
       }
 
       const userMsg: DisplayMessage = {
-        id: `user_${Date.now()}`,
+        id: nextMsgId('user_'),
         role: 'user',
         content: trimmed,
         status: 'success',
@@ -106,7 +112,7 @@ export function useChat() {
       };
 
       const assistantMsg: DisplayMessage = {
-        id: `assistant_${Date.now()}`,
+        id: nextMsgId('assistant_'),
         role: 'assistant',
         content: '',
         status: 'loading',
@@ -172,7 +178,7 @@ export function useChat() {
       setMessages(prev => prev.slice(0, userMsgIndex + 1));
 
       const assistantMsg: DisplayMessage = {
-        id: `assistant_${Date.now()}`,
+        id: nextMsgId('assistant_'),
         role: 'assistant',
         content: '',
         status: 'loading',

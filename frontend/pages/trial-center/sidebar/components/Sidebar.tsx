@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PanelLeftClose, PanelRightClose, SquareCheckBig, Trash2, MessageSquareMore, MoreHorizontal, PencilLine, Pin, PinOff, AlertTriangle } from 'lucide-react';
 import chatConversationService, { type SessionItem } from '../../../../services/chatConversationService';
@@ -69,6 +69,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     fetchConversations();
   }, [currentConversationId, fetchConversations]);
+
+  // 去重：确保会话 ID 唯一，避免 React key 重复警告
+  const deduplicatedConversations = useMemo(
+    () => {
+      const seen = new Set<string>()
+      return conversations.filter(c => {
+        if (seen.has(c.id)) return false
+        seen.add(c.id)
+        return true
+      })
+    },
+    [conversations],
+  )
 
   const handleMoreClick = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -152,10 +165,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="sidebar-conversations">
             <div className="sidebar-conversations-title">历史会话</div>
             <div className="sidebar-conversations-list">
-              {conversations.length === 0 && (
+              {deduplicatedConversations.length === 0 && (
                 <div className="sidebar-conversations-empty">暂无历史会话</div>
               )}
-              {conversations.map((conv, index) => (
+              {deduplicatedConversations.map((conv, index) => (
                 <div
                   key={conv.id}
                   className={`sidebar-conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}

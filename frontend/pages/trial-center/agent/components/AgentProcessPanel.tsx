@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ChevronDown, ChevronRight, ChevronLeft, Check, Loader2, Search, AlertCircle, Circle, XCircle, Zap, Minus, Copy, Download, Expand } from 'lucide-react';
 
 export type AgentStepStatus = 'pending' | 'running' | 'completed' | 'error';
@@ -41,6 +41,28 @@ const AgentProcessPanel: React.FC<AgentProcessPanelProps> = ({
   onExpand,
   collapsedSteps = new Set(),
 }) => {
+  // 按 id 去重，避免 React key 重复警告
+  const deduplicatedSteps = useMemo(() => {
+    const seenStepIds = new Set<string>()
+    return steps.map(step => {
+      if (step.subItems) {
+        const seenSubIds = new Set<string>()
+        return {
+          ...step,
+          subItems: step.subItems.filter(sub => {
+            if (seenSubIds.has(sub.id)) return false
+            seenSubIds.add(sub.id)
+            return true
+          }),
+        }
+      }
+      return step
+    }).filter(step => {
+      if (seenStepIds.has(step.id)) return false
+      seenStepIds.add(step.id)
+      return true
+    })
+  }, [steps])
 
   const getStepIcon = (status: AgentStepStatus) => {
     switch (status) {
@@ -93,8 +115,8 @@ const AgentProcessPanel: React.FC<AgentProcessPanelProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const completedCount = steps.filter(s => s.status === 'completed').length;
-  const totalCount = steps.length;
+  const completedCount = deduplicatedSteps.filter(s => s.status === 'completed').length;
+  const totalCount = deduplicatedSteps.length;
 
   return (
     <div className={`agent-process-panel ${isPanelCollapsed ? 'panel-collapsed' : ''}`}>
@@ -134,7 +156,7 @@ const AgentProcessPanel: React.FC<AgentProcessPanelProps> = ({
       {!isPanelCollapsed && (
         <div className="agent-panel-body">
           <div className="agent-steps-list">
-            {steps.map((step, index) => {
+            {deduplicatedSteps.map((step, index) => {
               const isExpanded = !collapsedSteps.has(step.id);
               return (
                 <div key={step.id} className={`agent-step ${`agent-step-${step.status}`}`}>

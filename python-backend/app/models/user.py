@@ -203,7 +203,7 @@ class AgentToolExecution(Base):
     start_time = Column("start_time", DateTime(timezone=True), nullable=True)
     end_time = Column("end_time", DateTime(timezone=True), nullable=True)
     # duration_ms is a GENERATED ALWAYS column in DB, computed from start_time/end_time
-    duration_ms = Column("duration_ms", Integer, nullable=True, insertable=False, updatable=False)
+    duration_ms = Column("duration_ms", Integer, nullable=True)
 
     metadata_ = Column("metadata", JSON, nullable=True)
     created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

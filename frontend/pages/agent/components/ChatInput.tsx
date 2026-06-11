@@ -6,9 +6,13 @@ import {
   StopIcon,
   InternetIcon,
   AttachIcon,
+  CheckIcon,
+  ChevronDownIcon,
 } from 'tdesign-icons-react'
 import type { TdChatSenderParams } from 'tdesign-web-components/lib/chat-sender/type'
 import { MODEL_MAP, PROVIDER_LIST } from '@shared/constants'
+
+export type ChatMode = 'normal' | 'professional' | 'task'
 
 interface ChatInputProps {
   inputValue: string
@@ -22,6 +26,8 @@ interface ChatInputProps {
   onDeepThinkingChange: (value: boolean) => void
   webSearch: boolean
   onWebSearchChange: (value: boolean) => void
+  chatMode: ChatMode
+  onChatModeChange: (mode: ChatMode) => void
 }
 
 const ALL_MODELS = PROVIDER_LIST.flatMap((provider) =>
@@ -30,6 +36,15 @@ const ALL_MODELS = PROVIDER_LIST.flatMap((provider) =>
     value: m.id,
   })),
 )
+
+const MODE_OPTIONS: Array<{
+  value: ChatMode
+  label: string
+}> = [
+  { value: 'normal',       label: '普通模式' },
+  { value: 'professional', label: '专业模式' },
+  { value: 'task',         label: '任务模式' },
+]
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   inputValue,
@@ -43,11 +58,23 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onDeepThinkingChange,
   webSearch,
   onWebSearchChange,
+  chatMode,
+  onChatModeChange,
 }) => {
   const senderRef = useRef<HTMLElement>(null)
 
   const currentModelLabel =
     ALL_MODELS.find((m) => m.value === selectedModel)?.content || '选择模型'
+
+  const currentMode: { value: ChatMode; label: string } =
+    MODE_OPTIONS.find((m) => m.value === chatMode) || MODE_OPTIONS[0]
+
+  const handleModeSelect = (data: unknown) => {
+    const v = (data as { value?: string | number }).value
+    if (v === 'normal' || v === 'professional' || v === 'task') {
+      onChatModeChange(v)
+    }
+  }
 
   const handleChange = (e: CustomEvent<string>) => {
     onInputChange(e.detail)
@@ -81,32 +108,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       onSend={handleSend}
       onStop={handleStop}
     >
-      <div slot="input-prefix">
-        <Dropdown
-          options={ALL_MODELS}
-          onClick={handleModelSwitch}
-          trigger="click"
-          style={{ padding: 0 }}
-        >
-          <Tag
-            shape="round"
-            variant="light"
-            style={{
-              marginRight: 4,
-              cursor: 'pointer',
-              background: 'var(--ag-accent-soft, #eef0ff)',
-              color: 'var(--ag-accent, #4f46e5)',
-              border: '1px solid rgba(79, 70, 229, 0.12)',
-              fontWeight: 500,
-            }}
-          >
-            {currentModelLabel}
-          </Tag>
-        </Dropdown>
-      </div>
-
       <div slot="footer-prefix">
         <Space align="center" size="small">
+          <Dropdown
+            trigger="click"
+            placement="top-left"
+            onClick={handleModeSelect}
+            options={MODE_OPTIONS.map((m) => ({
+              content: (
+                <div className="agent-mode-option">
+                  <span className="agent-mode-option-label">{m.label}</span>
+                  {m.value === chatMode && (
+                    <CheckIcon className="agent-mode-option-check" />
+                  )}
+                </div>
+              ),
+              value: m.value,
+            }))}
+          >
+            <Button
+              variant="outline"
+              shape="round"
+              size="small"
+            >
+              {currentMode.label}
+              <ChevronDownIcon style={{ marginLeft: 4, verticalAlign: 'middle' }} />
+            </Button>
+          </Dropdown>
           <Tooltip content="仅支持图片，总大小不超过20M">
             <Button
               shape="round"
@@ -139,6 +167,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       </div>
 
       <div slot="actions">
+        <Dropdown
+          options={ALL_MODELS}
+          onClick={handleModelSwitch}
+          trigger="click"
+        >
+          <Tag
+            shape="round"
+            variant="light"
+            className="model-selector-tag"
+          >
+            {currentModelLabel}
+          </Tag>
+        </Dropdown>
         {!isGenerating ? (
           <Button
             shape="circle"

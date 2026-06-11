@@ -14,6 +14,12 @@ import { StepType } from '../types'
 import { agentEventBus } from './useAgentEventBus'
 import { rebuildAnswerContent } from '../utils/stepHelpers'
 
+// 自增计数器，确保同一毫秒内生成的 fallback ID 不会重复
+let _stepIdCounter = 0
+function nextStepId(prefix: string): string {
+  return `${prefix}${Date.now()}_${++_stepIdCounter}`
+}
+
 function emitEventBusEvent(event: StreamEvent) {
   const runId = (event as unknown as Record<string, unknown>).trace_id as string || ''
   switch (event.type) {
@@ -136,7 +142,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
           steps[idx] = { ...t, content: t.content + (event.content || '') }
         } else {
           steps.push({
-            id: `thinking_${Date.now()}`,
+            id: nextStepId('thinking_'),
             type: StepType.THINKING,
             content: event.content || '',
             status: 'streaming',
@@ -166,7 +172,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
 
     case 'tool_call_start': {
       steps.push({
-        id: event.id || `tool_${Date.now()}`,
+        id: event.id || nextStepId('tool_'),
         type: StepType.TOOL_CALL,
         toolName: event.name || 'unknown',
         arguments: event.arguments || '',
@@ -209,7 +215,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
     }
 
     case 'tool_result_start': {
-      const resultId = event.id || `tool_result_${Date.now()}`
+      const resultId = event.id || nextStepId('tool_result_')
       steps.push({
         id: `result_${resultId}`,
         type: StepType.TOOL_RESULT,
@@ -299,7 +305,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
           steps[idx] = { ...ts, content: (ts.content || '') + (event.content || ''), status: 'streaming' }
         } else {
           steps.push({
-            id: `text_${Date.now()}`,
+            id: nextStepId('text_'),
             type: StepType.TEXT_STREAM,
             content: event.content || '',
             status: 'streaming',
@@ -329,7 +335,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
 
     case 'reasoning_iteration': {
       steps.push({
-        id: `iteration_${event.iterationIndex || 1}_${Date.now()}`,
+        id: nextStepId('iteration_'),
         type: StepType.REASONING_ITERATION,
         iterationIndex: event.iterationIndex || 1,
         maxIterations: event.maxIterations || 3,
@@ -342,7 +348,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
 
     case 'error': {
       steps.push({
-        id: `error_${Date.now()}`,
+        id: nextStepId('error_'),
         type: StepType.ERROR,
         errorCode: event.errorCode || 'UNKNOWN',
         message: event.message || event.error || '未知错误',

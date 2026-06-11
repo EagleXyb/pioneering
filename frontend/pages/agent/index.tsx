@@ -36,6 +36,8 @@ const AgentChatbot: React.FC = () => {
     setDeepThinking,
     webSearch,
     setWebSearch,
+    chatMode,
+    setChatMode,
     loadSession,
     fetchSessions,
     isInChatMode,
@@ -87,6 +89,15 @@ const AgentChatbot: React.FC = () => {
     setTimeout(() => handleSend(), 100)
   }
 
+  const deduplicatedMessages = useMemo(() => {
+    const seen = new Set<string>()
+    return messages.filter(msg => {
+      if (seen.has(msg.id)) return false
+      seen.add(msg.id)
+      return true
+    })
+  }, [messages])
+
   return (
     <Layout className="agent-layout">
       <ChatSidebar
@@ -112,7 +123,7 @@ const AgentChatbot: React.FC = () => {
               <WelcomePage onSuggestionClick={handleSuggestionClick} />
             ) : (
               <div className="agent-messages-container" ref={containerRef}>
-                {messages.map((msg) => (
+                {deduplicatedMessages.map((msg) => (
                   <ChatMessageBubble
                     key={msg.id}
                     message={msg}
@@ -154,6 +165,8 @@ const AgentChatbot: React.FC = () => {
               onDeepThinkingChange={setDeepThinking}
               webSearch={webSearch}
               onWebSearchChange={setWebSearch}
+              chatMode={chatMode}
+              onChatModeChange={setChatMode}
             />
           </div>
         </Layout>

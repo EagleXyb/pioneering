@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button, Tooltip, Empty } from 'tdesign-react'
 import { StepRenderer } from './steps'
 import {
@@ -28,7 +28,16 @@ export const AgentStepsPanel: React.FC<AgentStepsPanelProps> = ({
 }) => {
   const setCollapsed = onToggleCollapsed || (() => {})
 
-  const steps = message?.steps ?? []
+  const rawSteps = message?.steps ?? []
+  const steps = useMemo(() => {
+    // 按 id 去重，避免 React key 重复警告
+    const seen = new Set<string>()
+    return rawSteps.filter(s => {
+      if (seen.has(s.id)) return false
+      seen.add(s.id)
+      return true
+    })
+  }, [rawSteps])
   const hasSteps = steps.length > 0
 
   // 统计：已完成 / 总计

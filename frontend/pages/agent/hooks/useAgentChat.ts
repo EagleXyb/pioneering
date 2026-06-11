@@ -5,6 +5,15 @@ import { useSessionManager } from './useSessionManager'
 import { useStreamParser } from './useStreamParser'
 import { createChatRequest } from '../api/agentApi'
 
+// 自增计数器，确保同一毫秒内生成的 ID 不会重复
+let _idCounter = 0
+function nextId(prefix: string): string {
+  return `${prefix}${Date.now()}_${++_idCounter}`
+}
+
+/** 聊天模式：普通 / 专业 / 任务 */
+export type ChatMode = 'normal' | 'professional' | 'task'
+
 export function useAgentChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
@@ -12,6 +21,7 @@ export function useAgentChat() {
   const [selectedModel, setSelectedModel] = useState('glm-4-flash')
   const [deepThinking, setDeepThinking] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [chatMode, setChatMode] = useState<ChatMode>('normal')
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -50,7 +60,7 @@ export function useAgentChat() {
     setInputValue('')
 
     const userMsg: ChatMessage = {
-      id: `user_${Date.now()}`,
+      id: nextId('user_'),
       role: 'user',
       content: trimmed,
       steps: [],
@@ -60,7 +70,7 @@ export function useAgentChat() {
     setMessages((prev) => [...prev, userMsg])
 
     const assistantMsg: ChatMessage = {
-      id: `assistant_${Date.now()}`,
+      id: nextId('assistant_'),
       role: 'assistant',
       content: '',
       steps: [],
@@ -245,6 +255,8 @@ export function useAgentChat() {
     setDeepThinking,
     webSearch,
     setWebSearch,
+    chatMode,
+    setChatMode,
     loadSession,
     fetchSessions,
     isInChatMode,

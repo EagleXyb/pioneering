@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { DisplayMessage } from '../../types';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { useChatScroll } from '../hooks/useChatScroll';
@@ -10,6 +10,16 @@ interface ChatPanelProps {
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onRetry, className = '' }) => {
+  // 按 id 去重，避免 React key 重复警告
+  const deduplicatedMessages = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.filter(msg => {
+      if (seen.has(msg.id)) return false;
+      seen.add(msg.id);
+      return true;
+    });
+  }, [messages]);
+
   const { renderMessageContent } = useChatMessages(messages);
   const {
     showScrollBottom,
@@ -22,7 +32,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onRetry, className = ''
 
   return (
     <div className={`chat-container ${className} ${isScrolling ? 'scrolling' : ''}`} ref={chatContainerRef} onScroll={handleScroll}>
-      {messages.map((message) => (
+      {deduplicatedMessages.map((message) => (
         <div key={message.id} className="chat-message-wrapper">
           {renderMessageContent(message, onRetry)}
         </div>
