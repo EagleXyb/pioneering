@@ -50,6 +50,7 @@
 
 /* ========== Assistant Message Card ========== */
 .agent-steps {
+  max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -61,6 +62,7 @@
 }
 
 .agent-text-only {
+  max-width: 720px;
   padding: 16px 20px;
   background: var(--ag-bg-card);
   border-radius: var(--ag-radius-lg);
