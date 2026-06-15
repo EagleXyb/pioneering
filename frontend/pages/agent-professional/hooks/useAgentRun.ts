@@ -166,7 +166,7 @@ export function useAgentRun() {
   }, [])
 
   useAgentEvent('run:error', (event) => {
-    const errorMsg = (event.data.message as string) || '未知错误'
+    const errorMsg = (event.data.message as string) || 'Unknown error'
     setRunState((prev) => {
       if (!prev) return prev
       return { ...prev, isRunning: false, error: errorMsg, currentPhase: 'error' }
@@ -174,7 +174,7 @@ export function useAgentRun() {
   }, [])
 
   useAgentEvent('error:occurred', (event) => {
-    const errorMsg = (event.data.message as string) || '未知错误'
+    const errorMsg = (event.data.message as string) || 'Unknown error'
     setRunState((prev) => {
       if (!prev) return prev
       return { ...prev, error: errorMsg }

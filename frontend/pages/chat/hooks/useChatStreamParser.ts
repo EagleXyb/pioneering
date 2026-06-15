@@ -272,7 +272,7 @@ function applyEventToMessages(prev: ChatMessage[], event: StreamEvent): ChatMess
         id: nextStepId('error_'),
         type: StepType.ERROR,
         errorCode: event.errorCode || 'UNKNOWN',
-        message: event.message || event.error || '未知错误',
+        message: event.message || event.error || 'Unknown error',
         status: 'error',
         startTime: Date.now(),
         recoverable: event.recoverable ?? false,

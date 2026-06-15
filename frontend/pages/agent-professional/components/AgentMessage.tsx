@@ -41,19 +41,19 @@ const StepRow: React.FC<{ step: AgentStep; defaultExpanded?: boolean }> = ({ ste
   const title = useMemo(() => {
     switch (step.type) {
       case StepType.THINKING:
-        return '思考过程'
+        return 'Thinking Process'
       case StepType.TOOL_CALL:
-        return `调用工具: ${(step as ToolCallStep).toolName}`
+        return `Call Tool: ${(step as ToolCallStep).toolName}`
       case StepType.TOOL_RESULT:
-        return `工具结果: ${(step as ToolResultStep).toolName}`
+        return `Tool Result: ${(step as ToolResultStep).toolName}`
       case StepType.TEXT_STREAM:
-        return '生成回答'
+        return 'Generate Answer'
       case StepType.REASONING_ITERATION:
-        return `推理迭代 ${(step as import('../types').ReasoningIterationStep).iterationIndex}/${(step as import('../types').ReasoningIterationStep).maxIterations}`
+        return `Reasoning Iteration ${(step as import('../types').ReasoningIterationStep).iterationIndex}/${(step as import('../types').ReasoningIterationStep).maxIterations}`
       case StepType.ERROR:
-        return `错误: ${(step as import('../types').ErrorStep).errorCode}`
+        return `Error: ${(step as import('../types').ErrorStep).errorCode}`
       default:
-        return '未知步骤'
+        return 'Unknown Step'
     }
   }, [step])
 
@@ -181,7 +181,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({
       <div className="agent-assistant-content">
         {message.steps.length === 0 && message.status === 'loading' && (
           <div className="agent-loading">
-            <Loading size="medium" text="Agent 思考中..." />
+            <Loading size="medium" text="Agent is thinking..." />
           </div>
         )}
 

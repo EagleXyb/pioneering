@@ -17,7 +17,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
       <div className="code-block-header">
         <span className="code-block-lang">{language}</span>
       </div>
-      <pre className="code-block-pre" onClick={() => isLong && setExpanded(!expanded)} style={{ cursor: isLong ? 'pointer' : 'default' }}>
+      <pre className="code-block-pre">
         <code className={`language-${language}`}>{displayCode}</code>
       </pre>
     </div>

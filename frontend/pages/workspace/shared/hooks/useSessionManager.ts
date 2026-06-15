@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { ChatSession, ChatMode } from '../types'
+import type { ChatSession } from '../types'
 
 /** API 适配器接口，由各模式注入具体实现 */
 export interface SessionApiAdapter {

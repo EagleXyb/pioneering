@@ -1,4 +1,5 @@
 /* ========== Design Tokens Override ========== */
+.workspace-layout,
 .agent-layout {
   --ag-bg-root: #f0f2f7;
   --ag-bg-card: #ffffff;

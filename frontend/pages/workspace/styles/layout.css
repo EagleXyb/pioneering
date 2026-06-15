@@ -1,182 +1,380 @@
-/* ========== Layout ========== */
-.agent-layout {
+/* ========== Workspace Layout ========== */
+.workspace-layout {
   height: 100vh;
   overflow: hidden;
   flex-direction: row !important;
   background: var(--ag-bg-root);
 }
 
-.agent-main-layout {
+.workspace-layout .t-layout__aside {
+  background: #eceff6;
+  border-right: 1px solid var(--ag-border-light);
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  height: 100vh;
+  flex-shrink: 0;
+  box-shadow: var(--ag-shadow-sm);
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+}
+
+.workspace-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.workspace-sidebar-tabs {
+  padding: 12px 12px 0;
+}
+
+.workspace-sidebar-sessions {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.workspace-sidebar-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--ag-border-light);
+}
+
+.workspace-sidebar-toggle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+.workspace-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--ag-bg-root);
 }
 
-/* ========== Center + Right Resizable Container ========== */
-.agent-center-right-container {
+/* ========== Agent Chat Container (shared by ChatMode & AgentMode) ========== */
+.agent-chat-container {
   display: flex;
-  flex: 1;
-  min-width: 0;
-  height: 100vh;
-  overflow: hidden;
-}
-
-/* ========== Resizer Handle ========== */
-.agent-resizer {
-  position: relative;
-  width: 6px;
-  flex-shrink: 0;
-  cursor: col-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  z-index: 5;
-  transition: background 0.15s ease;
-}
-
-.agent-resizer:hover,
-.agent-resizer:active {
-  background: var(--ag-accent-soft);
-}
-
-.agent-resizer .agent-resizer-line {
-  width: 1px;
+  flex-direction: column;
   height: 100%;
-  background: transparent;
-  border-radius: 1px;
-  transition: background 0.15s ease;
-}
-
-.agent-resizer:hover .agent-resizer-line,
-.agent-resizer:active .agent-resizer-line {
-  background: var(--ag-accent);
-}
-
-.agent-resizer.collapsed .agent-resizer-line {
-  background: transparent;
-}
-
-/* ========== Right Panel Wrapper ========== */
-.agent-right-panel-wrapper {
-  flex-shrink: 0;
   overflow: hidden;
-  display: flex;
 }
 
-/* ========== Header ========== */
-.agent-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 56px;
-  padding: 0 24px;
-  background: #FFFFFF;
-  flex-shrink: 0;
-  z-index: 10;
-}
-
-.agent-header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.agent-header-title {
-  font-size: 15px;
-  font-weight: 650;
-  color: var(--ag-text-primary);
-  letter-spacing: -0.01em;
-}
-
-.agent-header-session-id {
-  font-size: 11px;
-  color: var(--ag-text-muted);
-  margin-left: 12px;
-  padding: 2px 10px;
-  background: var(--ag-bg-card-alt);
-  border-radius: 10px;
-  font-family: var(--ag-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.02em;
-}
-
-.agent-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Icon buttons in header & sidebar: 32x32, 3px radius, hover bg */
-.agent-header-right .t-button--variant-text.t-size-s,
-.agent-sidebar .t-button--variant-text.t-size-s {
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  padding: 0 !important;
-  border-radius: 3px !important;
-  transition: all 0.15s ease !important;
-}
-
-.agent-header-right .t-button--variant-text.t-size-s:hover,
-.agent-sidebar .t-button--variant-text.t-size-s:hover {
-  background: #F3F4F6 !important;
-}
-
-/* ========== Content ========== */
-.agent-content {
+.agent-messages-area {
   flex: 1;
   overflow-y: auto;
   padding: 0;
-  display: flex;
-  flex-direction: column;
   scroll-behavior: smooth;
-  background: rgb(255, 255, 255);
-  animation: fadeIn 0.25s ease-out;
 }
 
-/* ========== Scroll to Bottom ========== */
-.agent-scroll-to-bottom {
-  position: sticky;
-  bottom: 16px;
+.agent-messages-list {
+  max-width: 800px;
   margin: 0 auto;
+  padding: 24px 24px 16px;
+}
+
+.agent-input-area {
+  flex-shrink: 0;
+  padding: 12px 24px 20px;
+  background: #fff;
+  border-top: 1px solid var(--ag-border-light);
+}
+
+/* ========== Message Rows ========== */
+.agent-message-row {
+  margin-bottom: 20px;
+}
+
+.agent-user-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-assistant-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.agent-assistant-content {
+  max-width: 100%;
+}
+
+/* ========== Steps Panel ========== */
+.agent-steps {
+  margin-bottom: 12px;
+}
+
+.agent-steps.streaming {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.agent-output-content {
+  line-height: 1.7;
+  font-size: 14px;
+  color: var(--ag-text-primary);
+}
+
+.agent-output-content pre {
+  background: #f5f6fa;
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.agent-output-content code {
+  font-family: var(--ag-font-mono);
+  font-size: 13px;
+}
+
+.agent-output-content p {
+  margin: 8px 0;
+}
+
+.agent-output-content ul,
+.agent-output-content ol {
+  padding-left: 24px;
+  margin: 8px 0;
+}
+
+.agent-output-content table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+}
+
+.agent-output-content th,
+.agent-output-content td {
+  border: 1px solid var(--ag-border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.agent-output-content th {
+  background: var(--ag-bg-card-alt);
+  font-weight: 600;
+}
+
+.agent-output-fade {
+  position: relative;
+  height: 60px;
+  margin-top: -60px;
+  background: linear-gradient(transparent, white);
+  pointer-events: none;
+}
+
+.agent-output-expand {
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* ========== Loading ========== */
+.agent-loading {
   display: flex;
   align-items: center;
-  gap: 4px;
-  z-index: 10;
-  box-shadow: var(--ag-shadow-md);
-  border-radius: 24px !important;
+  gap: 8px;
+  padding: 16px 0;
+  color: var(--ag-text-muted);
+  font-size: 13px;
+}
+
+/* ========== Error ========== */
+.agent-error {
+  margin-top: 8px;
+}
+
+/* ========== Welcome Page ========== */
+.agent-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.agent-welcome-icon {
+  margin-bottom: 20px;
+}
+
+.agent-welcome-title {
+  font-size: 22px;
+  font-weight: 650;
+  color: var(--ag-text-primary);
+  margin: 0 0 8px;
+}
+
+.agent-welcome-desc {
+  font-size: 14px;
+  color: var(--ag-text-muted);
+  margin: 0 0 32px;
+}
+
+.agent-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  max-width: 600px;
+}
+
+.agent-suggestion-btn {
+  font-size: 13px !important;
+  border-radius: var(--ag-radius-sm) !important;
+  transition: all var(--ag-transition) !important;
+}
+
+.agent-suggestion-btn:hover {
+  border-color: var(--ag-accent) !important;
+  color: var(--ag-accent) !important;
+}
+
+/* ========== Agent Steps (AgentMode) ========== */
+.agent-steps-panel {
+  margin-bottom: 12px;
+}
+
+.agent-step-row {
+  margin-bottom: 6px;
+  border: 1px solid var(--ag-border-light);
+  border-radius: var(--ag-radius-sm);
+  overflow: hidden;
+}
+
+.agent-step-row.streaming {
+  border-color: var(--ag-accent);
+  border-style: dashed;
+}
+
+.agent-step-row.error {
+  border-color: #dc3545;
+}
+
+.agent-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ag-text-secondary);
+  background: var(--ag-bg-card-alt);
+}
+
+.agent-step-icon {
+  font-size: 14px;
+}
+
+.agent-step-title {
+  flex: 1;
+}
+
+.agent-step-toggle {
+  color: var(--ag-text-muted);
+}
+
+.agent-step-content {
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  border-top: 1px solid var(--ag-border-light);
+  background: var(--ag-bg-card);
+}
+
+/* ========== Agent Run Progress ========== */
+.agent-run-progress {
+  padding: 8px 24px;
+  background: var(--ag-bg-card);
+  border-bottom: 1px solid var(--ag-border-light);
+}
+
+.agent-run-phases {
+  margin-bottom: 4px;
+}
+
+.agent-run-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--ag-text-muted);
+}
+
+.agent-run-stat {
+  font-family: var(--ag-font-mono);
+}
+
+/* ========== Code Block ========== */
+.code-block-wrapper {
+  margin: 8px 0;
+  border-radius: var(--ag-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--ag-border-light);
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-size: 12px;
+}
+
+.code-block-lang {
+  font-family: var(--ag-font-mono);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.code-block-pre {
+  margin: 0;
+  padding: 12px 16px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.code-block-pre code {
+  font-family: var(--ag-font-mono);
+  font-size: 13px;
+}
+
+/* ========== Model Selector ========== */
+.model-selector-tag {
+  cursor: pointer;
+  font-size: 12px !important;
+  transition: all var(--ag-transition) !important;
+}
+
+.model-selector-tag:hover {
+  border-color: var(--ag-accent) !important;
+  color: var(--ag-accent) !important;
 }
 
 /* ========== Utility: Scrollbar ========== */
-.agent-content::-webkit-scrollbar,
-.agent-messages-container::-webkit-scrollbar {
+.agent-messages-area::-webkit-scrollbar {
   width: 5px;
 }
 
-.agent-content::-webkit-scrollbar-track,
-.agent-messages-container::-webkit-scrollbar-track {
+.agent-messages-area::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.agent-content::-webkit-scrollbar-thumb,
-.agent-messages-container::-webkit-scrollbar-thumb {
+.agent-messages-area::-webkit-scrollbar-thumb {
   background: var(--ag-border);
   border-radius: 10px;
 }
 
-.agent-content::-webkit-scrollbar-thumb:hover,
-.agent-messages-container::-webkit-scrollbar-thumb:hover {
+.agent-messages-area::-webkit-scrollbar-thumb:hover {
   background: var(--ag-text-muted);
-}
-
-.agent-sidebar-body::-webkit-scrollbar {
-  width: 0;
-  display: none;
 }
 
 /* ========== Utility: Smooth Page Transitions ========== */

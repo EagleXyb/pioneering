@@ -38,7 +38,7 @@ export const AgentInput: React.FC<AgentInputProps> = ({
   return (
     <ChatSender
       value={inputValue}
-      placeholder="描述你的任务，Agent 将自动规划和执行..."
+      placeholder="Describe your task, Agent will auto-plan and execute..."
       loading={isGenerating}
       autosize={{ minRows: 2, maxRows: 6 }}
       onChange={handleChange}
@@ -47,7 +47,7 @@ export const AgentInput: React.FC<AgentInputProps> = ({
     >
       <div slot="footer-prefix">
         <Space align="center" size="small">
-          <Tooltip content="仅支持图片，总大小不超过20M">
+          <Tooltip content="Images only, max 20MB total">
             <Button
               shape="round"
               variant="outline"

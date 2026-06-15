@@ -103,8 +103,8 @@ export function useAgentChat() {
         signal: abortController.signal,
       })
 
-      if (!response.ok) throw new Error(`Agent请求失败: ${response.status}`)
-      if (!response.body) throw new Error('无法读取Agent响应流')
+      if (!response.ok) throw new Error(`Agent request failed: ${response.status}`)
+      if (!response.body) throw new Error('Unable to read Agent response stream')
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()

@@ -19,7 +19,7 @@ export function useChat() {
 
   const abortRef = useRef<AbortController | null>(null)
 
-  // 注入 Chat API 适配器
+  // Inject Chat API adapter
   const chatAdapter = useMemo<SessionApiAdapter>(() => ({
     fetchSessions: chatApi.fetchSessions,
     fetchSessionMessages: chatApi.fetchSessionMessages,
@@ -104,8 +104,8 @@ export function useChat() {
         signal: abortController.signal,
       })
 
-      if (!response.ok) throw new Error(`请求失败: ${response.status}`)
-      if (!response.body) throw new Error('无法读取响应流')
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+      if (!response.body) throw new Error('Unable to read response stream')
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()

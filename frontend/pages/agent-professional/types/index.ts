@@ -1,6 +1,6 @@
-// Step types
-export type { StepStatus, StepTypeValue } from './step'
-export { StepType } from './step'
+// Re-export from shared types
+export type { StepStatus, StepTypeValue } from '../../workspace/shared/types'
+export { StepType } from '../../workspace/shared/types'
 export type {
   AgentStep,
   ThinkingStep,
@@ -9,11 +9,10 @@ export type {
   TextStreamStep,
   ReasoningIterationStep,
   ErrorStep,
-} from './step'
+} from '../../workspace/shared/types'
 
 // Message types
 export type { MessagePhase, AgentMessage } from './message'
-export { getCurrentPhase, getToolCallCount, getTotalDuration } from './message'
 
 // Event types
 export type { StreamEvent } from './event'

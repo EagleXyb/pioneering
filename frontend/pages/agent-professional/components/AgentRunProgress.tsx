@@ -13,14 +13,14 @@ interface AgentRunProgressProps {
 }
 
 const PHASE_LABELS: Record<RunPhase, string> = {
-  idle: '空闲',
-  perception: '感知',
-  memory: '记忆',
-  thinking: '思考',
-  tool_calling: '工具调用',
-  generating: '生成',
-  done: '完成',
-  error: '错误',
+  idle: 'Idle',
+  perception: 'Perception',
+  memory: 'Memory',
+  thinking: 'Thinking',
+  tool_calling: 'Tool Call',
+  generating: 'Generate',
+  done: 'Done',
+  error: 'Error',
 }
 
 const PHASE_COLORS: Record<RunPhase, string> = {
@@ -53,12 +53,12 @@ export const AgentRunProgress: React.FC<AgentRunProgressProps> = ({
               key={phase.phase}
               content={`${PHASE_LABELS[phase.phase]} - ${
                 phase.status === 'wait'
-                  ? '等待中'
+                  ? 'Waiting'
                   : phase.status === 'process'
-                  ? '进行中'
+                  ? 'In Progress'
                   : phase.status === 'error'
-                  ? '出错'
-                  : '已完成'
+                  ? 'Error'
+                  : 'Completed'
               }`}
             >
               <Tag
@@ -85,12 +85,12 @@ export const AgentRunProgress: React.FC<AgentRunProgressProps> = ({
         <div className="agent-run-stats">
           {currentIteration > 0 && (
             <span className="agent-run-stat">
-              迭代 {currentIteration}/{maxIterations}
+              Iteration {currentIteration}/{maxIterations}
             </span>
           )}
           {toolCallCount > 0 && (
             <span className="agent-run-stat">
-              工具调用 {toolCallCount} 次
+              Tool Calls {toolCallCount}
             </span>
           )}
         </div>
