@@ -52,12 +52,22 @@
   background: #ffffff;
 }
 
-/* 模式标签（如"帮我写作"）- 定位在输入框左上角内侧 */
+/* 输入框上方工具栏 */
+.chat-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.chat-input-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 模式标签（如"帮我写作"） */
 .chat-input-mode-tag {
-  position: absolute;
-  top: 28px;
-  left: 32px;
-  z-index: 1;
   padding: 3px 10px;
   font-size: 12px;
   font-weight: 500;
@@ -65,13 +75,6 @@
   background: rgba(59, 130, 246, 0.08);
   border-radius: 14px;
   pointer-events: none;
-}
-
-/* ChatSender 工具栏内自定义内容 */
-.chat-input-area t-chat-sender .t-chat-sender__footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 /* 附件按钮 */

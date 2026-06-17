@@ -90,6 +90,11 @@ export interface ContentBlock {
   language?: string;
   imageUrl?: string;
   fileId?: string;
+  /** 后端存储的思考内容（非标准 ContentBlock 字段） */
+  reasoningContent?: string;
+  content?: string;
+  id?: string;
+  role?: string;
 }
 
 export interface Message {

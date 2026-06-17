@@ -19,10 +19,28 @@ export function convertMessages(messages: Message[]): ChatMessagesData[] {
         };
       }
 
+      // assistant 消息：从 contentBlocks 提取思考内容
+      const content: any[] = [];
+      if (m.contentBlocks && Array.isArray(m.contentBlocks)) {
+        const block = (m.contentBlocks as any[]).find((b) => b.reasoningContent);
+        if (block?.reasoningContent) {
+          content.push({
+            type: 'thinking' as const,
+            data: { text: block.reasoningContent, title: '思考过程' },
+            status: 'complete' as const,
+          });
+        }
+      }
+      content.push({
+        type: 'markdown' as const,
+        data: m.content,
+        status: 'complete' as const,
+      });
+
       return {
         id: m.id,
         role: 'assistant' as const,
-        content: [{ type: 'markdown' as const, data: m.content, status: 'complete' as const }],
+        content,
         datetime: m.createdAt,
       };
     });

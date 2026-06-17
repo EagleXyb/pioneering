@@ -358,19 +358,25 @@ export class ChatService {
       temperature?: number;
       maxTokens?: number;
       parentMessageId?: string;
+      deepThink?: boolean;
     },
     res: any,
   ) {
-    const { sessionId, userMsgId } = await this.prepareSession(userId, data);
+    // 获取配置用于确定 model
+    const config = await this.llmService.findLatest();
+    const provider = config?.provider;
+    // 深度思考时切换为推理模型
+    let model = data.model || config?.model;
+    if (data.deepThink) {
+      model = 'deepseek-reasoner';
+    }
+
+    // 用最终确定的 model 准备会话
+    const { sessionId, userMsgId } = await this.prepareSession(userId, { ...data, model });
 
     // 构建消息上下文
     const messages = await this.buildMessageContext(sessionId, data.systemPrompt);
     messages.push({ role: 'user', content: data.message });
-
-    // 获取配置用于确定 model
-    const config = await this.llmService.findLatest();
-    const provider = config?.provider;
-    const model = data.model || config?.model;
 
     const assistantMsgId = `msg_${uuidv4().replace(/-/g, '').slice(0, 24)}`;
     const runId = `run_${uuidv4().replace(/-/g, '').slice(0, 24)}`;

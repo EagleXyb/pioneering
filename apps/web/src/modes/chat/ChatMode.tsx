@@ -16,6 +16,7 @@ export default function ChatMode() {
   const create = useConversationStore((s) => s.create);
 
   const [inputValue, setInputValue] = useState('');
+  const [deepThinking, setDeepThinking] = useState(false);
   const [historyMessages, setHistoryMessages] = useState<ChatMessagesData[]>([]);
   const loadingHistory = useRef(false);
 
@@ -56,6 +57,7 @@ export default function ChatMode() {
             message: params.prompt,
             model: 'deepseek-v4-flash',
             stream: true,
+            deepThink: deepThinking,
           }),
         };
       },
@@ -118,6 +120,8 @@ export default function ChatMode() {
           onChange={setInputValue}
           onSend={handleSend}
           onStop={handleStop}
+          deepThinking={deepThinking}
+          onDeepThinkChange={setDeepThinking}
         />
       </div>
     );
@@ -132,6 +136,8 @@ export default function ChatMode() {
         onChange={setInputValue}
         onSend={handleSend}
         onStop={handleStop}
+        deepThinking={deepThinking}
+        onDeepThinkChange={setDeepThinking}
       />
     </div>
   );

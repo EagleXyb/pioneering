@@ -12,6 +12,14 @@ export function ChatMessageItem({ message }: Props) {
       avatar=""
       variant="base"
       placement={message.role === 'user' ? 'right' : 'left'}
+      chatContentProps={{
+        thinking: {
+          collapsed: false,
+          layout: 'border',
+          animation: 'circle',
+          maxHeight: 300,
+        },
+      }}
     />
   );
 }
