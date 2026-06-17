@@ -27,7 +27,7 @@ export default function ProMode() {
         body: JSON.stringify({
           sessionId: activeId,
           message: params.prompt,
-          model: 'gpt-4o-mini',
+          model: 'deepseek-v4-flash',
           stream: true,
         }),
       }),

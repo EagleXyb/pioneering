@@ -73,7 +73,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   create: async (mode) => {
     const session = await sessionApi.createSession({
       title: '新会话',
-      model: 'gpt-4o-mini',
+      model: 'deepseek-v4-flash',
     });
     const conversation = sessionToConversation(session, mode);
     set({

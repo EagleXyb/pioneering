@@ -67,7 +67,7 @@ model ChatSession {
   id            String        @id @db.VarChar(64)
   userId        String        @map("user_id") @db.VarChar(64)
   title         String?       @default("新对话") @db.VarChar(200)
-  model         String?       @default("gpt-4o-mini") @db.VarChar(100)
+  model         String?       @default("deepseek-v4-flash") @db.VarChar(100)
   modelConfig   Json?         @map("model_config")
   systemPrompt  String?       @map("system_prompt") @db.Text
   messageCount  Int           @default(0) @map("message_count")

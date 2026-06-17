@@ -7,7 +7,7 @@ export class SystemService {
       {
         id: 'deepseek-v4-flash',
         name: 'DeepSeek V4 Flash',
-        description: 'DeepSeek 快速模型',
+        description: 'DeepSeek 快速模型，适用于日常对话和代码生成',
         maxTokens: 128000,
         pricing: { inputPrice: 0.14, outputPrice: 0.28 },
       },
@@ -17,13 +17,6 @@ export class SystemService {
         description: 'DeepSeek 专业模型',
         maxTokens: 128000,
         pricing: { inputPrice: 0.28, outputPrice: 0.56 },
-      },
-      {
-        id: 'gpt-4o-mini',
-        name: 'GPT-4o Mini',
-        description: '轻量级多模态模型，适用于日常对话和代码生成',
-        maxTokens: 128000,
-        pricing: { inputPrice: 0.15, outputPrice: 0.6 },
       },
       {
         id: 'gpt-4o',

@@ -46,6 +46,8 @@ export class LlmService implements OnModuleInit {
   // ========== model → provider 映射 ==========
 
   private readonly MODEL_TO_PROVIDER: Record<string, string> = {
+    'DeepSeek-V4-Flash': 'deepseek',
+    'DeepSeek-V4-Pro': 'deepseek',
     'deepseek-v4-flash': 'deepseek',
     'deepseek-v4-pro': 'deepseek',
     'glm-5.1': 'glm',

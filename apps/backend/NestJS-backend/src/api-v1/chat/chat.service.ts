@@ -81,7 +81,7 @@ export class ChatService {
         id: sessionId,
         userId,
         title: data.title || '新对话',
-        model: data.model || 'gpt-4o-mini',
+        model: data.model || 'deepseek-v4-flash',
         systemPrompt: data.systemPrompt,
       },
     });
