@@ -1,0 +1,2728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>创路Agent — AI 智能助手</title>
+<style>
+  /* ===== CSS Variables / Design Tokens ===== */
+  :root {
+    --bg-primary: #f8f9fb;
+    --bg-secondary: #ffffff;
+    --bg-sidebar: #eeeff2;
+    --bg-sidebar-hover: #e2e3e8;
+    --bg-sidebar-active: #d8dae1;
+    --bg-card: #ffffff;
+    --bg-input: #f0f2f5;
+    --bg-code: #f4f5f7;
+    --bg-tooltip: #1a1d23;
+
+    --text-primary: #1a1d23;
+    --text-secondary: #6b7280;
+    --text-tertiary: #9ca3af;
+    --text-inverse: #1a1d23;
+    --text-sidebar: #4a4b50;
+    --text-sidebar-dim: #8b8c92;
+
+    --accent-blue: #3b82f6;
+    --accent-blue-light: #dbeafe;
+    --accent-blue-dim: #93bbfd;
+    --accent-green: #10b981;
+    --accent-green-light: #d1fae5;
+    --accent-amber: #f59e0b;
+    --accent-amber-light: #fef3c7;
+    --accent-purple: #8b5cf6;
+    --accent-purple-light: #ede9fe;
+    --accent-red: #ef4444;
+    --accent-red-light: #fee2e2;
+
+    --border-light: #e5e7eb;
+    --border-medium: #d1d5db;
+    --border-sidebar: #dcdde2;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+
+    --sidebar-width: 272px;
+    --nav-height: 56px;
+    --process-panel-width: 380px;
+
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ===== Dark Theme ===== */
+  [data-theme="dark"] {
+    --bg-primary: #0f1117;
+    --bg-secondary: #1a1d26;
+    --bg-sidebar: #0d0f14;
+    --bg-sidebar-hover: #1e2130;
+    --bg-sidebar-active: #262a3a;
+    --bg-card: #1e2130;
+    --bg-input: #1e2130;
+    --bg-code: #14161e;
+    --bg-tooltip: #262a3a;
+
+    --text-primary: #e8eaed;
+    --text-secondary: #9aa0ab;
+    --text-tertiary: #6b7280;
+    --text-inverse: #f0f2f5;
+    --text-sidebar: #b0b6c4;
+    --text-sidebar-dim: #6b7280;
+
+    --accent-blue: #5b9cf6;
+    --accent-blue-light: #1e2d4a;
+    --accent-blue-dim: #3b6abf;
+    --accent-green: #34d399;
+    --accent-green-light: #13332a;
+    --accent-amber: #fbbf24;
+    --accent-amber-light: #332b14;
+    --accent-purple: #a78bfa;
+    --accent-purple-light: #221e3a;
+    --accent-red: #f87171;
+    --accent-red-light: #3a1c1c;
+
+    --border-light: #2a2e3a;
+    --border-medium: #363b4a;
+    --border-sidebar: #1e2130;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  }
+
+  /* System preference fallback */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg-primary: #0f1117;
+      --bg-secondary: #1a1d26;
+      --bg-sidebar: #0d0f14;
+      --bg-sidebar-hover: #1e2130;
+      --bg-sidebar-active: #262a3a;
+      --bg-card: #1e2130;
+      --bg-input: #1e2130;
+      --bg-code: #14161e;
+      --bg-tooltip: #262a3a;
+      --text-primary: #e8eaed;
+      --text-secondary: #9aa0ab;
+      --text-tertiary: #6b7280;
+      --text-inverse: #f0f2f5;
+      --text-sidebar: #b0b6c4;
+      --text-sidebar-dim: #6b7280;
+      --accent-blue: #5b9cf6;
+      --accent-blue-light: #1e2d4a;
+      --accent-blue-dim: #3b6abf;
+      --accent-green: #34d399;
+      --accent-green-light: #13332a;
+      --accent-amber: #fbbf24;
+      --accent-amber-light: #332b14;
+      --accent-purple: #a78bfa;
+      --accent-purple-light: #221e3a;
+      --accent-red: #f87171;
+      --accent-red-light: #3a1c1c;
+      --border-light: #2a2e3a;
+      --border-medium: #363b4a;
+      --border-sidebar: #1e2130;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+    }
+  }
+
+  /* ===== Reset ===== */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  button { cursor: pointer; border: none; background: none; font-family: inherit; }
+  input, textarea { font-family: inherit; outline: none; }
+
+  /* ===== Layout Shell ===== */
+  .app-shell {
+    display: flex;
+    height: 100dvh;
+    width: 100%;
+  }
+
+  /* ===== Sidebar ===== */
+  .sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    background: var(--bg-sidebar);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-sidebar);
+    transition: transform var(--transition-normal);
+    z-index: 20;
+  }
+
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-sidebar);
+  }
+
+  .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .sidebar-logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 700; font-size: 14px;
+  }
+
+  .sidebar-logo-text {
+    color: var(--text-inverse);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+
+  .btn-new-chat {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--accent-blue);
+    color: white;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background var(--transition-fast);
+  }
+  .btn-new-chat:hover { background: #2563eb; }
+  .btn-new-chat svg { width: 16px; height: 16px; }
+
+  /* Sidebar mode switcher (dark-theme pill) */
+  .sidebar-mode-switcher {
+    display: flex;
+    background: var(--bg-sidebar-hover);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    margin-bottom: 12px;
+    gap: 2px;
+  }
+  .sidebar-mode-btn {
+    flex: 1;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-sidebar-dim);
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .sidebar-mode-btn:hover { color: var(--text-sidebar); }
+  .sidebar-mode-btn.active {
+    background: var(--accent-blue);
+    color: white;
+    box-shadow: var(--shadow-sm);
+  }
+  .sidebar-mode-btn svg { width: 12px; height: 12px; opacity: 0.6; }
+  .sidebar-mode-btn.active svg { opacity: 1; }
+
+  .sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .sidebar-list::-webkit-scrollbar { width: 4px; }
+  .sidebar-list::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 4px; }
+  .sidebar-list::-webkit-scrollbar-track { background: transparent; }
+
+  .sidebar-group-label {
+    font-size: 11px;
+    color: var(--text-sidebar-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 10px 6px;
+    font-weight: 600;
+  }
+
+  .sidebar-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    color: var(--text-sidebar);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background var(--transition-fast);
+    cursor: pointer;
+    position: relative;
+  }
+  .sidebar-item:hover { background: var(--bg-sidebar-hover); }
+  .sidebar-item.active { background: var(--bg-sidebar-active); color: var(--text-primary); }
+
+  .sidebar-item-icon {
+    width: 18px; height: 18px;
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+  .sidebar-item.active .sidebar-item-icon { opacity: 0.9; }
+
+  .sidebar-item-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-item-actions {
+    display: none;
+    gap: 4px;
+  }
+  .sidebar-item:hover .sidebar-item-actions { display: flex; }
+  /* P6: always show actions on touch devices */
+  @media (max-width: 900px) {
+    .sidebar-item-actions { display: flex; }
+  }
+  .sidebar-item-actions button {
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-sidebar-dim);
+    border-radius: 4px;
+    transition: all var(--transition-fast);
+  }
+  .sidebar-item-actions button:hover { background: rgba(0,0,0,0.08); color: var(--text-primary); }
+
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-sidebar);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .sidebar-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 13px; font-weight: 600;
+  }
+
+  .sidebar-user-info { flex: 1; }
+  .sidebar-user-name { font-size: 13px; color: var(--text-inverse); font-weight: 500; }
+  .sidebar-user-plan { font-size: 11px; color: var(--text-sidebar-dim); }
+  .sidebar-settings-btn { color: var(--text-sidebar-dim); }
+
+  /* Sidebar account popover */
+  .sidebar-account {
+    position: relative;
+  }
+  .sidebar-account-trigger {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+  }
+  .sidebar-account-trigger:hover { background: var(--bg-sidebar-hover); }
+
+  .account-popover {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    background: var(--bg-sidebar-active);
+    border: 1px solid var(--border-sidebar);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    width: 240px;
+    box-shadow: var(--shadow-lg);
+    display: none;
+    z-index: 300;
+    animation: popoverIn 0.15s ease-out;
+  }
+  .account-popover.visible { display: block; }
+
+  @keyframes popoverIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .account-popover-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-sidebar);
+    margin-bottom: 6px;
+  }
+  .account-popover-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 14px; font-weight: 600;
+  }
+  .account-popover-name {
+    font-size: 13px; color: var(--text-inverse); font-weight: 500;
+  }
+  .account-popover-email {
+    font-size: 11px; color: var(--text-sidebar-dim);
+  }
+
+  .account-popover-label {
+    font-size: 10px; color: var(--text-sidebar-dim);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 4px 0 6px; font-weight: 600;
+  }
+
+  /* Theme switcher inside popover */
+  .popover-theme-switch {
+    display: flex;
+    background: var(--bg-sidebar-hover);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    margin: 0 0 8px;
+    gap: 2px;
+  }
+  .popover-theme-opt {
+    flex: 1 1 0;
+    padding: 7px 4px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-sidebar-dim);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    transition: all var(--transition-fast);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .popover-theme-opt:hover { color: var(--text-sidebar); }
+  .popover-theme-opt.active {
+    background: var(--accent-blue);
+    color: white;
+    box-shadow: var(--shadow-sm);
+  }
+  .popover-theme-opt.active svg { opacity: 1; }
+  .popover-theme-opt svg { width: 13px; height: 13px; opacity: 0.5; }
+
+  .account-popover-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text-sidebar);
+    transition: background var(--transition-fast);
+  }
+  .account-popover-item:hover { background: var(--bg-sidebar-hover); }
+  .account-popover-item svg { width: 15px; height: 15px; opacity: 0.5; }
+
+  /* ===== Main Area ===== */
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg-primary);
+  }
+
+  /* ===== Top Navigation ===== */
+  .top-nav {
+    height: var(--nav-height);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 8px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .nav-spacer { flex: 1; }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .nav-icon-btn {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+  }
+  .nav-icon-btn:hover { background: var(--bg-input); color: var(--text-primary); }
+  .nav-icon-btn svg { width: 18px; height: 18px; }
+
+  /* Dark theme code block override */
+  [data-theme="dark"] .msg-bubble pre,
+  .dark-code {
+    background: #0d0f14;
+    color: #c8ccd4;
+  }
+  [data-theme="dark"] .detail-code {
+    background: #1e1b0b;
+    border-color: #3d3510;
+    color: #e0d9a0;
+  }
+  [data-theme="dark"] .detail-code-head {
+    background: #332b0a;
+    border-color: #3d3510;
+    color: #fcd34d;
+  }
+  [data-theme="dark"] .sidebar-item-actions button:hover { background: rgba(255,255,255,0.1); color: white; }
+  [data-theme="dark"] .sidebar-item.active { color: white; }
+  [data-theme="dark"] .sidebar-list::-webkit-scrollbar-thumb { background: #3d4149; }
+
+  /* ===== Content Area ===== */
+  .content-area {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .mode-panel {
+    position: absolute;
+    inset: 0;
+    display: none;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+  }
+  .mode-panel.active { display: flex; animation: panelIn 0.25s ease-out forwards; }
+
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ===== Normal Chat Mode ===== */
+  .chat-mode {
+    flex-direction: column;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+  .chat-messages::-webkit-scrollbar { width: 6px; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 6px; }
+  .chat-messages::-webkit-scrollbar-track { background: transparent; }
+
+  .chat-message {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    gap: 14px;
+    margin-bottom: 24px;
+    animation: msgFadeIn 0.3s ease-out;
+  }
+
+  @keyframes msgFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg-avatar {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .msg-avatar.user {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    color: white;
+  }
+  .msg-avatar.assistant {
+    background: var(--bg-code);
+    color: var(--accent-blue);
+  }
+
+  .msg-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .msg-role {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .msg-bubble {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+  }
+
+  .msg-bubble p { margin-bottom: 8px; }
+  .msg-bubble p:last-child { margin-bottom: 0; }
+
+  .msg-bubble code {
+    background: var(--bg-code);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  .msg-bubble pre {
+    background: #1a1d23;
+    color: #e2e8f0;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    margin: 10px 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .msg-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+  }
+  .chat-message:hover .msg-actions { opacity: 1; }
+
+  .msg-action-btn {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--transition-fast);
+  }
+  .msg-action-btn:hover { background: var(--bg-input); color: var(--text-secondary); }
+
+  /* Streaming cursor */
+  .streaming-cursor::after {
+    content: '▊';
+    animation: blink 0.8s infinite;
+    color: var(--accent-blue);
+    margin-left: 2px;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* Empty State */
+  .chat-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+  }
+
+  .chat-empty-icon {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, var(--accent-blue-light), var(--accent-purple-light));
+    border-radius: var(--radius-lg);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+  }
+  .chat-empty-icon svg { width: 28px; height: 28px; color: var(--accent-blue); }
+
+  .chat-empty-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .chat-empty-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    max-width: 400px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .chat-suggestions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .chat-suggestion {
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: left;
+    line-height: 1.5;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+  }
+  .chat-suggestion:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ===== Unified Input Area (shared by all modes) ===== */
+  .uni-input-area {
+    padding: 16px 24px 24px;
+  }
+
+  .uni-input-box {
+    max-width: 780px;
+    margin: 0 auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .uni-input-box:focus-within {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+  }
+
+  /* textarea — top section */
+  .uni-textarea {
+    width: 100%;
+    min-height: 24px;
+    max-height: 140px;
+    padding: 2px 4px;
+    border: none;
+    background: transparent;
+    font-size: 14.5px;
+    line-height: 1.55;
+    color: var(--text-primary);
+    resize: none;
+    font-family: inherit;
+  }
+  .uni-textarea::placeholder { color: var(--text-tertiary); font-size: 14px; }
+
+  /* bottom toolbar */
+  .uni-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding-top: 8px;
+    gap: 12px;
+  }
+
+  .uni-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* model selector pill */
+  .model-select {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 11px 5px 9px;
+    border: 1px solid var(--border-light);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    background: transparent;
+    transition: all var(--transition-fast);
+    font-family: inherit;
+  }
+  .model-select:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+  }
+  .model-select svg { width: 12px; height: 12px; opacity: 0.6; }
+
+  /* deep-think toggle pill */
+  .deep-think-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px 5px 9px;
+    border: 1px solid var(--border-light);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    background: transparent;
+    transition: all var(--transition-fast);
+    font-family: inherit;
+  }
+  .deep-think-btn:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+  }
+  .deep-think-btn.active {
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+    background: var(--accent-purple-light);
+  }
+  .deep-think-btn svg { width: 13px; height: 13px; }
+
+  /* send button — circle, bottom-right */
+  .btn-uni-send {
+    width: 34px; height: 34px;
+    background: #e5e7eb;
+    color: var(--text-tertiary);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+  }
+  .btn-uni-send:hover {
+    background: var(--accent-blue);
+    color: white;
+  }
+  .btn-uni-send.active {
+    background: var(--accent-blue);
+    color: white;
+  }
+  .btn-uni-send svg { width: 15px; height: 15px; }
+
+  /* Stop button — replaces send during streaming */
+  .btn-uni-stop {
+    width: 34px; height: 34px;
+    background: var(--accent-red);
+    color: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+  }
+  .btn-uni-stop:hover { background: #dc2626; }
+  .btn-uni-stop svg { width: 14px; height: 14px; }
+
+  /* ===== Professional Mode (ReAct Agent) ===== */
+  .pro-mode {
+    flex-direction: row;
+  }
+
+  .pro-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--border-light);
+  }
+
+  .pro-main-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-secondary);
+  }
+
+  .pro-task-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pro-task-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .pro-task-badge.running {
+    background: var(--accent-blue-light);
+    color: var(--accent-blue);
+  }
+  .pro-task-badge.completed {
+    background: var(--accent-green-light);
+    color: var(--accent-green);
+  }
+
+  .pro-task-meta {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  /* Progress bar */
+  .pro-progress-bar {
+    margin-top: 12px;
+    height: 3px;
+    background: var(--bg-input);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .pro-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+    border-radius: 2px;
+    transition: width 0.6s ease;
+    position: relative;
+  }
+  .pro-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: shimmer 2s infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .pro-progress-pct { margin-left: auto; font-size: 11px; color: var(--accent-blue); }
+  .progress-60 { width: 60%; }
+
+  .pro-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+  .pro-messages::-webkit-scrollbar { width: 6px; }
+  .pro-messages::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 6px; }
+  .pro-messages-inner {
+    max-width: 780px;
+  }
+
+  /* Agent Task Cards */
+  .agent-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 14px;
+    transition: all var(--transition-fast);
+  }
+  .agent-card:hover { box-shadow: var(--shadow-sm); }
+
+  .agent-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .agent-card-icon {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .agent-card-icon.thinking {
+    background: var(--accent-purple-light);
+    color: var(--accent-purple);
+  }
+  .agent-card-icon.tool {
+    background: var(--accent-amber-light);
+    color: var(--accent-amber);
+  }
+  .agent-card-icon.result {
+    background: var(--accent-green-light);
+    color: var(--accent-green);
+  }
+  .agent-card-icon svg { width: 14px; height: 14px; }
+
+  .agent-card-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .agent-card-time {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-left: auto;
+  }
+
+  .agent-card-body {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  /* Final Reply in pro mode */
+  .pro-final-reply {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    margin-top: 8px;
+  }
+
+  .pro-final-reply-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-blue);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .pro-final-reply-content {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+  }
+
+  /* Pro Input — reuses .uni-input-area shared styles */
+  .btn-pro-send:hover { background: #2563eb; }
+  .btn-pro-send svg { width: 14px; height: 14px; }
+
+  /* Right Process Panel */
+  .pro-process-panel {
+    width: var(--process-panel-width);
+    min-width: 280px;
+    max-width: 560px;
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* P8: Process panel resize handle */
+  .process-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    z-index: 5;
+    transition: background var(--transition-fast);
+  }
+  .process-resize-handle:hover,
+  .process-resize-handle.dragging {
+    background: var(--accent-blue);
+  }
+  .process-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 1px;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 32px;
+    border-radius: 2px;
+    background: var(--border-light);
+    transition: background var(--transition-fast);
+  }
+  .process-resize-handle:hover::after,
+  .process-resize-handle.dragging::after {
+    background: rgba(255,255,255,0.6);
+  }
+
+  .process-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .process-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .process-live-dot {
+    width: 6px; height: 6px;
+    background: var(--accent-green);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .process-toggle-btn {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+  }
+  .process-toggle-btn:hover { background: var(--bg-input); color: var(--text-secondary); }
+
+  /* P9: Collapsed summary bar */
+  .process-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: var(--bg-input);
+    border-bottom: 1px solid var(--border-light);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .process-summary-steps {
+    display: flex;
+    gap: 4px;
+  }
+  .process-summary-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-medium);
+    background: transparent;
+  }
+  .process-summary-dot.done { background: var(--accent-green); border-color: var(--accent-green); }
+  .process-summary-dot.active { background: var(--accent-blue); border-color: var(--accent-blue); animation: pulse 1.5s infinite; }
+  .process-summary-text { flex: 1; }
+  .process-summary-time { color: var(--text-tertiary); font-size: 11px; }
+
+  .process-steps {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  .process-steps::-webkit-scrollbar { width: 4px; }
+  .process-steps::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 4px; }
+
+  /* Process Step Items */
+  .process-step {
+    margin-bottom: 4px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .process-step-header {
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    border-radius: var(--radius-sm);
+    position: relative;
+    z-index: 1;
+  }
+  .process-step-header:hover { background: var(--bg-input); }
+
+  .process-step-number {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .process-step-number.thinking {
+    background: var(--accent-purple-light);
+    color: var(--accent-purple);
+  }
+  .process-step-number.tool {
+    background: var(--accent-amber-light);
+    color: var(--accent-amber);
+  }
+  .process-step-number.observation {
+    background: var(--accent-blue-light);
+    color: var(--accent-blue);
+  }
+  .process-step-number.answer {
+    background: var(--accent-green-light);
+    color: var(--accent-green);
+  }
+
+  .process-step-label {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .process-step-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .process-step-badge.thinking {
+    background: var(--accent-purple-light);
+    color: var(--accent-purple);
+  }
+  .process-step-badge.tool {
+    background: var(--accent-amber-light);
+    color: var(--accent-amber);
+  }
+  .process-step-badge.observation {
+    background: var(--accent-blue-light);
+    color: var(--accent-blue);
+  }
+  .process-step-badge.answer {
+    background: var(--accent-green-light);
+    color: var(--accent-green);
+  }
+
+  .process-step-chevron {
+    width: 16px; height: 16px;
+    color: var(--text-tertiary);
+    transition: transform var(--transition-fast);
+    flex-shrink: 0;
+  }
+  .process-step.expanded .process-step-chevron { transform: rotate(90deg); }
+
+  .process-step-detail {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--transition-normal) ease;
+  }
+  .process-step.expanded .process-step-detail { max-height: 600px; }
+
+  .process-step-detail-inner {
+    padding: 8px 12px 12px 44px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .detail-section {
+    margin-bottom: 10px;
+  }
+  .detail-section:last-child { margin-bottom: 0; }
+
+  .detail-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+
+  .detail-code {
+    background: #fefce8;
+    color: #1a1d23;
+    padding: 0;
+    border-radius: var(--radius-sm);
+    border: 1px solid #fde68a;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+  .detail-code-head {
+    display: block;
+    padding: 6px 12px;
+    background: #fef08a;
+    border-bottom: 1px solid #fde68a;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    font-size: 11px;
+    font-weight: 500;
+    color: #854d0e;
+    font-family: var(--font-mono);
+  }
+  .detail-code-body {
+    display: block;
+    padding: 10px 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .detail-text {
+    background: var(--bg-input);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /* Step connector line - timeline style */
+  .process-step {
+    position: relative;
+  }
+  .process-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 22px;
+    top: 34px;
+    bottom: -4px;
+    width: 1.5px;
+    background: var(--border-light);
+    z-index: 0;
+  }
+  .process-step:not(:last-child).expanded::after {
+    background: linear-gradient(to bottom, var(--border-medium), var(--border-light));
+  }
+
+  /* Loading indicator */
+  .process-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+
+  .loading-dots span {
+    display: inline-block;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    animation: dotBounce 1.4s infinite both;
+  }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes dotBounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+
+  /* ===== Task Mode (Placeholder) ===== */
+  .task-mode {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .task-placeholder {
+    text-align: center;
+    max-width: 420px;
+  }
+
+  .task-placeholder-icon {
+    width: 80px; height: 80px;
+    margin: 0 auto 24px;
+    background: linear-gradient(135deg, var(--accent-amber-light), var(--accent-blue-light));
+    border-radius: var(--radius-xl);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .task-placeholder-icon svg { width: 36px; height: 36px; color: var(--accent-amber); }
+
+  .task-placeholder-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+  }
+
+  .task-placeholder-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: 20px;
+  }
+
+  .task-notify-btn {
+    padding: 10px 28px;
+    background: var(--accent-blue);
+    color: white;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 500;
+    transition: background var(--transition-fast);
+    margin-bottom: 28px;
+  }
+  .task-notify-btn:hover { background: #2563eb; }
+
+  .task-placeholder-features {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: left;
+  }
+
+  .task-feature-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .task-feature-icon {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .task-feature-icon svg { width: 16px; height: 16px; }
+  .task-feature-icon.icon-blue { background: var(--accent-blue-light); color: var(--accent-blue); }
+  .task-feature-icon.icon-green { background: var(--accent-green-light); color: var(--accent-green); }
+  .task-feature-icon.icon-purple { background: var(--accent-purple-light); color: var(--accent-purple); }
+
+  .task-feature-text { flex: 1; }
+  .task-feature-name { font-weight: 500; color: var(--text-primary); margin-bottom: 2px; }
+  .task-feature-desc { font-size: 12px; color: var(--text-tertiary); }
+
+  /* ===== Loading State ===== */
+  .state-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    gap: 12px;
+  }
+
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border-light);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .state-loading-text {
+    font-size: 13px;
+    color: var(--text-tertiary);
+  }
+
+  /* ===== Error State ===== */
+  .state-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .state-error-icon {
+    width: 48px; height: 48px;
+    background: var(--accent-red-light);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .state-error-icon svg { width: 24px; height: 24px; color: var(--accent-red); }
+
+  .state-error-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .state-error-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    max-width: 320px;
+  }
+
+  .btn-retry {
+    padding: 8px 16px;
+    background: var(--accent-blue);
+    color: white;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background var(--transition-fast);
+  }
+  .btn-retry:hover { background: #2563eb; }
+
+  /* ===== Toast ===== */
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .toast {
+    padding: 12px 16px;
+    background: var(--bg-tooltip);
+    color: white;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    box-shadow: var(--shadow-lg);
+    animation: toastIn 0.3s ease-out;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toast.toast-out { animation: toastOut 0.3s ease-in forwards; }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(20px); }
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 1100px) {
+    .pro-process-panel { width: 320px !important; min-width: 280px; max-width: 420px; }
+  }
+
+  @media (max-width: 900px) {
+    .sidebar { position: absolute; left: 0; top: 0; bottom: 0; transform: translateX(-100%); z-index: 100; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+    .pro-process-panel { width: 300px !important; min-width: 240px; max-width: 380px; }
+  }
+
+  @media (max-width: 700px) {
+    .pro-mode { flex-direction: column; }
+    .pro-process-panel { width: 100% !important; min-width: 0; max-width: none; max-height: 40vh; border-left: none; border-top: 1px solid var(--border-light); }
+    .pro-main { border-right: none; }
+    .chat-suggestions { grid-template-columns: 1fr; }
+  }
+
+  /* ===== Mobile menu toggle ===== */
+  .btn-sidebar-toggle {
+    display: none;
+    width: 36px; height: 36px;
+    align-items: center; justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    margin-right: 4px;
+  }
+  .btn-sidebar-toggle svg { width: 20px; height: 20px; }
+
+  @media (max-width: 900px) {
+    .btn-sidebar-toggle { display: flex; }
+  }
+
+  /* ===== State Preview Dropdown (in-nav, replaces bottom-fixed bar) ===== */
+  .state-preview-trigger {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    background: transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+    position: relative;
+  }
+  .state-preview-trigger:hover {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
+  .state-preview-trigger svg { width: 10px; height: 10px; }
+
+  .state-preview-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 140px;
+    box-shadow: var(--shadow-lg);
+    z-index: 300;
+    animation: popoverIn 0.15s ease-out;
+  }
+  .state-preview-dropdown.visible { display: flex; }
+
+  .state-preview-btn {
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-align: left;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+  }
+  .state-preview-btn:hover { background: var(--bg-input); color: var(--text-primary); }
+  .state-preview-btn.active { background: var(--accent-blue); color: white; }
+
+  .state-preview-tooltip {
+    display: none;
+    position: absolute;
+    top: -36px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tooltip);
+    color: white;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .state-preview-trigger:hover .state-preview-tooltip { display: block; }
+
+  /* ===== Inline Error Message (non-blocking, replaces full-screen overlay) ===== */
+  .inline-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin: 12px 24px 0;
+    background: var(--accent-red-light);
+    border: 1px solid var(--accent-red);
+    border-radius: var(--radius-md);
+    animation: msgFadeIn 0.3s ease-out;
+  }
+  .inline-error-icon {
+    width: 32px; height: 32px;
+    background: rgba(239,68,68,0.15);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent-red);
+    flex-shrink: 0;
+  }
+  .inline-error-body { flex: 1; min-width: 0; }
+  .inline-error-title { font-size: 13px; font-weight: 600; color: var(--accent-red); margin-bottom: 2px; }
+  .inline-error-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .inline-error-retry {
+    padding: 6px 14px;
+    background: var(--accent-red);
+    color: white;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    flex-shrink: 0;
+    transition: background var(--transition-fast);
+  }
+  .inline-error-retry:hover { background: #dc2626; }
+  .inline-error-close {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary);
+    border-radius: 4px;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+  }
+  .inline-error-close:hover { background: rgba(0,0,0,0.06); color: var(--text-secondary); }
+
+  /* ===== Inline Loading Bar (non-blocking, replaces full-screen overlay) ===== */
+  .inline-loading-bar {
+    display: none;
+    height: 3px;
+    background: var(--bg-input);
+    border-radius: 2px;
+    margin: 0 24px;
+    overflow: hidden;
+  }
+  .inline-loading-bar.visible { display: block; }
+  .inline-loading-fill {
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+    border-radius: 2px;
+    animation: loadingSlide 1.5s ease-in-out infinite;
+  }
+  @keyframes loadingSlide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+
+  /* ===== Loading State Overlay (kept for state-preview demo only) ===== */
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248, 249, 251, 0.95);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    backdrop-filter: blur(4px);
+    gap: 16px;
+  }
+  .loading-overlay.visible { display: flex; }
+
+  .loading-overlay-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border-light);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .loading-overlay-text { font-size: 14px; color: var(--text-secondary); }
+  .loading-overlay-sub { font-size: 12px; color: var(--text-tertiary); }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Sidebar Overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">创</div>
+        <span class="sidebar-logo-text">创路Agent</span>
+      </div>
+      <div class="sidebar-mode-switcher" role="tablist" aria-label="模式切换">
+        <button class="sidebar-mode-btn active" data-mode="chat" role="tab" aria-selected="true" tabindex="0" onclick="switchMode('chat')">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 3h10a1 1 0 011 1v5a1 1 0 01-1 1H5l-3 2V4a1 1 0 011-1z"/></svg>
+          对话
+        </button>
+        <button class="sidebar-mode-btn" data-mode="pro" role="tab" aria-selected="false" tabindex="-1" onclick="switchMode('pro')">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/></svg>
+          分析
+        </button>
+        <button class="sidebar-mode-btn" data-mode="task" role="tab" aria-selected="false" tabindex="-1" onclick="switchMode('task')">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1" y="1" width="12" height="12" rx="2"/><path d="M4 5h6M4 7h4M4 9h5"/></svg>
+          任务
+        </button>
+      </div>
+      <button class="btn-new-chat" onclick="newChat()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+        新建会话
+      </button>
+    </div>
+
+    <div class="sidebar-list" id="sidebarList">
+      <div class="sidebar-group-label">今天</div>
+      <div class="sidebar-item active" data-id="1" role="button" tabindex="0" aria-label="帮我分析销售团队流失原因" onclick="switchChat(this)" onkeydown="if(event.key==='Enter')switchChat(this)">
+        <svg class="sidebar-item-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+        <span class="sidebar-item-text">帮我分析销售团队流失原因</span>
+        <div class="sidebar-item-actions">
+          <button title="删除" aria-label="删除会话" onclick="event.stopPropagation(); deleteChat(1)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sidebar-item" data-id="2" role="button" tabindex="0" aria-label="Q2渠道复盘方案" onclick="switchChat(this)" onkeydown="if(event.key==='Enter')switchChat(this)">
+        <svg class="sidebar-item-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+        <span class="sidebar-item-text">Q2渠道复盘方案</span>
+        <div class="sidebar-item-actions">
+          <button title="删除" aria-label="删除会话" onclick="event.stopPropagation(); deleteChat(2)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-group-label">昨天</div>
+      <div class="sidebar-item" data-id="3" role="button" tabindex="0" aria-label="供应商合同风险评估" onclick="switchChat(this)" onkeydown="if(event.key==='Enter')switchChat(this)">
+        <svg class="sidebar-item-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+        <span class="sidebar-item-text">供应商合同风险评估</span>
+        <div class="sidebar-item-actions">
+          <button title="删除" aria-label="删除会话" onclick="event.stopPropagation(); deleteChat(3)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sidebar-item" data-id="4" role="button" tabindex="0" aria-label="新业务线可行性与资源规划" onclick="switchChat(this)" onkeydown="if(event.key==='Enter')switchChat(this)">
+        <svg class="sidebar-item-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+        <span class="sidebar-item-text">新业务线可行性与资源规划</span>
+        <div class="sidebar-item-actions">
+          <button title="删除" aria-label="删除会话" onclick="event.stopPropagation(); deleteChat(4)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-group-label">更早</div>
+      <div class="sidebar-item" data-id="5" role="button" tabindex="0" aria-label="客户分级管理策略" onclick="switchChat(this)" onkeydown="if(event.key==='Enter')switchChat(this)">
+        <svg class="sidebar-item-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+        <span class="sidebar-item-text">客户分级管理策略</span>
+        <div class="sidebar-item-actions">
+          <button title="删除" aria-label="删除会话" onclick="event.stopPropagation(); deleteChat(5)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-account">
+        <div class="sidebar-account-trigger" role="button" tabindex="0" aria-label="账号菜单" aria-haspopup="true" aria-expanded="false" onclick="toggleAccountPopover()" onkeydown="if(event.key==='Enter')toggleAccountPopover()">
+          <div class="sidebar-avatar">李</div>
+          <div class="sidebar-user-info">
+            <div class="sidebar-user-name">李总</div>
+            <div class="sidebar-user-plan">专业版</div>
+          </div>
+        </div>
+        <div class="account-popover" id="accountPopover">
+          <div class="account-popover-user">
+            <div class="account-popover-avatar">李</div>
+            <div>
+              <div class="account-popover-name">李总</div>
+              <div class="account-popover-email">admin@chuangludao.com</div>
+            </div>
+          </div>
+          <div class="account-popover-label">主题</div>
+          <div class="popover-theme-switch" role="radiogroup" aria-label="主题切换">
+            <button class="popover-theme-opt" data-theme="light" role="radio" aria-checked="false" title="浅色" onclick="applyTheme('light')">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="3"/><path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M3.1 3.1l1 1M9.9 9.9l1 1M3.1 10.9l1-1M9.9 4.1l1-1"/></svg>
+              浅色
+            </button>
+            <button class="popover-theme-opt" data-theme="dark" role="radio" aria-checked="false" title="深色" onclick="applyTheme('dark')">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 8.5A5.5 5.5 0 015.5 2 5.5 5.5 0 1012 8.5z"/></svg>
+              深色
+            </button>
+            <button class="popover-theme-opt active" data-theme="system" role="radio" aria-checked="true" title="跟随系统" onclick="applyTheme('system')">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1" y="1" width="8" height="8" rx="1.5"/><path d="M11 5h1a1 1 0 011 1v6a1 1 0 01-1 1H6a1 1 0 01-1-1v-1"/></svg>
+              系统
+            </button>
+          </div>
+          <button class="account-popover-item" onclick="showToast('设置页面')">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>
+            设置与偏好
+          </button>
+          <button class="account-popover-item" onclick="showToast('已登出')">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 14H3a1 1 0 01-1-1V3a1 1 0 011-1h3M11 10l3-3-3-3M14 7H6"/></svg>
+            退出登录
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+      <button class="btn-sidebar-toggle" onclick="toggleSidebar()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+      </button>
+      <div class="nav-spacer"></div>
+      <div class="nav-actions">
+        <div class="state-preview-wrap" style="position:relative;">
+          <button class="state-preview-trigger" onclick="toggleStateDropdown()" aria-label="状态演示" aria-haspopup="true">
+            状态
+            <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3.5l2 3 2-3"/></svg>
+            <span class="state-preview-tooltip">原型状态演示</span>
+          </button>
+          <div class="state-preview-dropdown" id="stateDropdown">
+            <button class="state-preview-btn active" onclick="showState('normal')">正常状态</button>
+            <button class="state-preview-btn" onclick="showState('loading')">加载中</button>
+            <button class="state-preview-btn" onclick="showState('error')">错误状态</button>
+            <button class="state-preview-btn" onclick="showState('empty')">空状态</button>
+          </div>
+        </div>
+        <button class="nav-icon-btn" title="分享" onclick="showToast('分享链接已复制')">
+          <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v2a2 2 0 002 2h6a2 2 0 002-2v-2M9 2v9M9 2l3 3M9 2L6 5"/></svg>
+        </button>
+        <button class="nav-icon-btn" title="更多" onclick="showToast('更多选项')">
+          <svg viewBox="0 0 18 18" fill="currentColor"><circle cx="9" cy="4" r="1.2"/><circle cx="9" cy="9" r="1.2"/><circle cx="9" cy="14" r="1.2"/></svg>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Content Area -->
+    <div class="content-area">
+
+      <!-- Inline error message (replaces blocking overlay) -->
+      <div class="inline-error" id="inlineError" style="display:none">
+        <div class="inline-error-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        </div>
+        <div class="inline-error-body">
+          <div class="inline-error-title">响应中断</div>
+          <div class="inline-error-desc">Agent 执行过程中遇到异常，可能是网络波动或服务端临时不可用。</div>
+        </div>
+        <button class="inline-error-retry" onclick="hideInlineError()">重试</button>
+        <button class="inline-error-close" aria-label="关闭错误提示" onclick="hideInlineError()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l6 6M10 4l-6 6"/></svg>
+        </button>
+      </div>
+
+      <!-- Inline Loading Bar (non-blocking, P4) -->
+      <div class="inline-loading-bar" id="inlineLoadingBar">
+        <div class="inline-loading-fill"></div>
+      </div>
+
+      <!-- ===== Normal Chat Mode ===== -->
+      <div class="mode-panel chat-mode active" id="modeChat">
+        <div class="chat-messages" id="chatMessages">
+          <!-- Empty state for new conversation -->
+          <div class="chat-empty" id="chatEmpty">
+            <div class="chat-empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="chat-empty-title">你好，有什么可以帮你的？</div>
+            <div class="chat-empty-desc">我是创路Agent，可以帮你分析业务问题、梳理决策思路、评估方案风险</div>
+            <div class="chat-suggestions">
+              <button class="chat-suggestion" onclick="fillInput('帮我分析最近销售团队流失率高的原因')">帮我分析最近销售团队流失率高的原因</button>
+              <button class="chat-suggestion" onclick="fillInput('这个季度渠道投入回报怎么样')">这个季度渠道投入回报怎么样</button>
+              <button class="chat-suggestion" onclick="fillInput('新开一条产品线需要准备什么')">新开一条产品线需要准备什么</button>
+              <button class="chat-suggestion" onclick="fillInput('帮我评估一下换供应商的风险')">帮我评估一下换供应商的风险</button>
+            </div>
+          </div>
+
+          <!-- Chat messages (hidden by default, shown when chatting) -->
+          <div id="chatContent" style="display:none;">
+            <div class="chat-message">
+              <div class="msg-avatar user">李</div>
+              <div class="msg-content">
+                <div class="msg-role">你</div>
+                <div class="msg-bubble"><p>帮我分析最近销售团队流失率高的原因，上个月走了3个骨干，都是跟了我两年的老人。</p></div>
+              </div>
+            </div>
+
+            <div class="chat-message">
+              <div class="msg-avatar assistant">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z" transform="scale(0.67)"/></svg>
+              </div>
+              <div class="msg-content">
+                <div class="msg-role">创路Agent</div>
+                <div class="msg-bubble">
+                  <p>这个问题需要从多个维度拆解。根据你的描述——<strong>跟了两年</strong>、<strong>骨干</strong>、<strong>集中出走</strong>，我帮你做一个系统性分析：</p>
+                  <p><strong>1. 时机异常点</strong><br>跟了两年才走，说明不是入职适应期问题。集中出走更像是<strong>某个触发事件</strong>导致的连锁反应。</p>
+                  <p><strong>2. 需要排查的方向</strong></p>
+                  <pre>流失分析框架
+├── 薪酬竞争力（外部拉力）
+│   ├── 同行近期是否有挖角动作
+│   └── 绩效考核是否调整过
+├── 成长空间（内部推力）
+│   ├── 两年老兵是否有明确的晋升通道
+│   └── 重复性工作是否导致倦怠
+├── 管理关系（隐性因素）
+│   ├── 直属主管是否更换
+│   └── 团队氛围是否有变化
+└── 业务压力（环境因素）
+    ├── 目标是否突然加码
+    └── 资源支持是否缩水</pre>
+                  <p><strong>3. 快速验证建议</strong><br>先跟留下的人做一次非正式沟通，确认是否有共同的不满点。再查看离职面谈记录中是否提到相似关键词。如果两个都指向同一个方向，那就是根因。</p>
+                  <p>需要我帮你设计一份留任访谈提纲吗？</p>
+                </div>
+                <div class="msg-actions">
+                  <button class="msg-action-btn" onclick="showToast('已复制')">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><rect x="4" y="4" width="7" height="7" rx="1"/><path d="M2 8V2a1 1 0 011-1h6"/></svg>
+                    复制
+                  </button>
+                  <button class="msg-action-btn" onclick="showToast('已重新生成')">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M1 6a5 5 0 019.5-1M11 6a5 5 0 01-9.5 1"/><path d="M10 1v4h-4M2 11V7h4"/></svg>
+                    重新生成
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Streaming message example -->
+            <div class="chat-message" id="streamingMsg" style="display:none;">
+              <div class="msg-avatar assistant">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z" transform="scale(0.67)"/></svg>
+              </div>
+              <div class="msg-content">
+                <div class="msg-role">创路Agent</div>
+                <div class="msg-bubble streaming-cursor" id="streamingText"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input (unified) -->
+        <div class="uni-input-area">
+          <div class="uni-input-box" id="chatInputBox">
+            <textarea class="uni-textarea" id="chatInput" placeholder="有问题，尽管问～ Enter 发送，Shift+Enter 换行" rows="1" onkeydown="handleChatKeydown(event)" oninput="autoResize(this); updateSendState(this)" aria-label="消息输入"></textarea>
+            <div class="uni-toolbar">
+              <div class="uni-toolbar-left">
+                <button class="model-select" aria-label="选择模型" onclick="showToast('切换模型')">
+                  默认模型
+                  <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5l3 3 3-3"/></svg>
+                </button>
+                <button class="deep-think-btn" id="deepThinkToggle" aria-pressed="false" onclick="toggleDeepThink(this)">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7 1v2M7 11v2M1 7h2M11 7h2M3.05 3.05l1.41 1.41M9.54 9.54l1.41 1.41M3.05 10.95l1.41-1.41M9.54 4.46l1.41-1.41"/><circle cx="7" cy="7" r="2.5"/></svg>
+                  深度思考
+                </button>
+              </div>
+              <button class="btn-uni-send" id="btnSend" aria-label="发送消息" onclick="sendMessage()">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l12-5-5 12-2-5z"/></svg>
+              </button>
+              <button class="btn-uni-stop" id="btnStop" aria-label="停止生成" style="display:none" onclick="stopStreaming()">
+                <svg viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Professional Mode (ReAct Agent) ===== -->
+      <div class="mode-panel pro-mode" id="modePro">
+        <!-- Main Column -->
+        <div class="pro-main">
+          <div class="pro-main-header">
+            <div class="pro-task-title">
+              分析供应商合同风险评估
+              <span class="pro-task-badge running">执行中</span>
+            </div>
+            <div class="pro-task-meta">
+              <span>5个步骤 · 已完成3个</span>
+              <span>用时 12s</span>
+              <span class="pro-progress-pct">60%</span>
+            </div>
+            <div class="pro-progress-bar">
+              <div class="pro-progress-fill progress-60"></div>
+            </div>
+          </div>
+
+          <div class="pro-messages">
+            <div class="pro-messages-inner">
+            <!-- Agent thinking card -->
+            <div class="agent-card">
+              <div class="agent-card-header">
+                <div class="agent-card-icon thinking">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5"/><path d="M7 5v2M7 9h.01"/></svg>
+                </div>
+                <span class="agent-card-label">分析需求</span>
+                <span class="agent-card-time">0.2s</span>
+              </div>
+              <div class="agent-card-body">
+                用户需要评估更换供应商的风险。我需要分解为：合同条款风险、交付连续性风险、价格波动风险、合规风险四个维度进行分析。
+              </div>
+            </div>
+
+            <!-- Tool call card -->
+            <div class="agent-card">
+              <div class="agent-card-header">
+                <div class="agent-card-icon tool">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M5.5 1l-1 4.5L1 7l3.5 1.5 1 4.5 1-4.5L10 7 6.5 5.5z"/></svg>
+                </div>
+                <span class="agent-card-label">调用合同分析工具</span>
+                <span class="agent-card-time">3.1s</span>
+              </div>
+              <div class="agent-card-body">
+                正在提取当前供应商合同中的关键条款，包括违约金比例、交付SLA、价格调整机制和终止条款。
+              </div>
+            </div>
+
+            <!-- Observation card -->
+            <div class="agent-card">
+              <div class="agent-card-header">
+                <div class="agent-card-icon result">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 7l3 3 7-7"/></svg>
+                </div>
+                <span class="agent-card-label">合同条款风险识别</span>
+                <span class="agent-card-time">1.8s</span>
+              </div>
+              <div class="agent-card-body">
+                发现3个高风险条款：①提前终止需支付6个月违约金（行业平均3个月）；②供应商可单方面调价（无协商窗口）；③最低采购量锁定2年。
+              </div>
+            </div>
+
+            <!-- Final reply (partial, streaming) -->
+            <div class="pro-final-reply">
+              <div class="pro-final-reply-label">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/></svg>
+                综合分析结果
+              </div>
+              <div class="pro-final-reply-content streaming-cursor" id="proStreamingText">
+                更换供应商的整体风险等级为<strong>中高</strong>。核心风险集中在合同违约金和交付过渡期...
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <!-- Pro Input (unified) -->
+          <div class="uni-input-area">
+            <div class="uni-input-box" id="proInputBox">
+              <textarea class="uni-textarea" id="proInput" placeholder="追加指令或提出新问题... Enter 发送，Shift+Enter 换行" rows="1" oninput="autoResize(this); updateSendState(this)" aria-label="追问输入"></textarea>
+              <div class="uni-toolbar">
+                <div class="uni-toolbar-left">
+                  <button class="model-select" aria-label="选择模型" onclick="showToast('切换模型')">
+                    默认模型
+                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5l3 3 3-3"/></svg>
+                  </button>
+                  <button class="deep-think-btn active" id="proDeepThinkToggle" aria-pressed="true" onclick="toggleDeepThink(this)">
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7 1v2M7 11v2M1 7h2M11 7h2M3.05 3.05l1.41 1.41M9.54 9.54l1.41 1.41M3.05 10.95l1.41-1.41M9.54 4.46l1.41-1.41"/><circle cx="7" cy="7" r="2.5"/></svg>
+                    深度思考
+                  </button>
+                </div>
+                <button class="btn-uni-send active" aria-label="发送追问" onclick="showToast('已发送追问')">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l12-5-5 12-2-5z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Process Panel -->
+        <div class="pro-process-panel" id="processPanel">
+          <div class="process-resize-handle" id="processResizeHandle" onmousedown="startResize(event)"></div>
+          <div class="process-header">
+            <div class="process-title">
+              推理过程
+              <span class="process-live-dot"></span>
+            </div>
+            <button class="process-toggle-btn" id="processToggleBtn" aria-label="全部折叠" onclick="toggleAllSteps()">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 4l4 4 4-4"/></svg>
+              全部折叠
+            </button>
+          </div>
+
+          <div class="process-summary">
+            <div class="process-summary-steps">
+              <span class="process-summary-dot done"></span>
+              <span class="process-summary-dot done"></span>
+              <span class="process-summary-dot done"></span>
+              <span class="process-summary-dot active"></span>
+              <span class="process-summary-dot"></span>
+            </div>
+            <span class="process-summary-text">步骤 4/5 · 综合评估决策</span>
+            <span class="process-summary-time">12s</span>
+          </div>
+
+          <div class="process-steps" id="processSteps">
+
+            <!-- Step 1: Thought -->
+            <div class="process-step expanded">
+              <div class="process-step-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleStep(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleStep(this)}">
+                <span class="process-step-number thinking">1</span>
+                <span class="process-step-label">思考：分解评估需求</span>
+                <span class="process-step-badge thinking">Thought</span>
+                <svg class="process-step-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
+              </div>
+              <div class="process-step-detail">
+                <div class="process-step-detail-inner">
+                  <div class="detail-section">
+                    <div class="detail-label">推理内容</div>
+                    <div class="detail-text">用户提出供应商更换风险评估需求。需要从四个维度分析：合同条款风险、交付连续性风险、价格波动风险、合规风险。先从合同条款入手。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2: Action -->
+            <div class="process-step">
+              <div class="process-step-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleStep(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleStep(this)}">
+                <span class="process-step-number tool">2</span>
+                <span class="process-step-label">调用：合同条款分析</span>
+                <span class="process-step-badge tool">Action</span>
+                <svg class="process-step-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
+              </div>
+              <div class="process-step-detail">
+                <div class="process-step-detail-inner">
+                  <div class="detail-section">
+                    <div class="detail-code">
+                      <span class="detail-code-head">&gt;&gt; contract_analyzer tool call</span>
+                      <span class="detail-code-body">{
+  "contract_id": "SUP-2024-0891",
+  "analysis_type": "risk_clause",
+  "focus_areas": ["termination_penalty", "price_adjustment", "sla_guarantee"]
+}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: Observation -->
+            <div class="process-step">
+              <div class="process-step-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleStep(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleStep(this)}">
+                <span class="process-step-number observation">3</span>
+                <span class="process-step-label">观察：合同分析结果</span>
+                <span class="process-step-badge observation">Observation</span>
+                <svg class="process-step-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
+              </div>
+              <div class="process-step-detail">
+                <div class="process-step-detail-inner">
+                  <div class="detail-section">
+                    <div class="detail-code">
+                      <span class="detail-code-head">&gt;&gt; contract_analyzer result</span>
+                      <span class="detail-code-body">{
+  "risk_level": "HIGH",
+  "findings": [
+    {
+      "clause": "提前终止违约金",
+      "detail": "6个月合同金额",
+      "benchmark": "行业平均3个月",
+      "deviation": "+100%"
+    },
+    {
+      "clause": "单方调价权",
+      "detail": "供应商可30天前通知调价",
+      "benchmark": "通常需双方协商",
+      "deviation": "异常"
+    },
+    {
+      "clause": "最低采购量",
+      "detail": "2年锁定, 年度500万",
+      "benchmark": "行业1年锁定",
+      "deviation": "+100%"
+    }
+  ]
+}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 4: Thought -->
+            <div class="process-step">
+              <div class="process-step-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleStep(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleStep(this)}">
+                <span class="process-step-number thinking">4</span>
+                <span class="process-step-label">思考：综合评估决策</span>
+                <span class="process-step-badge thinking">Thought</span>
+                <svg class="process-step-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
+              </div>
+              <div class="process-step-detail">
+                <div class="process-step-detail-inner">
+                  <div class="detail-section">
+                    <div class="detail-label">推理内容</div>
+                    <div class="detail-text">合同条款风险已经确认为高。违约金和最低采购量锁定形成双重约束——提前终止代价极大。需要量化两种场景的损失期望值来做最终决策。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 5: Loading -->
+            <div class="process-step">
+              <div class="process-step-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleStep(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleStep(this)}">
+                <span class="process-step-number observation">5</span>
+                <span class="process-step-label">调用：风险量化计算</span>
+                <span class="process-step-badge observation">Action</span>
+                <svg class="process-step-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
+              </div>
+              <div class="process-step-detail">
+                <div class="process-step-detail-inner">
+                  <div class="process-loading">
+                    <div class="loading-dots"><span></span><span></span><span></span></div>
+                    正在执行风险量化计算...
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Task Mode (Placeholder) ===== -->
+      <div class="mode-panel task-mode" id="modeTask">
+        <div class="task-placeholder">
+          <div class="task-placeholder-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
+          </div>
+          <div class="task-placeholder-title">任务模式</div>
+          <div class="task-placeholder-desc">Plan-and-Execute 多步骤任务规划引擎正在开发中，即将支持复杂业务流程的自动化拆解与执行。</div>
+          <button class="task-notify-btn" onclick="showToast('已订阅上线通知')">
+            订阅上线通知
+          </button>
+          <div class="task-placeholder-features">
+            <div class="task-feature-item">
+              <div class="task-feature-icon icon-blue">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 3h12M2 7h12M2 11h12"/></svg>
+              </div>
+              <div class="task-feature-text">
+                <div class="task-feature-name">智能任务拆解</div>
+                <div class="task-feature-desc">自动将复杂目标分解为可执行的子任务链</div>
+              </div>
+            </div>
+            <div class="task-feature-item">
+              <div class="task-feature-icon icon-green">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 8l4 4 8-8"/></svg>
+              </div>
+              <div class="task-feature-text">
+                <div class="task-feature-name">并行执行引擎</div>
+                <div class="task-feature-desc">独立子任务并行处理，显著提升执行效率</div>
+              </div>
+            </div>
+            <div class="task-feature-item">
+              <div class="task-feature-icon icon-purple">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg>
+              </div>
+              <div class="task-feature-text">
+                <div class="task-feature-name">动态调整策略</div>
+                <div class="task-feature-desc">根据执行结果实时调整后续步骤与优先级</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  // ===== Mode Switching (P2: focus management) =====
+  function switchMode(mode) {
+    // Update sidebar mode buttons
+    document.querySelectorAll('.sidebar-mode-btn').forEach(btn => {
+      const isActive = btn.dataset.mode === mode;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      btn.setAttribute('tabindex', isActive ? '0' : '-1');
+    });
+
+    // Update panels
+    document.querySelectorAll('.mode-panel').forEach(panel => {
+      panel.classList.remove('active');
+    });
+
+    const panelMap = { chat: 'modeChat', pro: 'modePro', task: 'modeTask' };
+    const target = document.getElementById(panelMap[mode]);
+    if (target) {
+      target.classList.add('active');
+    }
+
+    // P2: Move focus to the textarea of the new mode
+    requestAnimationFrame(() => {
+      const input = target?.querySelector('.uni-textarea');
+      if (input) input.focus();
+    });
+
+    // Demo: show chat content when switching to chat mode
+    if (mode === 'chat') {
+      showChatContent();
+    }
+  }
+
+  // ===== Chat Functions =====
+  let chatHasContent = false;
+
+  function showChatContent() {
+    if (chatHasContent) {
+      document.getElementById('chatEmpty').style.display = 'none';
+      document.getElementById('chatContent').style.display = 'block';
+    } else {
+      document.getElementById('chatEmpty').style.display = 'flex';
+      document.getElementById('chatContent').style.display = 'none';
+    }
+  }
+
+  function fillInput(text) {
+    const input = document.getElementById('chatInput');
+    input.value = text;
+    autoResize(input);
+    updateSendState(input);
+    sendMessage();
+  }
+
+  function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    chatHasContent = true;
+    document.getElementById('chatEmpty').style.display = 'none';
+    document.getElementById('chatContent').style.display = 'block';
+
+    // Add user message
+    const chatContent = document.getElementById('chatContent');
+    const userMsg = document.createElement('div');
+    userMsg.className = 'chat-message';
+    userMsg.innerHTML = `
+      <div class="msg-avatar user">李</div>
+      <div class="msg-content">
+        <div class="msg-role">你</div>
+        <div class="msg-bubble"><p>${escapeHtml(text)}</p></div>
+      </div>
+    `;
+    chatContent.appendChild(userMsg);
+
+    input.value = '';
+    autoResize(input);
+
+    // Simulate streaming response
+    simulateStreaming();
+    scrollToBottom();
+  }
+
+  function simulateStreaming() {
+    const chatContent = document.getElementById('chatContent');
+    const assistantMsg = document.createElement('div');
+    assistantMsg.className = 'chat-message';
+    assistantMsg.innerHTML = `
+      <div class="msg-avatar assistant">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z" transform="scale(0.67)"/></svg>
+      </div>
+      <div class="msg-content">
+        <div class="msg-role">创路Agent</div>
+        <div class="msg-bubble streaming-cursor" id="activeStream"></div>
+      </div>
+    `;
+    chatContent.appendChild(assistantMsg);
+
+    // P5: Show stop button, hide send
+    document.getElementById('btnSend').style.display = 'none';
+    document.getElementById('btnStop').style.display = 'flex';
+
+    const responses = [
+      '好的，让我帮你分析一下这个问题。',
+      '\n\n首先，需要明确几个关键前提：',
+      '\n\n**1. 现状梳理**\n这个问题的核心在于资源分配和优先级的平衡。',
+      '\n\n**2. 分析框架**\n建议从以下维度切入：',
+      '\n- 时间维度：短期影响 vs 长期趋势',
+      '\n- 成本维度：直接成本 vs 机会成本',
+      '\n- 风险维度：确定性损失 vs 概率性收益',
+      '\n\n**3. 建议方向**\n先做最小验证，再决定是否all in。需要我展开某个维度吗？'
+    ];
+
+    let i = 0;
+    const streamEl = document.getElementById('activeStream');
+
+    function addChunk() {
+      if (i < responses.length) {
+        const html = responses[i].replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+        streamEl.innerHTML += html;
+        i++;
+        scrollToBottom();
+        streamingTimer = setTimeout(addChunk, 300 + Math.random() * 400);
+      } else {
+        streamEl.classList.remove('streaming-cursor');
+        streamEl.removeAttribute('id');
+        // P5: Restore send button
+        document.getElementById('btnStop').style.display = 'none';
+        document.getElementById('btnSend').style.display = 'flex';
+      }
+    }
+    streamingTimer = setTimeout(addChunk, 600);
+  }
+
+  function handleChatKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  function scrollToBottom() {
+    const messages = document.getElementById('chatMessages');
+    if (messages) {
+      requestAnimationFrame(() => {
+        messages.scrollTop = messages.scrollHeight;
+      });
+    }
+  }
+
+  // ===== Sidebar Functions =====
+  function switchChat(el) {
+    document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('active'));
+    el.classList.add('active');
+    showToast('已切换会话');
+  }
+
+  function newChat() {
+    chatHasContent = false;
+    showChatContent();
+    showToast('已创建新会话');
+  }
+
+  function deleteChat(id) {
+    const item = document.querySelector(`.sidebar-item[data-id="${id}"]`);
+    if (item) {
+      item.style.opacity = '0';
+      item.style.transform = 'translateX(-10px)';
+      setTimeout(() => item.remove(), 200);
+    }
+  }
+
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('open');
+  }
+
+  // ===== Process Panel Functions =====
+  function toggleStep(header) {
+    const step = header.parentElement;
+    const isExpanded = step.classList.contains('expanded');
+    step.classList.toggle('expanded');
+    header.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+  }
+
+  let allExpanded = true;
+  function toggleAllSteps() {
+    allExpanded = !allExpanded;
+    document.querySelectorAll('.process-step').forEach(step => {
+      const header = step.querySelector('.process-step-header');
+      if (allExpanded) {
+        step.classList.add('expanded');
+        if (header) header.setAttribute('aria-expanded', 'true');
+      } else {
+        step.classList.remove('expanded');
+        if (header) header.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  // ===== Toast =====
+  function showToast(message) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 7l3 3 7-7"/></svg>
+      ${message}
+    `;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add('toast-out');
+      setTimeout(() => toast.remove(), 300);
+    }, 2000);
+  }
+
+  // ===== Utils =====
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // ===== Unified Input Helpers =====
+  function updateSendState(el) {
+    const text = (el.value || '').trim();
+    const sendBtn = el.closest('.uni-input-box')?.querySelector('.btn-uni-send');
+    if (!sendBtn) return;
+    if (text.length > 0) {
+      sendBtn.classList.add('active');
+    } else {
+      sendBtn.classList.remove('active');
+    }
+  }
+
+  function toggleDeepThink(btn) {
+    btn.classList.toggle('active');
+    const isActive = btn.classList.contains('active');
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    if (isActive) {
+      showToast('已开启深度思考');
+    } else {
+      showToast('已关闭深度思考');
+    }
+  }
+
+  // ===== Theme Manager (P7) =====
+  class ThemeManager {
+    constructor() {
+      this.currentTheme = this.getStoredTheme() || 'system';
+      this.applyTheme(this.currentTheme);
+    }
+    getSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    getStoredTheme() { return localStorage.getItem('theme'); }
+    applyTheme(theme) {
+      this.currentTheme = theme;
+      if (theme === 'system') {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.removeItem('theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+      }
+      this.updateToggleUI();
+    }
+    updateToggleUI() {
+      document.querySelectorAll('.popover-theme-opt').forEach(btn => {
+        const isActive = btn.dataset.theme === this.currentTheme;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+      });
+    }
+  }
+  const themeManager = new ThemeManager();
+  function applyTheme(theme) { themeManager.applyTheme(theme); }
+
+  // ===== Account Popover =====
+  function toggleAccountPopover() {
+    const popover = document.getElementById('accountPopover');
+    const trigger = document.querySelector('.sidebar-account-trigger');
+    const isOpen = popover.classList.contains('visible');
+    popover.classList.toggle('visible');
+    trigger.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+  }
+
+  // Click outside to close popover
+  document.addEventListener('click', function(e) {
+    const account = document.querySelector('.sidebar-account');
+    const popover = document.getElementById('accountPopover');
+    if (account && popover && !account.contains(e.target)) {
+      popover.classList.remove('visible');
+      const trigger = document.querySelector('.sidebar-account-trigger');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  // ===== Inline Error (P4: non-blocking) =====
+  function showInlineError() { document.getElementById('inlineError').style.display = 'flex'; }
+  function hideInlineError() { document.getElementById('inlineError').style.display = 'none'; }
+
+  // ===== Stop Streaming (P5) =====
+  let streamingTimer = null;
+  function stopStreaming() {
+    if (streamingTimer) { clearTimeout(streamingTimer); streamingTimer = null; }
+    const cursor = document.querySelector('.streaming-cursor');
+    if (cursor) cursor.classList.remove('streaming-cursor');
+    document.getElementById('btnStop').style.display = 'none';
+    document.getElementById('btnSend').style.display = 'flex';
+    showToast('已停止生成');
+  }
+
+  // ===== Initialize =====
+  chatHasContent = true;
+  showChatContent();
+
+  // ===== Process Panel Resize (P8) =====
+  function startResize(e) {
+    e.preventDefault();
+    const panel = document.getElementById('processPanel');
+    const handle = document.getElementById('processResizeHandle');
+    const startX = e.clientX;
+    const startWidth = panel.offsetWidth;
+
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev) {
+      const delta = startX - ev.clientX;
+      const newWidth = Math.max(280, Math.min(560, startWidth + delta));
+      panel.style.width = newWidth + 'px';
+    }
+
+    function onUp() {
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  // ===== State Preview (in-nav dropdown) =====
+  function toggleStateDropdown() {
+    const dd = document.getElementById('stateDropdown');
+    dd.classList.toggle('visible');
+  }
+
+  // Close state dropdown on outside click
+  document.addEventListener('click', function(e) {
+    const wrap = document.querySelector('.state-preview-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      document.getElementById('stateDropdown').classList.remove('visible');
+    }
+  });
+
+  function showState(state) {
+    // Update dropdown buttons
+    document.getElementById('stateDropdown').querySelectorAll('.state-preview-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    // Find and activate the matching button
+    const btns = document.getElementById('stateDropdown').querySelectorAll('.state-preview-btn');
+    // Mark active based on the state argument - click handler on btn will set it
+    event.target.classList.add('active');
+
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const inlineError = document.getElementById('inlineError');
+    const loadingBar = document.getElementById('inlineLoadingBar');
+
+    loadingOverlay.classList.remove('visible');
+    inlineError.style.display = 'none';
+    if (loadingBar) loadingBar.classList.remove('visible');
+
+    switch(state) {
+      case 'normal':
+        chatHasContent = true;
+        if (document.querySelector('.mode-panel.active').id === 'modeChat') showChatContent();
+        break;
+      case 'loading':
+        if (loadingBar) loadingBar.classList.add('visible');
+        break;
+      case 'error':
+        showInlineError();
+        break;
+      case 'empty':
+        chatHasContent = false;
+        if (document.querySelector('.mode-panel.active').id === 'modeChat') showChatContent();
+        break;
+    }
+    // Close dropdown after selection
+    document.getElementById('stateDropdown').classList.remove('visible');
+  }
+
+  function hideOverlay(type) {
+    if (type === 'error') hideInlineError();
+    else if (type === 'loading') { const b = document.getElementById('inlineLoadingBar'); if(b) b.classList.remove('visible'); }
+    const dd = document.getElementById('stateDropdown');
+    if (dd) {
+      dd.querySelectorAll('.state-preview-btn').forEach(btn => btn.classList.remove('active'));
+      const first = dd.querySelector('.state-preview-btn');
+      if (first) first.classList.add('active');
+    }
+  }
+</script>
+</body>
+</html>

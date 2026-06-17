@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReAct Agent Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fb;
+  --bg-tertiary: #f1f2f5;
+  --bg-hover: #eceef2;
+  --text-primary: #1a1d23;
+  --text-secondary: #5f6577;
+  --text-tertiary: #9298a8;
+  --border-primary: #e2e4ea;
+  --border-secondary: #d0d3dc;
+
+  --thought-bg: #eef3ff;
+  --thought-border: #c7d7fe;
+  --thought-accent: #4f6ef7;
+  --thought-icon-bg: #4f6ef7;
+
+  --action-bg: #fef6ee;
+  --action-border: #fbdcb2;
+  --action-accent: #e87a2e;
+  --action-icon-bg: #e87a2e;
+
+  --observation-bg: #eef8f3;
+  --observation-border: #bce8d0;
+  --observation-accent: #2da56e;
+  --observation-icon-bg: #2da56e;
+
+  --error-bg: #fef2f2;
+  --error-border: #fdd;
+  --error-accent: #dc3545;
+  --error-icon-bg: #dc3545;
+
+  --result-bg: #f0f4ff;
+  --result-border: #c7d7fe;
+  --result-accent: #4f6ef7;
+
+  --running-pulse: #4f6ef7;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+
+  --sidebar-width: 260px;
+  --header-height: 56px;
+  --input-height: 120px;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f1117;
+  --bg-secondary: #171921;
+  --bg-tertiary: #1e2029;
+  --bg-hover: #252731;
+  --text-primary: #e4e6ed;
+  --text-secondary: #9298a8;
+  --text-tertiary: #5f6577;
+  --border-primary: #2a2d38;
+  --border-secondary: #363945;
+
+  --thought-bg: #1a1f35;
+  --thought-border: #2a3358;
+  --thought-accent: #7b93f9;
+  --thought-icon-bg: #4f6ef7;
+
+  --action-bg: #251d14;
+  --action-border: #3d2e1a;
+  --action-accent: #f0933a;
+  --action-icon-bg: #e87a2e;
+
+  --observation-bg: #142520;
+  --observation-border: #1e3d2f;
+  --observation-accent: #4dc98a;
+  --observation-icon-bg: #2da56e;
+
+  --error-bg: #251414;
+  --error-border: #3d1a1a;
+  --error-accent: #f06565;
+  --error-icon-bg: #dc3545;
+
+  --result-bg: #1a1f35;
+  --result-border: #2a3358;
+  --result-accent: #7b93f9;
+
+  --running-pulse: #7b93f9;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+}
+
+/* ─── Header ─── */
+.header {
+  height: var(--header-height);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--thought-accent), var(--action-accent));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.header-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  font-size: 16px;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
+}
+
+/* ─── Main Layout ─── */
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── Sidebar ─── */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: transform 0.3s ease, width 0.3s ease;
+}
+
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.sidebar-header h3 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-sessions {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.session-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+}
+
+.session-item:hover {
+  background: var(--bg-hover);
+}
+
+.session-item.active {
+  background: var(--thought-bg);
+  border-color: var(--thought-border);
+}
+
+.session-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.session-status-dot.running { background: var(--thought-accent); animation: pulse-dot 1.5s infinite; }
+.session-status-dot.completed { background: var(--observation-accent); }
+.session-status-dot.error { background: var(--error-accent); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.sidebar-new-btn {
+  margin: 12px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-secondary);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+}
+
+.sidebar-new-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--thought-accent);
+}
+
+/* ─── Content Area ─── */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ─── Trajectory View ─── */
+.trajectory-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+  scroll-behavior: smooth;
+}
+
+.trajectory-view::-webkit-scrollbar {
+  width: 6px;
+}
+.trajectory-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+.trajectory-view::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 3px;
+}
+
+/* ─── User Query Bubble ─── */
+.query-bubble {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.query-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.query-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.query-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.query-text {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─── Step Timeline ─── */
+.step-timeline {
+  position: relative;
+  padding-left: 44px;
+  margin-left: 18px;
+}
+
+.step-timeline::before {
+  content: '';
+  position: absolute;
+  left: 17px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-primary);
+}
+
+/* ─── Step Card ─── */
+.step-card {
+  position: relative;
+  margin-bottom: 12px;
+  animation: stepSlideIn 0.35s ease-out;
+  animation-fill-mode: both;
+}
+
+.step-connector {
+  position: absolute;
+  left: -27px;
+  top: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.step-card[data-type="thought"] .step-connector { background: var(--thought-icon-bg); box-shadow: 0 0 0 3px var(--thought-bg); }
+.step-card[data-type="action"] .step-connector { background: var(--action-icon-bg); box-shadow: 0 0 0 3px var(--action-bg); }
+.step-card[data-type="observation"] .step-connector { background: var(--observation-icon-bg); box-shadow: 0 0 0 3px var(--observation-bg); }
+
+.step-card[data-status="running"] .step-connector {
+  animation: pulse-ring 1.5s infinite;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 3px var(--thought-bg), 0 0 0 6px rgba(79,110,247,0.2); }
+  50% { box-shadow: 0 0 0 3px var(--thought-bg), 0 0 0 10px rgba(79,110,247,0); }
+  100% { box-shadow: 0 0 0 3px var(--thought-bg), 0 0 0 6px rgba(79,110,247,0.2); }
+}
+
+.step-inner {
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.step-card[data-type="thought"] .step-inner { background: var(--thought-bg); border-color: var(--thought-border); }
+.step-card[data-type="action"] .step-inner { background: var(--action-bg); border-color: var(--action-border); }
+.step-card[data-type="observation"] .step-inner { background: var(--observation-bg); border-color: var(--observation-border); }
+.step-card[data-status="error"] .step-inner { background: var(--error-bg); border-color: var(--error-border); }
+
+.step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+}
+
+.step-header:hover {
+  opacity: 0.85;
+}
+
+.step-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.step-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: white;
+}
+
+.step-card[data-type="thought"] .step-icon { background: var(--thought-icon-bg); }
+.step-card[data-type="action"] .step-icon { background: var(--action-icon-bg); }
+.step-card[data-type="observation"] .step-icon { background: var(--observation-icon-bg); }
+
+.step-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.step-card[data-type="thought"] .step-badge { background: var(--thought-icon-bg); color: white; }
+.step-card[data-type="action"] .step-badge { background: var(--action-icon-bg); color: white; }
+.step-card[data-type="observation"] .step-badge { background: var(--observation-icon-bg); color: white; }
+
+.step-number {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.step-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.step-duration {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.step-status-tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.step-status-tag.running { background: rgba(79,110,247,0.15); color: var(--thought-accent); }
+.step-status-tag.completed { background: rgba(45,165,110,0.12); color: var(--observation-accent); }
+.step-status-tag.error { background: rgba(220,53,69,0.12); color: var(--error-accent); }
+
+.step-toggle {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.step-card.collapsed .step-toggle {
+  transform: rotate(-90deg);
+}
+
+.step-body {
+  padding: 0 14px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease;
+  overflow: hidden;
+}
+
+.step-card.collapsed .step-body {
+  max-height: 0 !important;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.step-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ─── Tool Call Detail ─── */
+.tool-call-block {
+  margin-top: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.tool-call-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-call-header .tool-name {
+  color: var(--action-accent);
+  font-weight: 600;
+}
+
+.tool-call-body {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tool-call-body::-webkit-scrollbar { width: 4px; }
+.tool-call-body::-webkit-scrollbar-thumb { background: var(--border-secondary); border-radius: 2px; }
+
+/* ─── Error Block ─── */
+.error-block {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--error-accent);
+  font-family: var(--font-mono);
+}
+
+.retry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* ─── Final Result ─── */
+.result-card {
+  margin-top: 20px;
+  margin-left: 18px;
+  padding-left: 44px;
+  animation: slideIn 0.4s ease-out;
+}
+
+.result-inner {
+  background: var(--bg-primary);
+  border: 2px solid var(--thought-accent);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.result-header {
+  padding: 12px 16px;
+  background: var(--result-bg);
+  border-bottom: 1px solid var(--result-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--thought-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+}
+
+.result-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--thought-accent);
+}
+
+.result-body {
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+/* ─── Progress Bar ─── */
+.progress-bar-container {
+  padding: 8px 28px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.progress-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.progress-info .step-count {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.progress-bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--thought-accent), var(--observation-accent));
+  transition: width 0.4s ease;
+  width: 0%;
+}
+
+.elapsed-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ─── Input Area ─── */
+.input-area {
+  padding: 16px 28px 20px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.input-wrapper {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.input-box {
+  flex: 1;
+  position: relative;
+}
+
+.input-box textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 160px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-box textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.input-box textarea:focus {
+  border-color: var(--thought-accent);
+  box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
+}
+
+.send-btn {
+  height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--thought-accent);
+  color: white;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #3f5de6;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.send-btn .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Empty State ─── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-state-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 20px;
+  color: var(--text-tertiary);
+}
+
+.empty-state h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+.example-queries {
+  margin-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.example-query {
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.example-query:hover {
+  border-color: var(--thought-accent);
+  color: var(--thought-accent);
+  background: var(--thought-bg);
+}
+
+/* ─── Animations ─── */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes stepSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ─── Streaming cursor ─── */
+.streaming-cursor::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: var(--thought-accent);
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ─── Mobile Responsive ─── */
+.sidebar-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    bottom: 0;
+    z-index: 90;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-toggle {
+    display: flex;
+  }
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 89;
+  }
+  .sidebar-overlay.open {
+    display: block;
+  }
+  .trajectory-view {
+    padding: 16px;
+  }
+  .input-area {
+    padding: 12px 16px 16px;
+  }
+  .progress-bar-container {
+    padding: 8px 16px;
+  }
+  .header-subtitle {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .step-timeline {
+    padding-left: 32px;
+    margin-left: 10px;
+  }
+  .step-timeline::before {
+    left: 11px;
+  }
+  .step-connector {
+    left: -21px;
+  }
+  .result-card {
+    padding-left: 32px;
+    margin-left: 10px;
+  }
+  .input-wrapper {
+    flex-direction: column;
+  }
+  .send-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ─── Theme Transition ─── */
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.header, .sidebar, .input-area, .progress-bar-container {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <button class="btn-icon sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="header-logo">R</div>
+      <span class="header-title">ReAct Agent Visualizer</span>
+      <span class="header-subtitle">Thought → Action → Observation</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" onclick="toggleTheme()" aria-label="Toggle theme" id="themeBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="btn-icon" onclick="clearAll()" aria-label="Clear all sessions">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div class="main-layout">
+    <!-- Sidebar Overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h3>Conversation history</h3>
+      </div>
+      <div class="sidebar-sessions" id="sessionList"></div>
+      <button class="sidebar-new-btn" onclick="newSession()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New conversation
+      </button>
+    </aside>
+
+    <!-- Content -->
+    <div class="content-area">
+      <!-- Trajectory View -->
+      <div class="trajectory-view" id="trajectoryView">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-state-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          </div>
+          <h2>ReAct Agent Visualizer</h2>
+          <p>Enter a question below to watch the Agent's reasoning process unfold in real time — every Thought, Action, and Observation step by step.</p>
+          <div class="example-queries">
+            <button class="example-query" onclick="askExample(this)">What is the weather in Shanghai?</button>
+            <button class="example-query" onclick="askExample(this)">Compare Python vs JavaScript</button>
+            <button class="example-query" onclick="askExample(this)">Find the latest AI papers</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="progress-bar-container" id="progressBar" style="display:none;">
+        <div class="progress-info">
+          <span>Step</span>
+          <span class="step-count" id="stepCount">0/0</span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+        <span class="elapsed-time" id="elapsedTime">0.0s</span>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-wrapper">
+          <div class="input-box">
+            <textarea id="queryInput" placeholder="Enter your question..." rows="2" onkeydown="handleKeyDown(event)"></textarea>
+          </div>
+          <button class="send-btn" id="sendBtn" onclick="sendQuery()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span>Send</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───
+let sessions = [];
+let activeSessionId = null;
+let isRunning = false;
+let timerInterval = null;
+let elapsedStart = 0;
+
+// ─── Data Protocol ───
+function createStep(type, content, extras = {}) {
+  return {
+    id: 'step_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    type,          // 'thought' | 'action' | 'observation'
+    content,
+    timestamp: Date.now(),
+    status: 'running',  // 'running' | 'completed' | 'error'
+    duration: null,
+    toolName: extras.toolName || null,
+    toolParams: extras.toolParams || null,
+    toolResult: extras.toolResult || null,
+    error: extras.error || null,
+    retryCount: extras.retryCount || 0,
+  };
+}
+
+function createSession(query) {
+  return {
+    id: 'sess_' + Date.now(),
+    query,
+    steps: [],
+    finalAnswer: null,
+    status: 'running',
+    startTime: Date.now(),
+    endTime: null,
+  };
+}
+
+// ─── Theme ───
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  localStorage.setItem('react-viz-theme', isDark ? 'light' : 'dark');
+  const btn = document.getElementById('themeBtn');
+  btn.innerHTML = isDark
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+}
+
+(function initTheme() {
+  const saved = localStorage.getItem('react-viz-theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+
+// ─── Sidebar ───
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+
+function renderSessionList() {
+  const list = document.getElementById('sessionList');
+  list.innerHTML = sessions.map(s => {
+    const isActive = s.id === activeSessionId;
+    const statusClass = s.status;
+    const stepCount = s.steps.length;
+    const time = new Date(s.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="session-item ${isActive ? 'active' : ''}" onclick="switchSession('${s.id}')">
+      <div class="session-item-title">${escHtml(s.query)}</div>
+      <div class="session-item-meta">
+        <span class="session-status-dot ${statusClass}"></span>
+        <span>${stepCount} steps</span>
+        <span>${time}</span>
+      </div>
+    </div>`;
+  }).reverse().join('');
+}
+
+function switchSession(id) {
+  activeSessionId = id;
+  renderSessionList();
+  renderTrajectory();
+  // Close sidebar on mobile
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+function newSession() {
+  activeSessionId = null;
+  renderSessionList();
+  renderTrajectory();
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+function clearAll() {
+  sessions = [];
+  activeSessionId = null;
+  isRunning = false;
+  stopTimer();
+  renderSessionList();
+  renderTrajectory();
+}
+
+// ─── Render ───
+function getSession() {
+  return sessions.find(s => s.id === activeSessionId);
+}
+
+function renderTrajectory() {
+  const view = document.getElementById('trajectoryView');
+  const session = getSession();
+
+  if (!session) {
+    view.innerHTML = document.getElementById('emptyState') ? buildEmptyState() : '';
+    document.getElementById('progressBar').style.display = 'none';
+    return;
+  }
+
+  let html = '';
+
+  // Query bubble
+  html += `<div class="query-bubble">
+    <div class="query-avatar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </div>
+    <div class="query-content">
+      <div class="query-label">User query</div>
+      <div class="query-text">${escHtml(session.query)}</div>
+    </div>
+  </div>`;
+
+  // Steps timeline
+  if (session.steps.length > 0) {
+    html += '<div class="step-timeline">';
+    session.steps.forEach((step, i) => {
+      html += renderStepCard(step, i);
+    });
+    html += '</div>';
+  }
+
+  // Final result
+  if (session.finalAnswer) {
+    html += `<div class="result-card">
+      <div class="result-inner">
+        <div class="result-header">
+          <div class="result-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <span class="result-label">Final answer</span>
+        </div>
+        <div class="result-body">${escHtml(session.finalAnswer)}</div>
+      </div>
+    </div>`;
+  }
+
+  view.innerHTML = html;
+  updateProgress();
+  scrollToBottom();
+}
+
+function renderStepCard(step, index) {
+  const typeIcons = {
+    thought: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="9" y1="23" x2="15" y2="23"/></svg>',
+    action: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    observation: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+  };
+
+  const typeLabels = { thought: 'Thought', action: 'Action', observation: 'Observation' };
+  const isCollapsed = step._collapsed ? 'collapsed' : '';
+  const streamingClass = step.status === 'running' ? 'streaming-cursor' : '';
+
+  let bodyHtml = `<div class="step-content ${streamingClass}">${escHtml(step.content)}</div>`;
+
+  // Action: show tool call details
+  if (step.type === 'action' && step.toolName) {
+    bodyHtml += `<div class="tool-call-block">
+      <div class="tool-call-header">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span class="tool-name">${escHtml(step.toolName)}</span>
+        <span>tool call</span>
+      </div>
+      <div class="tool-call-body">${step.toolParams ? escHtml(JSON.stringify(step.toolParams, null, 2)) : ''}</div>
+    </div>`;
+  }
+
+  // Observation: show tool result
+  if (step.type === 'observation' && step.toolResult !== null && step.toolResult !== undefined) {
+    const resultStr = typeof step.toolResult === 'string' ? step.toolResult : JSON.stringify(step.toolResult, null, 2);
+    bodyHtml += `<div class="tool-call-block">
+      <div class="tool-call-header">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Return result</span>
+      </div>
+      <div class="tool-call-body">${escHtml(resultStr)}</div>
+    </div>`;
+  }
+
+  // Error
+  if (step.error) {
+    bodyHtml += `<div class="error-block">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      ${escHtml(step.error)}
+    </div>`;
+    if (step.retryCount > 0) {
+      bodyHtml += `<div class="retry-badge">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Retry ${step.retryCount} time(s)
+      </div>`;
+    }
+  }
+
+  const durationStr = step.duration != null ? (step.duration < 1000 ? step.duration + 'ms' : (step.duration / 1000).toFixed(1) + 's') : '';
+
+  return `<div class="step-card ${isCollapsed}" data-type="${step.type}" data-status="${step.status}" data-step-id="${step.id}" style="animation-delay:${index * 0.05}s">
+    <div class="step-connector"></div>
+    <div class="step-inner">
+      <div class="step-header" onclick="toggleStep('${step.id}')">
+        <div class="step-header-left">
+          <div class="step-icon">${typeIcons[step.type]}</div>
+          <span class="step-badge">${typeLabels[step.type]}</span>
+          <span class="step-number">#${index + 1}</span>
+        </div>
+        <div class="step-header-right">
+          ${durationStr ? `<span class="step-duration">${durationStr}</span>` : ''}
+          <span class="step-status-tag ${step.status}">${step.status}</span>
+          <div class="step-toggle">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="step-body">${bodyHtml}</div>
+    </div>
+  </div>`;
+}
+
+function toggleStep(stepId) {
+  const session = getSession();
+  if (!session) return;
+  const step = session.steps.find(s => s.id === stepId);
+  if (step) {
+    step._collapsed = !step._collapsed;
+    const card = document.querySelector(`[data-step-id="${stepId}"]`);
+    if (card) card.classList.toggle('collapsed');
+  }
+}
+
+function updateProgress() {
+  const session = getSession();
+  const bar = document.getElementById('progressBar');
+  if (!session || session.status === 'completed') {
+    if (session && session.status === 'completed') {
+      bar.style.display = 'flex';
+      document.getElementById('stepCount').textContent = `${session.steps.length}/${session.steps.length}`;
+      document.getElementById('progressFill').style.width = '100%';
+    }
+    if (!session) bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  const completed = session.steps.filter(s => s.status === 'completed' || s.status === 'error').length;
+  const total = session.steps.length;
+  document.getElementById('stepCount').textContent = `${completed}/${total}`;
+  document.getElementById('progressFill').style.width = total > 0 ? (completed / total * 100) + '%' : '0%';
+}
+
+function scrollToBottom() {
+  const view = document.getElementById('trajectoryView');
+  requestAnimationFrame(() => {
+    view.scrollTop = view.scrollHeight;
+  });
+}
+
+// ─── Timer ───
+function startTimer() {
+  elapsedStart = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - elapsedStart) / 1000).toFixed(1);
+    document.getElementById('elapsedTime').textContent = elapsed + 's';
+  }, 100);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+// ─── Send Query ───
+function sendQuery() {
+  const input = document.getElementById('queryInput');
+  const query = input.value.trim();
+  if (!query || isRunning) return;
+
+  input.value = '';
+  isRunning = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('sendBtn').innerHTML = '<div class="spinner"></div><span>Running</span>';
+
+  const session = createSession(query);
+  sessions.push(session);
+  activeSessionId = session.id;
+  renderSessionList();
+  renderTrajectory();
+  startTimer();
+
+  // Simulate ReAct process
+  simulateReAct(session, query);
+}
+
+function askExample(btn) {
+  document.getElementById('queryInput').value = btn.textContent;
+  sendQuery();
+}
+
+function handleKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuery();
+  }
+}
+
+// ─── Simulated ReAct Process ───
+async function simulateReAct(session, query) {
+  const steps = generateSimulationSteps(query);
+
+  for (let i = 0; i < steps.length; i++) {
+    const stepDef = steps[i];
+    const step = createStep(stepDef.type, '', stepDef.extras || {});
+    session.steps.push(step);
+    renderTrajectory();
+
+    // Simulate streaming content
+    const words = stepDef.content.split('');
+    for (let j = 0; j < words.length; j++) {
+      step.content += words[j];
+      // Update only the step content for performance
+      updateStepContent(step);
+      await sleep(20 + Math.random() * 30);
+    }
+
+    // Complete the step
+    step.status = stepDef.error ? 'error' : 'completed';
+    step.duration = Math.floor(Math.random() * 800 + 200);
+    if (stepDef.error) step.error = stepDef.error;
+
+    renderTrajectory();
+    await sleep(300 + Math.random() * 400);
+  }
+
+  // Final answer
+  session.finalAnswer = steps[steps.length - 1].answer || 'Based on the above reasoning and observations, I have completed the analysis of your question. Please see the detailed thought process above.';
+  session.status = 'completed';
+  session.endTime = Date.now();
+  stopTimer();
+
+  isRunning = false;
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('sendBtn').innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg><span>Send</span>';
+
+  renderTrajectory();
+}
+
+function updateStepContent(step) {
+  const card = document.querySelector(`[data-step-id="${step.id}"]`);
+  if (card) {
+    const contentEl = card.querySelector('.step-content');
+    if (contentEl) {
+      contentEl.textContent = step.content;
+      if (step.status === 'running') {
+        contentEl.classList.add('streaming-cursor');
+      }
+      scrollToBottom();
+    }
+  }
+}
+
+function generateSimulationSteps(query) {
+  const q = query.toLowerCase();
+
+  if (q.includes('weather') || q.includes('天气')) {
+    return [
+      { type: 'thought', content: 'The user is asking about weather information. I need to call a weather API to get real-time data. First, I should identify the city mentioned in the query.' },
+      { type: 'action', content: 'Calling weather search tool to get current weather data.', extras: { toolName: 'weather_search', toolParams: { city: 'Shanghai', unit: 'metric' } } },
+      { type: 'observation', content: 'Received weather data from the API.', extras: { toolResult: { city: 'Shanghai', temperature: '28°C', condition: 'Partly cloudy', humidity: '65%', wind: '12 km/h SE' } } },
+      { type: 'thought', content: 'I have the current weather data for Shanghai. The temperature is 28°C with partly cloudy conditions. I should also check if there are any weather warnings or forecasts that might be relevant.' },
+      { type: 'action', content: 'Fetching weather forecast for the next 24 hours.', extras: { toolName: 'weather_forecast', toolParams: { city: 'Shanghai', hours: 24 } } },
+      { type: 'observation', content: 'Received forecast data.', extras: { toolResult: { forecast: 'Expect light rain in the afternoon, clearing by evening. High 30°C, Low 22°C.', alerts: 'None' } } },
+      { type: 'thought', content: 'Now I have both current conditions and the forecast. I can provide a comprehensive answer to the user.' },
+      { answer: 'Shanghai is currently 28°C and partly cloudy with 65% humidity. Expect light rain this afternoon, clearing by evening. High of 30°C, low of 22°C. No weather alerts.' },
+    ];
+  }
+
+  if (q.includes('python') || q.includes('javascript') || q.includes('比较')) {
+    return [
+      { type: 'thought', content: 'The user wants a comparison between programming languages. I need to gather data on both languages across multiple dimensions: performance, ecosystem, syntax, use cases, and community.' },
+      { type: 'action', content: 'Searching for Python language characteristics and ecosystem data.', extras: { toolName: 'knowledge_search', toolParams: { query: 'Python programming language features ecosystem 2025' } } },
+      { type: 'observation', content: 'Retrieved comprehensive data about Python.', extras: { toolResult: { type: 'Interpreted, dynamically typed', performance: 'Slower execution, C-extensions available', ecosystem: '350K+ packages on PyPI', useCases: ['Data Science', 'ML/AI', 'Web Backend', 'Automation'], community: 'Top 1 on TIOBE Index 2025' } } },
+      { type: 'action', content: 'Searching for JavaScript language characteristics and ecosystem data.', extras: { toolName: 'knowledge_search', toolParams: { query: 'JavaScript programming language features ecosystem 2025' } } },
+      { type: 'observation', content: 'Retrieved comprehensive data about JavaScript.', extras: { toolResult: { type: 'Interpreted, dynamically typed (TS adds static)', performance: 'V8 JIT-compiled, fast for I/O', ecosystem: '2M+ packages on npm', useCases: ['Web Frontend', 'Web Backend (Node.js)', 'Mobile (React Native)', 'Desktop (Electron)'], community: 'Most used language worldwide' } } },
+      { type: 'thought', content: 'Now I have detailed data for both languages. I can create a structured comparison covering type systems, performance, ecosystems, and primary use cases. This will give the user a clear overview.' },
+      { answer: 'Python excels in Data Science, ML/AI, and automation with 350K+ packages. JavaScript dominates web development (frontend + Node.js backend) with 2M+ npm packages. Python is slower but more readable; JavaScript (via V8) is faster for I/O. Both are dynamically typed, but TypeScript adds static typing to JS. Choose Python for data/ML, JavaScript for web/full-stack.' },
+    ];
+  }
+
+  if (q.includes('ai') || q.includes('paper') || q.includes('论文')) {
+    return [
+      { type: 'thought', content: 'The user is looking for recent AI research papers. I should search for the latest publications from major AI conferences and repositories.' },
+      { type: 'action', content: 'Searching for recent AI research papers.', extras: { toolName: 'arxiv_search', toolParams: { query: 'artificial intelligence 2025', max_results: 5, sort: 'recent' } } },
+      { type: 'observation', content: 'Found recent AI papers from arXiv.', extras: { toolResult: { papers: ['Scaling Laws for Neural Architecture Search', 'Multi-Modal Reasoning with Large Language Models', 'Efficient Fine-Tuning via LoRA Extensions', 'Self-Play Reinforcement Learning for Code Generation', 'Diffusion Models for Real-Time Video Generation'] } } },
+      { type: 'thought', content: 'I have a list of recent papers. Let me also check for notable papers from top conferences this year to provide a more complete picture.' },
+      { type: 'action', content: 'Fetching top conference paper highlights.', extras: { toolName: 'conference_search', toolParams: { conferences: ['NeurIPS', 'ICML', 'ICLR'], year: 2025 } } },
+      { type: 'observation', content: 'Retrieved conference highlights.', extras: { toolResult: { highlights: ['Test-time compute scaling', 'Mixture-of-Experts architectures', 'World models for embodied AI', 'Constitutional AI and alignment'] } } },
+      { type: 'thought', content: 'I now have both arXiv preprints and conference highlights. I can summarize the key trends and notable papers for the user.' },
+      { answer: 'Key AI research trends in 2025: (1) Test-time compute scaling for better reasoning, (2) Multi-modal reasoning across text/image/video, (3) Efficient fine-tuning methods (LoRA variants), (4) World models for embodied AI, (5) Constitutional AI and safety alignment. Top papers from NeurIPS/ICML/ICLR focus on MoE architectures and self-play RL for code generation.' },
+    ];
+  }
+
+  // Default simulation
+  return [
+    { type: 'thought', content: 'Let me analyze the user\'s question carefully. I need to break this down into sub-problems and determine what information or tools I need to provide a complete answer.' },
+    { type: 'action', content: 'Performing a knowledge search to gather relevant information.', extras: { toolName: 'search', toolParams: { query: query, limit: 5 } } },
+    { type: 'observation', content: 'Search returned relevant results.', extras: { toolResult: { results: ['Result 1: Relevant information found', 'Result 2: Supporting data retrieved', 'Result 3: Additional context available'], source: 'knowledge_base' } } },
+    { type: 'thought', content: 'The search results provide good coverage. I should synthesize this information and present a clear, structured answer to the user.' },
+    { type: 'action', content: 'Generating final synthesized response based on gathered information.', extras: { toolName: 'generate', toolParams: { prompt: 'Synthesize answer', sources: 3 } } },
+    { type: 'observation', content: 'Response generated successfully.', extras: { toolResult: { status: 'success', confidence: 0.92 } } },
+    { type: 'thought', content: 'I have gathered sufficient information and generated a well-structured response. The confidence level is high (0.92), so I can present this as the final answer.' },
+    { answer: 'Based on my analysis, I\'ve gathered relevant information from multiple sources and synthesized a comprehensive response. The reasoning process involved searching the knowledge base, evaluating the results, and constructing a coherent answer with 92% confidence.' },
+  ];
+}
+
+// ─── Helpers ───
+function escHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function buildEmptyState() {
+  return `<div class="empty-state" id="emptyState">
+    <div class="empty-state-icon">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+    </div>
+    <h2>ReAct Agent Visualizer</h2>
+    <p>Enter a question below to watch the Agent's reasoning process unfold in real time — every Thought, Action, and Observation step by step.</p>
+    <div class="example-queries">
+      <button class="example-query" onclick="askExample(this)">What is the weather in Shanghai?</button>
+      <button class="example-query" onclick="askExample(this)">Compare Python vs JavaScript</button>
+      <button class="example-query" onclick="askExample(this)">Find the latest AI papers</button>
+    </div>
+  </div>`;
+}
+
+// ─── Error simulation demo ───
+async function simulateErrorRecovery(session) {
+  const step = createStep('action', '', { toolName: 'external_api', toolParams: { endpoint: '/data' } });
+  session.steps.push(step);
+  renderTrajectory();
+
+  const content = 'Calling external API to fetch data...';
+  for (let i = 0; i < content.length; i++) {
+    step.content += content[i];
+    updateStepContent(step);
+    await sleep(25);
+  }
+
+  step.status = 'error';
+  step.error = 'Connection timeout: API endpoint unreachable (ETIMEDOUT)';
+  step.duration = 5000;
+  step.retryCount = 0;
+  renderTrajectory();
+  await sleep(1000);
+
+  // Retry 1
+  step.retryCount = 1;
+  const retryStep = createStep('action', '', { toolName: 'external_api', toolParams: { endpoint: '/data', retry: 1 } });
+  session.steps.push(retryStep);
+  renderTrajectory();
+
+  const retryContent = 'Retrying API call (attempt 2)...';
+  for (let i = 0; i < retryContent.length; i++) {
+    retryStep.content += retryContent[i];
+    updateStepContent(retryStep);
+    await sleep(25);
+  }
+
+  retryStep.status = 'completed';
+  retryStep.duration = 1200;
+  retryStep.toolResult = { status: 'ok', data: 'Successfully retrieved data on retry' };
+  renderTrajectory();
+}
+</script>
+</body>
+</html>
