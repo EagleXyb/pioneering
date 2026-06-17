@@ -8,28 +8,86 @@ import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
 import './sidebar.css';
 
-function SidebarItem({ conv, isActive, onSelect, onDelete }: {
+function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
   conv: Conversation;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
 }) {
   const modeLabels: Record<string, string> = { chat: '对话', pro: '分析', task: '任务' };
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(conv.title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const startRename = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenameValue(conv.title);
+    setIsRenaming(true);
+  };
+
+  const commitRename = () => {
+    setIsRenaming(false);
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== conv.title) {
+      onRename(trimmed);
+    }
+  };
+
+  const cancelRename = () => {
+    setIsRenaming(false);
+  };
+
   return (
     <div
       className={`sidebar-item${isActive ? ' active' : ''}`}
       role="button"
       tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => { if (e.key === 'Enter') onSelect(); }}
+      onClick={isRenaming ? undefined : onSelect}
+      onKeyDown={(e) => {
+        if (isRenaming) return;
+        if (e.key === 'Enter') onSelect();
+      }}
     >
       <div className="sidebar-item-inner">
-        <div className="sidebar-item-title">{conv.title}</div>
+        {isRenaming ? (
+          <input
+            ref={inputRef}
+            className="sidebar-item-rename-input"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') cancelRename();
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <div className="sidebar-item-title" onDoubleClick={startRename}>{conv.title}</div>
+        )}
         <div className="sidebar-item-meta">
           <span className="sidebar-item-mode-tag">{modeLabels[conv.mode]}</span>
           {conv.preview && <span className="sidebar-item-preview">{conv.preview}</span>}
         </div>
       </div>
+      <button
+        className="sidebar-item-rename-btn"
+        onClick={startRename}
+        aria-label="重命名会话"
+        title="重命名"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
+          <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z"/>
+        </svg>
+      </button>
       <button
         className="sidebar-item-delete"
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -148,10 +206,34 @@ function AccountPopover() {
 export function Sidebar() {
   const { mode, setMode, sidebarOpen, toggleSidebar } = useAppStore();
   const {
-    conversations, activeId, activate, create, remove,
+    conversations, activeId, activate, create, remove, updateTitle,
+    fetchSessions, fetchMoreSessions, loading, error, total,
   } = useConversationStore();
   const { showToast } = useToast();
   const navigate = useNavigate();
+
+  // 挂载时从后端拉取会话列表
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  // 无限滚动：列表底部出现时加载下一页
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const hasMore = conversations.length < total;
+
+  useEffect(() => {
+    if (!hasMore || loading) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) fetchMoreSessions();
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, fetchMoreSessions]);
 
   const handleSwitchMode = useCallback((m: AppMode) => {
     setMode(m);
@@ -174,6 +256,27 @@ export function Sidebar() {
     setMode(conv.mode);
     navigate(`/${conv.mode}`);
   }, [activate, setMode, navigate]);
+
+  /** 删除会话：若删除的是当前活跃会话，自动跳转到剩余的第一个 */
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      const wasActive = id === activeId;
+      await remove(id);
+      if (wasActive) {
+        const remaining = useConversationStore.getState().conversations;
+        if (remaining.length > 0) {
+          const first = remaining[0];
+          activate(first.id);
+          setMode(first.mode);
+          navigate(`/${first.mode}`);
+        } else {
+          // 无剩余会话，保持在当前路由显示空状态
+        }
+      }
+    } catch {
+      showToast('删除失败');
+    }
+  }, [activeId, conversations, remove, activate, setMode, navigate, showToast]);
 
   const grouped = conversations.reduce<Record<string, Conversation[]>>((acc, c) => {
     (acc[c.group] ??= []).push(c);
@@ -231,20 +334,60 @@ export function Sidebar() {
         </div>
 
         <div className="sidebar-list">
-          {Object.entries(grouped).map(([group, items]) => (
-            <React.Fragment key={group}>
-              <div className="sidebar-group-label">{group}</div>
-              {items.map(item => (
-                <SidebarItem
-                  key={item.id}
-                  conv={item}
-                  isActive={item.id === activeId}
-                  onSelect={() => handleSelectConversation(item)}
-                  onDelete={() => { remove(item.id).catch(() => showToast('删除失败')); }}
-                />
+          {/* 首次加载骨架屏 */}
+          {loading && conversations.length === 0 && (
+            <div className="sidebar-list-status">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="sidebar-skeleton-item">
+                  <div className="skeleton-line skeleton-line-title" />
+                  <div className="skeleton-line skeleton-line-meta" />
+                </div>
               ))}
-            </React.Fragment>
-          ))}
+            </div>
+          )}
+
+          {/* 首次加载失败 */}
+          {!loading && error && conversations.length === 0 && (
+            <div className="sidebar-list-status sidebar-list-error">
+              <p className="sidebar-status-text">{error}</p>
+              <button className="sidebar-retry-btn" onClick={fetchSessions}>重试</button>
+            </div>
+          )}
+
+          {/* 空列表 */}
+          {!loading && !error && conversations.length === 0 && (
+            <div className="sidebar-list-status sidebar-list-empty">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.3">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+              </svg>
+              <p className="sidebar-status-text">暂无会话</p>
+            </div>
+          )}
+
+          {/* 会话列表 */}
+          {conversations.length > 0 && (
+            <>
+              {Object.entries(grouped).map(([group, items]) => (
+                <React.Fragment key={group}>
+                  <div className="sidebar-group-label">{group}</div>
+                  {items.map(item => (
+                    <SidebarItem
+                      key={item.id}
+                      conv={item}
+                      isActive={item.id === activeId}
+                      onSelect={() => handleSelectConversation(item)}
+                      onDelete={() => handleDelete(item.id)}
+                      onRename={(title) => { updateTitle(item.id, title).catch(() => showToast('重命名失败')); }}
+                    />
+                  ))}
+                </React.Fragment>
+              ))}
+              {/* 无限滚动哨兵 */}
+              <div ref={loadMoreRef} className="sidebar-load-more">
+                {loading && <span className="sidebar-load-more-text">加载中...</span>}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="sidebar-footer">

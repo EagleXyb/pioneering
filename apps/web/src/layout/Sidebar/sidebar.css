@@ -366,3 +366,129 @@
 .account-popover-logout {
   color: var(--text-secondary);
 }
+
+/* ===== 会话列表状态 ===== */
+
+/* 骨架屏 */
+.sidebar-list-status {
+  padding: 4px 0;
+}
+
+.sidebar-skeleton-item {
+  padding: 10px 10px;
+  margin-bottom: 2px;
+}
+
+.skeleton-line {
+  height: 12px;
+  background: var(--bg-sidebar-hover);
+  border-radius: 4px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-line-title {
+  width: 70%;
+  margin-bottom: 6px;
+}
+
+.skeleton-line-meta {
+  width: 45%;
+  height: 10px;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* 空状态 */
+.sidebar-list-empty {
+  text-align: center;
+  padding: 32px 12px;
+}
+
+.sidebar-list-empty svg {
+  margin-bottom: 8px;
+}
+
+.sidebar-status-text {
+  font-size: 13px;
+  color: var(--text-sidebar-dim);
+  margin: 0;
+}
+
+/* 错误状态 */
+.sidebar-list-error {
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.sidebar-list-error .sidebar-status-text {
+  color: var(--accent-red);
+  margin-bottom: 8px;
+}
+
+.sidebar-retry-btn {
+  padding: 4px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--accent-blue);
+  background: var(--accent-blue-light);
+  border: none;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.sidebar-retry-btn:hover {
+  opacity: 0.85;
+}
+
+/* 无限滚动加载更多 */
+.sidebar-load-more {
+  padding: 10px 0;
+  text-align: center;
+}
+
+.sidebar-load-more-text {
+  font-size: 11px;
+  color: var(--text-sidebar-dim);
+}
+
+/* ===== 重命名 ===== */
+
+.sidebar-item-rename-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--text-sidebar);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-blue);
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sidebar-item-rename-btn {
+  opacity: 0;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.sidebar-item:hover .sidebar-item-rename-btn {
+  opacity: 1;
+}
+
+.sidebar-item-rename-btn:hover {
+  color: var(--accent-blue);
+  background: var(--accent-blue-light);
+}
+
+.sidebar-item-rename-btn svg {
+  display: block;
+}

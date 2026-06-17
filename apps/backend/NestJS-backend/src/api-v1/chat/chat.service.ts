@@ -55,7 +55,7 @@ export class ChatService {
         messageCount: s.messageCount,
         lastMessage: s.messages[0]
           ? {
-              content: s.messages[0].content.slice(0, 50),
+              content: s.messages[0].content.slice(0, 150),
               role: s.messages[0].role,
               createdAt: s.messages[0].createdAt,
             }
@@ -257,6 +257,12 @@ export class ChatService {
       where: { id: messageId },
       data: { content: data.content },
     });
+
+    // 编辑后重新生成 AI 回复
+    if (data.regenerate) {
+      const assistantMsg = await this.regenerate(userId, messageId, {});
+      return assistantMsg;
+    }
 
     return {
       id: updated.id,
