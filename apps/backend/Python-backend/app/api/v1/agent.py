@@ -219,12 +219,13 @@ async def agent_completion(
         async def event_generator():
             ctx = StreamContext()
 
+            # 使用后端配置的默认模型（与 base URL 一致），忽略会话中存储的 model 避免 GLM Client 400
             async for event_dict in stream_agent_completion(
                 message=dto.message,
                 session_id=session_id,
                 user_id=current_user.id,
                 ctx=ctx,
-                model=getattr(session, "model", None) if session else None,
+                model=None,
                 system_prompt=getattr(session, "system_prompt", None) if session else None,
                 history=history,
             ):
@@ -275,7 +276,7 @@ async def agent_completion(
         session_id=session_id,
         user_id=current_user.id,
         ctx=ctx,
-        model=getattr(session, "model", None) if session else None,
+        model=None,
         system_prompt=getattr(session, "system_prompt", None) if session else None,
         history=history,
     ):

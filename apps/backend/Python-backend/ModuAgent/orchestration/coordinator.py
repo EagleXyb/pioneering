@@ -425,6 +425,8 @@ class Coordinator:
         max_format_retries = config.get("llm.max_format_retries", 2)
         tool_call_pattern = config.get("llm.tool_call_pattern", r"```tool_call\s*\n(.*?)\n```")
 
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
         yield SSEEncoder.encode_status("thinking", trace_id)
 
         try:

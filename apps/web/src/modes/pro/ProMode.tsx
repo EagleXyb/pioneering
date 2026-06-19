@@ -1,43 +1,21 @@
-import { useChat, useAgentState } from '@tdesign-react/chat';
 import { useConversationStore } from '../../store/conversationStore';
+import { useAgentChat } from './hooks/useAgentChat';
 import { useChatSync } from './hooks/useChatSync';
 import { AnalysisLayout, ProMainHeader } from './components/AnalysisLayout';
 import { AnalysisMessageList } from './components/AnalysisMessageList';
 import { AnalysisInput } from './components/AnalysisInput';
 import { ProcessPanel } from './components/ProcessPanel';
-import { getToken } from '../../api/client';
+import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 import './pro.css';
 
 export default function ProMode() {
   const activeId = useConversationStore((s) => s.activeId);
   const create = useConversationStore((s) => s.create);
 
-  const { chatEngine, messages, status } = useChat({
-    chatServiceConfig: {
-      endpoint: '/api/chat/completions',
-      stream: true,
-      protocol: 'agui',
-      onRequest: (params) => ({
-        ...params,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
-        body: JSON.stringify({
-          sessionId: activeId,
-          message: params.prompt,
-          model: 'deepseek-v4-flash',
-          stream: true,
-        }),
-      }),
-    },
-    defaultMessages: [],
-  });
+  const { messages, status, stateMap, currentStateKey, sendMessage, abort } =
+    useAgentChat(activeId, false);
 
-  const { stateMap, currentStateKey } = useAgentState({});
-
-  useChatSync(activeId, messages);
+  useChatSync(activeId, messages as unknown as ChatMessagesData[]);
 
   if (!activeId) {
     return (
@@ -56,11 +34,11 @@ export default function ProMode() {
     <AnalysisLayout>
       <AnalysisLayout.Main>
         <ProMainHeader status={status} stateMap={stateMap} />
-        <AnalysisMessageList messages={messages} status={status} />
+        <AnalysisMessageList messages={messages as unknown as ChatMessagesData[]} status={status} />
         <AnalysisInput
           status={status}
-          onSend={(text) => chatEngine.sendUserMessage({ prompt: text })}
-          onStop={() => chatEngine.abortChat()}
+          onSend={(text) => sendMessage({ prompt: text })}
+          onStop={() => abort()}
         />
       </AnalysisLayout.Main>
       <AnalysisLayout.Panel>

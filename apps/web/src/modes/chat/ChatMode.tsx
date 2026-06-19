@@ -17,6 +17,8 @@ export default function ChatMode() {
 
   const [inputValue, setInputValue] = useState('');
   const [deepThinking, setDeepThinking] = useState(false);
+  const deepThinkingRef = useRef(deepThinking);
+  deepThinkingRef.current = deepThinking;
   const [historyMessages, setHistoryMessages] = useState<ChatMessagesData[]>([]);
   const loadingHistory = useRef(false);
 
@@ -45,6 +47,8 @@ export default function ChatMode() {
       stream: true,
       protocol: 'agui',
       onRequest: (params) => {
+        // 从 store 读取最新值，避免 useChat 闭包捕获过期值
+        const store = useConversationStore.getState();
         return {
           ...params,
           method: 'POST',
@@ -53,11 +57,10 @@ export default function ChatMode() {
             ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
           },
           body: JSON.stringify({
-            sessionId: activeId,
+            sessionId: store.activeId,
             message: params.prompt,
-            model: 'deepseek-v4-flash',
             stream: true,
-            deepThink: deepThinking,
+            deepThink: deepThinkingRef.current,
           }),
         };
       },
@@ -84,10 +87,11 @@ export default function ChatMode() {
   // 停止生成
   const handleStop = () => {
     chatEngine.abortChat();
-    if (activeId) {
+    const store = useConversationStore.getState();
+    if (store.activeId) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg) {
-        stopGeneration({ sessionId: activeId, messageId: lastMsg.id }).catch(() => {});
+        stopGeneration({ sessionId: store.activeId, messageId: lastMsg.id }).catch(() => {});
       }
     }
   };
