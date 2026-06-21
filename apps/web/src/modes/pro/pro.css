@@ -29,6 +29,7 @@
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
+  background: #ffffff;
 }
 
 .pro-main-header-left {
@@ -108,6 +109,7 @@
   justify-content: center;
   gap: 12px;
   padding: 40px;
+  background: #ffffff;
 }
 
 .pro-empty-icon {
@@ -211,6 +213,7 @@
   padding: 16px 20px;
   border-top: 1px solid var(--border-light);
   flex-shrink: 0;
+  background: #ffffff;
 }
 
 .pro-input-inner {
@@ -444,6 +447,7 @@
   height: 100%;
   gap: 16px;
   padding: 40px;
+  background: #ffffff;
 }
 
 .pro-empty h2 {
