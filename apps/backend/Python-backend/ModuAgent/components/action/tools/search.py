@@ -97,7 +97,7 @@ class SearchTool(BaseTool):
 
         results: List[Dict[str, str]] = []
 
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=8.0) as client:
             response = client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -163,7 +163,7 @@ class SearchTool(BaseTool):
             "include_answer": True,
         }
 
-        with httpx.Client(timeout=15.0) as client:
+        with httpx.Client(timeout=8.0) as client:
             response = client.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
