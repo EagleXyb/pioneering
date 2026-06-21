@@ -11,7 +11,13 @@ class BaseReasoningEngine(ABC):
         prompt: str,
         context: Dict[str, Any],
         **kwargs,
-    ) -> Tuple[str, Dict[str, int]]:
+    ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
+        """返回 (content, usage, tool_calls)。
+
+        tool_calls 为原生 function calling 解析结果，格式:
+            [{"tool": "<name>", "parameters": {<params>}}, ...]
+        无工具调用时返回空列表。
+        """
         pass
 
     @abstractmethod

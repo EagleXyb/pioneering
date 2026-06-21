@@ -55,6 +55,7 @@ def _init_moduagent() -> None:
     from components.action.tools.calculator import CalculatorTool
     from components.action.tools.search import SearchTool
     from components.memory.cache.redis_adapter import InMemoryShortTermMemory
+    from components.memory.vector.chroma import ChromaLongTermMemory
     from components.perception.text.rule_based import TextPreprocessor
     from components.reasoning.llm.base_llm import BaseLLMReasoner
     from core.registry import get_registry
@@ -73,6 +74,7 @@ def _init_moduagent() -> None:
 
     registry.register_perception("text_preprocessor", TextPreprocessor())
     registry.register_memory("short_term", InMemoryShortTermMemory())
+    registry.register_memory("long_term", ChromaLongTermMemory())
     registry.register_tool(CalculatorTool())
     registry.register_tool(SearchTool())
     registry.register_action_executor("sync", SyncActionExecutor())

@@ -136,8 +136,14 @@ class Coordinator:
         if prompt_template:
             prompt = prompt_template.replace("{input}", prompt)
 
-        tool_descriptions = self._build_tool_descriptions()
-        context["tool_descriptions"] = tool_descriptions
+        native_tools = self._build_native_tools()
+        context["native_tools"] = native_tools
+
+        if native_tools:
+            context["tool_descriptions"] = ""
+        else:
+            tool_descriptions = self._build_tool_descriptions()
+            context["tool_descriptions"] = tool_descriptions
 
         reasoning_event = AgentEvent(
             trace_id=trace_id,
@@ -146,7 +152,7 @@ class Coordinator:
             domain=EventDomain.REASONING,
             action=EventAction.GENERATE,
             metadata={
-                "has_tools": str(bool(tool_descriptions)),
+                "has_tools": str(bool(native_tools or context.get("tool_descriptions"))),
                 "template_used": str(bool(prompt_template)),
             },
         )
@@ -159,7 +165,7 @@ class Coordinator:
         tool_call_pattern = config.get("llm.tool_call_pattern", r"```tool_call\s*\n(.*?)\n```")
 
         try:
-            response, _llm_usage = self._llm_adapter.generate(
+            response, _llm_usage, native_tool_calls = self._llm_adapter.generate(
                 prompt=prompt,
                 context=context,
                 temperature=config.get("llm.temperature", 0.7),
@@ -174,7 +180,11 @@ class Coordinator:
 
         format_retries = 0
         for iteration in range(max_iterations):
-            tool_calls, parse_errors = self._parse_tool_calls_with_errors(response, tool_call_pattern)
+            if native_tool_calls:
+                tool_calls = native_tool_calls
+                parse_errors = []
+            else:
+                tool_calls, parse_errors = self._parse_tool_calls_with_errors(response, tool_call_pattern)
 
             if not tool_calls and not parse_errors:
                 break
@@ -194,7 +204,7 @@ class Coordinator:
                         )},
                     ])
                     try:
-                        response, _ = self._llm_adapter.generate(
+                        response, _, native_tool_calls = self._llm_adapter.generate(
                             prompt="Please correct your tool call format and try again.",
                             context=context,
                             temperature=config.get("llm.temperature", 0.7),
@@ -284,7 +294,7 @@ class Coordinator:
             )
 
             try:
-                response, _ = self._llm_adapter.generate(
+                response, _, native_tool_calls = self._llm_adapter.generate(
                     prompt=continuation_prompt,
                     context=context,
                     temperature=config.get("llm.temperature", 0.7),
@@ -417,8 +427,14 @@ class Coordinator:
         if prompt_template:
             prompt = prompt_template.replace("{input}", prompt)
 
-        tool_descriptions = self._build_tool_descriptions()
-        context["tool_descriptions"] = tool_descriptions
+        native_tools = self._build_native_tools()
+        context["native_tools"] = native_tools
+
+        if native_tools:
+            context["tool_descriptions"] = ""
+        else:
+            tool_descriptions = self._build_tool_descriptions()
+            context["tool_descriptions"] = tool_descriptions
 
         tool_results: List[Dict[str, Any]] = []
         max_iterations = config.get("llm.max_reasoning_iterations", 3)
@@ -430,7 +446,7 @@ class Coordinator:
         yield SSEEncoder.encode_status("thinking", trace_id)
 
         try:
-            response, _llm_usage = await asyncio.to_thread(
+            response, _llm_usage, native_tool_calls = await asyncio.to_thread(
                 self._llm_adapter.generate,
                 prompt=prompt,
                 context=context,
@@ -442,14 +458,19 @@ class Coordinator:
             yield SSEEncoder.encode_error(ErrorCode.LLM_GENERATION_FAILED, str(e), trace_id)
             return
 
-        yield SSEEncoder.encode_thinking(response, trace_id)
+        if response:
+            yield SSEEncoder.encode_thinking(response, trace_id)
 
         format_retries = 0
         needs_stream_final = True
         for iteration in range(max_iterations):
             yield SSEEncoder.encode_reasoning_iteration(iteration + 1, max_iterations, trace_id)
 
-            tool_calls, parse_errors = self._parse_tool_calls_with_errors(response, tool_call_pattern)
+            if native_tool_calls:
+                tool_calls = native_tool_calls
+                parse_errors = []
+            else:
+                tool_calls, parse_errors = self._parse_tool_calls_with_errors(response, tool_call_pattern)
 
             if not tool_calls and not parse_errors:
                 needs_stream_final = False
@@ -470,7 +491,7 @@ class Coordinator:
                         )},
                     ])
                     try:
-                        response, _usage = await asyncio.to_thread(
+                        response, _usage, native_tool_calls = await asyncio.to_thread(
                             self._llm_adapter.generate,
                             prompt="Please correct your tool call format and try again.",
                             context=context,
@@ -480,7 +501,8 @@ class Coordinator:
                         total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
                         total_usage["completion_tokens"] += _usage.get("completion_tokens", 0)
                         total_usage["total_tokens"] += _usage.get("total_tokens", 0)
-                        yield SSEEncoder.encode_thinking(response, trace_id)
+                        if response:
+                            yield SSEEncoder.encode_thinking(response, trace_id)
                         format_retries += 1
                         continue
                     except Exception as e:
@@ -595,7 +617,7 @@ class Coordinator:
                 break
 
             try:
-                response, _usage = await asyncio.to_thread(
+                response, _usage, native_tool_calls = await asyncio.to_thread(
                     self._llm_adapter.generate,
                     prompt=continuation_prompt,
                     context=context,
@@ -605,7 +627,8 @@ class Coordinator:
                 total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
                 total_usage["completion_tokens"] += _usage.get("completion_tokens", 0)
                 total_usage["total_tokens"] += _usage.get("total_tokens", 0)
-                yield SSEEncoder.encode_thinking(response, trace_id)
+                if response:
+                    yield SSEEncoder.encode_thinking(response, trace_id)
             except Exception as e:
                 logger.error("LLM re-generation failed at iteration %d: %s", iteration + 1, str(e))
                 needs_stream_final = False
@@ -680,6 +703,21 @@ class Coordinator:
         ))
 
         yield SSEEncoder.encode_done(trace_id, tool_results, total_usage)
+
+    def _build_native_tools(self) -> List[Dict[str, Any]]:
+        """将注册表中的工具转换为 OpenAI function calling 格式。"""
+        available_tools = self._tool_adapter.list_available_tools()
+        native_tools = []
+        for name, info in available_tools.items():
+            native_tools.append({
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": info.get("description", ""),
+                    "parameters": info.get("parameters_schema", {}),
+                }
+            })
+        return native_tools
 
     def _build_tool_descriptions(self) -> str:
         available_tools = self._tool_adapter.list_available_tools()

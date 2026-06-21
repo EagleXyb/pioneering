@@ -43,11 +43,12 @@ class BaseLLMReasoner(BaseReasoningEngine):
         prompt: str,
         context: Dict[str, Any],
         **kwargs: Any,
-    ) -> Tuple[str, Dict[str, int]]:
+    ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
         messages = self._build_messages(prompt, context)
         temperature = kwargs.get("temperature", 0.7)
         max_tokens = kwargs.get("max_tokens", 512)
         model = kwargs.get("model", self._default_model)
+        tools = context.get("native_tools") or kwargs.get("tools")
 
         url = f"{self._base_url}/chat/completions"
         headers = self._build_headers()
@@ -58,25 +59,44 @@ class BaseLLMReasoner(BaseReasoningEngine):
             "max_tokens": max_tokens,
             "stream": False,
         }
+        if tools:
+            payload["tools"] = tools
 
         with httpx.Client(timeout=self._timeout) as client:
             response = client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
 
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        message = data.get("choices", [{}])[0].get("message", {})
+        content = message.get("content", "") or ""
+        raw_tool_calls = message.get("tool_calls", [])
+
         usage_data = data.get("usage", {})
         usage = {
             "prompt_tokens": usage_data.get("prompt_tokens", 0),
             "completion_tokens": usage_data.get("completion_tokens", 0),
             "total_tokens": usage_data.get("total_tokens", 0),
         }
+
+        parsed_tool_calls: List[Dict[str, Any]] = []
+        for tc in raw_tool_calls:
+            try:
+                func = tc.get("function", {})
+                tc_name = func.get("name", "")
+                args_str = func.get("arguments", "{}")
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                if tc_name:
+                    parsed_tool_calls.append({"tool": tc_name, "parameters": args})
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning("Failed to parse tool_call arguments: %s", e)
+
         logger.debug(
-            "LLM response: model=%s tokens=%s",
+            "LLM response: model=%s tokens=%s tool_calls=%d",
             data.get("model", model),
             usage,
+            len(parsed_tool_calls),
         )
-        return content, usage
+        return content, usage, parsed_tool_calls
 
     def stream(
         self,

@@ -23,3 +23,6 @@ pip-delete-this-directory.txt
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# Python logs
+logs/
+*.log
