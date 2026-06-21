@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 发展趋势 · 2025-2026 最新趋势分析</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* --- Reset & Base --- */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0B0B10;
+      --card: #1E1E23;
+      --card-border: rgba(30,30,38,0.8);
+      --accent: #5E6AD2;
+      --accent-soft: rgba(94,106,210,0.13);
+      --accent-10: rgba(94,106,210,0.10);
+      --text-primary: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-muted2: #64748B;
+      --text-dim: #475569;
+      --divider: #1E293B;
+      --green: #22C55E;
+      --green-bg: rgba(34,197,94,0.13);
+      --amber: #F59E0B;
+      --amber-bg: rgba(245,158,11,0.13);
+      --red: #EF4444;
+      --red-bg: rgba(239,68,68,0.13);
+      --progress-bg: #232328;
+      --body-font: 'Inter', system-ui, -apple-system, sans-serif;
+      --chinese-font: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    html {
+      font-family: var(--body-font);
+      background: var(--bg);
+      color: var(--text-primary);
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body { min-height: 100vh; }
+
+    .cn { font-family: var(--chinese-font); }
+
+    /* --- Layout --- */
+    .page {
+      max-width: 1440px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .section {
+      width: 100%;
+      padding: 80px 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 48px;
+    }
+
+    .section-title {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-align: center;
+    }
+
+    .section-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      font-family: var(--chinese-font);
+      text-align: center;
+    }
+
+    /* --- Header --- */
+    .header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 72px;
+      padding: 0 48px;
+      background: var(--bg);
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 3px;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .nav a {
+      font-size: 14px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav a:hover { color: var(--text-primary); }
+
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: var(--divider);
+    }
+
+    /* --- Hero --- */
+    .hero {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 100px 120px 60px;
+      gap: 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 100px;
+      background: var(--accent-soft);
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .badge-text {
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      font-family: var(--chinese-font);
+    }
+
+    .headline {
+      font-size: 64px;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    .subheadline {
+      font-size: 24px;
+      color: var(--text-muted);
+      text-align: center;
+      font-family: var(--chinese-font);
+    }
+
+    .hero-desc {
+      max-width: 640px;
+      font-size: 14px;
+      color: var(--text-muted2);
+      text-align: center;
+      line-height: 24px;
+      font-family: var(--chinese-font);
+    }
+
+    .stats-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-evenly;
+      align-items: center;
+      padding: 32px 48px;
+      border-radius: 16px;
+      background: rgba(30,30,35,0.53);
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--chinese-font);
+    }
+
+    .stat-source {
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+
+    /* --- Trends Section --- */
+    .trends-grid {
+      width: 100%;
+      display: flex;
+      gap: 20px;
+    }
+
+    .trends-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .trend-card {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 28px;
+      border-radius: 16px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+    }
+
+    .trend-number {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+    }
+
+    .trend-number span {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .trend-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .trend-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 22px;
+      font-family: var(--chinese-font);
+    }
+
+    .trend-badge {
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      font-family: var(--chinese-font);
+    }
+
+    /* --- Data Section --- */
+    .metrics-grid {
+      width: 100%;
+      display: flex;
+      gap: 20px;
+    }
+
+    .metric-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 32px;
+      border-radius: 16px;
+      background: var(--card);
+    }
+
+    .metric-headline {
+      font-size: 14px;
+      color: var(--text-muted);
+      letter-spacing: 2px;
+      font-family: var(--chinese-font);
+    }
+
+    .metric-value {
+      font-size: 40px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .metric-info {
+      font-size: 13px;
+      color: var(--accent);
+      font-family: var(--chinese-font);
+    }
+
+    .metric-src {
+      font-size: 11px;
+      color: var(--text-muted2);
+      font-family: var(--chinese-font);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--progress-bg);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+
+    .pf-1 { width: 80%; }
+    .pf-2 { width: 60%; }
+    .pf-3 { width: 28%; }
+
+    /* --- Polar Section --- */
+    .polar-grid {
+      width: 100%;
+      display: flex;
+      gap: 20px;
+    }
+
+    .polar-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 32px;
+      border-radius: 16px;
+      background: var(--card);
+    }
+
+    .polar-flag {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .polar-pct {
+      font-size: 48px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .polar-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-family: var(--chinese-font);
+    }
+
+    .polar-data {
+      font-size: 12px;
+      color: var(--text-muted2);
+      line-height: 22px;
+      font-family: var(--chinese-font);
+    }
+
+    /* --- Predictions Section --- */
+    .pred-grid {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .pred-card {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 24px 28px;
+      border-radius: 12px;
+      background: var(--card);
+    }
+
+    .pred-num {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      flex-shrink: 0;
+    }
+
+    .pred-num span {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .pred-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .pred-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      font-family: var(--chinese-font);
+    }
+
+    .pred-detail {
+      font-size: 12px;
+      color: var(--text-muted2);
+      font-family: var(--chinese-font);
+    }
+
+    .pred-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 100px;
+      flex-shrink: 0;
+    }
+
+    .pred-badge span {
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    .badge-high {
+      background: var(--green-bg);
+    }
+    .badge-high span { color: var(--green); }
+
+    .badge-mid {
+      background: var(--amber-bg);
+    }
+    .badge-mid span { color: var(--amber); }
+
+    .badge-low {
+      background: var(--red-bg);
+    }
+    .badge-low span { color: var(--red); }
+
+    /* --- Footer --- */
+    .footer {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 120px 40px;
+      gap: 32px;
+    }
+
+    .footer-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--divider);
+    }
+
+    .footer-sources {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: var(--chinese-font);
+    }
+
+    .footer-list {
+      max-width: 800px;
+      font-size: 12px;
+      color: var(--text-muted2);
+      text-align: center;
+      line-height: 22px;
+      font-family: var(--chinese-font);
+    }
+
+    .footer-copy {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--chinese-font);
+    }
+
+    /* --- Responsive --- */
+    @media (max-width: 1024px) {
+      .section { padding: 60px 40px; }
+      .hero { padding: 80px 40px 40px; }
+      .headline { font-size: 48px; }
+      .stats-bar { flex-wrap: wrap; gap: 24px; padding: 24px; }
+      .trends-grid { flex-direction: column; }
+      .metrics-grid { flex-wrap: wrap; }
+      .polar-grid { flex-wrap: wrap; }
+    }
+
+    @media (max-width: 640px) {
+      .section { padding: 40px 20px; gap: 32px; }
+      .hero { padding: 60px 20px 30px; }
+      .header { padding: 0 20px; }
+      .nav { gap: 16px; }
+      .headline { font-size: 36px; }
+      .subheadline { font-size: 18px; }
+      .stat-value { font-size: 24px; }
+      .section-title { font-size: 28px; }
+      .pred-card { flex-wrap: wrap; }
+      .stats-bar { padding: 20px; }
+    }
+
+    /* --- Animations --- */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .animate-fade-up {
+      animation: fadeUp 0.6s ease-out forwards;
+    }
+
+    .animate-fade-in {
+      animation: fadeIn 0.5s ease-out forwards;
+    }
+
+    .stagger-1 { animation-delay: 0.1s; opacity: 0; }
+    .stagger-2 { animation-delay: 0.2s; opacity: 0; }
+    .stagger-3 { animation-delay: 0.3s; opacity: 0; }
+    .stagger-4 { animation-delay: 0.4s; opacity: 0; }
+    .stagger-5 { animation-delay: 0.5s; opacity: 0; }
+    .stagger-6 { animation-delay: 0.6s; opacity: 0; }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+
+    <!-- ===== HEADER ===== -->
+    <header class="header">
+      <div class="logo">AI TRENDS</div>
+      <nav class="nav">
+        <a href="#trends">趋势</a>
+        <a href="#data">数据</a>
+        <a href="#polar">格局</a>
+        <a href="#predictions">预测</a>
+      </nav>
+    </header>
+
+    <div class="divider"></div>
+
+    <!-- ===== HERO ===== -->
+    <section class="hero animate-fade-in">
+      <div class="badge">
+        <span class="badge-dot"></span>
+        <span class="badge-text">Stanford HAI · McKinsey · a16z · Gartner · IDC</span>
+      </div>
+      <h1 class="headline">AI 发展趋势</h1>
+      <p class="subheadline">2025–2026 最新趋势分析报告</p>
+      <p class="hero-desc">
+        基于 Stanford HAI 2026 AI Index、McKinsey The State of AI、a16z Big Ideas 2026、Gartner、IDC 等全球顶级研究机构的最新数据与洞察
+      </p>
+
+      <div class="stats-bar animate-fade-up">
+        <div class="stat-item">
+          <div class="stat-value">$301B</div>
+          <div class="stat-label">全球 AI 支出 (2026)</div>
+          <div class="stat-source">IDC</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">72%</div>
+          <div class="stat-label">企业 AI 采用率</div>
+          <div class="stat-source">McKinsey</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">280×</div>
+          <div class="stat-label">推理成本降幅 (2年)</div>
+          <div class="stat-source">Stanford HAI</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">88%</div>
+          <div class="stat-label">组织已采用 AI</div>
+          <div class="stat-source">McKinsey</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SIX CORE TRENDS ===== -->
+    <section id="trends" class="section">
+      <div class="section-title">六大核心趋势</div>
+      <p class="section-subtitle">2025–2026 年 AI 产业正在经历的六项结构性变革</p>
+
+      <div class="trends-grid">
+        <!-- Left Column -->
+        <div class="trends-col">
+          <div class="trend-card animate-fade-up stagger-1">
+            <div class="trend-number"><span>01</span></div>
+            <div class="trend-title">Agent 化跃迁</div>
+            <div class="trend-desc">
+              AI Agent 从实验走向生产。Gartner 预测 2026 年 40% 企业应用将嵌入智能体能力，智能体市场规模预计达 $201.9B。多智能体协作系统成为新范式，企业从「试点」转向「规模化部署」。
+            </div>
+            <div class="trend-badge">CAGR 119% · Gartner</div>
+          </div>
+
+          <div class="trend-card animate-fade-up stagger-3">
+            <div class="trend-number"><span>02</span></div>
+            <div class="trend-title">推理成本崩塌</div>
+            <div class="trend-desc">
+              达到 GPT-3.5 水平的推理成本在两年内暴跌 280 倍（从 $20/百万 token 降至 $0.07）。硬件成本每年下降约 30%，能效每年提升约 40%。Inference cost 三年累计下降 90%，AI 从奢侈品变为基础设施。
+            </div>
+            <div class="trend-badge">280× 下降 · Stanford HAI</div>
+          </div>
+
+          <div class="trend-card animate-fade-up stagger-5">
+            <div class="trend-number"><span>03</span></div>
+            <div class="trend-title">多模态融合</div>
+            <div class="trend-desc">
+              AI 从单模态向多模态深度融合发展。前沿模型在博士级科学问题、多模态推理和数学竞赛中已达到或超越人类水平。AI 性能基准一年内提升 67%，视频即空间、世界模型等新范式加速成型。
+            </div>
+            <div class="trend-badge">基准提升 67% · Stanford HAI</div>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="trends-col">
+          <div class="trend-card animate-fade-up stagger-2">
+            <div class="trend-number"><span>04</span></div>
+            <div class="trend-title">端侧智能爆发</div>
+            <div class="trend-desc">
+              全球 67% 企业已在公有云运行 AI 工作负载，端侧推理需求激增。AI 芯片及硬件市场达 $98B，推理成本下降使小模型在手机、IoT 设备上运行成为可能。边缘 AI 正从概念走向规模化。
+            </div>
+            <div class="trend-badge">$98B 硬件市场 · IDC</div>
+          </div>
+
+          <div class="trend-card animate-fade-up stagger-4">
+            <div class="trend-number"><span>05</span></div>
+            <div class="trend-title">垂直行业深耕</div>
+            <div class="trend-desc">
+              金融服务业 AI 支出达 $3,200/人（行业均值的 2.6 倍）。制造 AI 支出同比增长 48%，医疗 AI 采用率 62%。AI 在客服和软件开发领域带来 14%-26% 生产力提升，行业级 AI 解决方案加速渗透。
+            </div>
+            <div class="trend-badge">采用率 62%-88% · McKinsey</div>
+          </div>
+
+          <div class="trend-card animate-fade-up stagger-6">
+            <div class="trend-number"><span>06</span></div>
+            <div class="trend-title">治理与对齐</div>
+            <div class="trend-desc">
+              AI 安全事故从 2024 年 233 起激增至 2025 年 362 起。76% 企业将数据隐私和安全列为首要 AI 风险。EU AI Act 已生效，42% 全球企业调整 AI 实践以符合合规要求。负责任的 AI 框架建设刻不容缓。
+            </div>
+            <div class="trend-badge">安全事故 +55% · Stanford HAI</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== KEY DATA ===== -->
+    <section id="data" class="section">
+      <div class="section-title">关键数据</div>
+      <p class="section-subtitle">全球 AI 市场的核心指标一览</p>
+
+      <div class="metrics-grid">
+        <div class="metric-card animate-fade-up stagger-1">
+          <div class="metric-headline">全球 AI 支出</div>
+          <div class="metric-value">$301B</div>
+          <div class="metric-info">↑ 35.2% YoY | 预计 2028 年达 $632B</div>
+          <div class="metric-src">来源: IDC Worldwide AI Spending Guide 2026</div>
+          <div class="progress-bar"><div class="progress-fill pf-1"></div></div>
+        </div>
+
+        <div class="metric-card animate-fade-up stagger-2">
+          <div class="metric-headline">企业 AI 采用率</div>
+          <div class="metric-value">72%</div>
+          <div class="metric-info">88% 组织已使用 AI | 83% 大企业已部署</div>
+          <div class="metric-src">来源: McKinsey Global AI Survey 2025/2026</div>
+          <div class="progress-bar"><div class="progress-fill pf-2"></div></div>
+        </div>
+
+        <div class="metric-card animate-fade-up stagger-3">
+          <div class="metric-headline">Token 价格年降幅</div>
+          <div class="metric-value">93%</div>
+          <div class="metric-info">$20 → $0.07/百万 token | 推理成本 3 年降 90%</div>
+          <div class="metric-src">来源: Stanford HAI AI Index 2026</div>
+          <div class="progress-bar"><div class="progress-fill pf-3"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== THREE-POLAR LANDSCAPE ===== -->
+    <section id="polar" class="section">
+      <div class="section-title">中美欧三极格局</div>
+      <p class="section-subtitle">全球 AI 投资分布与竞争态势</p>
+
+      <div class="polar-grid">
+        <div class="polar-card animate-fade-up stagger-1">
+          <div class="polar-flag">🇺🇸 美国</div>
+          <div class="polar-pct">38%</div>
+          <div class="polar-label">全球 AI 投资占比</div>
+          <div class="polar-data">私人投资 $1,091 亿 | 顶级模型数量领先 | 仅领先中国 2.7%</div>
+        </div>
+
+        <div class="polar-card animate-fade-up stagger-2">
+          <div class="polar-flag">🇨🇳 中国</div>
+          <div class="polar-pct">26%</div>
+          <div class="polar-label">全球 AI 投资占比</div>
+          <div class="polar-data">论文及引用量居首 | 专利总量领先 | 工业机器人安装量第一</div>
+        </div>
+
+        <div class="polar-card animate-fade-up stagger-3">
+          <div class="polar-flag">🇪🇺 欧盟</div>
+          <div class="polar-pct">18%</div>
+          <div class="polar-label">全球 AI 投资占比</div>
+          <div class="polar-data">EU AI Act 率先生效 | 全球监管信任度最高 | 开源生态贡献增长迅速</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 2026 PREDICTIONS ===== -->
+    <section id="predictions" class="section">
+      <div class="section-title">2026 关键预测</div>
+      <p class="section-subtitle">基于多家顶级研究机构数据整合的五条核心判断</p>
+
+      <div class="pred-grid">
+        <div class="pred-card animate-fade-up stagger-1">
+          <div class="pred-num"><span>1</span></div>
+          <div class="pred-content">
+            <div class="pred-title">AI Agent 进入规模化部署阶段，40% 企业应用将嵌入智能体能力</div>
+            <div class="pred-detail">Gartner 预测 Agentic AI 支出 CAGR 达 119%，2027 年将超越聊天机器人支出</div>
+          </div>
+          <div class="pred-badge badge-high"><span>高信度</span></div>
+        </div>
+
+        <div class="pred-card animate-fade-up stagger-2">
+          <div class="pred-num"><span>2</span></div>
+          <div class="pred-content">
+            <div class="pred-title">推理成本继续断崖式下降，开源与闭源性能差距缩小至 2% 以内</div>
+            <div class="pred-detail">Stanford HAI 报告显示闭源 vs 开源差距已从 24.2% 缩小至 1.7%，AI 民主化加速</div>
+          </div>
+          <div class="pred-badge badge-high"><span>高信度</span></div>
+        </div>
+
+        <div class="pred-card animate-fade-up stagger-3">
+          <div class="pred-num"><span>3</span></div>
+          <div class="pred-content">
+            <div class="pred-title">多模态 AI 全面落地，视频生成进入可交互、物理一致的新阶段</div>
+            <div class="pred-detail">a16z 预测「视频即空间」范式兴起，世界模型将内容生成从单一作品升级为可栖居的虚拟现实</div>
+          </div>
+          <div class="pred-badge badge-mid"><span>中信度</span></div>
+        </div>
+
+        <div class="pred-card animate-fade-up stagger-4">
+          <div class="pred-num"><span>4</span></div>
+          <div class="pred-content">
+            <div class="pred-title">中美 AI 竞赛白热化，中国在论文、专利维度持续领先，美国在投资和顶级模型略占优势</div>
+            <div class="pred-detail">Stanford HAI 报告显示中美模型差距仅 2.7%，美国私人投资 $1,091 亿约为中国 12 倍</div>
+          </div>
+          <div class="pred-badge badge-mid"><span>中信度</span></div>
+        </div>
+
+        <div class="pred-card animate-fade-up stagger-5">
+          <div class="pred-num"><span>5</span></div>
+          <div class="pred-content">
+            <div class="pred-title">全球 AI 监管框架加速成型，40% 以上企业将因 EU AI Act 调整合规实践</div>
+            <div class="pred-detail">AI 安全事故 2025 年达 362 起，76% 企业视数据隐私为首要风险，AI 伦理委员会普及率仍不足 30%</div>
+          </div>
+          <div class="pred-badge badge-low"><span>低信度</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+      <div class="footer-divider"></div>
+      <div class="footer-sources">数据来源</div>
+      <div class="footer-list">
+        Stanford HAI 2026 AI Index Report · McKinsey The State of AI 2025/2026 · a16z Big Ideas 2026 · Gartner Forecast: AI Software Revenue 2024–2028 · IDC Worldwide AI Spending Guide 2026
+      </div>
+      <div class="footer-copy">© 2026 AI Trends Analysis · 数据更新至 2026 年 6 月</div>
+    </footer>
+
+  </div>
+
+  <!-- Intersection Observer for scroll-triggered animations -->
+  <script>
+    (function() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.style.animationPlayState = 'running';
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+
+      document.querySelectorAll('.animate-fade-up').forEach(el => {
+        el.style.animationPlayState = 'paused';
+        observer.observe(el);
+      });
+    })();
+  </script>
+
+</body>
+</html>
