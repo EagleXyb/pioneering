@@ -32,8 +32,8 @@ interface ConversationStore {
   create: (mode: AppMode) => Promise<string>;
   /** 激活会话 */
   activate: (id: string) => void;
-  /** 删除/归档会话（调用后端 API） */
-  remove: (id: string) => Promise<void>;
+  /** 删除/归档会话（调用后端 API），archive=true 归档，false 物理删除 */
+  remove: (id: string, archive?: boolean) => Promise<void>;
   /** 更新预览（本地操作，不调 API） */
   updatePreview: (id: string, preview: string) => void;
   /** 更新标题（调用后端 API） */
@@ -121,8 +121,8 @@ export const useConversationStore = create<ConversationStore>()(
 
       activate: (id) => set({ activeId: id }),
 
-      remove: async (id) => {
-        await sessionApi.deleteSession(id, true);
+      remove: async (id, archive = true) => {
+        await sessionApi.deleteSession(id, archive);
         set((s) => {
           const filtered = s.conversations.filter((c) => c.id !== id);
           const { [id]: _, ...restModes } = s.sessionModes;

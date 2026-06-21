@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { Dialog } from 'tdesign-react';
 import { useAppStore } from '../../store/appStore';
 import { useConversationStore, type Conversation } from '../../store/conversationStore';
 import { useTheme } from '../../store/themeContext';
@@ -212,6 +213,10 @@ export function Sidebar() {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
+  /** 待删除的会话 ID，非 null 时显示确认弹框 */
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // 挂载时从后端拉取会话列表
   useEffect(() => {
     fetchSessions();
@@ -257,11 +262,19 @@ export function Sidebar() {
     navigate(`/${conv.mode}`);
   }, [activate, setMode, navigate]);
 
-  /** 删除会话：若删除的是当前活跃会话，自动跳转到剩余的第一个 */
-  const handleDelete = useCallback(async (id: string) => {
+  /** 点击删除按钮：打开确认弹框 */
+  const handleDelete = useCallback((id: string) => {
+    setDeleteTargetId(id);
+  }, []);
+
+  /** 确认删除：从数据库物理删除 */
+  const confirmDelete = useCallback(async () => {
+    const id = deleteTargetId;
+    if (!id) return;
+    const wasActive = id === activeId;
+    setDeleting(true);
     try {
-      const wasActive = id === activeId;
-      await remove(id);
+      await remove(id, false);
       if (wasActive) {
         const remaining = useConversationStore.getState().conversations;
         if (remaining.length > 0) {
@@ -269,14 +282,22 @@ export function Sidebar() {
           activate(first.id);
           setMode(first.mode);
           navigate(`/${first.mode}`);
-        } else {
-          // 无剩余会话，保持在当前路由显示空状态
         }
       }
     } catch {
       showToast('删除失败');
+    } finally {
+      setDeleting(false);
+      setDeleteTargetId(null);
     }
-  }, [activeId, conversations, remove, activate, setMode, navigate, showToast]);
+  }, [deleteTargetId, activeId, remove, activate, setMode, navigate, showToast]);
+
+  /** 取消删除：关闭弹框 */
+  const cancelDelete = useCallback(() => {
+    if (!deleting) {
+      setDeleteTargetId(null);
+    }
+  }, [deleting]);
 
   const grouped = conversations.reduce<Record<string, Conversation[]>>((acc, c) => {
     (acc[c.group] ??= []).push(c);
@@ -394,6 +415,20 @@ export function Sidebar() {
           <AccountPopover />
         </div>
       </aside>
+
+      {/* 删除确认弹框 */}
+      <Dialog
+        visible={deleteTargetId !== null}
+        header="确认删除"
+        body="确定要删除该会话吗？删除后数据不可恢复。"
+        theme="danger"
+        confirmBtn={{ content: '确认删除', loading: deleting, theme: 'danger' }}
+        cancelBtn="取消"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+        onClose={cancelDelete}
+        destroyOnClose
+      />
     </>
   );
 }
