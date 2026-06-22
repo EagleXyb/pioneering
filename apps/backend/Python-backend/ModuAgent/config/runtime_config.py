@@ -24,7 +24,7 @@ _DEFAULT_CONFIG = {
         "enable_compression": False,
     },
     "tools": {
-        "default_timeout_ms": 30000,
+        "default_timeout_ms": 1800000,
     },
     "streaming": {
         "chunk_size": 4,

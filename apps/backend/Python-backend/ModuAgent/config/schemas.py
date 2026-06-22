@@ -101,7 +101,7 @@ class MemoryUpdateSchema:
 class ToolCallSchema:
     tool_name: str = ""
     parameters: Dict[str, Any] = field(default_factory=dict)
-    timeout_ms: int = 3000
+    timeout_ms: int = 1800000
     required_fields: List[str] = field(default_factory=list)
 
     REQUIRED_FIELDS = {"tool_name", "parameters"}

@@ -20,7 +20,7 @@ class ToolAdapter:
         tool_name: str,
         params: Dict[str, Any],
         context: Dict[str, Any],
-        timeout_ms: int = 3000,
+        timeout_ms: int = 1800000,
         required_fields: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         tool = self._registry.get_tool(tool_name)

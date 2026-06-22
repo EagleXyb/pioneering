@@ -234,7 +234,7 @@ class Coordinator:
                     tool_name=tool_name,
                     params=tool_params,
                     context=context,
-                    timeout_ms=config.get("tools.default_timeout_ms", 3000),
+                    timeout_ms=config.get("tools.default_timeout_ms", 1800000),
                 )
                 iteration_results.append({"tool": tool_name, "result": tool_result})
                 tool_results.append(tool_result)
@@ -533,7 +533,7 @@ class Coordinator:
                     tool_name=tool_name,
                     params=tool_params,
                     context=context,
-                    timeout_ms=config.get("tools.default_timeout_ms", 3000),
+                    timeout_ms=config.get("tools.default_timeout_ms", 1800000),
                 )
                 tool_end_time = datetime.now(timezone.utc)
                 tool_duration_ms = int((tool_end_time - tool_start_time).total_seconds() * 1000)
