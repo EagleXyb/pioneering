@@ -51,6 +51,7 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
       className={`sidebar-item${isActive ? ' active' : ''}`}
       role="button"
       tabIndex={0}
+      title={conv.title}
       onClick={isRenaming ? undefined : onSelect}
       onKeyDown={(e) => {
         if (isRenaming) return;
@@ -243,7 +244,8 @@ export function Sidebar() {
   const handleSwitchMode = useCallback((m: AppMode) => {
     setMode(m);
     navigate(`/${m}`);
-    if (sidebarOpen) toggleSidebar();
+    // 移动端选择模式后自动关闭侧边栏（覆盖层模式），桌面端保持不变
+    if (window.innerWidth <= 768 && sidebarOpen) toggleSidebar();
   }, [setMode, navigate, sidebarOpen, toggleSidebar]);
 
   const handleNewConversation = useCallback(async () => {
@@ -315,6 +317,26 @@ export function Sidebar() {
           <div className="sidebar-logo">
             <div className="sidebar-logo-icon">创</div>
             <span className="sidebar-logo-text">创路Agent</span>
+            <button
+              className="sidebar-collapse-btn"
+              onClick={toggleSidebar}
+              title={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
+              aria-label={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
+            >
+              {sidebarOpen ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2"/>
+                  <path d="M9 3v18"/>
+                  <path d="m16 15-3-3 3-3"/>
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2"/>
+                  <path d="M9 3v18"/>
+                  <path d="m14 9 3 3-3 3"/>
+                </svg>
+              )}
+            </button>
           </div>
           <div className="sidebar-mode-switcher" role="tablist" aria-label="模式切换">
             {(['chat', 'pro', 'task'] as const).map((m) => (
@@ -323,6 +345,7 @@ export function Sidebar() {
                 className={`sidebar-mode-btn${mode === m ? ' active' : ''}`}
                 role="tab"
                 aria-selected={mode === m}
+                title={{ chat: '对话模式', pro: '分析模式', task: '任务模式' }[m]}
                 onClick={() => handleSwitchMode(m)}
               >
                 {m === 'chat' && (
@@ -345,7 +368,7 @@ export function Sidebar() {
               </button>
             ))}
           </div>
-          <button className="btn-new-chat" onClick={handleNewConversation}>
+          <button className="btn-new-chat" onClick={handleNewConversation} title="新建会话">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <line x1="8" y1="3" x2="8" y2="13"/>
               <line x1="3" y1="8" x2="13" y2="8"/>

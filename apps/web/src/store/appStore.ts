@@ -11,6 +11,6 @@ interface AppStore {
 export const useAppStore = create<AppStore>((set) => ({
   mode: 'chat',
   setMode: (mode) => set({ mode }),
-  sidebarOpen: false,
+  sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 }));

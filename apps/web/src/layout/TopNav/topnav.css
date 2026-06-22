@@ -24,6 +24,45 @@
   }
 }
 
+/* Desktop: expand button visible when sidebar is collapsed */
+.btn-sidebar-expand {
+  display: none;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  animation: expand-btn-enter 0.25s ease;
+}
+
+@media (min-width: 769px) {
+  .btn-sidebar-expand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.btn-sidebar-expand:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+.btn-sidebar-expand svg {
+  width: 20px;
+  height: 20px;
+}
+
+@keyframes expand-btn-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .btn-sidebar-toggle:hover {
   background: var(--bg-sidebar-hover);
   color: var(--text-primary);
