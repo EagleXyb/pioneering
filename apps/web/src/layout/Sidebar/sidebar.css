@@ -6,8 +6,12 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-sidebar);
-  transition: transform var(--transition-normal);
+  transition: width var(--transition-normal), min-width var(--transition-normal),
+              border var(--transition-normal), padding var(--transition-normal),
+              transform var(--transition-normal);
   z-index: 20;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .sidebar-overlay {
@@ -17,6 +21,16 @@
   background: rgba(0,0,0,0.4);
   z-index: 15;
   transition: opacity var(--transition-normal);
+}
+
+/* Desktop: collapse sidebar when not .open */
+@media (min-width: 769px) {
+  .sidebar:not(.open) {
+    width: 0;
+    min-width: 0;
+    border-right: none;
+    padding: 0;
+  }
 }
 
 @media (max-width: 768px) {
@@ -63,6 +77,29 @@
   letter-spacing: -0.3px;
 }
 
+.sidebar-collapse-btn {
+  margin-left: auto;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-sidebar-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-collapse-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-sidebar-hover);
+}
+
+.sidebar-collapse-btn svg {
+  display: block;
+}
+
 /* Mode Switcher */
 .sidebar-mode-switcher {
   display: flex;
@@ -101,6 +138,7 @@
 /* New Chat Button */
 .btn-new-chat {
   width: 100%;
+  height: 36px;
   padding: 10px 14px;
   background: var(--bg-sidebar-hover);
   color: var(--text-primary);
