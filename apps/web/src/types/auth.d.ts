@@ -4,11 +4,18 @@ export interface LoginRequest {
   password: string;
 }
 
+/** 注册请求 */
+export interface RegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+}
+
 /** 认证响应 — 对齐后端 generateAuthResponse 返回格式 */
 export interface AuthResponse {
   token: string;
   refreshToken: string;
-  expiresIn: number;
+  expiresIn?: number;
   user: UserProfile;
 }
 
