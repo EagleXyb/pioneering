@@ -8,6 +8,7 @@
     - memory_query_node: 对应 _storage_adapter.query_all
     - agent_node: 对应 _llm_adapter.generate + bind_tools（原生 function calling）
     - tools_node: 对应 _tool_adapter.invoke_tool（由 LangGraph ToolNode 接管）
+    - memory_update_node: 记忆更新节点（新增）
 
 路由函数：
     - route_after_perception: 敏感度熔断 + 注入检测熔断
@@ -18,6 +19,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -200,6 +203,80 @@ def make_memory_query_node(store: Any) -> Callable[[ModuAgentState], dict]:
 
 
 # ============================================================
+# 记忆更新节点（新增）
+# ============================================================
+
+def memory_update_node(state: ModuAgentState) -> dict:
+    """记忆更新节点：将对话历史写入长期记忆。
+
+    替代 coordinator.py 中 fire-and-forget 的记忆更新，
+    确保更新可观测、异常可追踪。
+
+    流程：
+        1. 从 messages 提取对话历史
+        2. 调用 Store.put() 写入长期记忆
+        3. 返回更新结果
+
+    Args:
+        state: 当前图状态
+
+    Returns:
+        状态更新字典（memory_update_status）
+    """
+    from langgraph.state import ModuAgentState as StateType
+
+    store = getattr(state, "_store", None) or state.get("__store__")
+    if store is None:
+        return {"memory_update_status": "skipped_no_store"}
+
+    messages = state.get("messages", [])
+    user_id = state.get("user_id", "")
+    session_id = state.get("session_id", "")
+
+    if not messages:
+        return {"memory_update_status": "skipped_no_messages"}
+
+    try:
+        # 构建对话历史文本
+        history_parts = []
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                role = "user"
+                content = msg.content
+            elif isinstance(msg, AIMessage):
+                role = "assistant"
+                content = msg.content
+            elif hasattr(msg, "type") and msg.type == "tool":
+                role = "tool"
+                content = f"[{getattr(msg, 'name', 'unknown')}] {msg.content}"
+            else:
+                continue
+            history_parts.append(f"{role}: {content}")
+
+        if history_parts:
+            history_text = "\n".join(history_parts)
+            key = f"{session_id}_{int(time.time())}"
+
+            store.put(
+                namespace=(user_id, "history"),
+                key=key,
+                value={
+                    "content": history_text,
+                    "session_id": session_id,
+                    "message_count": len(messages),
+                    "timestamp": int(time.time()),
+                },
+            )
+            return {"memory_update_status": "success", "memory_update_key": key}
+
+    except Exception as e:
+        logger.error("Memory update error: %s", str(e))
+        return {"memory_update_status": "error", "memory_update_error": str(e)}
+
+    return {"memory_update_status": "skipped"}
+
+
+# ============================================================
 # 路由函数
 # ============================================================
 
@@ -262,20 +339,31 @@ def route_after_agent(state: ModuAgentState) -> str:
 def make_agent_node(
     bound_llm: Any,
     system_prompt: Optional[str] = None,
+    confidence_threshold: float = 0.5,
+    conservative_temperature: float = 0.3,
 ) -> Callable[[ModuAgentState], dict]:
     """创建 agent 节点函数。
 
     使用绑定了工具的 LLM（bound_llm）进行推理，
     通过 LangChain 原生 bind_tools 实现原生 function calling，
-    替代手写正则解析 ```` ```tool_call``` ````。
+    替代手写正则解析 ```tool_call``` 。
+
+    新增功能：
+    - 当感知置信度 < confidence_threshold 时，
+      使用保守温度 conservative_temperature
 
     Args:
         bound_llm: 已通过 llm.bind_tools(tools) 绑定工具的 ChatModel
         system_prompt: 系统提示词（可选）
+        confidence_threshold: 置信度阈值，低于此值使用保守温度
+        conservative_temperature: 保守模式温度
 
     Returns:
         agent 节点函数
     """
+    # 获取原始 LLM 用于动态调整温度
+    _original_llm = getattr(bound_llm, "_llm", None) or bound_llm
+    _default_temperature = getattr(_original_llm, "temperature", 0.7)
 
     def agent_node(state: ModuAgentState) -> dict:
         """推理节点：调用绑定了工具的 LLM 生成响应。
@@ -321,17 +409,27 @@ def make_agent_node(
         if not messages:
             return {"response": ""}
 
-        try:
+        # 低置信度保守模式：检测置信度并调整温度
+        confidence = state.get("confidence", 1.0)
+        effective_temperature = _default_temperature
+
+        if confidence < confidence_threshold:
+            effective_temperature = conservative_temperature
+            logger.info(
+                "Low confidence (%.2f < %.2f), using conservative temperature %.2f",
+                confidence, confidence_threshold, conservative_temperature
+            )
+            # 克隆 LLM 并设置保守温度
+            try:
+                llm_with_temp = bound_llm.bind(temperature=effective_temperature)
+                response = llm_with_temp.invoke(messages)
+            except (AttributeError, TypeError):
+                # 如果 bind 不支持 temperature，直接使用原 LLM
+                response = bound_llm.invoke(messages)
+        else:
             response = bound_llm.invoke(messages)
-            return {"messages": [response]}
-        except Exception as e:
-            logger.error("Agent node LLM invocation failed: %s", str(e))
-            error_msg = AIMessage(content=f"LLM generation failed: {e}")
-            return {
-                "messages": [error_msg],
-                "error_code": ErrorCode.LLM_GENERATION_FAILED,
-                "error_message": str(e),
-            }
+
+        return {"messages": [response]}
 
     return agent_node
 
@@ -381,20 +479,31 @@ def make_tool_result_processor() -> Callable[[ModuAgentState], dict]:
 
 
 # ============================================================
-# 最终响应节点（对应 coordinator.py 返回结构）
+# 最终响应节点（增强：包含完整响应结构）
 # ============================================================
 
 def response_node(state: ModuAgentState) -> dict:
     """最终响应节点：提取最终响应文本。
 
     对应 coordinator.py 中 process_request 的返回结构构建。
+
+    增强：返回完整响应结构（response + tool_results + usage + error_code）
     """
     messages = state.get("messages", [])
     response = ""
+    usage = state.get("usage", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+    tool_results = state.get("tool_results", [])
 
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and msg.content:
             response = msg.content
+            # 尝试从 AIMessage 获取 usage 信息
+            if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+                usage = {
+                    "prompt_tokens": msg.usage_metadata.get("input_tokens", 0),
+                    "completion_tokens": msg.usage_metadata.get("output_tokens", 0),
+                    "total_tokens": msg.usage_metadata.get("total_tokens", 0),
+                }
             break
 
     error_code = state.get("error_code", "")
@@ -403,9 +512,17 @@ def response_node(state: ModuAgentState) -> dict:
             "response": response,
             "error_code": error_code,
             "error_message": state.get("error_message", ""),
+            "tool_results": tool_results,
+            "usage": usage,
         }
 
-    return {"response": response}
+    return {
+        "response": response,
+        "tool_results": tool_results,
+        "usage": usage,
+        "error_code": "",
+        "error_message": "",
+    }
 
 
 # ============================================================

@@ -980,3 +980,226 @@ def test_perception_node_high_sensitivity():
 ### 建议起点
 
 从**阶段 2（适配器）+ 阶段 3（Graph）**入手，先跑通一个最简 ReAct 流程（perception → agent → tools → END），再逐步补齐记忆、流式、进化机制。
+
+---
+
+## 六、代码深度分析与优化方案
+
+### 6.1 代码结构总览
+
+```
+ModuAgent/
+├── core/                  # 核心接口层（5 个 ABC + 注册中心）
+│   ├── interfaces/        # perception/reasoning/memory/action/feedback 抽象基类
+│   └── registry.py        # ComponentRegistry + get_registry() 全局单例
+├── components/            # 组件实现层
+│   ├── perception/        # ★ 最完善：text(862+393行) / vision / audio / security / fusion
+│   ├── reasoning/llm/     # 4 个 LLM 适配器(glm/gpt/qwen/deepseek) 继承 BaseLLMReasoner
+│   ├── memory/            # InMemoryShortTermMemory + ChromaLongTermMemory
+│   └── action/            # SyncActionExecutor + Calculator/Search 工具
+├── orchestration/         # 编排层
+│   ├── coordinator.py     # ★ 1048 行"上帝类"，legacy 主流程
+│   ├── communication/     # EventBus + Protocol + SSEEncoder + AGUIStreamAdapter(901行)
+│   └── patterns/          # consensus / delegation 协作模式
+├── langgraph/             # ★ LangGraph 重构层（双轨并存）
+│   ├── graph/nodes/state/runner/factory.py
+│   └── adapters/          # llm/tool/store/event_bridge 适配器
+├── adapters/              # LLMAdapter / ToolAdapter / StorageAdapter
+├── config/                # RuntimeConfig（点路径访问）+ schemas.py（几乎未用）
+├── feedback/              # ✗ 6 个文件全空
+├── evolution/             # ✗ 5 个文件全空
+└── examples/              # single_agent.py（双轨 Demo）
+```
+
+### 6.2 业务逻辑分析
+
+#### 核心处理链路（以 `Coordinator.process_request` 为例）
+
+```
+输入 → 感知管线(路由+多路融合) → 敏感度/注入熔断
+     → 记忆查询(短期history+长期knowledge)
+     → 原生function calling或正则解析tool_call
+     → ReAct循环(最多N轮: LLM生成→工具执行→观察反馈→再生成)
+     → 流式/非流式响应
+     → 异步记忆更新(fire-and-forget)
+     → 全程EventBus发布事件(感知/记忆/推理/工具/行动)
+```
+
+**LangGraph 重构版**将上述流程拆为 StateGraph 节点：`perception → memory_query → agent ⇄ tools → response`，用原生 `bind_tools` + `ToolNode` 替代手写 ReAct 循环，用 `Checkpointer` 替代手写短期记忆管理。
+
+#### 各层实现成熟度
+
+| 模块 | 成熟度 | 说明 |
+|------|--------|------|
+| `components/perception` | ★★★★★ | 文本/图像/音频多模态 + 安全检测 + 融合，实现完善且有降级策略 |
+| `orchestration/communication` | ★★★★ | EventBus + SSE + AGUI 适配完整，但 `_event_log` 与 `PersistentEventLog` 重叠 |
+| `langgraph/` | ★★★☆ | 重构方向正确，但缺少 legacy 的 SSE 细节、记忆更新、进化信号收集 |
+| `components/reasoning/llm` | ★★★☆ | 4 引擎结构清晰，但全用同步 `httpx`，异步环境需 `to_thread` 包装 |
+| `orchestration/coordinator` | ★★☆ | 上帝类，process/stream 严重重复，正则解析 tool_call 已过时 |
+| `components/memory` | ★★☆ | 基本可用，但 `redis_adapter.py` 名不副实，`faiss.py` 空 |
+| `components/action` | ★★☆ | `async_executor.py`/`api_client.py` 空文件 |
+| `config` | ★★☆ | schemas.py 定义了完整 dataclass 却几乎不用，全靠 `Dict[str, Any]` |
+| `feedback` | ☆ | **完全空壳**，6 个文件 0 行代码 |
+| `evolution` | ☆ | **完全空壳**，5 个文件 0 行代码 |
+
+### 6.3 关键问题诊断
+
+#### P0 — 架构层面
+
+**1. `feedback` 和 `evolution` 两大模块完全空壳**
+
+README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖点，但 `feedback/`（6 文件）和 `evolution/`（5 文件）**全部为空**。系统的自评估、质量监控、组件热替换、参数调优、版本回滚能力均不存在。`ComponentRegistry.swap_component` 和 `EvolutionSignalCollector` 收集的信号无人消费。
+
+**2. 双轨架构导致大面积代码重复与能力割裂**
+
+`legacy Coordinator`（1048 行）与 `langgraph/` 重构版并存：
+- `coordinator._run_perception_pipeline` 与 `langgraph/nodes.py:perception_node` 几乎是复制粘贴（`coordinator.py:920-980` vs `nodes.py:48-149`）
+- `process_request` 与 `stream_request` 内部逻辑（感知、熔断、记忆、ReAct）约 60% 重复（`coordinator.py:87-412` vs `414-798`）
+- langgraph 版**缺失**：SSE 细粒度事件（thinking/tool_call_start/tool_result）、记忆更新（`update_all`）、进化信号收集、低置信度保守模式
+
+**3. Coordinator 是 1048 行上帝类**
+
+单文件承担：感知编排 + 熔断 + 记忆查询 + ReAct 循环 + 流式编码 + 事件发布 + Sensor 生命周期 + 持久化初始化，违反 SRP。
+
+#### P1 — 实现层面
+
+**4. LLM 推理引擎全用同步 `httpx.Client`**
+
+`base_llm.py:65,117` 中 `reason()` 和 `stream()` 均为同步阻塞调用。在 async 的 Coordinator 中被迫用 `asyncio.to_thread()` 包装（`coordinator.py:542,587,713`），每次调用占用线程池，高并发下成为瓶颈。
+
+**5. 手写 ReAct + 正则解析 tool_call 已过时**
+
+`coordinator.py:225` 的 `tool_call_pattern = r"```tool_call\s*\n(.*?)\n```"` + `format_retries` 自我纠正机制（`coordinator.py:246-289`）已被 LangGraph 原生 `bind_tools` 取代，但 legacy 路径仍保留，增加维护负担。
+
+**6. `schemas.py` 定义完整 dataclass 却几乎未使用**
+
+`config/schemas.py` 定义了 `PerceptionInputSchema`/`MemoryQuerySchema`/`ToolCallSchema`/`LLMCallSchema` 等 11 个带校验的 dataclass，但全代码用 `Dict[str, Any]` 传参，类型安全形同虚设。
+
+**7. 错误码使用不一致**
+
+`coordinator.py:193,244` 用字符串字面量 `"INPUT_001"`/`"LLM_001"`，其余用 `ErrorCode.LLM_GENERATION_FAILED` 枚举，同一文件内不一致。
+
+**8. 工具执行每次新建 `ThreadPoolExecutor`**
+
+`tool_adapter.py:44` 每次调用 `with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:`，频繁创建/销毁线程池有开销。
+
+#### P2 — 工程质量层面
+
+**9. 记忆更新 fire-and-forget 风险**
+
+`coordinator.py:387,791` 用 `asyncio.create_task(asyncio.to_thread(self._storage_adapter.update_all, ...))` 后台更新记忆，任务异常静默丢失，进程退出时可能未完成。
+
+**10. 全局单例非线程安全且测试不友好**
+
+`get_registry()`/`get_config()`/`get_event_bus()` 均为模块级全局变量单例，无锁，测试需手动 `reset_config()`。
+
+**11. EventBus `_event_log` 与 `PersistentEventLog` 功能重叠**
+
+`message_bus.py:42-43` 内存事件日志 + `PersistentEventLog` 文件日志双重存储，内存日志仅用于 `get_event_log()` 调试，生产价值低。
+
+**12. 文件名与实现不符 + 空文件**
+
+`redis_adapter.py` 实为纯内存实现（无 Redis）；`faiss.py`/`async_executor.py`/`api_client.py`/`feedback/*`/`evolution/*` 共 14 个空文件。
+
+**13. 缺少测试**
+
+`pyproject.toml` 配置 `testpaths = ["tests"]`，但 `tests/` 目录不存在。
+
+**14. README.md 为空**
+
+仅 `ARCHITECTURE.md` 有目录树，无使用说明。
+
+### 6.4 优化方案（按优先级分阶段）
+
+#### 阶段一：收敛双轨，消除重复（P0，预计 3-5 天）
+
+**目标：** 完成 legacy → langgraph 迁移，删除上帝类。
+
+1. **补齐 langgraph 版缺失能力**
+   - 在 `langgraph/nodes.py` 的 `agent_node` 中加入低置信度保守模式（动态降 `temperature`）
+   - 在 `response_node` 后增加 `memory_update_node`，用图节点替代 fire-and-forget task
+   - 在 `event_bridge.py` 中补全 SSE 细粒度事件映射（thinking/tool_call_start/tool_result）
+   - 将 `EvolutionSignalCollector` 订阅接入 EventBridge
+
+2. **提取公共感知管线**
+   将 `coordinator._run_perception_pipeline` 与 `nodes.perception_node` 的重复逻辑提取为 `components/perception/pipeline.py:run_perception_pipeline(input_data, config, registry)`，两处统一调用。
+
+3. **删除 legacy Coordinator**
+   确认 langgraph 版功能对等后，删除 `coordinator.py`（1048 行），`get_runner()` 移除 legacy 分支。
+
+#### 阶段二：异步化 LLM 层 + 工具层（P1，预计 2-3 天）
+
+1. **LLM 引擎改用 `httpx.AsyncClient`**
+   ```python
+   # base_llm.py - 新增 async reason/stream
+   async def areason(self, prompt, context, **kwargs) -> Tuple[...]:
+       async with httpx.AsyncClient(timeout=self._timeout) as client:
+           response = await client.post(url, json=payload, headers=headers)
+   ```
+   对应 `langgraph/adapters/llm_adapter.py` 的 `ChatOpenAI` 已原生支持 async，确认 langgraph 路径全异步。
+
+2. **ToolAdapter 复用线程池**
+   ```python
+   # tool_adapter.py - 实例级线程池
+   class ToolAdapter:
+       def __init__(self):
+           self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+   ```
+   或直接将 `BaseTool.invoke` 改为 `async def`，消除线程池需求。
+
+3. **记忆更新改为图节点**
+   用 `memory_update_node` 替代 `asyncio.create_task`，确保异常可观测、进程退出前可等待。
+
+#### 阶段三：补齐 feedback + evolution（P0，预计 5-7 天）
+
+这是架构承诺但完全缺失的核心能力：
+
+1. **feedback 模块实现**
+   - `loop_controller.py`：实现 `FeedbackLoop(BaseFeedbackLoop)`，`evaluate()` 调用 quality_monitor + metrics，`should_evolve()` 对比阈值
+   - `quality_monitor.py`：基于 LLM-as-Judge 或规则评估响应质量（相关性/完整性/准确性）
+   - `metrics/accuracy.py`：工具调用成功率、答案事实准确性
+   - `metrics/efficiency.py`：token 用量、延迟、ReAct 迭代次数
+
+2. **evolution 模块实现**
+   - `strategy/parameter_tune.py`：根据 feedback 信号自动调 `temperature`/`max_iterations`（消费 `EvolutionSignalCollector` 已收集的信号）
+   - `strategy/component_swap.py`：基于质量对比自动切换 LLM provider（A/B 测试）
+   - `registry/versioned_store.py`：组件版本快照存储
+   - `registry/rollback_mechanism.py`：质量回退时自动回滚到上一版本
+
+3. **闭环接线**
+   `EvolutionSignalCollector` → `FeedbackLoop.evaluate` → `should_evolve` → `EvolutionStrategy.apply` → `ComponentRegistry.swap_component` / 参数更新。
+
+#### 阶段四：类型安全与工程治理（P2，预计 2-3 天）
+
+1. **启用 schemas.py 替代 Dict[str, Any]**
+   入口层（`process_request`/`run_sync`）用 `PerceptionInputSchema`/`MemoryQuerySchema` 校验输入，内部传递用 dataclass 而非裸 dict。
+
+2. **统一错误码**
+   全部改用 `ErrorCode` 枚举，删除 `"INPUT_001"`/`"LLM_001"` 字面量。
+
+3. **配置类型化**
+   将 `_DEFAULT_CONFIG` 字典改为 Pydantic `BaseModel`，`config.get("llm.temperature")` 改为 `config.llm.temperature`，获得 IDE 补全 + 校验。
+
+4. **清理空文件与命名**
+   - 删除或实现 `faiss.py`/`async_executor.py`/`api_client.py`
+   - `redis_adapter.py` 重命名为 `short_term_memory.py` 或补真实 Redis 实现
+   - 补充 `README.md` 使用说明
+   - 创建 `tests/` 目录，补充核心链路单测
+
+5. **EventBus 精简**
+   移除 `_event_log` 内存日志（生产用 `PersistentEventLog`），仅保留调试钩子。
+
+### 6.5 优化优先级矩阵
+
+| 优化项 | 影响面 | 紧迫度 | 建议阶段 |
+|--------|--------|--------|----------|
+| 补齐 feedback/evolution 空壳 | 核心能力缺失 | 🔴 高 | 阶段三 |
+| 收敛双轨，删除 Coordinator 上帝类 | 维护性 | 🔴 高 | 阶段一 |
+| LLM 异步化 | 性能 | 🟡 中 | 阶段二 |
+| 补齐 langgraph 缺失能力 | 功能对等 | 🔴 高 | 阶段一 |
+| 记忆更新可观测化 | 数据可靠性 | 🟡 中 | 阶段二 |
+| 启用 schemas 类型安全 | 质量防劣化 | 🟢 低 | 阶段四 |
+| 清理空文件/命名 | 工程整洁 | 🟢 低 | 阶段四 |
+| 补测试 | 质量保障 | 🟡 中 | 阶段四 |
+
+**总结：** ModuAgent 的**感知层和编排层设计成熟**，LangGraph 重构方向正确，但存在三大短板：① feedback/evolution 完全空壳导致"自进化"承诺落空；② 双轨并存导致 1048 行上帝类与重复代码；③ LLM 同步调用制约异步性能。建议优先按"收敛双轨 → 异步化 → 补齐反馈进化闭环"的路径推进，最终达成架构文档所描绘的模块化自进化 Agent 框架。
