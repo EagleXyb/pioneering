@@ -15,7 +15,11 @@ from components.action.tools.calculator import CalculatorTool
 from components.action.tools.search import SearchTool
 from components.memory.cache.redis_adapter import InMemoryShortTermMemory
 from components.memory.vector.chroma import ChromaLongTermMemory
+from components.perception.audio.asr_processor import AudioProcessor
+from components.perception.text.llm_parser import LLMParser
 from components.perception.text.rule_based import TextPreprocessor
+from components.perception.vision.camera import CameraSensor, MicrophoneSensor
+from components.perception.vision.image_processor import ImageProcessor
 from components.reasoning.llm.glm import GLMLLMReasoner
 from config.runtime_config import get_config
 from core.registry import get_registry
@@ -30,17 +34,44 @@ logger = logging.getLogger(__name__)
 
 def register_components() -> None:
     registry = get_registry()
+    config = get_config()
 
+    # 感知层组件
     registry.register_perception("text_preprocessor", TextPreprocessor())
 
+    # P1: LLM 深度解析器
+    deep_parsing_config = config.get("perception.deep_parsing", {})
+    llm_parser = LLMParser(
+        enable_intent=deep_parsing_config.get("enable_intent", True),
+        enable_quality=deep_parsing_config.get("enable_quality", False),
+        enable_local_ner=deep_parsing_config.get("enable_local_ner", True),
+        enable_local_sentiment=deep_parsing_config.get("enable_local_sentiment", True),
+        spacy_model=deep_parsing_config.get("spacy_model"),
+    )
+    registry.register_perception("llm_parser", llm_parser)
+
+    # P1: 图像处理器
+    registry.register_perception("image_processor", ImageProcessor())
+
+    # P1: 音频处理器
+    registry.register_perception("audio_processor", AudioProcessor())
+
+    # P1: 传感器
+    registry.register_sensor("camera", CameraSensor())
+    registry.register_sensor("microphone", MicrophoneSensor())
+
+    # 推理引擎
     registry.register_reasoning_engine("glm", GLMLLMReasoner())
 
+    # 记忆
     registry.register_memory("short_term", InMemoryShortTermMemory())
     registry.register_memory("long_term", ChromaLongTermMemory())
 
+    # 工具
     registry.register_tool(SearchTool())
     registry.register_tool(CalculatorTool())
 
+    # 行动执行器
     registry.register_action_executor("sync", SyncActionExecutor())
 
     logger.info("All components registered: %s", json.dumps(registry.list_all(), indent=2))

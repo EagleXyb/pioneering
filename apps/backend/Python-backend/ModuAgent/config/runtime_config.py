@@ -36,6 +36,45 @@ _DEFAULT_CONFIG = {
         "default_processor": "text_preprocessor",
         "max_length": 2048,
         "sensitivity_threshold": 5,
+        # 输入类型路由（对应问题 9）
+        "routing": {
+            "text": {
+                "pipeline": ["text_preprocessor", "llm_parser"],
+            },
+            "image": {
+                "pipeline": ["image_processor", "text_preprocessor"],
+            },
+            "audio": {
+                "pipeline": ["audio_processor", "text_preprocessor"],
+            },
+        },
+        # 多路融合配置（对应问题 9）
+        "fusion": {
+            "strategy": "weighted_average",  # weighted_average | max_confidence | voting
+            "weights": {"text": 0.5, "image": 0.3, "audio": 0.2},
+        },
+        # 安全检测开关（对应问题 5）
+        "security": {
+            "enable_guard": True,
+            "block_on_injection": False,  # 检测到注入时是否直接拒绝
+            "block_on_pii": False,        # 检测到 PII 时是否直接拒绝
+        },
+        # 深度解析开关（对应问题 2）
+        "deep_parsing": {
+            "enable": True,  # P1: 默认开启深度解析
+            "enable_intent": True,
+            "enable_quality": False,
+            "enable_local_ner": True,      # P1: spaCy NER
+            "enable_local_sentiment": True, # P1: SnowNLP 情感
+            "spacy_model": None,           # None=自动选择
+        },
+        # P1: 事件日志持久化
+        "event_log_path": "logs/perception_events.jsonl",
+        "event_log_max_size_mb": 10.0,
+        # P1: 进化信号报告间隔
+        "evolution_report_interval": 100,
+        # P1: 敏感词上下文降级开关
+        "enable_context_reduction": True,
     },
     "feedback": {
         "evolution_threshold": 0.6,

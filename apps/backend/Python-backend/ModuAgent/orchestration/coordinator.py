@@ -11,9 +11,16 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 from adapters.llm_adapter import LLMAdapter
 from adapters.storage_adapter import StorageAdapter
 from adapters.tool_adapter import ToolAdapter
+from components.perception import build_perception_event_metadata, extract_perception_context
+from components.perception.fusion import PerceptionFusion
 from config.runtime_config import get_config
+from core.interfaces.perception import BaseSensor
 from core.registry import get_registry
-from orchestration.communication.message_bus import get_event_bus
+from orchestration.communication.message_bus import (
+    EvolutionSignalCollector,
+    PersistentEventLog,
+    get_event_bus,
+)
 from orchestration.communication.protocol import (
     AgentEvent,
     EventAction,
@@ -32,6 +39,50 @@ class Coordinator:
         self._tool_adapter = ToolAdapter()
         self._event_bus = get_event_bus()
         self._registry = get_registry()
+        # 感知融合器（对应问题 9）
+        self._fusion = PerceptionFusion(
+            strategy=get_config().get("perception.fusion.strategy", "weighted_average"),
+            weights=get_config().get("perception.fusion.weights"),
+        )
+        # Sensor 生命周期管理（对应问题 8）
+        self._sensor_tasks: Dict[str, asyncio.Task] = {}
+        # P1: 事件日志持久化 + 进化信号收集
+        self._persistent_log: Optional[PersistentEventLog] = None
+        self._evolution_collector: Optional[EvolutionSignalCollector] = None
+        self._init_persistence(get_config())
+
+    def _init_persistence(self, config) -> None:
+        """初始化事件日志持久化和进化信号收集器。"""
+        # P1: 事件日志持久化
+        log_path = config.get("perception.event_log_path", "logs/perception_events.jsonl")
+        if log_path:
+            self._persistent_log = PersistentEventLog(
+                log_file_path=log_path,
+                max_file_size_mb=config.get("perception.event_log_max_size_mb", 10.0),
+            )
+
+        # P1: 进化信号收集器
+        self._evolution_collector = EvolutionSignalCollector(
+            report_interval=config.get("perception.evolution_report_interval", 100),
+        )
+
+    async def start_persistence(self) -> None:
+        """启动事件持久化和进化信号收集（需在异步上下文中调用）。"""
+        if self._persistent_log:
+            await self._persistent_log.start(self._event_bus)
+        if self._evolution_collector:
+            self._event_bus.subscribe(self._evolution_collector.on_perception_event)
+
+    async def stop_persistence(self) -> None:
+        """停止事件持久化。"""
+        if self._persistent_log:
+            await self._persistent_log.stop()
+
+    def get_evolution_signals(self) -> Dict[str, Any]:
+        """获取当前进化信号摘要。"""
+        if self._evolution_collector:
+            return self._evolution_collector.get_signals()
+        return {}
 
     async def process_request(
         self,
@@ -52,26 +103,15 @@ class Coordinator:
         }
 
         config = get_config()
-        perception_name = config.get("perception.default_processor", "text_preprocessor")
-        perception = self._registry.get_perception(perception_name)
 
-        if perception is None:
-            logger.warning("Perception component '%s' not registered, skipping perception", perception_name)
-            perception_result = None
-        else:
-            input_type = input_data.get("input_type", "text")
-            raw_content = input_data.get("prompt", "").encode("utf-8")
-            sensitivity_level = input_data.get("sensitivity_level", 0)
+        # 感知层：输入类型路由 + 感知器链（对应问题 9）
+        perception_result = self._run_perception_pipeline(input_data, config)
 
-            perception_result = perception.perceive(
-                input_type=input_type,
-                raw_content=raw_content,
-                sensitivity_level=sensitivity_level,
-            )
-
-            sensitivity_threshold = config.get("perception.sensitivity_threshold", 5)
+        detected_level = 0
+        if perception_result:
             detected_level = perception_result.get("metadata", {}).get("sensitivity_level", 0)
 
+            sensitivity_threshold = config.get("perception.sensitivity_threshold", 5)
             if detected_level >= sensitivity_threshold:
                 logger.warning(
                     "Sensitivity circuit breaker triggered: trace_id=%s level=%d",
@@ -84,20 +124,40 @@ class Coordinator:
                     "data": {"message": "Input rejected due to sensitive content"},
                 }
 
+            # 安全检测熔断（对应问题 5）
+            security_config = config.get("perception.security", {})
+            if security_config.get("block_on_injection") and perception_result.get("metadata", {}).get("injection_detected"):
+                return {
+                    "status": "error",
+                    "error_code": ErrorCode.PERCEPTION_SENSITIVITY_REJECTED,
+                    "data": {"message": "Input rejected due to prompt injection detected"},
+                }
+
         cleaned_text = None
         if perception_result and perception_result.get("parsed_content"):
             cleaned_text = perception_result["parsed_content"].get("text")
 
+        # 感知结果注入 LLM Context（对应问题 7）
+        if perception_result:
+            context["perception"] = extract_perception_context(perception_result)
+            # 低置信度 → 保守模式（降低 temperature）
+            confidence = perception_result.get("confidence", 1.0)
+            if confidence < 0.5:
+                logger.info("Low confidence (%.2f), switching to conservative mode", confidence)
+
+        # 感知事件：标准化 metadata（对应问题 11）
         perception_event = AgentEvent(
             trace_id=trace_id,
             session_id=session_id,
             user_id=user_id,
             domain=EventDomain.PERCEPTION,
             action=EventAction.ANALYZE,
-            metadata={
+            metadata=build_perception_event_metadata(
+                perception_result or {}, input_data.get("input_type", "text")
+            ) if perception_result else {
                 "input_type": input_data.get("input_type", "text"),
-                "sensitivity_level": str(detected_level) if perception_result else "0",
-                "truncated": str(perception_result.get("metadata", {}).get("truncated", False)) if perception_result else "False",
+                "sensitivity_level": "0",
+                "truncated": "False",
             },
         )
         await self._event_bus.publish(perception_event)
@@ -164,11 +224,16 @@ class Coordinator:
         max_format_retries = config.get("llm.max_format_retries", 2)
         tool_call_pattern = config.get("llm.tool_call_pattern", r"```tool_call\s*\n(.*?)\n```")
 
+        # 保守模式：低置信度时降低 temperature（对应问题 7）
+        effective_temperature = config.get("llm.temperature", 0.7)
+        if perception_result and perception_result.get("confidence", 1.0) < 0.5:
+            effective_temperature = min(effective_temperature, 0.3)
+
         try:
             response, _llm_usage, native_tool_calls = self._llm_adapter.generate(
                 prompt=prompt,
                 context=context,
-                temperature=config.get("llm.temperature", 0.7),
+                temperature=effective_temperature,
                 max_tokens=config.get("llm.max_tokens", 512),
             )
             total_usage["prompt_tokens"] += _llm_usage.get("prompt_tokens", 0)
@@ -323,7 +388,7 @@ class Coordinator:
             self._storage_adapter.update_all,
             user_id=user_id,
             new_data=turn_context,
-            metadata={"session_id": session_id, "trace_id": trace_id},
+            metadata=self._build_memory_metadata(session_id, trace_id, perception_result),
         ))
 
         action_event = AgentEvent(
@@ -365,26 +430,15 @@ class Coordinator:
         }
 
         config = get_config()
-        perception_name = config.get("perception.default_processor", "text_preprocessor")
-        perception = self._registry.get_perception(perception_name)
 
-        if perception is None:
-            logger.warning("Perception component '%s' not registered, skipping perception", perception_name)
-            perception_result = None
-        else:
-            input_type = input_data.get("input_type", "text")
-            raw_content = input_data.get("prompt", "").encode("utf-8")
-            sensitivity_level = input_data.get("sensitivity_level", 0)
+        # 感知层：输入类型路由 + 感知器链（对应问题 9）
+        perception_result = self._run_perception_pipeline(input_data, config)
 
-            perception_result = perception.perceive(
-                input_type=input_type,
-                raw_content=raw_content,
-                sensitivity_level=sensitivity_level,
-            )
-
-            sensitivity_threshold = config.get("perception.sensitivity_threshold", 5)
+        detected_level = 0
+        if perception_result:
             detected_level = perception_result.get("metadata", {}).get("sensitivity_level", 0)
 
+            sensitivity_threshold = config.get("perception.sensitivity_threshold", 5)
             if detected_level >= sensitivity_threshold:
                 logger.warning(
                     "Sensitivity circuit breaker triggered: trace_id=%s level=%d",
@@ -398,11 +452,45 @@ class Coordinator:
                 )
                 return
 
+            # 安全检测熔断（对应问题 5）
+            security_config = config.get("perception.security", {})
+            if security_config.get("block_on_injection") and perception_result.get("metadata", {}).get("injection_detected"):
+                yield SSEEncoder.encode_error(
+                    ErrorCode.PERCEPTION_SENSITIVITY_REJECTED,
+                    "Input rejected due to prompt injection detected",
+                    trace_id,
+                )
+                return
+
         yield SSEEncoder.encode_status("perception", trace_id)
 
         cleaned_text = None
         if perception_result and perception_result.get("parsed_content"):
             cleaned_text = perception_result["parsed_content"].get("text")
+
+        # 感知结果注入 LLM Context（对应问题 7）
+        if perception_result:
+            context["perception"] = extract_perception_context(perception_result)
+            confidence = perception_result.get("confidence", 1.0)
+            if confidence < 0.5:
+                logger.info("Low confidence (%.2f), switching to conservative mode", confidence)
+
+        # 感知事件：标准化 metadata（对应问题 11）
+        perception_event = AgentEvent(
+            trace_id=trace_id,
+            session_id=session_id,
+            user_id=user_id,
+            domain=EventDomain.PERCEPTION,
+            action=EventAction.ANALYZE,
+            metadata=build_perception_event_metadata(
+                perception_result or {}, input_data.get("input_type", "text")
+            ) if perception_result else {
+                "input_type": input_data.get("input_type", "text"),
+                "sensitivity_level": "0",
+                "truncated": "False",
+            },
+        )
+        await self._event_bus.publish(perception_event)
 
         prompt = cleaned_text if cleaned_text is not None else input_data.get("prompt", "")
 
@@ -443,6 +531,11 @@ class Coordinator:
 
         total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+        # 保守模式：低置信度时降低 temperature（对应问题 7）
+        effective_temperature = config.get("llm.temperature", 0.7)
+        if perception_result and perception_result.get("confidence", 1.0) < 0.5:
+            effective_temperature = min(effective_temperature, 0.3)
+
         yield SSEEncoder.encode_status("thinking", trace_id)
 
         try:
@@ -450,7 +543,7 @@ class Coordinator:
                 self._llm_adapter.generate,
                 prompt=prompt,
                 context=context,
-                temperature=config.get("llm.temperature", 0.7),
+                temperature=effective_temperature,
                 max_tokens=config.get("llm.max_tokens", 512),
             )
         except Exception as e:
@@ -699,10 +792,67 @@ class Coordinator:
             self._storage_adapter.update_all,
             user_id=user_id,
             new_data=turn_context,
-            metadata={"session_id": session_id, "trace_id": trace_id},
+            metadata=self._build_memory_metadata(session_id, trace_id, perception_result),
         ))
 
         yield SSEEncoder.encode_done(trace_id, tool_results, total_usage)
+
+    def _build_memory_metadata(
+        self,
+        session_id: str,
+        trace_id: str,
+        perception_result: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建记忆存储元数据（P1：感知结果影响记忆存储）。
+
+        将感知层提取的关键信息注入记忆元数据，支持：
+        - 按语种检索记忆
+        - 按敏感度级别过滤记忆
+        - 按意图分类检索记忆
+        - 实体标注辅助记忆关联
+        """
+        metadata: Dict[str, Any] = {
+            "session_id": session_id,
+            "trace_id": trace_id,
+        }
+
+        if not perception_result:
+            return metadata
+
+        # 语种标注
+        language = perception_result.get("detected_language")
+        if language:
+            metadata["language"] = language
+
+        # 敏感度级别标注（高敏感记忆可被过滤）
+        sensitivity = perception_result.get("metadata", {}).get("sensitivity_level", 0)
+        if sensitivity:
+            metadata["sensitivity_level"] = str(sensitivity)
+
+        # 意图标注
+        intent = perception_result.get("intent")
+        if intent:
+            metadata["intent"] = intent if isinstance(intent, str) else intent.get("intent", "")
+
+        # 实体标注（用于记忆关联）
+        entities = perception_result.get("entities", [])
+        if entities:
+            entity_texts = [
+                e.get("text", "") for e in entities if isinstance(e, dict)
+            ]
+            metadata["entities"] = ",".join(entity_texts[:10])
+
+        # 置信度标注
+        confidence = perception_result.get("confidence")
+        if confidence is not None:
+            metadata["perception_confidence"] = str(round(confidence, 3))
+
+        # 输入类型
+        input_type = perception_result.get("parsed_content", {}).get("input_type")
+        if input_type:
+            metadata["input_type"] = input_type
+
+        return metadata
 
     def _build_native_tools(self) -> List[Dict[str, Any]]:
         """将注册表中的工具转换为 OpenAI function calling 格式。"""
@@ -762,3 +912,136 @@ class Coordinator:
                 logger.warning("Failed to parse tool call JSON: %s", match[:100])
                 parse_errors.append({"raw": match[:200], "error": str(e)})
         return tool_calls, parse_errors
+
+    # ------------------------------------------------------------------
+    # 感知器管线（对应问题 9：输入路由 + 多感知融合）
+    # ------------------------------------------------------------------
+
+    def _run_perception_pipeline(
+        self,
+        input_data: Dict[str, Any],
+        config,
+    ) -> Optional[Dict[str, Any]]:
+        """根据 input_type 路由到感知器链，执行多路感知并融合。
+
+        管线流程：
+        1. 根据 input_type 从 routing 配置获取感知器链
+        2. 依次执行每个感知器，前一个的输出文本作为后一个的输入
+        3. 若有多个感知器结果，使用 PerceptionFusion 融合
+        """
+        input_type = input_data.get("input_type", "text")
+        raw_content = input_data.get("prompt", "").encode("utf-8")
+        sensitivity_level = input_data.get("sensitivity_level", 0)
+
+        # 获取路由配置
+        routing = config.get("perception.routing", {})
+        pipeline_config = routing.get(input_type, {})
+        pipeline: List[str] = pipeline_config.get("pipeline", ["text_preprocessor"])
+
+        if not pipeline:
+            pipeline = ["text_preprocessor"]
+
+        results: List[Dict[str, Any]] = []
+        current_content = raw_content
+        current_input_type = input_type
+
+        for processor_name in pipeline:
+            perception = self._registry.get_perception(processor_name)
+            if perception is None:
+                logger.warning("Perception component '%s' not registered, skipping", processor_name)
+                continue
+
+            try:
+                result = perception.perceive(
+                    input_type=current_input_type,
+                    raw_content=current_content,
+                    sensitivity_level=sensitivity_level,
+                )
+                results.append(result)
+
+                # 管线传递：若感知器输出转为文本，则后续感知器以文本为输入
+                parsed = result.get("parsed_content", {})
+                if parsed.get("text") and parsed.get("input_type") == "text":
+                    current_content = parsed["text"].encode("utf-8")
+                    current_input_type = "text"
+
+            except Exception as e:
+                logger.error("Perception '%s' failed: %s", processor_name, str(e))
+                continue
+
+        if not results:
+            return None
+
+        # 单路结果直接返回
+        if len(results) == 1:
+            return results[0]
+
+        # 多路融合
+        return self._fusion.fuse(results)
+
+    # ------------------------------------------------------------------
+    # Sensor 生命周期管理（对应问题 8：BaseSensor 接口集成）
+    # ------------------------------------------------------------------
+
+    async def start_sensors(self, sensor_names: List[str]) -> None:
+        """启动指定的传感器，后台异步运行。
+
+        传感器捕获的数据通过 EventBus 发布为 PERCEPTION 域事件。
+        """
+        for name in sensor_names:
+            if name in self._sensor_tasks:
+                logger.warning("Sensor '%s' already running", name)
+                continue
+
+            sensor = self._registry.get_sensor(name)
+            if sensor is None:
+                logger.warning("Sensor '%s' not registered, skipping", name)
+                continue
+
+            self._sensor_tasks[name] = asyncio.create_task(
+                self._run_sensor(name, sensor)
+            )
+            logger.info("Started sensor: %s", name)
+
+    async def stop_sensors(self, sensor_names: Optional[List[str]] = None) -> None:
+        """停止指定的传感器，未指定则停止全部。"""
+        names = sensor_names or list(self._sensor_tasks.keys())
+        for name in names:
+            task = self._sensor_tasks.pop(name, None)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                logger.info("Stopped sensor: %s", name)
+
+    async def _run_sensor(self, name: str, sensor: BaseSensor) -> None:
+        """传感器运行循环：定时捕获并发布事件。"""
+        logger.info("Sensor '%s' (type=%s) started", name, sensor.sensor_type())
+        try:
+            while True:
+                try:
+                    raw_data = sensor.capture({"user_id": "system"})
+                    if raw_data:
+                        event = AgentEvent(
+                            trace_id=f"sensor_{name}",
+                            session_id="sensor",
+                            user_id="system",
+                            domain=EventDomain.PERCEPTION,
+                            action=EventAction.ANALYZE_SCENE,
+                            payload=raw_data,
+                            metadata={
+                                "sensor_name": name,
+                                "sensor_type": sensor.sensor_type(),
+                                "data_size": str(len(raw_data)),
+                            },
+                        )
+                        await self._event_bus.publish(event)
+                except Exception as e:
+                    logger.error("Sensor '%s' capture error: %s", name, str(e))
+
+                await asyncio.sleep(1.0)  # 采集间隔
+        except asyncio.CancelledError:
+            logger.info("Sensor '%s' cancelled", name)
+            raise

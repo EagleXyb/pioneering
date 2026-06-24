@@ -47,6 +47,30 @@ class PerceptionOutputSchema:
     confidence: float = 0.0
     metadata: Dict[str, str] = field(default_factory=dict)
 
+    # 语义理解字段（P0 扩展）
+    intent: Optional[Dict[str, float]] = None  # {"意图名": 置信度}
+    entities: List[Dict[str, str]] = field(default_factory=list)  # [{"text":..., "label":...}]
+    sentiment: Optional[Dict[str, float]] = None  # {"positive": 0.8, "negative": 0.1, "neutral": 0.1}
+    quality_score: float = 0.0  # 0~1，输入质量
+    language_mixed: bool = False  # 是否存在语种混淆
+    language_distribution: Optional[Dict[str, float]] = None  # {"zh": 0.65, "en": 0.30}
+    security_score: float = 1.0  # 0~1，安全评分（1.0 为最安全）
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "parsed_content": self.parsed_content,
+            "detected_language": self.detected_language,
+            "confidence": self.confidence,
+            "metadata": self.metadata,
+            "intent": self.intent,
+            "entities": self.entities,
+            "sentiment": self.sentiment,
+            "quality_score": self.quality_score,
+            "language_mixed": self.language_mixed,
+            "language_distribution": self.language_distribution,
+            "security_score": self.security_score,
+        }
+
 
 @dataclass
 class MemoryQuerySchema:
