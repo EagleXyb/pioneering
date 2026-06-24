@@ -22,6 +22,13 @@ _DEFAULT_CONFIG = {
         "default_strategy": "cache",
         "context_window": "last_5_turns",
         "enable_compression": False,
+        # LangGraph 重构新增字段
+        "checkpointer_type": "memory",  # memory | sqlite | none
+        "store_type": "chroma",         # chroma | in_memory | none
+    },
+    "orchestration": {
+        # 引擎选择：legacy（原 Coordinator）| langgraph（重构版）
+        "engine": "legacy",
     },
     "tools": {
         "default_timeout_ms": 1800000,

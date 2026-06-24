@@ -170,6 +170,99 @@ async def run_memory_demo() -> None:
     logger.info("Short-term memory: %s", json.dumps(result, ensure_ascii=False, indent=2))
 
 
+# ============================================================
+# LangGraph 重构版 Demo（对应重构方案阶段 6 示例对齐）
+# ============================================================
+
+async def run_langgraph_basic_flow() -> None:
+    """LangGraph 版本的基础流程 Demo。
+
+    使用 create_agent() 创建 LangGraph 实例，
+    通过 run_sync() 调用（替代 Coordinator.process_request）。
+    """
+    from langgraph.factory import create_agent
+    from langgraph.runner import run_sync
+
+    graph = create_agent()
+    user_id = "demo_user"
+    session_id = "demo_session_lg_001"
+
+    result = await run_sync(
+        graph=graph,
+        user_id=user_id,
+        session_id=session_id,
+        input_data={
+            "input_type": "text",
+            "prompt": "你好，请介绍一下你自己",
+            "required_fields": ["user_intent"],
+        },
+    )
+    logger.info("LangGraph basic flow result: %s", json.dumps(result, ensure_ascii=False, indent=2))
+
+
+async def run_langgraph_tool_flow() -> None:
+    """LangGraph 版本的工具调用 Demo。
+
+    使用 LangGraph 原生 function calling（替代正则解析 ```tool_call```），
+    通过 ToolNode 执行工具（替代 ToolAdapter.invoke_tool）。
+    """
+    from langgraph.factory import create_agent
+    from langgraph.runner import run_sync
+
+    graph = create_agent()
+    user_id = "demo_user"
+    session_id = "demo_session_lg_002"
+
+    result = await run_sync(
+        graph=graph,
+        user_id=user_id,
+        session_id=session_id,
+        input_data={
+            "input_type": "text",
+            "prompt": "请帮我计算 3.14 * 2",
+            "required_fields": ["user_intent"],
+        },
+    )
+    logger.info("LangGraph tool flow result: %s", json.dumps(result, ensure_ascii=False, indent=2))
+
+
+async def run_langgraph_stream_flow() -> None:
+    """LangGraph 版本的流式输出 Demo。
+
+    使用 LangGraph astream 实现流式输出（替代 Coordinator.stream_request），
+    通过 EventBridge 桥接到 EventBus。
+    """
+    from langgraph.factory import create_agent
+    from langgraph.runner import stream_response
+
+    graph = create_agent()
+    user_id = "demo_user"
+    session_id = "demo_session_lg_003"
+
+    logger.info("LangGraph stream tokens:")
+    async for event in stream_response(
+        graph=graph,
+        user_id=user_id,
+        session_id=session_id,
+        input_data={
+            "input_type": "text",
+            "prompt": "请用三句话介绍 LangGraph",
+            "required_fields": ["user_intent"],
+        },
+    ):
+        event_type = event.get("type", "")
+        if event_type == "messages":
+            data = event.get("data", {})
+            # 提取 token 内容
+            chunk = data[0] if isinstance(data, list) and data else data
+            content = getattr(chunk, "content", "") if hasattr(chunk, "content") else str(chunk)
+            if content:
+                logger.info("  token: %s", content[:100])
+        elif event_type == "updates":
+            node = event.get("node", "")
+            logger.info("  update from node: %s", node)
+
+
 async def main() -> None:
     register_components()
 
@@ -208,6 +301,31 @@ async def main() -> None:
         await run_llm_swap_flow()
     except Exception as e:
         logger.warning("GLM reasoning demo skipped: %s", e)
+
+    # LangGraph 重构版 Demo
+    logger.info("=" * 60)
+    logger.info("6. LangGraph Basic Flow Demo (requires LLM API key)")
+    logger.info("=" * 60)
+    try:
+        await run_langgraph_basic_flow()
+    except Exception as e:
+        logger.warning("LangGraph basic flow skipped: %s", e)
+
+    logger.info("=" * 60)
+    logger.info("7. LangGraph Tool Flow Demo (requires LLM API key)")
+    logger.info("=" * 60)
+    try:
+        await run_langgraph_tool_flow()
+    except Exception as e:
+        logger.warning("LangGraph tool flow skipped: %s", e)
+
+    logger.info("=" * 60)
+    logger.info("8. LangGraph Stream Flow Demo (requires LLM API key)")
+    logger.info("=" * 60)
+    try:
+        await run_langgraph_stream_flow()
+    except Exception as e:
+        logger.warning("LangGraph stream flow skipped: %s", e)
 
     logger.info("All demos completed")
 
