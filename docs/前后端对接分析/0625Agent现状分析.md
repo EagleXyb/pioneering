@@ -1,6 +1,6 @@
 # ModuAgent 深度静态分析报告
 
-> **分析对象**：`apps/backend/Python-backend/ModuAgent`  
+> **分析对象**：`apps/backend/ModuAgent`（原 `apps/backend/Python-backend/ModuAgent`）  
 > **分析时间**：2026-06-25  
 > **分析范围**：功能实现、架构设计、算法逻辑、潜在隐患  
 > **代码规模**：74 个 Python 文件，核心编排器 1047 行，涵盖感知/推理/记忆/行动/反馈/进化全链路

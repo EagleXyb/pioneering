@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "workspaces": [
     "apps/web",
-    "apps/marketing",
-    "apps/backend/Python-backend"
+    "apps/marketing"
   ]
 }

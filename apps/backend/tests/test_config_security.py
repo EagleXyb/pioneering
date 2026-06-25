@@ -28,7 +28,7 @@ class TestGitignore:
     """验证 .gitignore 包含关键忽略项"""
 
     def _gitignore_path(self):
-        # tests/ -> Python-backend/ -> backend/ -> apps/ -> pioneering/
+        # tests/ -> backend/ -> apps/ -> pioneering/
         return os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(
                 os.path.dirname(os.path.dirname(__file__))))),
