@@ -1,45 +1,35 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useChat } from '@tdesign-react/chat';
 import { ChatMessageList } from './components/ChatMessageList';
 import { ChatInput } from './components/ChatInput';
 import { useConversationStore } from '../../store/conversationStore';
 import { useChatSync } from './hooks/useChatSync';
-import { getMessages } from '../../api/message';
-import { stopGeneration } from '../../api/message';
+import { getMessages, stopGeneration } from '../../api/message';
 import { convertMessages } from '../../api/converter';
 import { getToken } from '../../api/client';
 import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 import './chat.css';
 
-export default function ChatMode() {
-  const activeId = useConversationStore((s) => s.activeId);
+// ─── 子组件：持有 useChat 实例 ─────────────────────────────────────
+// 通过 key={activeId} 强制重挂载，确保 defaultMessages 在切换会话时重新生效
+function ChatSession({
+  activeId,
+  historyMessages,
+  inputValue,
+  onInputChange,
+  deepThinking,
+  onDeepThinkChange,
+}: {
+  activeId: string | null;
+  historyMessages: ChatMessagesData[];
+  inputValue: string;
+  onInputChange: (v: string) => void;
+  deepThinking: boolean;
+  onDeepThinkChange: (v: boolean) => void;
+}) {
   const create = useConversationStore((s) => s.create);
-
-  const [inputValue, setInputValue] = useState('');
-  const [deepThinking, setDeepThinking] = useState(false);
   const deepThinkingRef = useRef(deepThinking);
   deepThinkingRef.current = deepThinking;
-  const [historyMessages, setHistoryMessages] = useState<ChatMessagesData[]>([]);
-  const loadingHistory = useRef(false);
-
-  // 切换会话时加载历史消息
-  useEffect(() => {
-    if (!activeId) {
-      setHistoryMessages([]);
-      return;
-    }
-    loadingHistory.current = true;
-    getMessages(activeId, undefined, 50, 'before')
-      .then((resp) => {
-        setHistoryMessages(convertMessages(resp.messages));
-      })
-      .catch(() => {
-        setHistoryMessages([]);
-      })
-      .finally(() => {
-        loadingHistory.current = false;
-      });
-  }, [activeId]);
 
   const { chatEngine, messages, status } = useChat({
     chatServiceConfig: {
@@ -71,34 +61,40 @@ export default function ChatMode() {
   useChatSync(activeId, messages);
 
   // 统一发送逻辑：创建会话 + 发送消息
-  const handleSend = async (text: string) => {
+  const handleSend = useCallback(async (text: string) => {
     if (!activeId) {
-      await create('chat');
+      try {
+        await create('chat');
+      } catch {
+        // 创建会话失败，不继续发送（P0-3 修复）
+        return;
+      }
     }
     chatEngine.sendUserMessage({ prompt: text });
-    setInputValue('');
-  };
+  }, [activeId, create, chatEngine]);
 
   // 建议词点击：直接发送
-  const handleSuggestionClick = (suggestion: string) => {
+  const handleSuggestionClick = useCallback((suggestion: string) => {
     handleSend(suggestion);
-  };
+  }, [handleSend]);
 
   // 停止生成
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     chatEngine.abortChat();
     const store = useConversationStore.getState();
     if (store.activeId) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg) {
-        stopGeneration({ sessionId: store.activeId, messageId: lastMsg.id }).catch(() => {});
+      // 取最后一条 assistant 消息，避免误取用户消息（P0-4 修复）
+      const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+      if (lastAssistant) {
+        stopGeneration({ sessionId: store.activeId, messageId: lastAssistant.id }).catch(() => {});
       }
     }
-  };
+  }, [chatEngine, messages]);
 
-  if (!activeId) {
-    return (
-      <div className="chat-mode">
+  return (
+    <>
+      {/* 空态 */}
+      {messages.length === 0 ? (
         <div className="chat-messages-empty">
           <div className="chat-empty-icon">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -118,28 +114,64 @@ export default function ChatMode() {
             ))}
           </div>
         </div>
-        <ChatInput
-          status={status}
-          value={inputValue}
-          onChange={setInputValue}
-          onSend={handleSend}
-          onStop={handleStop}
-          deepThinking={deepThinking}
-          onDeepThinkChange={setDeepThinking}
-        />
-      </div>
-    );
-  }
+      ) : (
+        <ChatMessageList messages={messages} status={status} />
+      )}
 
-  return (
-    <div className="chat-mode">
-      <ChatMessageList messages={messages} status={status} />
       <ChatInput
         status={status}
         value={inputValue}
-        onChange={setInputValue}
+        onChange={onInputChange}
         onSend={handleSend}
         onStop={handleStop}
+        deepThinking={deepThinking}
+        onDeepThinkChange={onDeepThinkChange}
+      />
+    </>
+  );
+}
+
+// ─── 顶层容器 ─────────────────────────────────────────────────────
+export default function ChatMode() {
+  const activeId = useConversationStore((s) => s.activeId);
+
+  const [inputValue, setInputValue] = useState('');
+  const [deepThinking, setDeepThinking] = useState(false);
+  const [historyMessages, setHistoryMessages] = useState<ChatMessagesData[]>([]);
+  const loadingHistory = useRef(false);
+
+  // 切换会话时加载历史消息
+  useEffect(() => {
+    if (!activeId) {
+      setHistoryMessages([]);
+      return;
+    }
+    loadingHistory.current = true;
+    getMessages(activeId, undefined, 50, 'before')
+      .then((resp) => {
+        setHistoryMessages(convertMessages(resp.messages));
+      })
+      .catch(() => {
+        setHistoryMessages([]);
+      })
+      .finally(() => {
+        loadingHistory.current = false;
+      });
+  }, [activeId]);
+
+  return (
+    <div className="chat-mode">
+      {/*
+        关键修复 P0-1：
+        用 key={activeId || 'empty'} 强制 React 重挂载 ChatSession，
+        使内部 useChat 重新初始化，从而 defaultMessages = historyMessages 生效。
+      */}
+      <ChatSession
+        key={activeId || 'empty'}
+        activeId={activeId}
+        historyMessages={historyMessages}
+        inputValue={inputValue}
+        onInputChange={setInputValue}
         deepThinking={deepThinking}
         onDeepThinkChange={setDeepThinking}
       />

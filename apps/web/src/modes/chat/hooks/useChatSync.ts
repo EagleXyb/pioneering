@@ -7,6 +7,11 @@ export function useChatSync(conversationId: string | null, messages: ChatMessage
   const updateTitle = useConversationStore((s) => s.updateTitle);
   const doneRef = useRef(false);
 
+  // P0-2 修复：会话切换时重置 doneRef，确保新会话的标题能正常更新
+  useEffect(() => {
+    doneRef.current = false;
+  }, [conversationId]);
+
   useEffect(() => {
     if (!conversationId || messages.length === 0) return;
 
