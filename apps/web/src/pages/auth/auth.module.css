@@ -320,38 +320,6 @@
   white-space: nowrap;
 }
 
-/* 社交登录 */
-.socialLogin {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 24px;
-}
-
-.wechatBtn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #07C160;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(7, 193, 96, 0.3);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.wechatBtn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 12px rgba(7, 193, 96, 0.4);
-}
-
-.wechatBtn svg {
-  width: 24px;
-  height: 24px;
-  fill: white;
-}
-
 /* 密码强度 */
 .passwordStrength {
   display: flex;

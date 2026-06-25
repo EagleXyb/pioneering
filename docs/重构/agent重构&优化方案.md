@@ -12,7 +12,7 @@ ModuAgent 是一个**强模块化的自研 Agent 框架**，由 5 大层 + 3 大
 | **推理层 Reasoning** | LLM 调用（GLM/GPT/DeepSeek/Qwen）、原生 function calling、流式输出 | `components/reasoning/llm/base_llm.py` |
 | **记忆层 Memory** | 短期（InMemory/Redis）+ 长期（Chroma 向量） | `components/memory/cache/redis_adapter.py`、`components/memory/vector/chroma.py` |
 | **行动层 Action** | 工具（calculator/search/api_client）+ 执行器（sync/async） | `components/action/tools/calculator.py` |
-| **反馈/进化层** | 质量监控、进化信号收集、组件热替换 | `orchestration/communication/message_bus.py` 中 `EvolutionSignalCollector` |
+| **反馈/进化层** | 质量监控、进化信号收集、组件热替换、参数调优、版本回滚 | `feedback/evolution_signal.py`, `feedback/loop_controller.py`, `feedback/quality_monitor.py`, `feedback/metrics/accuracy.py`, `feedback/metrics/efficiency.py`, `evolution/strategy/parameter_tune.py`, `evolution/strategy/component_swap.py`, `evolution/registry/versioned_store.py`, `evolution/registry/rollback_mechanism.py` |
 
 ### 1.2 核心编排器 Coordinator（重构重点）
 
