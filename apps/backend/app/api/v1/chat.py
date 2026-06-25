@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
 from app.database import get_db
-from app.models.user import User, ChatSession, ChatMessage, MessageRole, Feedback, AiConfig
+from app.models.user import User, ChatSession, ChatMessage, MessageRole, Feedback
 from app.schemas.chat import (
     CreateSessionRequest,
     UpdateSessionRequest,
@@ -372,7 +372,6 @@ async def chat_completion(
                 model=model,
                 temperature=dto.temperature,
                 max_tokens=dto.maxTokens,
-                stream=False,
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -602,7 +601,6 @@ async def _do_regenerate(
         messages=messages,
         model=dto.model if dto else None,
         temperature=dto.temperature if dto else None,
-        stream=False,
     )
     content = result_data.get("choices", [{}])[0].get("message", {}).get("content", "")
 

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.schemas.user import (
+    RegisterRequest,
     LoginRequest,
     RefreshTokenRequest,
     TokenResponse,
@@ -54,6 +55,32 @@ async def _generate_auth_response(db: AsyncSession, user: User) -> TokenResponse
             "phone": user.phone,
         },
     )
+
+
+@router.post("/register")
+async def register(dto: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    # 检查用户名是否已存在
+    result = await db.execute(select(User).where(User.username == dto.username))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="用户名已被注册")
+
+    # 检查邮箱是否已存在
+    if dto.email:
+        result = await db.execute(select(User).where(User.email == dto.email))
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="邮箱已被注册")
+
+    user = User(
+        id=f"user_{uuid4().hex[:24]}",
+        username=dto.username,
+        email=dto.email,
+        password_hash=hash_password(dto.password),
+        nickname=dto.username,
+        status=1,
+    )
+    db.add(user)
+    await db.flush()
+    return await _generate_auth_response(db, user)
 
 
 @router.post("/login")

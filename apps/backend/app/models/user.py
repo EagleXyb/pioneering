@@ -129,7 +129,6 @@ class File(Base):
     file_size = Column("file_size", BigInteger, nullable=True)
     file_path = Column("file_path", String(1000), nullable=True)
     url = Column(String(1000), nullable=True)
-    thumbnail_url = Column("thumbnail_url", String(1000), nullable=True)
     status = Column(SmallInteger, default=1)
     created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

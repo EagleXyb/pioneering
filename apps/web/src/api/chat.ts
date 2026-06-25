@@ -112,30 +112,4 @@ export function streamChat(
   return controller;
 }
 
-/**
- * 非流式对话补全
- */
-export async function chatCompletions(
-  params: ChatCompletionRequest,
-): Promise<ChatCompletionResponse> {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
-  const response = await fetch(`${BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ ...params, stream: false }),
-  });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => null);
-    throw new Error(errData?.message || `请求失败: ${response.status}`);
-  }
-
-  return response.json();
-}

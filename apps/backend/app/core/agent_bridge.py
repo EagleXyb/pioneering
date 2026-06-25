@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -245,66 +244,4 @@ def _collect_metadata_from_event(event_dict: Dict[str, str], ctx: StreamContext)
         ctx.error_info = {"code": data.get("code", ""), "message": data.get("message", "")}
 
 
-# ========== 兼容旧接口（chat 路由） ==========
-
-
-async def stream_chat_completion(
-    message: str,
-    session_id: str,
-    user_id: str,
-    model: Optional[str] = None,
-    system_prompt: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-) -> AsyncGenerator[str, None]:
-    """简单对话流式输出（非 Agent ReAct 模式），保留旧接口兼容。"""
-    _init_moduagent()
-
-    from core.registry import get_registry
-    from orchestration.coordinator import Coordinator
-
-    registry = get_registry()
-
-    if model and model != settings.llm_default_model:
-        from components.reasoning.llm.base_llm import BaseLLMReasoner
-        registry.register_reasoning_engine(
-            "dynamic",
-            BaseLLMReasoner(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                default_model=model,
-                system_prompt=system_prompt,
-            ),
-        )
-        from adapters.llm_adapter import LLMAdapter
-        dynamic_adapter = LLMAdapter(engine_name="dynamic")
-    else:
-        dynamic_adapter = None
-
-    coordinator = Coordinator()
-    if dynamic_adapter:
-        coordinator._llm_adapter = dynamic_adapter
-
-    try:
-        async for frame in coordinator.stream_request(
-            user_id=user_id,
-            session_id=session_id,
-            input_data={"input_type": "text", "prompt": message},
-        ):
-            event_type = frame.get("event", "")
-            data_str = frame.get("data", "{}")
-
-            try:
-                data = json.loads(data_str) if isinstance(data_str, str) else data_str
-            except json.JSONDecodeError:
-                continue
-
-            if event_type == "token":
-                yield {"data": json.dumps({"type": "text", "text": data.get("token", "")}, ensure_ascii=False)}
-            elif event_type == "error":
-                yield {"data": json.dumps({"type": "error", "code": data.get("error_code", ""), "message": data.get("message", "")}, ensure_ascii=False)}
-            elif event_type == "done":
-                yield {"data": json.dumps({"type": "done"}, ensure_ascii=False)}
-    except Exception as e:
-        logger.error("Chat stream error: %s", str(e))
-        yield {"data": json.dumps({"type": "error", "code": "CHAT_ERROR", "message": str(e)}, ensure_ascii=False)}
+# stream_chat_completion 已删除（不再需要，chat 路由直接使用 LlmService）

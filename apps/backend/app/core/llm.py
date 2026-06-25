@@ -2,6 +2,7 @@ import json
 import uuid
 from collections.abc import AsyncGenerator
 
+
 import httpx
 
 from app.config import settings
@@ -19,8 +20,7 @@ class LlmService:
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        stream: bool = False,
-    ) -> dict | AsyncGenerator[str, None]:
+    ) -> dict:
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -29,7 +29,7 @@ class LlmService:
         payload = {
             "model": model or self.default_model,
             "messages": messages,
-            "stream": stream,
+            "stream": False,
         }
         if temperature is not None:
             payload["temperature"] = temperature
@@ -37,31 +37,9 @@ class LlmService:
             payload["max_tokens"] = max_tokens
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            if stream:
-                return self._stream_response(client, url, headers, payload)
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             return response.json()
-
-    async def _stream_response(
-        self,
-        client: httpx.AsyncClient,
-        url: str,
-        headers: dict,
-        payload: dict,
-    ) -> AsyncGenerator[str, None]:
-        async with client.stream("POST", url, json=payload, headers=headers) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        yield chunk
-                    except json.JSONDecodeError:
-                        continue
 
     async def stream_agui(
         self,

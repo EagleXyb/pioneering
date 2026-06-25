@@ -2,19 +2,15 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class LoginRequest(BaseModel):
+class RegisterRequest(BaseModel):
     username: str
+    email: str
     password: str
 
 
-class WechatMiniProgramLoginRequest(BaseModel):
-    code: str
-    encrypted_data: str | None = None
-    iv: str | None = None
-
-
-class WechatWebLoginRequest(BaseModel):
-    code: str
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 class RefreshTokenRequest(BaseModel):
