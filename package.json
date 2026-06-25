@@ -5,6 +5,6 @@
   "workspaces": [
     "apps/web",
     "apps/marketing",
-    "apps/backend/*"
+    "apps/backend/Python-backend"
   ]
 }
