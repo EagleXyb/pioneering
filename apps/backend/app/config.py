@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     llm_default_model: str = "deepseek-v4-flash"
 
     host: str = "0.0.0.0"
-    port: int = 3000
+    port: int = 9000
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
     upload_dir: str = "./uploads"

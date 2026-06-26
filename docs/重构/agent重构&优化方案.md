@@ -1006,8 +1006,8 @@ ModuAgent/
 │   └── adapters/          # llm/tool/store/event_bridge 适配器
 ├── adapters/              # LLMAdapter / ToolAdapter / StorageAdapter
 ├── config/                # RuntimeConfig（点路径访问）+ schemas.py（几乎未用）
-├── feedback/              # ✗ 6 个文件全空
-├── evolution/             # ✗ 5 个文件全空
+├── feedback/              # ✓ 已实现（EvolutionSignalCollector / FeedbackLoop / QualityMonitor / AccuracyMetrics / EfficiencyMetrics）
+├── evolution/             # ✓ 已实现（ParameterTuneStrategy / ComponentSwapStrategy / VersionedComponentStore / RollbackMechanism）
 └── examples/              # single_agent.py（双轨 Demo）
 ```
 
@@ -1033,29 +1033,33 @@ ModuAgent/
 |------|--------|------|
 | `components/perception` | ★★★★★ | 文本/图像/音频多模态 + 安全检测 + 融合，实现完善且有降级策略 |
 | `orchestration/communication` | ★★★★ | EventBus + SSE + AGUI 适配完整，但 `_event_log` 与 `PersistentEventLog` 重叠 |
-| `langgraph/` | ★★★☆ | 重构方向正确，但缺少 legacy 的 SSE 细节、记忆更新、进化信号收集 |
+| `langgraph/` | ★★★★☆ | 重构方向正确，SSE 细粒度事件、记忆更新节点、进化信号收集均已补齐；但记忆更新节点尚未接入图结构 |
 | `components/reasoning/llm` | ★★★☆ | 4 引擎结构清晰，但全用同步 `httpx`，异步环境需 `to_thread` 包装 |
 | `orchestration/coordinator` | ★★☆ | 上帝类，process/stream 严重重复，正则解析 tool_call 已过时 |
 | `components/memory` | ★★☆ | 基本可用，但 `redis_adapter.py` 名不副实，`faiss.py` 空 |
 | `components/action` | ★★☆ | `async_executor.py`/`api_client.py` 空文件 |
 | `config` | ★★☆ | schemas.py 定义了完整 dataclass 却几乎不用，全靠 `Dict[str, Any]` |
-| `feedback` | ☆ | **完全空壳**，6 个文件 0 行代码 |
-| `evolution` | ☆ | **完全空壳**，5 个文件 0 行代码 |
+| `feedback` | ★★★★ | 已实现 `EvolutionSignalCollector`、`FeedbackLoop`、`QualityMonitor`、`AccuracyMetrics`、`EfficiencyMetrics`，但自动反馈闭环尚未接通 |
+| `evolution` | ★★★★ | 已实现 `ParameterTuneStrategy`、`ComponentSwapStrategy`、`VersionedComponentStore`、`RollbackMechanism`，但未与 feedback 模块闭环联动 |
 
 ### 6.3 关键问题诊断
 
 #### P0 — 架构层面
 
-**1. `feedback` 和 `evolution` 两大模块完全空壳**
+**1. `feedback` 和 `evolution` 模块已实现但闭环未接通**
 
-README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖点，但 `feedback/`（6 文件）和 `evolution/`（5 文件）**全部为空**。系统的自评估、质量监控、组件热替换、参数调优、版本回滚能力均不存在。`ComponentRegistry.swap_component` 和 `EvolutionSignalCollector` 收集的信号无人消费。
+`feedback/` 和 `evolution/` 模块的基本代码**已实现**（非空壳）：
+- `feedback/`: `EvolutionSignalCollector`（信号收集）、`FeedbackLoop`（反馈循环）、`QualityMonitor`（质量监控）、`AccuracyMetrics`（准确率指标）、`EfficiencyMetrics`（效率指标）
+- `evolution/`: `ParameterTuneStrategy`（参数调优）、`ComponentSwapStrategy`（组件热替换）、`VersionedComponentStore`（版本存储）、`RollbackMechanism`（回滚机制）
+
+**但 `EvolutionSignalCollector` → `FeedbackLoop.evaluate` → `should_evolve` → `EvolutionStrategy.apply` → `ComponentRegistry.swap_component` 的完整自动闭环尚未接通**。目前各组件可独立使用，但缺少触发链路的编排层，信号收集后无人自动消费。
 
 **2. 双轨架构导致大面积代码重复与能力割裂**
 
 `legacy Coordinator`（1048 行）与 `langgraph/` 重构版并存：
 - `coordinator._run_perception_pipeline` 与 `langgraph/nodes.py:perception_node` 几乎是复制粘贴（`coordinator.py:920-980` vs `nodes.py:48-149`）
 - `process_request` 与 `stream_request` 内部逻辑（感知、熔断、记忆、ReAct）约 60% 重复（`coordinator.py:87-412` vs `414-798`）
-- langgraph 版**缺失**：SSE 细粒度事件（thinking/tool_call_start/tool_result）、记忆更新（`update_all`）、进化信号收集、低置信度保守模式
+- langgraph 版**原缺失能力已基本补齐**：SSE 细粒度事件（thinking/tool_call_start/tool_result，见 `event_bridge.py:_emit_sse_events`）、`memory_update_node`（见 `nodes.py`，但尚未接入图结构）、进化信号收集（见 `event_bridge.py` 中 `_evolution_collector.on_agent_event()` 调用）、低置信度保守模式（见 `make_agent_node` 的 `confidence_threshold` 参数）均已实现
 
 **3. Coordinator 是 1048 行上帝类**
 
@@ -1099,7 +1103,7 @@ README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖�
 
 **12. 文件名与实现不符 + 空文件**
 
-`redis_adapter.py` 实为纯内存实现（无 Redis）；`faiss.py`/`async_executor.py`/`api_client.py`/`feedback/*`/`evolution/*` 共 14 个空文件。
+`redis_adapter.py` 实为纯内存实现（无 Redis）；`faiss.py`/`async_executor.py`/`api_client.py` 共 3 个空文件（`feedback/*` 和 `evolution/*` 均已实现非空）。
 
 **13. 缺少测试**
 
@@ -1111,15 +1115,16 @@ README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖�
 
 ### 6.4 优化方案（按优先级分阶段）
 
-#### 阶段一：收敛双轨，消除重复（P0，预计 3-5 天）
+#### 阶段一：收敛双轨，消除重复（P0，预计 2-3 天）
 
 **目标：** 完成 legacy → langgraph 迁移，删除上帝类。
 
-1. **补齐 langgraph 版缺失能力**
-   - 在 `langgraph/nodes.py` 的 `agent_node` 中加入低置信度保守模式（动态降 `temperature`）
-   - 在 `response_node` 后增加 `memory_update_node`，用图节点替代 fire-and-forget task
-   - 在 `event_bridge.py` 中补全 SSE 细粒度事件映射（thinking/tool_call_start/tool_result）
-   - 将 `EvolutionSignalCollector` 订阅接入 EventBridge
+1. **补齐 langgraph 版剩余差距（少量工作）**
+   - ✅ 低置信度保守模式已在 `make_agent_node` 中实现（`confidence_threshold` 参数）
+   - ✅ `memory_update_node` 已在 `nodes.py` 中定义，**但需在 `build_modu_graph()` 中作为图节点接入**
+   - ✅ SSE 细粒度事件已在 `event_bridge.py:_emit_sse_events` 中实现（thinking/tool_call_start/tool_result）
+   - ✅ `EvolutionSignalCollector` 已在 `event_bridge.py` 的 consume 方法中集成
+   - 剩余工作：在 `graph.py` 的 `build_modu_graph()` 中将 `memory_update_node` 添加为图节点，使记忆更新可观测
 
 2. **提取公共感知管线**
    将 `coordinator._run_perception_pipeline` 与 `nodes.perception_node` 的重复逻辑提取为 `components/perception/pipeline.py:run_perception_pipeline(input_data, config, registry)`，两处统一调用。
@@ -1127,7 +1132,7 @@ README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖�
 3. **删除 legacy Coordinator**
    确认 langgraph 版功能对等后，删除 `coordinator.py`（1048 行），`get_runner()` 移除 legacy 分支。
 
-#### 阶段二：异步化 LLM 层 + 工具层（P1，预计 2-3 天）
+#### 阶段二：异步化 LLM 层 + 工具层 + 记忆更新接入（P1，预计 2-3 天）
 
 1. **LLM 引擎改用 `httpx.AsyncClient`**
    ```python
@@ -1147,27 +1152,25 @@ README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖�
    ```
    或直接将 `BaseTool.invoke` 改为 `async def`，消除线程池需求。
 
-3. **记忆更新改为图节点**
-   用 `memory_update_node` 替代 `asyncio.create_task`，确保异常可观测、进程退出前可等待。
+3. **将 memory_update_node 接入图结构**
+   `memory_update_node` 已在 `nodes.py` 中定义但未在 `graph.py:build_modu_graph()` 中作为图节点接入。需在 `response` 节点后增加 `memory_update` 边，使记忆更新成为图的一部分而非 fire-and-forget task。
 
-#### 阶段三：补齐 feedback + evolution（P0，预计 5-7 天）
+#### 阶段三：接通反馈进化闭环（P0，预计 2-3 天）
 
-这是架构承诺但完全缺失的核心能力：
+feedback 和 evolution 模块的**基本代码已实现**，但尚未组成自动闭环。本阶段目标是接通完整链路：
 
-1. **feedback 模块实现**
-   - `loop_controller.py`：实现 `FeedbackLoop(BaseFeedbackLoop)`，`evaluate()` 调用 quality_monitor + metrics，`should_evolve()` 对比阈值
-   - `quality_monitor.py`：基于 LLM-as-Judge 或规则评估响应质量（相关性/完整性/准确性）
-   - `metrics/accuracy.py`：工具调用成功率、答案事实准确性
-   - `metrics/efficiency.py`：token 用量、延迟、ReAct 迭代次数
-
-2. **evolution 模块实现**
-   - `strategy/parameter_tune.py`：根据 feedback 信号自动调 `temperature`/`max_iterations`（消费 `EvolutionSignalCollector` 已收集的信号）
-   - `strategy/component_swap.py`：基于质量对比自动切换 LLM provider（A/B 测试）
-   - `registry/versioned_store.py`：组件版本快照存储
-   - `registry/rollback_mechanism.py`：质量回退时自动回滚到上一版本
-
-3. **闭环接线**
+1. **闭环接线**
    `EvolutionSignalCollector` → `FeedbackLoop.evaluate` → `should_evolve` → `EvolutionStrategy.apply` → `ComponentRegistry.swap_component` / 参数更新。
+
+   具体步骤：
+   - 在 `langgraph/` 或 `orchestration/` 中新增 `evolution_orchestrator.py`，作为闭环编排器
+   - 定时/事件触发：从 `EvolutionSignalCollector.get_signals()` 获取信号
+   - 调用 `FeedbackLoop.evaluate()` 评估质量
+   - 根据 `should_evolve()` 结果调用 `ParameterTuneStrategy` 或 `ComponentSwapStrategy`
+   - 应用变更到 `RuntimeConfig` 或 `ComponentRegistry.swap_component()`
+
+2. **可选增强：QualityMonitor 升级为 LLM-as-Judge**
+   当前 `QualityMonitor` 使用基于规则的评估（关键词匹配），可升级为基于 LLM 的评估以提升准确率。
 
 #### 阶段四：类型安全与工程治理（P2，预计 2-3 天）
 
@@ -1193,13 +1196,14 @@ README/ARCHITECTURE.md 将"反馈驱动"和"持续进化"作为系统核心卖�
 
 | 优化项 | 影响面 | 紧迫度 | 建议阶段 |
 |--------|--------|--------|----------|
-| 补齐 feedback/evolution 空壳 | 核心能力缺失 | 🔴 高 | 阶段三 |
+| 接通 feedback/evolution 闭环 | 核心能力缺失 | 🔴 高 | 阶段三 |
 | 收敛双轨，删除 Coordinator 上帝类 | 维护性 | 🔴 高 | 阶段一 |
 | LLM 异步化 | 性能 | 🟡 中 | 阶段二 |
-| 补齐 langgraph 缺失能力 | 功能对等 | 🔴 高 | 阶段一 |
-| 记忆更新可观测化 | 数据可靠性 | 🟡 中 | 阶段二 |
+| 补齐 langgraph 版剩余差距（memory_update 接入图） | 功能对等 | 🟡 中 | 阶段一 |
+| 提取公共感知管线 | 消除重复 | 🟡 中 | 阶段一 |
 | 启用 schemas 类型安全 | 质量防劣化 | 🟢 低 | 阶段四 |
 | 清理空文件/命名 | 工程整洁 | 🟢 低 | 阶段四 |
 | 补测试 | 质量保障 | 🟡 中 | 阶段四 |
+| QualityMonitor 升级为 LLM-as-Judge | 质量提升 | 🟢 低 | 阶段三（可选） |
 
-**总结：** ModuAgent 的**感知层和编排层设计成熟**，LangGraph 重构方向正确，但存在三大短板：① feedback/evolution 完全空壳导致"自进化"承诺落空；② 双轨并存导致 1048 行上帝类与重复代码；③ LLM 同步调用制约异步性能。建议优先按"收敛双轨 → 异步化 → 补齐反馈进化闭环"的路径推进，最终达成架构文档所描绘的模块化自进化 Agent 框架。
+**总结：** ModuAgent 的**感知层和编排层设计成熟**，LangGraph 重构方向和实现正确，feedback/evolution 模块**基本代码已就绪**但尚欠闭环接通。存在三大短板：① feedback/evolution 闭环未接通导致"自进化"承诺未兑现；② 双轨并存导致 1048 行上帝类与重复代码；③ LLM 同步调用制约异步性能。建议优先按"收敛双轨 → 异步化 + 记忆更新接入图 → 接通反馈进化闭环"的路径推进，最终达成架构文档所描绘的模块化自进化 Agent 框架。
