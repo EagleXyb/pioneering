@@ -16,10 +16,11 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
   onDelete: () => void;
   onRename: (title: string) => void;
 }) {
-  const modeLabels: Record<string, string> = { chat: '对话', pro: '分析', task: '任务' };
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(conv.title);
+  const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -28,10 +29,21 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
     }
   }, [isRenaming]);
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const startRename = (e: React.MouseEvent) => {
     e.stopPropagation();
     setRenameValue(conv.title);
     setIsRenaming(true);
+    setMenuOpen(false);
   };
 
   const commitRename = () => {
@@ -44,6 +56,35 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
 
   const cancelRename = () => {
     setIsRenaming(false);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    onDelete();
+  };
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(!menuOpen);
+  };
+
+  const handleArchive = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    // TODO: 归档功能
+  };
+
+  const handlePin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    // TODO: 置顶功能
+  };
+
+  const handleAnalyze = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    // TODO: 分析功能
   };
 
   return (
@@ -59,6 +100,24 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
       }}
     >
       <div className="sidebar-item-inner">
+        <span className="sidebar-item-mode-tag">
+          {conv.mode === 'chat' && (
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" width="12" height="12">
+              <path d="M2 3h10a1 1 0 011 1v5a1 1 0 01-1 1H5l-3 2V4a1 1 0 011-1z"/>
+            </svg>
+          )}
+          {conv.mode === 'pro' && (
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" width="12" height="12">
+              <path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/>
+            </svg>
+          )}
+          {conv.mode === 'task' && (
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" width="12" height="12">
+              <rect x="1" y="1" width="12" height="12" rx="2"/>
+              <path d="M4 5h6M4 7h4M4 9h5"/>
+            </svg>
+          )}
+        </span>
         {isRenaming ? (
           <input
             ref={inputRef}
@@ -75,30 +134,60 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
         ) : (
           <div className="sidebar-item-title" onDoubleClick={startRename}>{conv.title}</div>
         )}
-        <div className="sidebar-item-meta">
-          <span className="sidebar-item-mode-tag">{modeLabels[conv.mode]}</span>
-          {conv.preview && <span className="sidebar-item-preview">{conv.preview}</span>}
-        </div>
       </div>
-      <button
-        className="sidebar-item-rename-btn"
-        onClick={startRename}
-        aria-label="重命名会话"
-        title="重命名"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
-          <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z"/>
-        </svg>
-      </button>
-      <button
-        className="sidebar-item-delete"
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        aria-label="删除会话"
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M4 4l6 6M10 4l-6 6"/>
-        </svg>
-      </button>
+      <div className="sidebar-item-menu" ref={menuRef}>
+        <button
+          className="sidebar-item-menu-trigger"
+          onClick={handleMenuClick}
+          aria-label="更多操作"
+          title="更多操作"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="7" cy="3" r="1.2"/>
+            <circle cx="7" cy="7" r="1.2"/>
+            <circle cx="7" cy="11" r="1.2"/>
+          </svg>
+        </button>
+        {menuOpen && (
+          <div className="sidebar-item-dropdown">
+            <button className="sidebar-item-dropdown-item" onClick={startRename}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
+                <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z"/>
+              </svg>
+              重命名
+            </button>
+            <button className="sidebar-item-dropdown-item" onClick={handlePin}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M6.5 1.5L9 4l-5 5.5L1 10l.5-3L6.5 1.5z"/>
+              </svg>
+              置顶
+            </button>
+            <button className="sidebar-item-dropdown-item" onClick={handleArchive}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1" y="1.5" width="10" height="2.5" rx=".5"/>
+                <path d="M2.5 4v6a1 1 0 001 1h5a1 1 0 001-1V4"/>
+              </svg>
+              归档
+            </button>
+            <button className="sidebar-item-dropdown-item" onClick={handleAnalyze}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1.5" y="1.5" width="3" height="3" rx=".5"/>
+                <rect x="7.5" y="1.5" width="3" height="3" rx=".5"/>
+                <rect x="1.5" y="7.5" width="3" height="3" rx=".5"/>
+                <rect x="7.5" y="7.5" width="3" height="3" rx=".5"/>
+              </svg>
+              分析
+            </button>
+            <div className="sidebar-item-dropdown-divider" />
+            <button className="sidebar-item-dropdown-item sidebar-item-dropdown-item-danger" onClick={handleDelete}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 4l6 6M10 4l-6 6"/>
+              </svg>
+              删除
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

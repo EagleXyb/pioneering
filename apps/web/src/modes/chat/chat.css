@@ -25,7 +25,7 @@
   gap: 12px;
   padding: 40px;
   background: #ffffff;
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -55,7 +55,7 @@
   flex-direction: column;
   gap: 16px;
   background: #ffffff;
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -67,7 +67,7 @@
   padding: 16px 20px;
   flex-shrink: 0;
   background: #ffffff;
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
