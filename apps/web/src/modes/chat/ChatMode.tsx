@@ -17,19 +17,15 @@ function ChatSession({
   historyMessages,
   inputValue,
   onInputChange,
-  deepThinking,
-  onDeepThinkChange,
 }: {
   activeId: string | null;
   historyMessages: ChatMessagesData[];
   inputValue: string;
   onInputChange: (v: string) => void;
-  deepThinking: boolean;
-  onDeepThinkChange: (v: boolean) => void;
 }) {
   const create = useConversationStore((s) => s.create);
-  const deepThinkingRef = useRef(deepThinking);
-  deepThinkingRef.current = deepThinking;
+  const [r1Active, setR1Active] = useState(false);
+  const [searchActive, setSearchActive] = useState(false);
 
   const { chatEngine, messages, status } = useChat({
     chatServiceConfig: {
@@ -50,7 +46,8 @@ function ChatSession({
             sessionId: store.activeId,
             message: params.prompt,
             stream: true,
-            deepThink: deepThinkingRef.current,
+            deepThink: r1Active,
+            netSearch: searchActive,
           }),
         };
       },
@@ -126,8 +123,10 @@ function ChatSession({
         onChange={onInputChange}
         onSend={handleSend}
         onStop={handleStop}
-        deepThinking={deepThinking}
-        onDeepThinkChange={onDeepThinkChange}
+        r1Active={r1Active}
+        onR1Change={setR1Active}
+        searchActive={searchActive}
+        onSearchChange={setSearchActive}
       />
     </>
   );
@@ -138,7 +137,6 @@ export default function ChatMode() {
   const activeId = useConversationStore((s) => s.activeId);
 
   const [inputValue, setInputValue] = useState('');
-  const [deepThinking, setDeepThinking] = useState(false);
   const [historyMessages, setHistoryMessages] = useState<ChatMessagesData[]>([]);
   const loadingHistory = useRef(false);
 
@@ -174,8 +172,6 @@ export default function ChatMode() {
         historyMessages={historyMessages}
         inputValue={inputValue}
         onInputChange={setInputValue}
-        deepThinking={deepThinking}
-        onDeepThinkChange={setDeepThinking}
       />
     </div>
   );

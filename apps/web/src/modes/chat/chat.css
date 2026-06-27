@@ -8,12 +8,19 @@
   background: #ffffff;
 }
 
+/* AI消息取消气泡背景，宽度100% */
+.chat-message-ai {
+  --td-chat-item-primary-bg: transparent;
+  --td-chat-item-content-max-width: 100%;
+  --td-chat-item-content-base-padding: var(--td-comp-paddingTB-m) 0;
+}
 .chat-scroll-area {
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  scrollbar-gutter: stable;
 }
 
 /* Empty State */
@@ -50,7 +57,7 @@
 
 /* Messages */
 .chat-messages {
-  padding: 24px 20px;
+  padding: 24px 0px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -64,13 +71,15 @@
 /* Input Area - TDesign ChatSender */
 .chat-input-area {
   position: relative;
-  padding: 16px 20px;
+  padding: 0px;
   flex-shrink: 0;
   background: #ffffff;
   max-width: 960px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* 输入框上方工具栏 */
@@ -200,4 +209,14 @@
   border-color: var(--accent-blue);
   color: var(--accent-blue);
   background: var(--accent-blue-light);
+}
+
+/* 版权声明 */
+.copyright__item {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+  padding: 8px 0 4px;
+  opacity: 0.7;
+  user-select: none;
 }

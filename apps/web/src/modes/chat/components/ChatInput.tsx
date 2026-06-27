@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { ChatSender } from '@tdesign-react/chat';
-import { Button } from 'tdesign-react';
+import { Button, Space } from 'tdesign-react';
+import { InternetIcon } from 'tdesign-icons-react';
 import type { ChatStatus } from 'tdesign-web-components/lib/chat-engine';
 
 interface Props {
@@ -9,12 +9,13 @@ interface Props {
   onChange: (val: string) => void;
   onSend: (text: string) => void;
   onStop: () => void;
-  deepThinking?: boolean;
-  onDeepThinkChange?: (v: boolean) => void;
+  r1Active: boolean;
+  onR1Change: (v: boolean) => void;
+  searchActive: boolean;
+  onSearchChange: (v: boolean) => void;
 }
 
-export function ChatInput({ status, value, onChange, onSend, onStop, deepThinking = false, onDeepThinkChange }: Props) {
-  const [webSearch, setWebSearch] = useState(false);
+export function ChatInput({ status, value, onChange, onSend, onStop, r1Active, onR1Change, searchActive, onSearchChange }: Props) {
 
   // 输入变化处理
   const handleChange = (e: CustomEvent<string>) => {
@@ -36,45 +37,41 @@ export function ChatInput({ status, value, onChange, onSend, onStop, deepThinkin
 
   return (
     <div className="chat-input-area">
-      <div className="chat-input-toolbar">
-        <div className="chat-input-mode-tag">帮我写作</div>
-        <div className="chat-input-toolbar-actions">
-          <button className="chat-attach-btn" title="附件">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M9.5 11.5l-4-4a2.12 2.12 0 010-3 2.12 2.12 0 013 0l5 5a3.54 3.54 0 010-5 3.54 3.54 0 00-5 0L3 10"/>
-            </svg>
-          </button>
+      <ChatSender
+      value={value}
+      placeholder="输入你要撰写的主题"
+      loading={status === 'streaming' || status === 'pending'}
+      autosize={{ minRows: 2 }}
+      onChange={handleChange}
+      onSend={handleSend}
+      onStop={handleStop}
+    >
+      {/* 自定义输入框底部区域slot，可以增加模型选项 */}
+      <div slot="footer-prefix">
+        <Space align="center" size="small">
           <Button
             variant="outline"
             shape="round"
-            theme={deepThinking ? 'primary' : 'default'}
+            theme={r1Active ? 'primary' : 'default'}
             size="small"
-            onClick={() => onDeepThinkChange?.(!deepThinking)}
+            onClick={() => onR1Change(!r1Active)}
           >
             R1.深度思考
           </Button>
-          <button
-            className={`chat-web-search-btn ${webSearch ? 'active' : ''}`}
-            onClick={() => setWebSearch(!webSearch)}
+          <Button
+            variant="outline"
+            theme={searchActive ? 'primary' : 'default'}
+            icon={<InternetIcon />}
+            size="small"
+            shape="round"
+            onClick={() => onSearchChange(!searchActive)}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-            </svg>
             联网查询
-          </button>
-        </div>
+          </Button>
+        </Space>
       </div>
-      <ChatSender
-        value={value}
-        placeholder="输入你要撰写的主题"
-        loading={status === 'streaming' || status === 'pending'}
-        autosize={{ minRows: 2 }}
-        onChange={handleChange}
-        onSend={handleSend}
-        onStop={handleStop}
-      />
+    </ChatSender>
+      <div className="copyright__item">内容由AI生成，仅供参考</div>
     </div>
   );
 }

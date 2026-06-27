@@ -7,19 +7,21 @@ interface Props {
 
 export function ChatMessageItem({ message }: Props) {
   return (
-    <ChatMessage
-      message={message}
-      avatar=""
-      variant="base"
-      placement={message.role === 'user' ? 'right' : 'left'}
-      chatContentProps={{
-        thinking: {
-          collapsed: false,
-          layout: 'border',
-          animation: 'circle',
-          maxHeight: 300,
-        },
-      }}
-    />
+    <div className={message.role === 'assistant' ? 'chat-message-ai' : ''}>
+      <ChatMessage
+        message={message}
+        avatar=""
+        variant="base"
+        placement={message.role === 'user' ? 'right' : 'left'}
+        chatContentProps={{
+          thinking: {
+            collapsed: false,
+            layout: 'border',
+            animation: 'circle',
+            maxHeight: 300,
+          },
+        }}
+      />
+    </div>
   );
 }
