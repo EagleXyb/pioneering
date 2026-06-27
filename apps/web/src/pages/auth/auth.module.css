@@ -173,12 +173,12 @@
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 20px;
-  padding: 32px 36px;
+  padding: 28px 36px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 }
 
 .welcomeHeader {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .welcomeTitle {
@@ -197,9 +197,10 @@
 .tabSwitch {
   display: flex;
   background: #E6EDFA;
-  border-radius: 8px;
-  padding: 4px;
-  margin-bottom: 24px;
+  border-radius: 4px;
+  padding: 3px;
+  margin-bottom: 20px;
+  height: 44px;
 }
 
 .tabBtn {
@@ -218,10 +219,10 @@
 
 .tabBtnActive {
   flex: 1;
-  height: 40px;
+  height: 38px;
   border: none;
   background: white;
-  border-radius: 6px;
+  border-radius: 3px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
@@ -238,7 +239,7 @@
 
 /* TDesign Form 间距优化 */
 .formSection :global(.t-form__item) {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .formSection :global(.t-form__label) {
@@ -288,8 +289,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  margin-top: 4px;
+  margin-bottom: 16px;
+  margin-top: 0px;
 }
 
 /* 错误提示 */
@@ -342,7 +343,7 @@
   justify-content: center;
   align-items: center;
   gap: 4px;
-  margin-top: 24px;
+  margin-top: 16px;
 }
 
 .footerText {
@@ -500,6 +501,6 @@
     padding: 24px 16px;
   }
   .authCard {
-    padding: 20px;
+    padding: 20px 16px;
   }
 }

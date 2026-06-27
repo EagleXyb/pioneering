@@ -106,7 +106,7 @@ export default function LoginPage() {
             size="large"
             loading={isLoading}
             block
-            style={{ height: 48, borderRadius: 8, fontSize: 16, fontWeight: 600 }}
+            style={{ height: 40, borderRadius: 3, fontSize: 16, fontWeight: 600 }}
           >
             {isLoading ? '登录中...' : '登 录'}
           </Button>
