@@ -27,6 +27,12 @@ function ChatSession({
   const [r1Active, setR1Active] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
 
+  // 用 ref 保持最新值，避免 onRequest 闭包捕获陈旧值
+  const r1ActiveRef = useRef(r1Active);
+  const searchActiveRef = useRef(searchActive);
+  r1ActiveRef.current = r1Active;
+  searchActiveRef.current = searchActive;
+
   const { chatEngine, messages, status } = useChat({
     chatServiceConfig: {
       endpoint: '/api/chat/completions',
@@ -46,8 +52,8 @@ function ChatSession({
             sessionId: store.activeId,
             message: params.prompt,
             stream: true,
-            deepThink: r1Active,
-            netSearch: searchActive,
+            deepThink: r1ActiveRef.current,
+            netSearch: searchActiveRef.current,
           }),
         };
       },

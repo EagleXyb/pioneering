@@ -25,9 +25,10 @@ export function convertMessages(messages: Message[]): ChatMessagesData[] {
         const block = (m.contentBlocks as any[]).find((b) => b.reasoningContent);
         if (block?.reasoningContent) {
           content.push({
-            type: 'thinking' as const,
-            data: { text: block.reasoningContent, title: '思考过程' },
+            type: 'reasoning' as const,
+            data: [{ type: 'text' as const, data: block.reasoningContent }],
             status: 'complete' as const,
+            collapsed: false,
           });
         }
       }
