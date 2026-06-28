@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { getToken } from '../../../api/client';
+import { getAuthHeader } from '../../../api/client';
 
 // ========== 类型定义 ==========
 
@@ -106,9 +106,10 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
       setCurrentStateKey(null);
       stepCounterRef.current = 0;
 
-      const token = getToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      };
 
       (async () => {
         try {

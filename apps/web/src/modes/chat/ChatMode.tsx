@@ -6,7 +6,7 @@ import { useConversationStore } from '../../store/conversationStore';
 import { useChatSync } from './hooks/useChatSync';
 import { getMessages, stopGeneration } from '../../api/message';
 import { convertMessages } from '../../api/converter';
-import { getToken } from '../../api/client';
+import { getAuthHeader } from '../../api/client';
 import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 import './chat.css';
 
@@ -40,7 +40,7 @@ function ChatSession({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+            ...getAuthHeader(),
           },
           body: JSON.stringify({
             sessionId: store.activeId,

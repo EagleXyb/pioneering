@@ -4,7 +4,7 @@ import { useChatSync } from './hooks/useChatSync';
 import { TaskMessageList } from './components/TaskMessageList';
 import { TaskInput } from './components/TaskInput';
 import { TaskPipeline } from './components/TaskPipeline';
-import { getToken } from '../../api/client';
+import { getAuthHeader } from '../../api/client';
 import './task.css';
 
 export default function TaskMode() {
@@ -21,7 +21,7 @@ export default function TaskMode() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+          ...getAuthHeader(),
         },
         body: JSON.stringify({
           sessionId: activeId,

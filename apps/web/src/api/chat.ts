@@ -2,7 +2,7 @@
  * 对话补全 API
  * 支持流式 SSE 和非流式两种模式
  */
-import { getToken } from './client';
+import { getAuthHeader } from './client';
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -33,14 +33,11 @@ export function streamChat(
   callbacks: StreamCallbacks,
 ): AbortController {
   const controller = new AbortController();
-  const token = getToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...getAuthHeader(),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',

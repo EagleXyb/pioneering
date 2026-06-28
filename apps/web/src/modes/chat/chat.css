@@ -13,6 +13,9 @@
   --td-chat-item-primary-bg: transparent;
   --td-chat-item-content-max-width: 100%;
   --td-chat-item-content-base-padding: var(--td-comp-paddingTB-m) 0;
+  --td-chat-item-actions-list-border: none;
+  --td-chat-item-actions-list-bg: none;
+  --td-chat-item-actions-item-hover-bg: #f3f3f3;
 }
 .chat-scroll-area {
   flex: 1;

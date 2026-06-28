@@ -7,7 +7,8 @@ const BASE_URL = 'http://localhost:9000';
 
 /** 从 localStorage 获取 Token */
 export function getToken(): string | null {
-  return localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  return token && token.trim() ? token : null;
 }
 
 /** 存储 Token */
@@ -18,7 +19,11 @@ export function setToken(token: string, refreshToken?: string): void {
   }
 }
 
-/** 清除 Token */
+/** 获取 Authorization 请求头（Token 为空时返回空对象） */
+export function getAuthHeader(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 export function clearToken(): void {
   localStorage.removeItem('token');
   localStorage.removeItem('refreshToken');
