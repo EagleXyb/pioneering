@@ -7,6 +7,7 @@ import { feedbackMessage } from '../../../api/message';
 
 interface Props {
   message: ChatMessagesData;
+  onReplay?: (messageId: string) => void;
 }
 
 const feedbackToComment: Record<string, ChatComment> = {
@@ -15,12 +16,17 @@ const feedbackToComment: Record<string, ChatComment> = {
   none: '',
 };
 
-export function ChatMessageItem({ message }: Props) {
+export function ChatMessageItem({ message, onReplay }: Props) {
   const [comment, setComment] = useState<ChatComment>(
     feedbackToComment[(message as any).feedback] || '',
   );
 
   const handleAction = (name: TdChatActionsName) => {
+    if (name === 'replay') {
+      onReplay?.(message.id);
+      return;
+    }
+
     let newComment: ChatComment = '';
 
     if (name === 'good') {

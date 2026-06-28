@@ -94,6 +94,26 @@ function ChatSession({
     }
   }, [chatEngine, messages]);
 
+  // 重新生成：找到触发该回复的用户消息，重新发送以触发流式生成
+  const handleReplay = useCallback((messageId: string) => {
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    // 向前找到最近的一条 user 消息
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        const userMsg = messages[i];
+        const textBlock = userMsg.content?.find(
+          (c: any) => c.type === 'text' || c.type === 'markdown',
+        );
+        const text = typeof textBlock?.data === 'string' ? textBlock.data : '';
+        if (text) {
+          chatEngine.sendUserMessage({ prompt: text });
+        }
+        return;
+      }
+    }
+  }, [messages, chatEngine]);
+
   return (
     <>
       <div className="chat-scroll-area">
@@ -119,7 +139,7 @@ function ChatSession({
             </div>
           </div>
         ) : (
-          <ChatMessageList messages={messages} status={status} />
+          <ChatMessageList messages={messages} status={status} onReplay={handleReplay} />
         )}
       </div>
 

@@ -6,9 +6,10 @@ import { ChatMessageItem } from './ChatMessageItem';
 interface Props {
   messages: ChatMessagesData[];
   status: ChatStatus;
+  onReplay?: (messageId: string) => void;
 }
 
-export function ChatMessageList({ messages, status }: Props) {
+export function ChatMessageList({ messages, status, onReplay }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function ChatMessageList({ messages, status }: Props) {
   return (
     <div className="chat-messages">
       {messages.map((msg) => (
-        <ChatMessageItem key={msg.id} message={msg} />
+        <ChatMessageItem key={msg.id} message={msg} onReplay={onReplay} />
       ))}
       {status === 'pending' && (
         <ChatMessage
