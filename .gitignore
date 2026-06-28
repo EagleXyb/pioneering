@@ -1,11 +1,25 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
-.DS_Store
-*.local
-*.log
+.next/
+out/
+build/
+
+# Environment files
 .env
 .env.local
 .env.*.local
+*.local
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Python
 .venv/
@@ -25,6 +39,14 @@ pip-delete-this-directory.txt
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-# Python logs
-logs/
-*.log
+
+# Project specific
+uploads/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
