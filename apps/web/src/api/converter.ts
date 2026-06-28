@@ -24,11 +24,13 @@ export function convertMessages(messages: Message[]): ChatMessagesData[] {
       if (m.contentBlocks && Array.isArray(m.contentBlocks)) {
         const block = (m.contentBlocks as any[]).find((b) => b.reasoningContent);
         if (block?.reasoningContent) {
+          // 结构需与 AGUI event-mapper 的 createReasoningContent 产物对齐：
+          // { type: 'reasoning', data: [{type:'text', data, status}], status, ext: { collapsed } }
           content.push({
             type: 'reasoning' as const,
-            data: [{ type: 'text' as const, data: block.reasoningContent }],
+            data: [{ type: 'text' as const, data: block.reasoningContent, status: 'complete' as const }],
             status: 'complete' as const,
-            collapsed: false,
+            ext: { collapsed: true },
           });
         }
       }

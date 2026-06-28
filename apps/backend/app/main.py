@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 def _setup_logging() -> None:
     """配置日志持久化：按日轮转，保留 30 天。"""
-    log_dir = getattr(settings, "log_dir", "./logs")
+    # 统一使用项目根目录的 logs/backend
+    # __file__ = apps/backend/app/main.py，需要 4 次 dirname 到达项目根目录
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    log_dir = os.path.join(project_root, "logs", "backend")
+    
     os.makedirs(log_dir, exist_ok=True)
 
     file_handler = logging.handlers.TimedRotatingFileHandler(

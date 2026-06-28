@@ -51,7 +51,8 @@ class LlmService:
     ) -> AsyncGenerator[str, None]:
         """
         AG-UI 协议流式输出，产生 SSE 事件字符串。
-        事件类型: RUN_STARTED, THINKING_START, THINKING_TEXT_MESSAGE_CONTENT,
+        事件类型: RUN_STARTED, THINKING_START, THINKING_TEXT_MESSAGE_START,
+                 THINKING_TEXT_MESSAGE_CONTENT, THINKING_TEXT_MESSAGE_END,
                  THINKING_END, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT,
                  TEXT_MESSAGE_END, RUN_FINISHED, RUN_ERROR
         """
@@ -72,6 +73,7 @@ class LlmService:
 
         text_msg_started = False
         think_started = False
+        think_text_started = False
 
         def _ensure_text_start():
             nonlocal text_msg_started
@@ -81,18 +83,38 @@ class LlmService:
             return ""
 
         def _ensure_think_start():
-            nonlocal think_started
+            """首次收到 reasoning_content 时发送 THINKING_START + THINKING_TEXT_MESSAGE_START。
+
+            前端 AGUI event-mapper 的 handleThinkingTextContent 依赖
+            THINKING_TEXT_MESSAGE_START 预先在 reasoningContext.currentData 中
+            创建一条 text 内容，否则所有 THINKING_TEXT_MESSAGE_CONTENT 增量
+            都因找不到可合并的目标而返回 null，导致思考内容被静默丢弃。
+            """
+            nonlocal think_started, think_text_started
+            parts = []
             if not think_started:
                 think_started = True
-                return f'data: {json.dumps({"type": "THINKING_START"}, ensure_ascii=False)}\n\n'
-            return ""
+                parts.append(f'data: {json.dumps({"type": "THINKING_START"}, ensure_ascii=False)}\n\n')
+            if not think_text_started:
+                think_text_started = True
+                parts.append(f'data: {json.dumps({"type": "THINKING_TEXT_MESSAGE_START"}, ensure_ascii=False)}\n\n')
+            return "".join(parts)
 
-        def _flush_end():
-            nonlocal think_started, text_msg_started
+        def _close_thinking():
+            """关闭思考阶段：先发 THINKING_TEXT_MESSAGE_END，再发 THINKING_END。"""
+            nonlocal think_started, think_text_started
             parts = []
+            if think_text_started:
+                parts.append(f'data: {json.dumps({"type": "THINKING_TEXT_MESSAGE_END"}, ensure_ascii=False)}\n\n')
+                think_text_started = False
             if think_started:
                 parts.append(f'data: {json.dumps({"type": "THINKING_END"}, ensure_ascii=False)}\n\n')
                 think_started = False
+            return "".join(parts)
+
+        def _flush_end():
+            nonlocal text_msg_started
+            parts = [_close_thinking()]
             if text_msg_started:
                 parts.append(f'data: {json.dumps({"type": "TEXT_MESSAGE_END", "messageId": assistant_msg_id}, ensure_ascii=False)}\n\n')
                 text_msg_started = False
@@ -128,8 +150,7 @@ class LlmService:
 
                         if content:
                             if think_started:
-                                yield f'data: {json.dumps({"type": "THINKING_END"}, ensure_ascii=False)}\n\n'
-                                think_started = False
+                                yield _close_thinking()
                             yield _ensure_text_start()
                             yield f'data: {json.dumps({"type": "TEXT_MESSAGE_CONTENT", "messageId": assistant_msg_id, "delta": content}, ensure_ascii=False)}\n\n'
 

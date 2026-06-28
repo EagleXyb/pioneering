@@ -34,7 +34,7 @@ export function ChatMessageList({ messages, status }: Props) {
       {messages.map((msg) => (
         <ChatMessageItem key={msg.id} message={msg} />
       ))}
-      {status === 'streaming' && (
+      {status === 'pending' && (
         <ChatMessage
           role="assistant"
           avatar=""

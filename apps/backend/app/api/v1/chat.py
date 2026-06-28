@@ -425,6 +425,7 @@ async def chat_completion(
 
     async def event_generator():
         collected_content: list[str] = []
+        collected_reasoning: list[str] = []
 
         # 1) RUN_STARTED
         yield f'data: {json.dumps({"type": "RUN_STARTED", "threadId": session_id, "runId": run_id}, ensure_ascii=False)}\n\n'
@@ -437,13 +438,15 @@ async def chat_completion(
             temperature=dto.temperature,
             max_tokens=dto.maxTokens,
         ):
-            # 收集文本内容用于持久化
-            if isinstance(sse_str, str) and "TEXT_MESSAGE_CONTENT" in sse_str:
+            # 收集正文/思考内容用于持久化
+            if isinstance(sse_str, str) and sse_str.startswith("data: "):
                 try:
-                    match = sse_str.strip().removeprefix("data: ")
-                    parsed = json.loads(match)
-                    if parsed.get("type") == "TEXT_MESSAGE_CONTENT" and parsed.get("delta"):
+                    parsed = json.loads(sse_str.removeprefix("data: ").strip())
+                    evt_type = parsed.get("type")
+                    if evt_type == "TEXT_MESSAGE_CONTENT" and parsed.get("delta"):
                         collected_content.append(parsed["delta"])
+                    elif evt_type == "THINKING_TEXT_MESSAGE_CONTENT" and parsed.get("delta"):
+                        collected_reasoning.append(parsed["delta"])
                 except (json.JSONDecodeError, KeyError, AttributeError):
                     pass
             yield sse_str
@@ -453,13 +456,18 @@ async def chat_completion(
 
         # 4) 持久化
         full_content = "".join(collected_content)
-        if full_content:
+        full_reasoning = "".join(collected_reasoning)
+        if full_content or full_reasoning:
+            content_blocks = None
+            if full_reasoning:
+                content_blocks = [{"reasoningContent": full_reasoning}]
             assistant_msg = ChatMessage(
                 id=assistant_msg_id,
                 session_id=session_id,
                 user_id=current_user.id,
                 role=MessageRole.assistant,
                 content=full_content,
+                content_blocks=content_blocks,
                 parent_message_id=user_msg.id,
                 token_count=len(full_content) // 4,
             )
