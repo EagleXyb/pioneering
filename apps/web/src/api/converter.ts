@@ -2,11 +2,20 @@
  * 消息格式转换工具
  * 将后端 Message 格式转换为 @tdesign-react/chat 的 ChatMessagesData 格式
  */
-import type { Message } from '../api/types';
+import type { Message, FeedbackType } from '../api/types';
 import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 
-/** 将后端 Message 转换为 ChatMessagesData */
-export function convertMessages(messages: Message[]): ChatMessagesData[] {
+/**
+ * 扩展的聊天消息类型，添加前端需要的反馈字段。
+ * 历史消息从后端加载时通过 convertMessages 填充此字段；
+ * 流式生成的新消息也兼容此类型（feedback 为 undefined 时等同于 'none'）。
+ */
+export type ChatMessageData = ChatMessagesData & {
+  feedback?: FeedbackType;
+};
+
+/** 将后端 Message 转换为 ChatMessageData */
+export function convertMessages(messages: Message[]): ChatMessageData[] {
   return messages
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .map((m) => {
@@ -16,7 +25,8 @@ export function convertMessages(messages: Message[]): ChatMessagesData[] {
           role: 'user' as const,
           content: [{ type: 'text' as const, data: m.content }],
           datetime: m.createdAt,
-        };
+          feedback: m.feedback,
+        } as ChatMessageData;
       }
 
       // assistant 消息：从 contentBlocks 提取思考内容
@@ -45,6 +55,7 @@ export function convertMessages(messages: Message[]): ChatMessagesData[] {
         role: 'assistant' as const,
         content,
         datetime: m.createdAt,
-      };
+        feedback: m.feedback,
+      } as ChatMessageData;
     });
 }

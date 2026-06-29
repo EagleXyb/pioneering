@@ -6,8 +6,8 @@ import { useConversationStore } from '../../store/conversationStore';
 import { useChatSync } from './hooks/useChatSync';
 import { getMessages, stopGeneration } from '../../api/message';
 import { convertMessages } from '../../api/converter';
+import type { ChatMessageData } from '../../api/converter';
 import { getAuthHeader } from '../../api/client';
-import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 import './chat.css';
 
 // ─── 子组件：持有 useChat 实例 ─────────────────────────────────────
@@ -19,7 +19,7 @@ function ChatSession({
   onInputChange,
 }: {
   activeId: string | null;
-  historyMessages: ChatMessagesData[];
+  historyMessages: ChatMessageData[];
   inputValue: string;
   onInputChange: (v: string) => void;
 }) {
@@ -163,7 +163,7 @@ export default function ChatMode() {
   const activeId = useConversationStore((s) => s.activeId);
 
   const [inputValue, setInputValue] = useState('');
-  const [historyMessages, setHistoryMessages] = useState<ChatMessagesData[]>([]);
+  const [historyMessages, setHistoryMessages] = useState<ChatMessageData[]>([]);
   const loadingHistory = useRef(false);
 
   // 切换会话时加载历史消息

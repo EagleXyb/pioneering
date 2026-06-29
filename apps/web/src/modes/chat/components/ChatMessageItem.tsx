@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { ChatMessage, ChatActionBar } from '@tdesign-react/chat';
-import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 import type { ChatComment } from 'tdesign-web-components/lib/chat-engine';
 import type { TdChatActionsName } from 'tdesign-web-components/lib/chat-action';
+import type { ChatMessageData } from '../../../api/converter';
 import { feedbackMessage } from '../../../api/message';
 
 interface Props {
-  message: ChatMessagesData;
+  message: ChatMessageData;
   onReplay?: (messageId: string) => void;
 }
 
@@ -18,7 +18,7 @@ const feedbackToComment: Record<string, ChatComment> = {
 
 export function ChatMessageItem({ message, onReplay }: Props) {
   const [comment, setComment] = useState<ChatComment>(
-    feedbackToComment[(message as any).feedback] || '',
+    feedbackToComment[message.feedback ?? 'none'] || '',
   );
 
   const handleAction = (name: TdChatActionsName) => {
@@ -42,7 +42,7 @@ export function ChatMessageItem({ message, onReplay }: Props) {
       good: 'like',
       bad: 'dislike',
     };
-    feedbackMessage((message as any).id, feedbackMap[newComment]).catch(() => {
+    feedbackMessage(message.id, feedbackMap[newComment]).catch(() => {
       setComment(comment);
     });
   };

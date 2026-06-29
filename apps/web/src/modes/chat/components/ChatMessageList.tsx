@@ -1,10 +1,11 @@
 import { useRef, useEffect } from 'react';
-import type { ChatMessagesData, ChatStatus } from 'tdesign-web-components/lib/chat-engine';
+import type { ChatStatus } from 'tdesign-web-components/lib/chat-engine';
 import { ChatMessage } from '@tdesign-react/chat';
+import type { ChatMessageData } from '../../../api/converter';
 import { ChatMessageItem } from './ChatMessageItem';
 
 interface Props {
-  messages: ChatMessagesData[];
+  messages: ChatMessageData[];
   status: ChatStatus;
   onReplay?: (messageId: string) => void;
 }
