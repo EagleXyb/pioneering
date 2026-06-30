@@ -58,23 +58,46 @@ function ChatSession({
         };
       },
     },
-    defaultMessages: historyMessages,
+    // 不再依赖 defaultMessages 同步历史消息（改用下方手动同步）
+    defaultMessages: [],
   });
+
+  // 手动同步历史消息到 chatEngine，绕过 useChat 内部 length > 0 守卫
+  useEffect(() => {
+    chatEngine.setMessages(historyMessages, 'replace');
+  }, [historyMessages, chatEngine]);
 
   useChatSync(activeId, messages);
 
   // 统一发送逻辑：创建会话 + 发送消息
+  // 通过 store.getState() 读取最新状态，避免闭包捕获陈旧的 activeId
+  // 利用 createPromise 实现并发去重：多次快速点击只创建一个会话
   const handleSend = useCallback(async (text: string) => {
-    if (!activeId) {
+    const store = useConversationStore.getState();
+
+    if (!store.activeId) {
+      // 无活跃会话，创建新会话
       try {
         await create('chat');
       } catch {
-        // 创建会话失败，不继续发送（P0-3 修复）
+        return;
+      }
+    } else if (store.activeId.startsWith('temp_')) {
+      // 当前是乐观更新的临时会话，等待后端创建完成再用真实 ID 发送
+      if (store.createPromise) {
+        try {
+          await store.createPromise;
+        } catch {
+          return;
+        }
+      } else {
+        // 异常状态（临时 ID 但无创建 Promise），不发送
         return;
       }
     }
+
     chatEngine.sendUserMessage({ prompt: text });
-  }, [activeId, create, chatEngine]);
+  }, [create, chatEngine]);
 
   // 建议词点击：直接发送
   const handleSuggestionClick = useCallback((suggestion: string) => {
@@ -166,19 +189,27 @@ export default function ChatMode() {
   const [historyMessages, setHistoryMessages] = useState<ChatMessageData[]>([]);
   const loadingHistory = useRef(false);
 
-  // 切换会话时加载历史消息
+  // 切换会话时加载历史消息（含竞态保护）
   useEffect(() => {
     if (!activeId) {
       setHistoryMessages([]);
       return;
     }
+    // 立即清空，令 chatEngine.setMessages([]) 先清除旧消息
+    setHistoryMessages([]);
     loadingHistory.current = true;
+    const loadingForId = activeId;
     getMessages(activeId, undefined, 50, 'before')
       .then((resp) => {
-        setHistoryMessages(convertMessages(resp.messages));
+        // 竞态保护：仅在当前会话仍活跃时应用响应
+        if (loadingForId === useConversationStore.getState().activeId) {
+          setHistoryMessages(convertMessages(resp.messages));
+        }
       })
       .catch(() => {
-        setHistoryMessages([]);
+        if (loadingForId === useConversationStore.getState().activeId) {
+          setHistoryMessages([]);
+        }
       })
       .finally(() => {
         loadingHistory.current = false;
@@ -188,12 +219,10 @@ export default function ChatMode() {
   return (
     <div className="chat-mode">
       {/*
-        关键修复 P0-1：
-        用 key={activeId || 'empty'} 强制 React 重挂载 ChatSession，
-        使内部 useChat 重新初始化，从而 defaultMessages = historyMessages 生效。
+        不再使用 key 强制重挂载，改用 chatEngine.setMessages 手动同步历史消息。
+        见 ChatSession 内部 useEffect。
       */}
       <ChatSession
-        key={activeId || 'empty'}
         activeId={activeId}
         historyMessages={historyMessages}
         inputValue={inputValue}

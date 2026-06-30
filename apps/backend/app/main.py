@@ -73,11 +73,16 @@ app.add_middleware(
 # 对所有非 SSE 响应统一包装为 { code, data, message } 格式
 @app.middleware("http")
 async def response_wrapper(request: Request, call_next):
+    # 跳过 FastAPI 内置文档路由（/docs、/redoc、/openapi.json）
+    skip_paths = {"/docs", "/redoc", "/openapi.json", "/docs/", "/redoc/"}
+    if request.url.path in skip_paths or request.url.path.startswith(("/docs/", "/redoc/")):
+        return await call_next(request)
+
     response = await call_next(request)
 
     # 跳过 SSE 流式响应
     content_type = response.headers.get("content-type", "")
-    if "text/event-stream" in content_type:
+    if "text/event-stream" in content_type or "text/html" in content_type:
         return response
 
     # 跳过 204 等无 body 响应

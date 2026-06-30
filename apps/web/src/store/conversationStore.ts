@@ -23,12 +23,16 @@ interface ConversationStore {
   currentPage: number;
   /** 会话 mode 映射 (sessionId -> mode)，本地持久化，弥补后端无 mode 字段 */
   sessionModes: Record<string, AppMode>;
+  /** 是否正在创建会话（乐观更新期间为 true） */
+  creating: boolean;
+  /** 当前正在进行的创建会话 Promise（用于并发去重与等待） */
+  createPromise: Promise<string> | null;
 
   /** 从后端加载会话列表（首页） */
   fetchSessions: () => Promise<void>;
   /** 加载下一页会话 */
   fetchMoreSessions: () => Promise<void>;
-  /** 创建新会话（调用后端 API） */
+  /** 创建新会话（乐观更新 + 调用后端 API） */
   create: (mode: AppMode) => Promise<string>;
   /** 激活会话 */
   activate: (id: string) => void;
@@ -73,6 +77,8 @@ export const useConversationStore = create<ConversationStore>()(
       total: 0,
       currentPage: 0,
       sessionModes: {},
+      creating: false,
+      createPromise: null,
 
       fetchSessions: async () => {
         set({ loading: true, error: null });
@@ -105,18 +111,80 @@ export const useConversationStore = create<ConversationStore>()(
       },
 
       create: async (mode) => {
-        const session = await sessionApi.createSession({
+        // 并发去重：若已有正在进行的创建请求，复用同一个 Promise
+        const existing = get().createPromise;
+        if (existing) return existing;
+
+        // 乐观更新：立即生成本地临时会话并插入列表顶部、激活
+        const tempId = `temp_${Date.now()}`;
+        const now = new Date().toISOString();
+        const tempConversation: Conversation = {
+          id: tempId,
           title: '新会话',
-          model: 'deepseek-v4-flash',
-        });
-        const conversation = sessionToConversation(session, { [session.id]: mode });
+          mode,
+          preview: '',
+          createdAt: now,
+          updatedAt: now,
+          group: '今天',
+        };
+        const prevActiveId = get().activeId;
         set({
-          conversations: [conversation, ...get().conversations],
-          activeId: session.id,
-          sessionModes: { ...get().sessionModes, [session.id]: mode },
+          conversations: [tempConversation, ...get().conversations],
+          activeId: tempId,
+          sessionModes: { ...get().sessionModes, [tempId]: mode },
           total: get().total + 1,
+          creating: true,
+          error: null,
         });
-        return session.id;
+
+        // 后台异步调用后端 API
+        const promise = (async () => {
+          try {
+            const session = await sessionApi.createSession({
+              title: '新会话',
+              model: 'deepseek-v4-flash',
+            });
+            const conversation = sessionToConversation(session, { [session.id]: mode });
+
+            set((s) => {
+              const newConversations = s.conversations.map((c) =>
+                c.id === tempId ? conversation : c,
+              );
+              const newSessionModes = Object.fromEntries(
+                Object.entries(s.sessionModes).filter(([k]) => k !== tempId),
+              );
+              newSessionModes[session.id] = mode;
+              return {
+                conversations: newConversations,
+                activeId: s.activeId === tempId ? session.id : s.activeId,
+                sessionModes: newSessionModes,
+              };
+            });
+
+            return session.id;
+          } catch (e: any) {
+            // 创建失败：回滚，移除临时会话
+            set((s) => {
+              const filtered = s.conversations.filter((c) => c.id !== tempId);
+              const newSessionModes = Object.fromEntries(
+                Object.entries(s.sessionModes).filter(([k]) => k !== tempId),
+              );
+              return {
+                conversations: filtered,
+                activeId: s.activeId === tempId ? prevActiveId : s.activeId,
+                sessionModes: newSessionModes,
+                total: Math.max(0, s.total - 1),
+                error: e?.message || '创建会话失败',
+              };
+            });
+            throw e;
+          } finally {
+            set({ creating: false, createPromise: null });
+          }
+        })();
+
+        set({ createPromise: promise });
+        return promise;
       },
 
       activate: (id) => set({ activeId: id }),
