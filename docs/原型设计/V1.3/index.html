@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>林远 · 独立产品顾问 — 为早期科技团队构建从 0 到 1 的产品增长引擎</title>
+<meta name="description" content="一人公司 OPC 独立产品顾问。融合产品思维、技术判断力与设计审美，帮助早期科技团队将模糊的想法转化为可交付的产品。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* ============================================
+   CSS CUSTOM PROPERTIES & DESIGN TOKENS
+   ============================================ */
+:root {
+  --color-bg-primary: #fafaf9;
+  --color-bg-secondary: #f3f0eb;
+  --color-bg-dark: #0f0f13;
+  --color-bg-card: #ffffff;
+  --color-text-primary: #1a1a24;
+  --color-text-secondary: #5e5e6e;
+  --color-text-tertiary: #90909e;
+  --color-text-inverse: #f0ece6;
+  --color-accent: #9e7a4a;
+  --color-accent-light: #c9a96e;
+  --color-accent-bg: rgba(158, 122, 74, 0.08);
+  --color-border: #e8e4df;
+  --color-border-light: #f0ede8;
+  --color-success: #2d7d46;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.08);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,0.12);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --font-display: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
+  --font-sans: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+  --transition-fast: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  --max-width: 1200px;
+  --max-width-narrow: 780px;
+}
+
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+ul { list-style: none; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; }
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+.display-1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 6vw, 4.8rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.display-2 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4.5vw, 3.2rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.display-3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+  margin-bottom: 1rem;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4.5vw, 3.2rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+  margin-bottom: 1.5rem;
+}
+.section-subtitle {
+  font-size: 1.1rem;
+  color: var(--color-text-secondary);
+  max-width: 560px;
+  line-height: 1.8;
+}
+.body-large {
+  font-size: 1.15rem;
+  line-height: 1.85;
+  color: var(--color-text-secondary);
+}
+
+/* ============================================
+   LAYOUT UTILITIES
+   ============================================ */
+.container { max-width: var(--max-width); margin: 0 auto; padding: 0 2rem; }
+.container-narrow { max-width: var(--max-width-narrow); margin: 0 auto; padding: 0 2rem; }
+.section { padding: 6rem 0; }
+.section-dark { background: var(--color-bg-dark); color: var(--color-text-inverse); }
+.section-dark .section-title { color: #fff; }
+.section-dark .section-subtitle { color: #a0a0b0; }
+.section-dark .body-large { color: #b0b0c0; }
+.section-alt { background: var(--color-bg-secondary); }
+
+/* ============================================
+   NAVIGATION
+   ============================================ */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding: 1.25rem 0;
+  transition: all var(--transition-base);
+}
+.nav.scrolled {
+  background: rgba(250, 250, 249, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--color-border-light);
+  padding: 0.75rem 0;
+}
+.nav-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-logo {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+.nav-links {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+.nav-links a {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+  position: relative;
+}
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 1.5px;
+  background: var(--color-accent);
+  transition: width var(--transition-base);
+}
+.nav-links a:hover { color: var(--color-text-primary); }
+.nav-links a:hover::after { width: 100%; }
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.4rem;
+  background: var(--color-text-primary);
+  color: #fff !important;
+  border-radius: 50px;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em;
+  transition: all var(--transition-fast) !important;
+}
+.nav-cta:hover {
+  background: var(--color-accent);
+  transform: translateY(-1px);
+}
+.nav-cta::after { display: none !important; }
+.nav-mobile-toggle {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  padding: 4px;
+}
+.nav-mobile-toggle span {
+  display: block;
+  width: 24px;
+  height: 2px;
+  background: var(--color-text-primary);
+  border-radius: 2px;
+  transition: all var(--transition-base);
+}
+
+/* ============================================
+   HERO SECTION
+   ============================================ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 8rem 0 6rem;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  right: -20%;
+  width: 60%;
+  height: 120%;
+  background: radial-gradient(ellipse at center, rgba(158, 122, 74, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+}
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  background: var(--color-accent-bg);
+  border: 1px solid rgba(158, 122, 74, 0.15);
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-accent);
+  margin-bottom: 2rem;
+}
+.hero-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.hero-title {
+  margin-bottom: 1.5rem;
+}
+.hero-title .highlight {
+  color: var(--color-accent);
+}
+.hero-desc {
+  font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+  color: var(--color-text-secondary);
+  max-width: 620px;
+  line-height: 1.85;
+  margin-bottom: 2.5rem;
+}
+.hero-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 2rem;
+  border-radius: 50px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: all var(--transition-fast);
+}
+.btn-primary {
+  background: var(--color-text-primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--color-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(158, 122, 74, 0.3);
+}
+.btn-outline {
+  border: 1.5px solid var(--color-border);
+  color: var(--color-text-primary);
+  background: transparent;
+}
+.btn-outline:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+.hero-visual {
+  position: absolute;
+  right: -10%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 45%;
+  max-width: 600px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+.hero-visual svg { width: 100%; height: auto; }
+.hero-stats {
+  display: flex;
+  gap: 3rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--color-border-light);
+}
+.hero-stat-value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.hero-stat-label {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+  margin-top: 0.25rem;
+}
+
+/* ============================================
+   CAPABILITY MATRIX
+   ============================================ */
+.capability-header {
+  text-align: center;
+  margin-bottom: 4rem;
+}
+.capability-header .section-subtitle { margin: 0 auto; }
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+.capability-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 2rem 1.75rem;
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+.capability-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-accent-light), var(--color-accent));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--transition-slow);
+}
+.capability-card:hover::before { transform: scaleX(1); }
+.capability-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: transparent;
+}
+.capability-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  color: var(--color-accent);
+}
+.capability-icon svg { width: 24px; height: 24px; }
+.capability-name {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+  color: var(--color-text-primary);
+}
+.capability-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  margin-bottom: 1rem;
+}
+.capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.capability-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  border-radius: 50px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+.capability-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 1 / -1;
+  padding: 1rem 0;
+}
+.connector-line {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.5rem;
+  background: var(--color-accent-bg);
+  border-radius: 50px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-accent);
+}
+.connector-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* ============================================
+   VALUES & VISION
+   ============================================ */
+.values-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  align-items: start;
+}
+.values-left { }
+.values-manifesto {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--color-text-inverse);
+  margin-bottom: 2rem;
+  font-style: italic;
+}
+.values-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.value-item {
+  display: flex;
+  gap: 1rem;
+}
+.value-number {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-accent-light);
+  line-height: 1;
+  min-width: 2rem;
+}
+.value-content h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 0.3rem;
+}
+.value-content p {
+  font-size: 0.9rem;
+  color: #a0a0b0;
+  line-height: 1.65;
+}
+.vision-box {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem;
+}
+.vision-box h3 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+.vision-box p {
+  color: #b0b0c0;
+  line-height: 1.8;
+  margin-bottom: 1rem;
+}
+.vision-highlight {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  background: rgba(158, 122, 74, 0.15);
+  color: var(--color-accent-light);
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+/* ============================================
+   PORTFOLIO
+   ============================================ */
+.portfolio-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 3rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.portfolio-filters {
+  display: flex;
+  gap: 0.5rem;
+}
+.filter-btn {
+  padding: 0.5rem 1.2rem;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-fast);
+}
+.filter-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.filter-btn.active { background: var(--color-text-primary); color: #fff; border-color: var(--color-text-primary); }
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+.portfolio-item {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: all var(--transition-base);
+  cursor: pointer;
+}
+.portfolio-item:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-xl);
+}
+.portfolio-thumb {
+  height: 220px;
+  position: relative;
+  overflow: hidden;
+}
+.portfolio-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+}
+.portfolio-thumb-1 { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+.portfolio-thumb-2 { background: linear-gradient(135deg, #2d3436 0%, #636e72 100%); }
+.portfolio-thumb-3 { background: linear-gradient(135deg, #0f3443 0%, #34e89e 100%); }
+.portfolio-thumb-4 { background: linear-gradient(135deg, #3a1c71 0%, #d76d77 100%); }
+.portfolio-body { padding: 1.75rem; }
+.portfolio-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.6rem;
+}
+.portfolio-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-primary);
+}
+.portfolio-excerpt {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+}
+.portfolio-meta {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border-light);
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+.portfolio-cta {
+  text-align: center;
+  margin-top: 3rem;
+}
+
+/* ============================================
+   PRODUCT / SERVICE
+   ============================================ */
+.service-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.service-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 2rem;
+  transition: all var(--transition-base);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: transparent;
+}
+.service-card.featured {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 4px var(--color-accent-bg);
+}
+.service-card.featured::after {
+  content: '推荐';
+  position: absolute;
+  top: -12px;
+  right: 2rem;
+  padding: 0.25rem 0.8rem;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 50px;
+}
+.service-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  margin-bottom: 1.25rem;
+}
+.service-name {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.service-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  margin-bottom: 1rem;
+  flex: 1;
+}
+.service-price {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.25rem;
+}
+.service-price-unit {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+  font-weight: 400;
+}
+.service-features {
+  margin: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.service-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+.service-feature svg { margin-top: 2px; flex-shrink: 0; color: var(--color-accent); }
+.service-btn {
+  width: 100%;
+  padding: 0.75rem;
+  text-align: center;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-top: auto;
+  transition: all var(--transition-fast);
+}
+.service-btn-primary {
+  background: var(--color-text-primary);
+  color: #fff;
+}
+.service-btn-primary:hover { background: var(--color-accent); }
+.service-btn-outline {
+  border: 1.5px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+.service-btn-outline:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+/* ============================================
+   TRUST / SOCIAL PROOF
+   ============================================ */
+.trust-header { text-align: center; margin-bottom: 3rem; }
+.trust-header .section-subtitle { margin: 0 auto; }
+.testimonial-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.testimonial-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  transition: all var(--transition-base);
+}
+.testimonial-card:hover {
+  box-shadow: var(--shadow-md);
+}
+.testimonial-quote {
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--color-text-primary);
+  margin-bottom: 1.5rem;
+  position: relative;
+  font-style: italic;
+}
+.testimonial-quote::before {
+  content: '"';
+  font-family: var(--font-display);
+  font-size: 3rem;
+  color: var(--color-accent);
+  opacity: 0.3;
+  position: absolute;
+  top: -0.5rem;
+  left: -0.2rem;
+  line-height: 1;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.testimonial-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #fff;
+}
+.avatar-1 { background: #4a6fa5; }
+.avatar-2 { background: #6b8e6b; }
+.avatar-3 { background: #9e7a4a; }
+.testimonial-name { font-weight: 600; font-size: 0.9rem; }
+.testimonial-role { font-size: 0.75rem; color: var(--color-text-tertiary); }
+.media-mentions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 3rem;
+  margin-top: 4rem;
+  padding-top: 3rem;
+  border-top: 1px solid var(--color-border-light);
+  flex-wrap: wrap;
+}
+.media-item {
+  font-size: 0.85rem;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+  transition: color var(--transition-fast);
+}
+.media-item:hover { color: var(--color-accent); }
+
+/* ============================================
+   BLOG / UPDATES
+   ============================================ */
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+.blog-card {
+  transition: all var(--transition-base);
+  cursor: pointer;
+}
+.blog-card:hover .blog-title { color: var(--color-accent); }
+.blog-date {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.6rem;
+}
+.blog-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  transition: color var(--transition-fast);
+  color: var(--color-text-primary);
+}
+.blog-excerpt {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+}
+.blog-meta {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+/* ============================================
+   FOOTER & CTA BANNER
+   ============================================ */
+.cta-banner {
+  text-align: center;
+  padding: 5rem 0;
+}
+.cta-banner .display-2 { margin-bottom: 1rem; }
+.cta-banner .body-large { margin: 0 auto 2rem; max-width: 500px; }
+.footer {
+  background: var(--color-bg-dark);
+  padding: 4rem 0 2rem;
+  color: #9090a0;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 3rem;
+  margin-bottom: 3rem;
+}
+.footer-brand .nav-logo { color: #fff; margin-bottom: 0.75rem; display: block; }
+.footer-brand p { font-size: 0.85rem; line-height: 1.7; }
+.footer-col h4 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+.footer-col a {
+  display: block;
+  font-size: 0.85rem;
+  color: #9090a0;
+  margin-bottom: 0.5rem;
+  transition: color var(--transition-fast);
+}
+.footer-col a:hover { color: var(--color-accent-light); }
+.footer-bottom {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+/* ============================================
+   SCROLL ANIMATIONS
+   ============================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 968px) {
+  .section { padding: 4rem 0; }
+  .capability-grid { grid-template-columns: repeat(2, 1fr); }
+  .service-cards { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+  .portfolio-grid { grid-template-columns: 1fr; }
+  .testimonial-grid { grid-template-columns: 1fr; }
+  .blog-grid { grid-template-columns: 1fr; }
+  .values-layout { grid-template-columns: 1fr; gap: 2rem; }
+  .hero-stats { gap: 2rem; }
+  .footer-grid { grid-template-columns: 1fr; }
+  .hero-visual { opacity: 0.15; right: -30%; }
+}
+@media (max-width: 640px) {
+  .nav-links { display: none; }
+  .nav-mobile-toggle { display: flex; }
+  .capability-grid { grid-template-columns: 1fr; max-width: 380px; margin: 0 auto; }
+  .hero-stats { flex-direction: column; gap: 1rem; }
+  .hero-actions { flex-direction: column; }
+  .btn { justify-content: center; }
+  .portfolio-filters { width: 100%; overflow-x: auto; padding-bottom: 0.5rem; }
+  .container, .container-narrow { padding: 0 1.25rem; }
+  .media-mentions { gap: 1.5rem; }
+}
+
+/* Mobile Nav Overlay */
+.nav-mobile-menu {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-bg-primary);
+  z-index: 999;
+  padding: 5rem 2rem;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.nav-mobile-menu.active { display: flex; }
+.nav-mobile-menu a {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+/* Active nav link */
+.nav-links a.active-link { color: var(--color-accent); }
+.nav-links a.active-link::after { width: 100%; }
+</style>
+</head>
+<body>
+
+<!-- ============================================
+     NAVIGATION
+     ============================================ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#hero" class="nav-logo">Lin Yuan</a>
+    <div class="nav-links" id="navLinks">
+      <a href="#capability">能力矩阵</a>
+      <a href="#values">理念</a>
+      <a href="#portfolio">作品</a>
+      <a href="#services">服务</a>
+      <a href="#blog">洞见</a>
+      <a href="#contact" class="nav-cta">开始合作</a>
+    </div>
+    <div class="nav-mobile-toggle" id="mobileToggle" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile Menu -->
+<div class="nav-mobile-menu" id="mobileMenu">
+  <a href="#hero" onclick="closeMobileMenu()">首页</a>
+  <a href="#capability" onclick="closeMobileMenu()">能力矩阵</a>
+  <a href="#values" onclick="closeMobileMenu()">理念</a>
+  <a href="#portfolio" onclick="closeMobileMenu()">作品</a>
+  <a href="#services" onclick="closeMobileMenu()">服务</a>
+  <a href="#blog" onclick="closeMobileMenu()">洞见</a>
+  <a href="#contact" onclick="closeMobileMenu()">开始合作</a>
+</div>
+
+<!-- ============================================
+     HERO — 个人IP主页
+     ============================================ -->
+<section class="hero" id="hero">
+  <div class="hero-visual">
+    <svg viewBox="0 0 600 500" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#9e7a4a;stop-opacity:0.6"/>
+          <stop offset="100%" style="stop-color:#c9a96e;stop-opacity:0.2"/>
+        </linearGradient>
+        <linearGradient id="g2" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#1a1a24;stop-opacity:0.4"/>
+          <stop offset="100%" style="stop-color:#9e7a4a;stop-opacity:0.1"/>
+        </linearGradient>
+      </defs>
+      <circle cx="320" cy="220" r="180" fill="url(#g1)" opacity="0.5"/>
+      <circle cx="280" cy="200" r="120" fill="url(#g2)" opacity="0.4"/>
+      <circle cx="350" cy="260" r="80" fill="none" stroke="#9e7a4a" stroke-width="0.8" opacity="0.3"/>
+      <circle cx="300" cy="240" r="150" fill="none" stroke="#c9a96e" stroke-width="0.5" opacity="0.2"/>
+      <rect x="260" y="180" width="120" height="80" rx="8" fill="none" stroke="#9e7a4a" stroke-width="1" opacity="0.25" transform="rotate(-15 320 220)"/>
+      <rect x="290" y="200" width="60" height="40" rx="6" fill="none" stroke="#c9a96e" stroke-width="0.8" opacity="0.2" transform="rotate(25 320 220)"/>
+      <line x1="200" y1="280" x2="350" y2="150" stroke="#9e7a4a" stroke-width="0.5" opacity="0.15"/>
+      <line x1="420" y1="300" x2="300" y2="160" stroke="#c9a96e" stroke-width="0.5" opacity="0.12"/>
+    </svg>
+  </div>
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-badge reveal">
+        <span class="hero-badge-dot"></span>
+        Open for Collaboration · 2026
+      </div>
+      <h1 class="hero-title display-1 reveal reveal-delay-1">
+        以<span class="highlight">产品思维</span>为内核，<br>融合技术与设计，<br>为早期科技团队构建<br><span class="highlight">从 0 到 1</span> 的增长引擎。
+      </h1>
+      <p class="hero-desc reveal reveal-delay-2">
+        独立产品顾问，一人公司实践者。不卖"全栈"标签，只交付经过产品逻辑推演、技术可行性验证与设计审美打磨的综合解决方案。
+      </p>
+      <div class="hero-actions reveal reveal-delay-3">
+        <a href="#services" class="btn btn-primary">
+          了解合作方式
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="#portfolio" class="btn btn-outline">浏览作品集</a>
+      </div>
+      <div class="hero-stats reveal reveal-delay-4">
+        <div>
+          <div class="hero-stat-value">12+</div>
+          <div class="hero-stat-label">年产品与工程经验</div>
+        </div>
+        <div>
+          <div class="hero-stat-value">40+</div>
+          <div class="hero-stat-label">交付项目</div>
+        </div>
+        <div>
+          <div class="hero-stat-value">8</div>
+          <div class="hero-stat-label">长期合作客户</div>
+        </div>
+        <div>
+          <div class="hero-stat-value">3×</div>
+          <div class="hero-stat-label">平均增长倍数</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     CAPABILITY MATRIX — 能力矩阵
+     ============================================ -->
+<section class="section" id="capability">
+  <div class="container">
+    <div class="capability-header">
+      <p class="section-label reveal">Capability Matrix</p>
+      <h2 class="section-title reveal reveal-delay-1">能力矩阵</h2>
+      <p class="section-subtitle reveal reveal-delay-2">单一技能可被替代，跨领域的整合判断力才是不可复制的价值。四个维度，一个整体。</p>
+    </div>
+    <div class="capability-grid">
+      <!-- Card 1: Product Thinking -->
+      <div class="capability-card reveal">
+        <div class="capability-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+        <h3 class="capability-name">产品思维</h3>
+        <p class="capability-desc">从用户洞察到商业闭环的系统推演能力。不是画原型，而是定义什么值得做、为什么现在做。</p>
+        <div class="capability-tags">
+          <span class="capability-tag">用户研究</span>
+          <span class="capability-tag">商业分析</span>
+          <span class="capability-tag">增长策略</span>
+          <span class="capability-tag">GTM规划</span>
+        </div>
+      </div>
+
+      <!-- Card 2: Technical -->
+      <div class="capability-card reveal reveal-delay-1">
+        <div class="capability-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3 class="capability-name">技术判断力</h3>
+        <p class="capability-desc">不做"码农"，做技术决策者。理解架构的取舍、技术债的边界，在速度与质量之间找到最优解。</p>
+        <div class="capability-tags">
+          <span class="capability-tag">系统架构</span>
+          <span class="capability-tag">全栈开发</span>
+          <span class="capability-tag">AI应用</span>
+          <span class="capability-tag">技术评估</span>
+        </div>
+      </div>
+
+      <!-- Card 3: Design -->
+      <div class="capability-card reveal reveal-delay-2">
+        <div class="capability-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10"/><path d="M12 2a15.3 15.3 0 00-4 10 15.3 15.3 0 004 10"/></svg>
+        </div>
+        <h3 class="capability-name">设计审美</h3>
+        <p class="capability-desc">审美不是"好看"，是可感知的品质。从交互逻辑到视觉语言，每个触点都是品牌承诺的兑现。</p>
+        <div class="capability-tags">
+          <span class="capability-tag">交互设计</span>
+          <span class="capability-tag">视觉体系</span>
+          <span class="capability-tag">品牌设计</span>
+          <span class="capability-tag">设计系统</span>
+        </div>
+      </div>
+
+      <!-- Card 4: Solution -->
+      <div class="capability-card reveal reveal-delay-3">
+        <div class="capability-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h3 class="capability-name">综合交付</h3>
+        <p class="capability-desc">一人公司模式的核心优势：端到端负责，零沟通损耗。从策略到上线，一个人就是一支高效团队。</p>
+        <div class="capability-tags">
+          <span class="capability-tag">项目管理</span>
+          <span class="capability-tag">质量把控</span>
+          <span class="capability-tag">快速迭代</span>
+          <span class="capability-tag">端到端交付</span>
+        </div>
+      </div>
+
+      <!-- Connector -->
+      <div class="capability-connector reveal reveal-delay-4">
+        <div class="connector-line">
+          <span class="connector-dot"></span>
+          跨领域整合 = 不可替代的竞争力
+          <span class="connector-dot"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     VALUES & VISION — 价值观与愿景
+     ============================================ -->
+<section class="section section-dark" id="values">
+  <div class="container">
+    <p class="section-label reveal" style="color: var(--color-accent-light);">Values & Vision</p>
+    <div class="values-layout">
+      <div class="values-left">
+        <h2 class="section-title reveal reveal-delay-1" style="color:#fff;">做事原则与<br>长期信念</h2>
+        <p class="values-manifesto reveal reveal-delay-2">
+          "我相信小而美的力量。一个人的公司，不是能力的妥协，而是对效率、品质与选择的极致追求。"
+        </p>
+        <div class="values-list">
+          <div class="value-item reveal reveal-delay-1">
+            <div class="value-number">01</div>
+            <div class="value-content">
+              <h4>品质先于规模</h4>
+              <p>宁可少做，不降标准。每个交付物都是下一张名片的全部内容，作品即品牌。</p>
+            </div>
+          </div>
+          <div class="value-item reveal reveal-delay-2">
+            <div class="value-number">02</div>
+            <div class="value-content">
+              <h4>深度先于广度</h4>
+              <p>不追逐热点，不泛泛而谈。只在真正理解的领域提供价值，对"不懂"保持坦诚。</p>
+            </div>
+          </div>
+          <div class="value-item reveal reveal-delay-3">
+            <div class="value-number">03</div>
+            <div class="value-content">
+              <h4>长期主义</h4>
+              <p>所有决策以 5 年为尺度衡量。拒绝短视的取舍，为可持续的增长投资。</p>
+            </div>
+          </div>
+          <div class="value-item reveal reveal-delay-4">
+            <div class="value-number">04</div>
+            <div class="value-content">
+              <h4>知行合一</h4>
+              <p>自己做不到的，不建议客户做。方法论必须经过自身实践的检验，不停留在理论层。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="reveal reveal-delay-2">
+        <div class="vision-box">
+          <h3>愿景</h3>
+          <p>成为早期科技团队最信赖的 <span class="vision-highlight">产品增长合伙人</span>——不是外包商，不是顾问，而是深度参与业务成长的长期伙伴。</p>
+          <p>在 AI 重塑各行各业的时代，独立个体的创造力边界被不断拓展。<span class="vision-highlight">一人公司（OPC）不是过渡状态，而是主动选择的工作方式</span>——以最小组织熵增，实现最大价值输出。</p>
+          <p style="margin-bottom:0;">五年目标：深度服务 20 家早期科技公司，陪伴至少 5 家完成从种子轮到 A 轮的跨越。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     PORTFOLIO — 精选作品集
+     ============================================ -->
+<section class="section" id="portfolio">
+  <div class="container">
+    <div class="portfolio-header">
+      <div>
+        <p class="section-label reveal">Selected Works</p>
+        <h2 class="section-title reveal reveal-delay-1" style="margin-bottom:0;">精选案例</h2>
+      </div>
+      <div class="portfolio-filters reveal reveal-delay-2">
+        <button class="filter-btn active" data-filter="all">全部</button>
+        <button class="filter-btn" data-filter="product">产品设计</button>
+        <button class="filter-btn" data-filter="tech">技术架构</button>
+        <button class="filter-btn" data-filter="growth">增长运营</button>
+      </div>
+    </div>
+    <div class="portfolio-grid">
+      <!-- Project 1 -->
+      <div class="portfolio-item reveal" data-category="product growth">
+        <div class="portfolio-thumb">
+          <div class="portfolio-thumb-placeholder portfolio-thumb-1">SaaS Platform 0→1</div>
+        </div>
+        <div class="portfolio-body">
+          <span class="portfolio-tag">产品设计 · 增长</span>
+          <h3 class="portfolio-title">企业级 SaaS 平台从零到 PMF</h3>
+          <p class="portfolio-excerpt">为一家 B 轮 AI 公司定义产品方向，完成用户调研、MVP 设计、迭代验证全流程。8 个月内完成 PMF 验证，付费转化率提升至 18%。</p>
+          <div class="portfolio-meta">
+            <span>角色：产品负责人</span>
+            <span>周期：8 个月</span>
+            <span>结果：+18% 转化</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 2 -->
+      <div class="portfolio-item reveal reveal-delay-1" data-category="tech product">
+        <div class="portfolio-thumb">
+          <div class="portfolio-thumb-placeholder portfolio-thumb-2">FinTech Architecture</div>
+        </div>
+        <div class="portfolio-body">
+          <span class="portfolio-tag">技术架构 · 产品</span>
+          <h3 class="portfolio-title">金融科技交易系统架构升级</h3>
+          <p class="portfolio-excerpt">主导某 FinTech 初创的核心交易系统重构，将吞吐量提升 6 倍，延迟降低至 50ms 以内，同时完成产品体验的全面优化。</p>
+          <div class="portfolio-meta">
+            <span>角色：技术顾问 + 产品设计</span>
+            <span>周期：6 个月</span>
+            <span>结果：6× 吞吐量提升</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 3 -->
+      <div class="portfolio-item reveal reveal-delay-2" data-category="growth product">
+        <div class="portfolio-thumb">
+          <div class="portfolio-thumb-placeholder portfolio-thumb-3">DTC Growth Engine</div>
+        </div>
+        <div class="portfolio-body">
+          <span class="portfolio-tag">增长 · 产品</span>
+          <h3 class="portfolio-title">DTC 品牌独立站增长体系搭建</h3>
+          <p class="portfolio-excerpt">为消费品牌从零搭建独立站增长引擎，整合内容策略、SEO、转化优化与数据分析，12 个月内实现月营收从 $5K 到 $80K 的跃升。</p>
+          <div class="portfolio-meta">
+            <span>角色：增长负责人</span>
+            <span>周期：12 个月</span>
+            <span>结果：16× 营收增长</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 4 -->
+      <div class="portfolio-item reveal reveal-delay-3" data-category="tech design">
+        <div class="portfolio-thumb">
+          <div class="portfolio-thumb-placeholder portfolio-thumb-4">AI Product Design</div>
+        </div>
+        <div class="portfolio-body">
+          <span class="portfolio-tag">设计 · 技术</span>
+          <h3 class="portfolio-title">AI 驱动的内容创作工具设计与开发</h3>
+          <p class="portfolio-excerpt">全流程负责一款 AI 内容工具的产品设计与前端工程，定义交互范式、搭建设计系统，并在 3 个月内完成可商用 MVP 交付。</p>
+          <div class="portfolio-meta">
+            <span>角色：独立设计 + 前端开发</span>
+            <span>周期：3 个月</span>
+            <span>结果：商用 MVP 交付</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="portfolio-cta reveal">
+      <a href="#" class="btn btn-outline">
+        查看完整案例库
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     PRODUCT / SERVICE — 产品服务入口
+     ============================================ -->
+<section class="section section-alt" id="services">
+  <div class="container">
+    <div style="text-align:center; margin-bottom:3rem;">
+      <p class="section-label reveal">Services</p>
+      <h2 class="section-title reveal reveal-delay-1">合作方式</h2>
+      <p class="section-subtitle reveal reveal-delay-2" style="margin:0 auto;">三种灵活的合作模式，根据阶段和需求选择。不确定哪种适合？直接沟通。</p>
+    </div>
+    <div class="service-cards">
+      <!-- Service 1 -->
+      <div class="service-card reveal">
+        <div class="service-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </div>
+        <h3 class="service-name">产品咨询</h3>
+        <p class="service-desc">适合有方向但缺乏清晰路径的团队。提供产品策略诊断、用户洞察报告与可执行的路线图。</p>
+        <div class="service-price">¥15,000<span class="service-price-unit">/次</span></div>
+        <ul class="service-features">
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            产品策略诊断与竞品分析
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            用户洞察与需求验证
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            3 个月可执行路线图
+          </li>
+        </ul>
+        <button class="service-btn service-btn-outline">了解更多</button>
+      </div>
+
+      <!-- Service 2 (Featured) -->
+      <div class="service-card featured reveal reveal-delay-1">
+        <div class="service-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3 class="service-name">端到端交付</h3>
+        <p class="service-desc">最适合早期团队的选择。从策略到设计到开发上线，完整负责产品模块的 0 到 1 交付。</p>
+        <div class="service-price">¥80,000<span class="service-price-unit">起/项目</span></div>
+        <ul class="service-features">
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            产品策略 + UX 设计 + 全栈开发
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            一人负责，零沟通损耗
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            6-12 周极速交付周期
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            上线后 30 天免费维护
+          </li>
+        </ul>
+        <button class="service-btn service-btn-primary">预约沟通</button>
+      </div>
+
+      <!-- Service 3 -->
+      <div class="service-card reveal reveal-delay-2">
+        <div class="service-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+        <h3 class="service-name">增长顾问</h3>
+        <p class="service-desc">已有产品但增长乏力？按月合作，深度参与增长策略制定与执行，以数据驱动的方式持续优化。</p>
+        <div class="service-price">¥25,000<span class="service-price-unit">/月</span></div>
+        <ul class="service-features">
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            增长策略与实验设计
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            数据看板搭建与分析
+          </li>
+          <li class="service-feature">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            每周深度复盘与迭代建议
+          </li>
+        </ul>
+        <button class="service-btn service-btn-outline">了解更多</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     TRUST / SOCIAL PROOF — 信任背书
+     ============================================ -->
+<section class="section" id="trust">
+  <div class="container">
+    <div class="trust-header">
+      <p class="section-label reveal">Trust</p>
+      <h2 class="section-title reveal reveal-delay-1">他们这样说</h2>
+      <p class="section-subtitle reveal reveal-delay-2">来自合作者的真实反馈。信任不是被说服的，是被证明的。</p>
+    </div>
+    <div class="testimonial-grid">
+      <div class="testimonial-card reveal">
+        <p class="testimonial-quote">"林远是我合作过的最"产品经理"的工程师，也是最懂技术的产品人。他帮我们把一个模糊的想法在 6 周内变成了可用的 MVP，而且审美在线——这是很多技术团队最缺的东西。"</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar avatar-1">陈</div>
+          <div>
+            <div class="testimonial-name">陈明哲</div>
+            <div class="testimonial-role">奇点科技 · 创始人 & CEO</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal reveal-delay-1">
+        <p class="testimonial-quote">"我们花了三个月时间面试产品经理，最终选择和林远合作。因为他不仅能画原型，更能理解我们的技术约束和商业逻辑。他交付的不是文档，是经过验证的增长策略。"</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar avatar-2">张</div>
+          <div>
+            <div class="testimonial-name">张思涵</div>
+            <div class="testimonial-role">星辰数据 · 联合创始人</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal reveal-delay-2">
+        <p class="testimonial-quote">"和林远合作最惊喜的是——他真的能做到"一人即团队"。从产品策略到 UI 设计到前后端开发，他一个人全包了。沟通成本几乎为零，交付质量却比我们之前四人团队还高。"</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar avatar-3">李</div>
+          <div>
+            <div class="testimonial-name">李卓然</div>
+            <div class="testimonial-role">云帆科技 · CTO</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="media-mentions">
+      <span class="media-item">GeekPlux 推荐</span>
+      <span class="media-item">少数派 · 年度效率工具作者</span>
+      <span class="media-item">ProductHunt #2 Product of the Day</span>
+      <span class="media-item">即刻 · 12K+ 关注</span>
+      <span class="media-item">2025 独立开发者大会 · 分享嘉宾</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     BLOG / UPDATES — 个人动态
+     ============================================ -->
+<section class="section section-alt" id="blog">
+  <div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:3rem; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <p class="section-label reveal">Writing</p>
+        <h2 class="section-title reveal reveal-delay-1" style="margin-bottom:0;">思考与洞见</h2>
+      </div>
+      <a href="#" class="btn btn-outline reveal reveal-delay-2" style="white-space:nowrap;">全部文章 →</a>
+    </div>
+    <div class="blog-grid">
+      <article class="blog-card reveal">
+        <div class="blog-date">2026.06.15</div>
+        <h3 class="blog-title">一人公司的产品方法论：为什么"小"是最大的优势</h3>
+        <p class="blog-excerpt">当团队规模成为信息熵的放大器，一个人的决策速度反而成为核心竞争力。这篇文章记录了我从 20 人团队到一人公司的思维转变。</p>
+        <div class="blog-meta">
+          <span>产品思维</span>
+          <span>8 min read</span>
+        </div>
+      </article>
+      <article class="blog-card reveal reveal-delay-1">
+        <div class="blog-date">2026.05.28</div>
+        <h3 class="blog-title">AI 不会取代产品经理，但会取代只会画原型的产品经理</h3>
+        <p class="blog-excerpt">当 AI 可以在 30 秒内生成完整 PRD 和原型时，产品经理的核心价值回到了原点：判断什么值得做，以及为什么。</p>
+        <div class="blog-meta">
+          <span>AI · 产品</span>
+          <span>6 min read</span>
+        </div>
+      </article>
+      <article class="blog-card reveal reveal-delay-2">
+        <div class="blog-date">2026.05.10</div>
+        <h3 class="blog-title">从技术到产品：一个"非典型"工程师的十年转型复盘</h3>
+        <p class="blog-excerpt">十年时间，从写代码到定义产品，从执行者到决策者。复盘我的能力迁移路径与关键转折点。</p>
+        <div class="blog-meta">
+          <span>个人成长</span>
+          <span>12 min read</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     CTA BANNER
+     ============================================ -->
+<section class="cta-banner" id="contact">
+  <div class="container-narrow">
+    <p class="section-label reveal">Let's Talk</p>
+    <h2 class="display-2 reveal reveal-delay-1">准备好让你的产品<br>更进一步了吗？</h2>
+    <p class="body-large reveal reveal-delay-2">
+      不卖方案，先聊聊你的阶段和挑战。如果我能帮上忙，我们再谈合作。
+    </p>
+    <div class="reveal reveal-delay-3">
+      <a href="mailto:hello@linyuan.me" class="btn btn-primary" style="font-size:1rem; padding:1rem 2.5rem;">
+        预约一次免费诊断对话
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================
+     FOOTER
+     ============================================ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <span class="nav-logo" style="color:#fff;">Lin Yuan</span>
+        <p>一人公司实践者 · 独立产品顾问。<br>以产品思维为内核，融合技术与设计，为早期科技团队构建从 0 到 1 的增长引擎。</p>
+      </div>
+      <div class="footer-col">
+        <h4>导航</h4>
+        <a href="#capability">能力矩阵</a>
+        <a href="#values">理念与愿景</a>
+        <a href="#portfolio">精选作品</a>
+        <a href="#services">合作方式</a>
+        <a href="#blog">思考与洞见</a>
+      </div>
+      <div class="footer-col">
+        <h4>联系</h4>
+        <a href="mailto:hello@linyuan.me">hello@linyuan.me</a>
+        <a href="#">Twitter / X</a>
+        <a href="#">GitHub</a>
+        <a href="#">微信公众号</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Lin Yuan. 一人公司，独立经营。</span>
+      <span>Built with clarity & care.</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ============================================
+     SCRIPTS
+     ============================================ -->
+<script>
+// --- Scroll Reveal ---
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+// --- Nav Scroll Effect ---
+const nav = document.getElementById('nav');
+let lastScrollY = 0;
+window.addEventListener('scroll', () => {
+  const scrollY = window.scrollY;
+  if (scrollY > 50) {
+    nav.classList.add('scrolled');
+  } else {
+    nav.classList.remove('scrolled');
+  }
+  lastScrollY = scrollY;
+  updateActiveNavLink();
+}, { passive: true });
+
+// --- Active Nav Link ---
+function updateActiveNavLink() {
+  const sections = document.querySelectorAll('section[id]');
+  const navLinksAll = document.querySelectorAll('#navLinks a:not(.nav-cta)');
+  let current = '';
+  sections.forEach(section => {
+    const sectionTop = section.offsetTop - 120;
+    if (window.scrollY >= sectionTop) {
+      current = section.getAttribute('id');
+    }
+  });
+  navLinksAll.forEach(link => {
+    link.classList.remove('active-link');
+    if (link.getAttribute('href') === '#' + current) {
+      link.classList.add('active-link');
+    }
+  });
+}
+
+// --- Mobile Menu ---
+const mobileToggle = document.getElementById('mobileToggle');
+const mobileMenu = document.getElementById('mobileMenu');
+mobileToggle.addEventListener('click', () => {
+  mobileMenu.classList.toggle('active');
+  const spans = mobileToggle.querySelectorAll('span');
+  if (mobileMenu.classList.contains('active')) {
+    spans[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
+    spans[1].style.opacity = '0';
+    spans[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
+  } else {
+    spans[0].style.transform = '';
+    spans[1].style.opacity = '';
+    spans[2].style.transform = '';
+  }
+});
+function closeMobileMenu() {
+  mobileMenu.classList.remove('active');
+  const spans = mobileToggle.querySelectorAll('span');
+  spans[0].style.transform = '';
+  spans[1].style.opacity = '';
+  spans[2].style.transform = '';
+}
+
+// --- Portfolio Filters ---
+const filterBtns = document.querySelectorAll('.filter-btn');
+const portfolioItems = document.querySelectorAll('.portfolio-item');
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const filter = btn.dataset.filter;
+    portfolioItems.forEach(item => {
+      if (filter === 'all') {
+        item.style.display = '';
+        item.style.opacity = '1';
+        item.style.transform = '';
+      } else {
+        const categories = item.dataset.category;
+        if (categories.includes(filter)) {
+          item.style.display = '';
+          setTimeout(() => { item.style.opacity = '1'; item.style.transform = ''; }, 50);
+        } else {
+          item.style.opacity = '0';
+          item.style.transform = 'translateY(10px)';
+          setTimeout(() => { item.style.display = 'none'; }, 300);
+        }
+      }
+    });
+  });
+});
+
+// --- Smooth scroll for all anchor links ---
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function(e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// --- Initialize ---
+updateActiveNavLink();
+</script>
+</body>
+</html>

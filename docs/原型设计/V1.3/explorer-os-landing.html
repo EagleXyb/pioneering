@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explorer OS — 前路未知，创路同行</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:400;600&family=Space+Grotesk:400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ==================== Design Tokens ==================== */
+:root {
+  --color-bg:       #030014;
+  --color-surface:  #08041F;
+  --color-card:     #0A0624;
+  --color-border:   rgba(255,255,255,0.06);
+  --color-border-hover: rgba(255,255,255,0.12);
+  --color-accent-1: #2EA7FF;
+  --color-accent-2: #13DDC4;
+  --color-accent-3: #9381FF;
+  --color-accent-4: #FFB254;
+  --color-red:      #FF4D6D;
+  --color-text:     #FFFFFF;
+  --color-text-2:   rgba(255,255,255,0.72);
+  --color-text-3:   rgba(255,255,255,0.52);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --content-width: 1280px;
+  --content-narrow: 640px;
+  --section-py: 120px;
+  --section-px: 64px;
+}
+
+/* ==================== Reset ==================== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--font-sans);
+  background:var(--color-bg);
+  color:var(--color-text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height:1.5;
+  overflow-x:hidden;
+}
+::selection{background:rgba(46,167,255,0.3);color:#fff}
+
+/* ==================== Typography ==================== */
+h1,h2,h3,h4{font-weight:700;line-height:1.1;letter-spacing:-0.02em}
+
+/* ==================== Layout ==================== */
+.container{width:100%;max-width:var(--content-width);margin:0 auto;padding:0 var(--section-px)}
+
+/* 聚焦型窄容器：Hero 文案、底部 CTA 表单，排除干扰提升转化率 */
+.container-narrow {
+  width: 100%;
+  max-width: var(--content-narrow);
+  margin: 0 auto;
+  padding: 0 var(--section-px);
+}
+
+/* ==================== Header ==================== */
+.header{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  height:72px;display:flex;align-items:center;
+  background:rgba(3,0,20,0.82);
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.header-inner{
+  width:100%;max-width:var(--content-width);margin:0 auto;
+  padding:0 var(--section-px);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.header-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.header-logo-mark{
+  width:30px;height:30px;border-radius:8px;
+  background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-2));
+}
+.header-logo-text{font-size:18px;font-weight:700;color:var(--color-text);letter-spacing:-0.01em}
+.header-nav{display:flex;align-items:center;gap:36px}
+.header-nav a{
+  font-size:14px;font-weight:500;color:var(--color-text-2);
+  text-decoration:none;transition:color .2s;
+}
+.header-nav a:hover{color:var(--color-text)}
+.header-cta{
+  display:inline-flex;align-items:center;height:40px;padding:0 22px;
+  border-radius:var(--radius-full);font-size:14px;font-weight:600;
+  color:var(--color-text);text-decoration:none;white-space:nowrap;
+  background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-2));
+  box-shadow:0 2px 12px rgba(46,167,255,0.35);
+  transition:transform .2s,box-shadow .2s;
+}
+.header-cta:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(46,167,255,0.5)}
+
+/* ==================== Hero ==================== */
+.hero{
+  position:relative;padding:160px 0 100px;overflow:hidden;
+}
+.hero-bg{
+  position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(46,167,255,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 50% at 30% 70%, rgba(147,129,255,0.06) 0%, transparent 50%);
+}
+.hero .container{position:relative}
+.hero-grid{
+  display:grid;grid-template-columns:1fr 440px;gap:80px;align-items:center;
+}
+.hero-content{display:flex;flex-direction:column;gap:28px}
+.hero-badge{
+  display:inline-flex;align-items:center;gap:8px;width:fit-content;
+  padding:5px 14px;border-radius:var(--radius-full);
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+}
+.hero-badge-dot{width:7px;height:7px;border-radius:50%;background:var(--color-accent-2)}
+.hero-badge-text{font-size:13px;font-weight:500;color:var(--color-text-2)}
+.hero-title{font-size:80px;font-weight:700;line-height:1.06;letter-spacing:-0.03em}
+.hero-desc{font-size:17px;line-height:1.65;color:var(--color-text-2);max-width:480px}
+.hero-actions{display:flex;align-items:center;gap:14px;margin-top:4px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:48px;padding:0 28px;border-radius:var(--radius-full);
+  font-family:var(--font-sans);font-size:15px;font-weight:600;
+  cursor:pointer;text-decoration:none;border:none;
+  transition:all .2s;
+}
+.btn-primary{background:var(--color-text);color:var(--color-bg)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(255,255,255,0.2)}
+.btn-ghost{
+  background:rgba(255,255,255,0.05);color:var(--color-text);
+  border:1px solid rgba(255,255,255,0.12);
+}
+.btn-ghost:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2)}
+.btn-gradient{
+  background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-2));
+  color:var(--color-text);box-shadow:0 2px 16px rgba(46,167,255,0.3);
+}
+.btn-gradient:hover{transform:translateY(-1px);box-shadow:0 4px 24px rgba(46,167,255,0.45)}
+
+/* Hero Visual — 玻璃质感卡片 */
+.hero-visual{
+  position:relative;aspect-ratio:1;
+  border-radius:var(--radius-xl);
+  /* 半透明基底层 + 毛玻璃模糊 */
+  background:
+    radial-gradient(ellipse 70% 60% at 60% 40%, rgba(46,167,255,0.18), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 30% 70%, rgba(147,129,255,0.10), transparent 60%),
+    rgba(10,6,36,0.45);
+  backdrop-filter:blur(24px) saturate(1.4);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);
+  border:1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+.hero-visual::before{
+  content:'';position:absolute;top:12%;right:10%;
+  width:28%;padding-bottom:28%;border-radius:50%;
+  background:radial-gradient(circle,rgba(147,129,255,0.2),transparent 70%);
+}
+.hero-visual::after{
+  content:'';position:absolute;bottom:15%;left:12%;
+  width:20%;padding-bottom:20%;border-radius:50%;
+  background:radial-gradient(circle,rgba(46,167,255,0.15),transparent 70%);
+}
+.hero-visual-content{text-align:center;z-index:1}
+.hero-os-icon{
+  width:88px;height:88px;margin:0 auto 18px;border-radius:var(--radius-lg);
+  background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-3),var(--color-accent-2));
+  box-shadow:0 0 48px rgba(46,167,255,0.4);
+}
+.hero-visual-title{font-size:26px;font-weight:700}
+.hero-visual-desc{font-size:14px;color:var(--color-text-3);margin-top:6px}
+
+/* ==================== Section ==================== */
+.section{padding:var(--section-py) 0;position:relative}
+.section-header{text-align:center;margin-bottom:64px}
+.section-tag{
+  font-family:var(--font-mono);font-size:12px;font-weight:600;
+  color:var(--color-accent-1);letter-spacing:0.15em;display:inline-block;margin-bottom:16px;
+}
+.section-title{font-size:52px;margin-bottom:16px}
+.section-desc{font-size:17px;color:var(--color-text-2);line-height:1.6;max-width:560px;margin:0 auto}
+
+/* ==================== Problem / Solution ==================== */
+.comparison-grid{
+  display:grid;grid-template-columns:1fr auto 1fr;
+  gap:80px;align-items:stretch;margin:0 auto;
+}
+.compare-card{
+  position:relative;overflow:hidden;
+  padding:40px 36px;border-radius:var(--radius-xl);
+  text-align:center;display:flex;flex-direction:column;align-items:center;gap:20px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.compare-card::before{
+  content:'';position:absolute;inset:0;z-index:0;border-radius:inherit;
+  backdrop-filter:blur(16px) saturate(1.3);
+  -webkit-backdrop-filter:blur(16px) saturate(1.3);
+}
+.compare-card > *{position:relative;z-index:1}
+.compare-card.before{
+  background:rgba(10,6,36,0.7);border:1px solid rgba(255,77,109,0.15);
+}
+.compare-card.after{
+  background:rgba(10,6,36,0.55);
+  border:1px solid rgba(19,221,196,0.18);
+}
+.compare-label{
+  font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:0.15em;
+}
+.compare-label.before{color:var(--color-red)}
+.compare-label.after{color:var(--color-accent-2)}
+.compare-title{font-size:24px;font-weight:700}
+.compare-list{display:flex;flex-direction:column;gap:10px}
+.compare-list span{font-size:14px}
+.compare-card.before .compare-list span{color:var(--color-text-3)}
+.compare-card.after .compare-list span{color:var(--color-text-2)}
+.compare-divider{
+  width:48px;height:48px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-3));
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;
+}
+
+/* ==================== Features (Bento Grid) ==================== */
+.bento{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:24px;
+}
+.feature-card{
+  position:relative;overflow:hidden;
+  padding:36px;border-radius:var(--radius-xl);
+  background:rgba(10,6,36,0.65);
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.06);
+  transition:border-color .3s,box-shadow .3s;
+}
+.feature-card::before{
+  content:'';position:absolute;inset:0;z-index:0;border-radius:inherit;
+  backdrop-filter:blur(16px) saturate(1.3);
+  -webkit-backdrop-filter:blur(16px) saturate(1.3);
+}
+.feature-card > *{position:relative;z-index:1}
+.feature-card:hover{
+  border-color:var(--color-border-hover);
+  box-shadow:0 6px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.feature-icon{
+  width:48px;height:48px;border-radius:var(--radius-md);margin-bottom:20px;
+}
+.feature-icon.c1{background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-3))}
+.feature-icon.c2{background:linear-gradient(135deg,var(--color-accent-2),var(--color-accent-1))}
+.feature-icon.c3{background:linear-gradient(135deg,var(--color-accent-3),var(--color-accent-1))}
+.feature-icon.c4{background:linear-gradient(135deg,var(--color-accent-4),var(--color-accent-1))}
+.feature-card h3{font-size:22px;margin-bottom:10px}
+.feature-card p{font-size:14px;line-height:1.6;color:var(--color-text-3)}
+
+/* ==================== Social Proof ==================== */
+.stats-bar{
+  display:flex;justify-content:center;flex-wrap:wrap;
+  gap:72px;margin-bottom:72px;
+}
+.stat h4{font-size:44px;font-weight:700;margin-bottom:4px}
+.stat p{font-size:14px;color:var(--color-text-3)}
+.testimonials{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+}
+.testimonial{
+  position:relative;overflow:hidden;
+  padding:32px;border-radius:var(--radius-xl);
+  background:rgba(10,6,36,0.65);
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.06);
+  display:flex;flex-direction:column;gap:20px;
+  transition:border-color .3s,box-shadow .3s;
+}
+.testimonial::before{
+  content:'';position:absolute;inset:0;z-index:0;border-radius:inherit;
+  backdrop-filter:blur(16px) saturate(1.3);
+  -webkit-backdrop-filter:blur(16px) saturate(1.3);
+}
+.testimonial:hover{
+  border-color:var(--color-border-hover);
+  box-shadow:0 6px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.testimonial blockquote{
+  position:relative;z-index:1;
+  font-size:15px;line-height:1.65;color:var(--color-text-2);margin:0;
+}
+.testimonial footer{position:relative;z-index:1;display:flex;align-items:center;gap:12px;margin-top:auto}
+.avatar{
+  width:42px;height:42px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:700;color:var(--color-text);
+}
+.avatar.a1{background:var(--color-accent-1)}
+.avatar.a2{background:var(--color-accent-2)}
+.avatar.a3{background:var(--color-accent-3)}
+.testimonial footer strong{display:block;font-size:14px;font-weight:600}
+.testimonial footer span{font-size:12px;color:var(--color-text-3)}
+
+/* ==================== CTA ==================== */
+.cta-section{
+  padding:var(--section-py) 0;text-align:center;position:relative;overflow:hidden;
+}
+.cta-bg{
+  position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 60% 60% at 50% 30%, rgba(147,129,255,0.07),transparent 70%),
+    radial-gradient(ellipse 50% 50% at 50% 60%, rgba(46,167,255,0.06),transparent 60%);
+}
+.cta-section .container{position:relative}
+.cta-title{font-size:56px;margin-bottom:16px}
+.cta-desc{font-size:17px;color:var(--color-text-2);line-height:1.6;margin-bottom:36px}
+.cta-form{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.cta-input{
+  width:380px;height:52px;padding:0 22px;font-family:var(--font-sans);font-size:15px;
+  border-radius:var(--radius-full);color:var(--color-text);outline:none;
+  background:var(--color-card);border:1px solid var(--color-border-hover);
+  transition:border-color .2s;
+}
+.cta-input::placeholder{color:var(--color-text-3)}
+.cta-input:focus{border-color:var(--color-accent-1)}
+.cta-form .btn-gradient{height:52px;padding:0 30px;font-size:15px}
+.cta-trust{display:flex;gap:32px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+.cta-trust span{font-size:13px;color:var(--color-text-3)}
+
+/* ==================== Footer ==================== */
+.footer{padding:72px 0 36px;border-top:1px solid var(--color-border)}
+.footer-grid{
+  display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:48px;margin-bottom:48px;
+}
+.footer-brand{display:flex;flex-direction:column;gap:14px;max-width:260px}
+.footer-brand-logo{display:flex;align-items:center;gap:10px}
+.footer-brand-mark{
+  width:22px;height:22px;border-radius:6px;
+  background:linear-gradient(135deg,var(--color-accent-1),var(--color-accent-2));
+}
+.footer-brand-name{font-size:16px;font-weight:700}
+.footer-brand-desc{font-size:13px;color:var(--color-text-3);line-height:1.6}
+.footer-col h4{font-size:13px;font-weight:600;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-2)}
+.footer-col a{
+  display:block;font-size:13px;color:var(--color-text-3);
+  text-decoration:none;margin-bottom:10px;transition:color .2s;
+}
+.footer-col a:hover{color:var(--color-text)}
+.footer-bottom{
+  display:flex;justify-content:space-between;align-items:center;
+  padding-top:24px;border-top:1px solid var(--color-border);
+}
+.footer-copy{font-size:13px;color:var(--color-text-3)}
+.footer-legal{display:flex;gap:24px}
+.footer-legal a{font-size:13px;color:var(--color-text-3);text-decoration:none;transition:color .2s}
+.footer-legal a:hover{color:var(--color-text)}
+
+/* ==================== Animations (scroll-triggered) ==================== */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.65s cubic-bezier(0.16,1,0.3,1) forwards;
+  animation-play-state: paused;
+}
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+  animation-play-state: paused;
+}
+.animate-scale-in {
+  animation: scaleIn 0.6s cubic-bezier(0.16,1,0.3,1) forwards;
+  animation-play-state: paused;
+}
+.is-visible {
+  animation-play-state: running !important;
+}
+
+.stagger-1 { animation-delay: 0.08s; opacity: 0; }
+.stagger-2 { animation-delay: 0.16s; opacity: 0; }
+.stagger-3 { animation-delay: 0.24s; opacity: 0; }
+.stagger-4 { animation-delay: 0.32s; opacity: 0; }
+.stagger-5 { animation-delay: 0.40s; opacity: 0; }
+.stagger-6 { animation-delay: 0.48s; opacity: 0; }
+
+/* ==================== Responsive ==================== */
+@media (max-width:1080px){
+  :root{--section-py:96px;--section-px:40px}
+  .hero-grid{grid-template-columns:1fr;gap:56px}
+  .hero-title{font-size:clamp(44px,10vw,72px)}
+  .hero-visual{max-width:360px;justify-self:center}
+  .comparison-grid{grid-template-columns:1fr;gap:32px;max-width:500px}
+  .compare-divider{justify-self:center}
+  .bento{grid-template-columns:1fr;max-width:600px;margin:0 auto}
+  .testimonials{grid-template-columns:1fr;max-width:500px;margin:0 auto}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:40px}
+  .stats-bar{gap:40px}
+}
+
+@media (max-width:640px){
+  :root{--section-py:72px;--section-px:24px}
+  .header{height:60px}
+  .header-nav{display:none}
+  .header-cta{height:34px;padding:0 16px;font-size:13px}
+  .header-logo-text{font-size:16px}
+  .header-logo-mark{width:26px;height:26px}
+  .hero{padding:120px 0 72px}
+  .hero-title{font-size:clamp(36px,11vw,56px)}
+  .hero-desc{font-size:15px}
+  .hero-visual{max-width:100%}
+  .hero-actions{flex-direction:column;width:100%}
+  .hero-actions .btn{width:100%}
+  .btn{height:44px;font-size:14px}
+  .section-title{font-size:clamp(28px,7vw,40px)}
+  .section-header{margin-bottom:48px}
+  .compare-card{padding:28px 24px}
+  .feature-card{padding:28px}
+  .stats-bar{gap:32px}
+  .stat h4{font-size:36px}
+  .cta-title{font-size:clamp(32px,8vw,44px)}
+  .cta-input{width:100%}
+  .cta-form{flex-direction:column}
+  .cta-form .btn-gradient{width:100%}
+  .footer-grid{grid-template-columns:1fr;gap:32px}
+  .footer-bottom{flex-direction:column;gap:12px;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-inner">
+    <a href="#" class="header-logo">
+      <div class="header-logo-mark"></div>
+      <span class="header-logo-text">Explorer OS</span>
+    </a>
+    <nav class="header-nav">
+      <a href="#">产品</a>
+      <a href="#">愿景</a>
+      <a href="#">社区</a>
+      <a href="#">关于</a>
+    </nav>
+    <a href="#waitlist" class="header-cta">加入 Waitlist</a>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="hero-badge animate-fade-up stagger-1">
+          <span class="hero-badge-dot"></span>
+          <span class="hero-badge-text">BANI 时代的认知操作系统</span>
+        </div>
+        <h1 class="hero-title animate-fade-up stagger-2">前路未知<br>创路同行</h1>
+        <p class="hero-desc animate-fade-up stagger-3">Explorer OS —— 面向创新者、创业者与破局者的数字生产力与认知协同平台。在脆弱、焦虑、非线性、不可知的世界里，重新定义前行的方式。</p>
+        <div class="hero-actions animate-fade-up stagger-4">
+          <a href="#waitlist" class="btn btn-primary">加入 Waitlist →</a>
+          <a href="#features" class="btn btn-ghost">了解愿景</a>
+        </div>
+      </div>
+      <div class="hero-visual animate-fade-up stagger-2">
+        <div class="hero-visual-content">
+          <div class="hero-os-icon"></div>
+          <div class="hero-visual-title">知行合一的践行者</div>
+          <div class="hero-visual-desc">非线性世界中的确定性锚点</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Problem / Solution -->
+<section class="section" id="problem">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">THE PROBLEM</span>
+      <h2 class="section-title">你正在经历的时代</h2>
+      <p class="section-desc">BANI 时代——脆弱、焦虑、非线性、不可知。传统线性规划工具在未知面前，已彻底失灵。</p>
+    </div>
+    <div class="comparison-grid">
+      <div class="compare-card before animate-fade-up stagger-1">
+        <span class="compare-label before">BEFORE</span>
+        <h3 class="compare-title">线性规划失效</h3>
+        <div class="compare-list">
+          <span>计划赶不上变化，战略沦为摆设</span>
+          <span>信息碎片化，认知过载</span>
+          <span>团队离散，协同成本高</span>
+        </div>
+      </div>
+      <div class="compare-divider animate-scale-in stagger-2">VS</div>
+      <div class="compare-card after animate-fade-up stagger-3">
+        <span class="compare-label after">AFTER</span>
+        <h3 class="compare-title">Explorer OS 破局</h3>
+        <div class="compare-list">
+          <span>自适应战略，实时感知环境变化</span>
+          <span>认知引擎，结构化信息降维</span>
+          <span>分布式协同，共创前行</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">THE SOLUTION</span>
+      <h2 class="section-title">Explorer OS 核心能力</h2>
+      <p class="section-desc">以认知协同为内核，以非线性适应为引擎，构建未知中的确定性。</p>
+    </div>
+    <div class="bento">
+      <div class="feature-card animate-fade-up stagger-1">
+        <div class="feature-icon c1"></div>
+        <h3>认知引擎</h3>
+        <p>非线性信息结构化降维，构建动态知识图谱，将碎片化的认知整合为可行动的洞察。</p>
+      </div>
+      <div class="feature-card animate-fade-up stagger-2">
+        <div class="feature-icon c2"></div>
+        <h3>自适应战略</h3>
+        <p>实时环境感知与动态路径规划，在不确定性中保持方向，在变化中主动进化。</p>
+      </div>
+      <div class="feature-card animate-fade-up stagger-3">
+        <div class="feature-icon c3"></div>
+        <h3>分布式协同</h3>
+        <p>跨团队共创与决策对齐，将孤立的个体连接为有机的共创网络。</p>
+      </div>
+      <div class="feature-card animate-fade-up stagger-4">
+        <div class="feature-icon c4"></div>
+        <h3>数据洞察</h3>
+        <p>不确定性中的信号识别与预测建模，从噪声中提取有意义的方向，辅助关键决策。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Social Proof -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">SOCIAL PROOF</span>
+      <h2 class="section-title">先行者已在路上</h2>
+      <p class="section-desc">来自早期探索者的真实反馈——他们正在用 Explorer OS 重新定义自己的前行方式。</p>
+    </div>
+    <div class="stats-bar animate-fade-up stagger-1">
+      <div class="stat"><h4>3,400+</h4><p>Waitlist 注册</p></div>
+      <div class="stat"><h4>87%</h4><p>决策效率提升</p></div>
+      <div class="stat"><h4>42%</h4><p>认知负荷下降</p></div>
+      <div class="stat"><h4>12</h4><p>国家/地区</p></div>
+    </div>
+    <div class="testimonials">
+      <div class="testimonial animate-fade-up stagger-1">
+        <blockquote>"在我创业最焦虑的第三年，Explorer OS 让我看清了噪音中的信号。团队决策效率提升了整整两倍。"</blockquote>
+        <footer>
+          <div class="avatar a1">陈</div>
+          <div>
+            <strong>陈维远</strong>
+            <span>Etera Studio 创始人</span>
+          </div>
+        </footer>
+      </div>
+      <div class="testimonial animate-fade-up stagger-2">
+        <blockquote>"非线性时代最需要的就是一套非线性工具。Explorer OS 的认知引擎改变了我们信息组织的底层逻辑。"</blockquote>
+        <footer>
+          <div class="avatar a2">林</div>
+          <div>
+            <strong>林慕枫</strong>
+            <span>OpenPath 产品 VP</span>
+          </div>
+        </footer>
+      </div>
+      <div class="testimonial animate-fade-up stagger-3">
+        <blockquote>"以前我们靠直觉，现在靠 Explorer OS 的数据洞察。认知负荷下降了近一半，更重要的是方向感回来了。"</blockquote>
+        <footer>
+          <div class="avatar a3">徐</div>
+          <div>
+            <strong>徐牧风</strong>
+            <span>Greyfox Capital 合伙人</span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA + Waitlist -->
+<section class="cta-section" id="waitlist">
+  <div class="cta-bg"></div>
+  <div class="container-narrow">
+    <span class="section-tag animate-fade-up stagger-1">JOIN THE JOURNEY</span>
+    <h2 class="cta-title animate-fade-up stagger-2">成为第一批探索者</h2>
+    <p class="cta-desc animate-fade-up stagger-3">Explorer OS 即将开启内测。加入 Waitlist，率先体验 BANI 时代的认知操作系统。</p>
+    <div class="cta-form">
+      <input type="email" class="cta-input" placeholder="输入邮箱，加入 Waitlist">
+      <button class="btn btn-gradient">立即加入 →</button>
+    </div>
+    <div class="cta-trust">
+      <span>✓ 无需付费，免费获取内测资格</span>
+      <span>✓ 数据隐私优先，绝无垃圾邮件</span>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="footer-brand-logo">
+          <div class="footer-brand-mark"></div>
+          <span class="footer-brand-name">Explorer OS</span>
+        </div>
+        <p class="footer-brand-desc">前路未知，创路同行。面向 BANI 时代的认知操作系统。</p>
+      </div>
+      <div class="footer-col">
+        <h4>产品</h4>
+        <a href="#">功能概览</a><a href="#">路线图</a><a href="#">开发者 API</a>
+      </div>
+      <div class="footer-col">
+        <h4>公司</h4>
+        <a href="#">关于我们</a><a href="#">加入团队</a><a href="#">联系我们</a>
+      </div>
+      <div class="footer-col">
+        <h4>资源</h4>
+        <a href="#">博客</a><a href="#">社区</a><a href="#">文档</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">© 2026 Explorer OS. 前路未知，创路同行。</span>
+      <div class="footer-legal">
+        <a href="#">隐私政策</a>
+        <a href="#">服务条款</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(()=>{
+  const input=document.querySelector('.cta-input');
+  const btn=document.querySelector('.cta-form .btn-gradient');
+  btn.addEventListener('click',()=>{
+    const v=input.value.trim();
+    if(v&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){
+      input.value='';input.placeholder='✓ 注册成功！我们会尽快通知你。';
+      input.style.borderColor='var(--color-accent-2)';
+    }else{
+      input.placeholder=v?'邮箱格式不正确，请重新输入':'请输入有效的邮箱地址';
+      input.style.borderColor='var(--color-red)';input.focus();
+    }
+  });
+  input.addEventListener('focus',()=>{input.style.borderColor='var(--color-accent-1)';});
+  // Scroll-triggered animations
+  (function(){
+    if('IntersectionObserver' in window){
+      const observer=new IntersectionObserver((entries)=>{
+        entries.forEach(entry=>{
+          if(entry.isIntersecting){
+            const target=entry.target.closest('.animate-fade-up,.animate-fade-in,.animate-scale-in')||entry.target;
+            target.classList.add('is-visible');
+            observer.unobserve(target);
+          }
+        });
+      },{threshold:0.12});
+      document.querySelectorAll('.animate-fade-up,.animate-fade-in,.animate-scale-in').forEach(el=>observer.observe(el));
+    }else{
+      document.querySelectorAll('.animate-fade-up,.animate-fade-in,.animate-scale-in').forEach(el=>el.classList.add('is-visible'));
+    }
+  })();
+})();
+</script>
+</body>
+</html>
