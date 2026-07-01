@@ -7,7 +7,6 @@ ComponentRegistry.swap_component 的运行时热替换。
     - build_checkpointer(): 构建检查点保存器（memory / sqlite）
     - build_store(): 构建长期记忆存储（chroma / in_memory）
     - create_agent(): 根据配置创建 ModuAgent LangGraph 实例
-    - create_legacy_agent(): 创建 legacy Coordinator（双轨对比）
 
 进化机制映射：
     - 组件热替换 → 重新编译图（create_agent(config=...)）
@@ -26,6 +25,7 @@ from langgraph.graph.graph import CompiledGraph
 
 from config.runtime_config import RuntimeConfig, get_config
 from langgraph.adapters.llm_adapter import build_chat_model
+from langgraph.adapters.retry import apply_llm_retry
 from langgraph.adapters.store_adapter import ChromaStore, InMemoryStoreAdapter
 from langgraph.adapters.tool_adapter import build_langchain_tools
 from langgraph.graph import build_modu_graph
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def build_checkpointer(checkpointer_type: str = "memory") -> Any:
     """构建检查点保存器。
 
-    替代 components/memory/cache/redis_adapter.py 的 InMemoryShortTermMemory。
+    替代 components/memory/cache/short_term_memory.py 的 InMemoryShortTermMemory。
     LangGraph 自动按 thread_id（= session_id）持久化整个 State，
     无需手写 query/update。
 
@@ -96,6 +96,59 @@ def build_store(store_type: str = "chroma") -> Any:
         return InMemoryStoreAdapter()
 
 
+def _build_judge_llm(
+    runtime_config: RuntimeConfig,
+    configurable: Dict[str, Any],
+) -> Optional[Any]:
+    """P2-7: 构造 LLM-as-Judge 评估器。
+
+    仅当 `feedback.quality_monitor_mode` 为 "llm" 或 "hybrid" 时构造，
+    否则返回 None（rule 模式无需 LLM）。
+
+    优先使用 `configurable` 中的运行时覆盖（如 API 层指定了 model/provider），
+    其次读取 `feedback.quality_monitor_llm_provider` 配置，
+    最后复用 `llm.default_provider`。
+
+    Args:
+        runtime_config: 运行时配置
+        configurable: RunnableConfig.configurable 字段
+
+    Returns:
+        ChatOpenAI 实例，或 None（rule 模式或构造失败）
+    """
+    mode = runtime_config.get("feedback.quality_monitor_mode", "rule")
+    if mode not in ("llm", "hybrid"):
+        return None
+
+    # 评估器 LLM 的 provider 优先级：configurable > feedback.quality_monitor_llm_provider > llm.default_provider
+    provider = (
+        configurable.get("llm_provider")
+        or runtime_config.get("feedback.quality_monitor_llm_provider")
+        or runtime_config.get("llm.default_provider")
+    )
+    temperature = runtime_config.get("feedback.quality_monitor_llm_temperature", 0.0)
+    max_tokens = runtime_config.get("feedback.quality_monitor_llm_max_tokens", 256)
+
+    try:
+        judge_llm = build_chat_model(
+            provider=provider,
+            config=runtime_config,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        logger.info(
+            "Built LLM-as-Judge evaluator: provider=%s temp=%.2f max_tokens=%d",
+            provider, temperature, max_tokens,
+        )
+        return judge_llm
+    except Exception as e:
+        logger.warning(
+            "Failed to build judge LLM (provider=%s), QualityMonitor will fall back to rule: %s",
+            provider, str(e),
+        )
+        return None
+
+
 def create_agent(
     config: Optional[RunnableConfig] = None,
     runtime_config: Optional[RuntimeConfig] = None,
@@ -146,17 +199,22 @@ def create_agent(
     provider = configurable.get("llm_provider")
     temperature = configurable.get("temperature")
     max_tokens = configurable.get("max_tokens")
+    model = configurable.get("model")
 
     llm = build_chat_model(
         provider=provider,
         config=runtime_config,
         temperature=temperature,
         max_tokens=max_tokens,
+        model=model,
     )
 
-    # 工具（支持运行时覆盖工具集）
+    # P2-8: 为 LLM 应用重试（指数退避，仅重试瞬时网络异常）
+    llm = apply_llm_retry(llm, runtime_config)
+
+    # 工具（支持运行时覆盖工具集；P2-8: 传入 config 启用工具重试）
     tool_names = configurable.get("tools")
-    tools = build_langchain_tools(tool_names=tool_names)
+    tools = build_langchain_tools(tool_names=tool_names, config=runtime_config)
 
     # 检查点保存器
     checkpointer_type = configurable.get(
@@ -175,6 +233,23 @@ def create_agent(
     # 系统提示词
     effective_system_prompt = configurable.get("system_prompt", system_prompt)
 
+    # P0-1: 创建进化编排器（接通 feedback/evolution 闭环）
+    # P2-7: 若启用 LLM-as-Judge，构造独立的 judge LLM 并传入 orchestrator
+    orchestrator = None
+    if runtime_config.get("feedback.enable_evolution", True):
+        try:
+            from evolution.evolution_orchestrator import EvolutionOrchestrator
+            judge_llm = _build_judge_llm(runtime_config, configurable)
+            orchestrator = EvolutionOrchestrator(evaluator_llm=judge_llm)
+            judge_mode = runtime_config.get("feedback.quality_monitor_mode", "rule")
+            logger.info(
+                "EvolutionOrchestrator initialized (quality_monitor_mode=%s, judge_llm=%s)",
+                judge_mode,
+                "enabled" if judge_llm is not None else "disabled",
+            )
+        except Exception as e:
+            logger.warning("EvolutionOrchestrator init failed, feedback loop disabled: %s", str(e))
+
     # 构建并编译图
     graph = build_modu_graph(
         tools=tools,
@@ -182,7 +257,12 @@ def create_agent(
         checkpointer=checkpointer,
         store=store,
         system_prompt=effective_system_prompt,
+        orchestrator=orchestrator,
     )
+
+    # P0-1: 将 orchestrator 挂载到图上，供 runner 读取以共享 evolution_collector
+    if orchestrator:
+        graph.orchestrator = orchestrator  # type: ignore[attr-defined]
 
     logger.info(
         "ModuAgent LangGraph created: provider=%s tools=%d checkpointer=%s store=%s",
@@ -193,13 +273,3 @@ def create_agent(
     )
 
     return graph
-
-
-def create_legacy_agent() -> Any:
-    """创建 legacy Coordinator 实例（用于双轨运行对比）。
-
-    Returns:
-        Coordinator 实例
-    """
-    from orchestration.coordinator import Coordinator
-    return Coordinator()

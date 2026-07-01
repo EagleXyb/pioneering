@@ -49,6 +49,9 @@ class FeedbackLoop(BaseFeedbackLoop):
     ) -> Dict[str, Any]:
         """评估单次输出的质量。
 
+        P2-7: 改用 `QualityMonitor.evaluate_async()` 以支持 LLM-as-Judge 模式。
+        当 quality_monitor 为规则模式时，evaluate_async 退化为同步调用，无额外开销。
+
         Args:
             output: 输出字典，包含 response / tool_results / usage 等
             context: 上下文字典，包含 prompt / tool_results 等
@@ -61,8 +64,8 @@ class FeedbackLoop(BaseFeedbackLoop):
         tool_results = output.get("tool_results", [])
         usage = output.get("usage", {})
 
-        # 使用 QualityMonitor 评估响应质量
-        quality_result = self._quality_monitor.evaluate(
+        # 使用 QualityMonitor 评估响应质量（异步，支持 LLM/hybrid 模式）
+        quality_result = await self._quality_monitor.evaluate_async(
             prompt=prompt,
             response=response,
             context=context,
@@ -74,10 +77,17 @@ class FeedbackLoop(BaseFeedbackLoop):
         )
 
         # 构建评估结果
+        # P2-7: 若 LLM 已返回 accuracy 维度，优先使用 LLM 的；否则使用工具调用准确率
+        llm_accuracy = quality_result.get("accuracy")
+        accuracy_score = (
+            llm_accuracy if llm_accuracy is not None
+            else accuracy_result.get("success_rate", 0.0)
+        )
+
         evaluation = {
             "relevance": quality_result.get("relevance", 0.0),
             "completeness": quality_result.get("completeness", 0.0),
-            "accuracy": accuracy_result.get("success_rate", 0.0),
+            "accuracy": accuracy_score,
             "tool_effectiveness": accuracy_result.get("success_rate", 0.0),
             "quality_score": quality_result.get("overall", 0.0),
             "accuracy_details": accuracy_result,

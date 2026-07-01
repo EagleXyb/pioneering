@@ -12,8 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 class ToolAdapter:
-    def __init__(self):
+    def __init__(self, max_workers: int = 8):
         self._registry = get_registry()
+        # P1-4: 实例级线程池复用，避免每次调用创建/销毁开销
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+
+    def close(self) -> None:
+        """释放线程池资源。"""
+        self._executor.shutdown(wait=False)
+
+    def __del__(self) -> None:
+        try:
+            self._executor.shutdown(wait=False)
+        except Exception:
+            pass
 
     def invoke_tool(
         self,
@@ -41,9 +53,9 @@ class ToolAdapter:
             }
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(tool.invoke, params=params, context=context)
-                result = future.result(timeout=timeout_ms / 1000.0)
+            # P1-4: 复用实例级线程池
+            future = self._executor.submit(tool.invoke, params=params, context=context)
+            result = future.result(timeout=timeout_ms / 1000.0)
         except concurrent.futures.TimeoutError:
             logger.error("Tool execution timeout: %s (timeout=%dms)", tool_name, timeout_ms)
             return {

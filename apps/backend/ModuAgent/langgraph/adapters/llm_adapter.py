@@ -57,6 +57,7 @@ def build_chat_model(
     config: Optional[RuntimeConfig] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    model: Optional[str] = None,
 ) -> ChatOpenAI:
     """构建 LangChain ChatOpenAI 实例，复用现有环境变量约定。
 
@@ -65,6 +66,7 @@ def build_chat_model(
         config: 运行时配置（默认使用全局单例）
         temperature: 温度参数覆盖
         max_tokens: 最大 token 覆盖
+        model: 模型名覆盖（如 "deepseek-chat"），None=从环境变量读取
 
     Returns:
         ChatOpenAI 实例（streaming=True，支持原生 function calling）
@@ -94,10 +96,14 @@ def build_chat_model(
         or os.getenv("LLM_BASE_URL", pcfg["default_base_url"])
     )
 
-    # 解析 model
-    model = (
-        os.getenv(pcfg["model"])
-        or os.getenv("LLM_DEFAULT_MODEL", pcfg["default_model"])
+    # 解析 model（参数覆盖 > 环境变量 > 默认值）
+    effective_model = (
+        model
+        if model is not None
+        else (
+            os.getenv(pcfg["model"])
+            or os.getenv("LLM_DEFAULT_MODEL", pcfg["default_model"])
+        )
     )
 
     # 解析温度和 max_tokens（参数覆盖 > 配置 > 默认值）
@@ -114,13 +120,13 @@ def build_chat_model(
 
     logger.info(
         "Building ChatOpenAI: provider=%s model=%s base_url=%s temp=%.2f max_tokens=%d",
-        provider, model, base_url, effective_temp, effective_max_tokens,
+        provider, effective_model, base_url, effective_temp, effective_max_tokens,
     )
 
     return ChatOpenAI(
         api_key=api_key,
         base_url=base_url,
-        model=model,
+        model=effective_model,
         temperature=effective_temp,
         max_tokens=effective_max_tokens,
         streaming=True,  # 原生支持流式，替代手写 stream()

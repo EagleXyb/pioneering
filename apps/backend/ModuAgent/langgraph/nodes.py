@@ -29,7 +29,7 @@ from components.perception import (
     build_perception_event_metadata,
     extract_perception_context,
 )
-from components.perception.fusion import PerceptionFusion
+from components.perception.pipeline import run_perception_pipeline
 from config.runtime_config import get_config
 from core.registry import get_registry
 from langgraph.state import ModuAgentState
@@ -51,68 +51,23 @@ logger = logging.getLogger(__name__)
 def perception_node(state: ModuAgentState) -> dict:
     """感知层节点：输入路由 + 感知器链 + 多路融合。
 
-    复用现有 PerceptionFusion + TextPreprocessor 的业务逻辑，
-    对应 coordinator.py 中 _run_perception_pipeline() 方法。
-
-    流程：
-        1. 根据 input_type 从 routing 配置获取感知器链
-        2. 依次执行每个感知器，前一个的输出文本作为后一个的输入
-        3. 若有多个感知器结果，使用 PerceptionFusion 融合
-        4. 提取 cleaned_text / sensitivity_level / confidence
+    P1-5: 委托至公共感知管线函数，消除与 coordinator._run_perception_pipeline 的重复逻辑。
 
     Args:
         state: 当前图状态
 
     Returns:
         状态更新字典（perception_result / cleaned_text / sensitivity_level /
-        confidence / detected_language / injection_detected）
+        confidence / detected_language / injection_detected / pii_detected）
     """
     config = get_config()
     registry = get_registry()
     input_data = state.get("input_data", {})
-
-    input_type = input_data.get("input_type", "text")
     prompt = input_data.get("prompt", "")
-    raw_content = prompt.encode("utf-8")
-    sensitivity_level = input_data.get("sensitivity_level", 0)
 
-    # 获取路由配置
-    routing = config.get("perception.routing", {})
-    pipeline_config = routing.get(input_type, {})
-    pipeline: List[str] = pipeline_config.get("pipeline", ["text_preprocessor"])
+    fused = run_perception_pipeline(input_data, config, registry)
 
-    if not pipeline:
-        pipeline = ["text_preprocessor"]
-
-    results: List[Dict[str, Any]] = []
-    current_content = raw_content
-    current_input_type = input_type
-
-    for processor_name in pipeline:
-        perception = registry.get_perception(processor_name)
-        if perception is None:
-            logger.warning("Perception component '%s' not registered, skipping", processor_name)
-            continue
-
-        try:
-            result = perception.perceive(
-                input_type=current_input_type,
-                raw_content=current_content,
-                sensitivity_level=sensitivity_level,
-            )
-            results.append(result)
-
-            # 管线传递：若感知器输出转为文本，则后续感知器以文本为输入
-            parsed = result.get("parsed_content", {})
-            if parsed.get("text") and parsed.get("input_type") == "text":
-                current_content = parsed["text"].encode("utf-8")
-                current_input_type = "text"
-
-        except Exception as e:
-            logger.error("Perception '%s' failed: %s", processor_name, str(e))
-            continue
-
-    if not results:
+    if not fused:
         return {
             "perception_result": None,
             "cleaned_text": prompt,
@@ -120,26 +75,18 @@ def perception_node(state: ModuAgentState) -> dict:
             "confidence": 1.0,
             "detected_language": None,
             "injection_detected": False,
+            "pii_detected": False,
         }
 
-    # 单路结果直接返回，多路融合
-    if len(results) == 1:
-        fused = results[0]
-    else:
-        fusion = PerceptionFusion(
-            strategy=config.get("perception.fusion.strategy", "weighted_average"),
-            weights=config.get("perception.fusion.weights"),
-        )
-        fused = fusion.fuse(results)
-
     cleaned_text = None
-    if fused and fused.get("parsed_content"):
+    if fused.get("parsed_content"):
         cleaned_text = fused["parsed_content"].get("text")
 
     meta = fused.get("metadata", {})
     detected_level = meta.get("sensitivity_level", 0)
     confidence = fused.get("confidence", 1.0)
     injection_detected = meta.get("injection_detected", False)
+    pii_detected = meta.get("pii_detected", False)
     detected_language = fused.get("detected_language")
 
     return {
@@ -149,6 +96,7 @@ def perception_node(state: ModuAgentState) -> dict:
         "confidence": confidence,
         "detected_language": detected_language,
         "injection_detected": injection_detected,
+        "pii_detected": pii_detected,
     }
 
 
@@ -207,73 +155,84 @@ def make_memory_query_node(store: Any) -> Callable[[ModuAgentState], dict]:
 # ============================================================
 
 def memory_update_node(state: ModuAgentState) -> dict:
-    """记忆更新节点：将对话历史写入长期记忆。
+    """记忆更新节点（无 Store 版本）：跳过更新。
+
+    P0-3: 需通过 make_memory_update_node(store) 创建带 Store 的版本，
+    并在 build_modu_graph() 中作为图节点接入。
+    """
+    return {"memory_update_status": "skipped_no_store"}
+
+
+def make_memory_update_node(store: Any) -> Callable[[ModuAgentState], dict]:
+    """创建带 Store 的记忆更新节点（P0-3）。
 
     替代 coordinator.py 中 fire-and-forget 的记忆更新，
-    确保更新可观测、异常可追踪。
-
-    流程：
-        1. 从 messages 提取对话历史
-        2. 调用 Store.put() 写入长期记忆
-        3. 返回更新结果
+    将记忆更新接入图结构，确保更新可观测、异常可追踪。
 
     Args:
-        state: 当前图状态
+        store: LangGraph BaseStore 实例（None 时退化为跳过）
 
     Returns:
-        状态更新字典（memory_update_status）
+        记忆更新节点函数
     """
-    from langgraph.state import ModuAgentState as StateType
 
-    store = getattr(state, "_store", None) or state.get("__store__")
-    if store is None:
-        return {"memory_update_status": "skipped_no_store"}
+    def _memory_update_node(state: ModuAgentState) -> dict:
+        """记忆更新节点：将对话历史写入长期记忆。"""
+        if store is None:
+            return {"memory_update_status": "skipped_no_store"}
 
-    messages = state.get("messages", [])
-    user_id = state.get("user_id", "")
-    session_id = state.get("session_id", "")
+        # 熔断场景跳过记忆更新
+        error_code = state.get("error_code", "")
+        if error_code:
+            return {"memory_update_status": "skipped_circuit_breaker"}
 
-    if not messages:
-        return {"memory_update_status": "skipped_no_messages"}
+        messages = state.get("messages", [])
+        user_id = state.get("user_id", "")
+        session_id = state.get("session_id", "")
 
-    try:
-        # 构建对话历史文本
-        history_parts = []
-        for msg in messages:
-            if isinstance(msg, HumanMessage):
-                role = "user"
-                content = msg.content
-            elif isinstance(msg, AIMessage):
-                role = "assistant"
-                content = msg.content
-            elif hasattr(msg, "type") and msg.type == "tool":
-                role = "tool"
-                content = f"[{getattr(msg, 'name', 'unknown')}] {msg.content}"
-            else:
-                continue
-            history_parts.append(f"{role}: {content}")
+        if not messages:
+            return {"memory_update_status": "skipped_no_messages"}
 
-        if history_parts:
-            history_text = "\n".join(history_parts)
-            key = f"{session_id}_{int(time.time())}"
+        try:
+            # 构建对话历史文本
+            history_parts = []
+            for msg in messages:
+                if isinstance(msg, HumanMessage):
+                    role = "user"
+                    content = msg.content
+                elif isinstance(msg, AIMessage):
+                    role = "assistant"
+                    content = msg.content
+                elif hasattr(msg, "type") and msg.type == "tool":
+                    role = "tool"
+                    content = f"[{getattr(msg, 'name', 'unknown')}] {msg.content}"
+                else:
+                    continue
+                history_parts.append(f"{role}: {content}")
 
-            store.put(
-                namespace=(user_id, "history"),
-                key=key,
-                value={
-                    "content": history_text,
-                    "session_id": session_id,
-                    "message_count": len(messages),
-                    "timestamp": int(time.time()),
-                },
-            )
-            return {"memory_update_status": "success", "memory_update_key": key}
+            if history_parts:
+                history_text = "\n".join(history_parts)
+                key = f"{session_id}_{int(time.time())}"
 
-    except Exception as e:
-        logger.error("Memory update error: %s", str(e))
-        return {"memory_update_status": "error", "memory_update_error": str(e)}
+                store.put(
+                    namespace=(user_id, "history"),
+                    key=key,
+                    value={
+                        "content": history_text,
+                        "session_id": session_id,
+                        "message_count": len(messages),
+                        "timestamp": int(time.time()),
+                    },
+                )
+                return {"memory_update_status": "success", "memory_update_key": key}
 
-    return {"memory_update_status": "skipped"}
+        except Exception as e:
+            logger.error("Memory update error: %s", str(e))
+            return {"memory_update_status": "error", "memory_update_error": str(e)}
+
+        return {"memory_update_status": "skipped"}
+
+    return _memory_update_node
 
 
 # ============================================================
@@ -281,11 +240,12 @@ def memory_update_node(state: ModuAgentState) -> dict:
 # ============================================================
 
 def route_after_perception(state: ModuAgentState) -> str:
-    """感知后路由：敏感度熔断 + 注入检测熔断。
+    """感知后路由：敏感度熔断 + 注入检测熔断 + PII 阻断（P2-6）。
 
     对应 coordinator.py 中 process_request 的熔断逻辑：
         - 敏感度 >= threshold → END（返回错误）
         - 注入检测 + block_on_injection → END（返回错误）
+        - PII 检测 + block_on_pii → END（返回错误）
         - 否则 → memory_query
 
     Returns:
@@ -305,6 +265,11 @@ def route_after_perception(state: ModuAgentState) -> str:
     security_config = config.get("perception.security", {})
     if security_config.get("block_on_injection") and state.get("injection_detected", False):
         logger.warning("Injection detected, circuit breaker triggered")
+        return "__end__"
+
+    # P2-6: PII 阻断接入熔断逻辑
+    if security_config.get("block_on_pii") and state.get("pii_detected", False):
+        logger.warning("PII detected, circuit breaker triggered")
         return "__end__"
 
     return "memory_query"
@@ -523,6 +488,65 @@ def response_node(state: ModuAgentState) -> dict:
         "error_code": "",
         "error_message": "",
     }
+
+
+# ============================================================
+# 反馈评估节点（P0-1: feedback/evolution 闭环）
+# ============================================================
+
+def make_feedback_node(orchestrator: Any) -> Callable[[ModuAgentState], dict]:
+    """创建反馈评估节点（P0-1）。
+
+    在 response 之后、memory_update 之前执行，评估响应质量并决定是否触发进化。
+
+    Args:
+        orchestrator: EvolutionOrchestrator 实例
+
+    Returns:
+        反馈评估节点函数
+    """
+
+    async def _feedback_node(state: ModuAgentState) -> dict:
+        """反馈评估节点：评估响应质量，触发进化判断。"""
+        # 熔断场景跳过评估
+        error_code = state.get("error_code", "")
+        if error_code:
+            return {
+                "evaluation": None,
+                "should_evolve": False,
+                "evolution_action": None,
+            }
+
+        # 构建评估输入
+        output = {
+            "response": state.get("response", ""),
+            "tool_results": state.get("tool_results", []),
+            "usage": state.get("usage", {}),
+        }
+
+        context = {
+            "prompt": state.get("input_data", {}).get("prompt", ""),
+            "perception_result": state.get("perception_result"),
+            "tool_results": state.get("tool_results", []),
+            "iteration": state.get("iteration", 0),
+        }
+
+        try:
+            result = await orchestrator.evaluate_and_evolve(output, context)
+            return {
+                "evaluation": result.get("evaluation"),
+                "should_evolve": result.get("should_evolve", False),
+                "evolution_action": result.get("evolution_action"),
+            }
+        except Exception as e:
+            logger.error("Feedback node failed: %s", str(e))
+            return {
+                "evaluation": None,
+                "should_evolve": False,
+                "evolution_action": None,
+            }
+
+    return _feedback_node
 
 
 # ============================================================

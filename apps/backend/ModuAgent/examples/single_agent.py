@@ -13,7 +13,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 from components.action.executors.synchronous import SyncActionExecutor
 from components.action.tools.calculator import CalculatorTool
 from components.action.tools.search import SearchTool
-from components.memory.cache.redis_adapter import InMemoryShortTermMemory
+from components.memory.cache.short_term_memory import InMemoryShortTermMemory
 from components.memory.vector.chroma import ChromaLongTermMemory
 from components.perception.audio.asr_processor import AudioProcessor
 from components.perception.text.llm_parser import LLMParser
@@ -23,7 +23,6 @@ from components.perception.vision.image_processor import ImageProcessor
 from components.reasoning.llm.glm import GLMLLMReasoner
 from config.runtime_config import get_config
 from core.registry import get_registry
-from orchestration.coordinator import Coordinator
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -78,11 +77,16 @@ def register_components() -> None:
 
 
 async def run_basic_flow() -> None:
-    coordinator = Coordinator()
+    """基础流程 Demo（P0-2: 使用 LangGraph 替代 Coordinator）。"""
+    from langgraph.factory import create_agent
+    from langgraph.runner import run_sync
+
+    graph = create_agent()
     user_id = "demo_user"
     session_id = "demo_session_001"
 
-    result = await coordinator.process_request(
+    result = await run_sync(
+        graph=graph,
         user_id=user_id,
         session_id=session_id,
         input_data={
@@ -95,36 +99,39 @@ async def run_basic_flow() -> None:
 
 
 async def run_tool_flow() -> None:
-    coordinator = Coordinator()
+    """工具调用 Demo（P0-2: 使用 LangGraph 原生 function calling）。"""
+    from langgraph.factory import create_agent
+    from langgraph.runner import run_sync
+
+    graph = create_agent()
     user_id = "demo_user"
     session_id = "demo_session_002"
 
-    result = await coordinator.process_request(
+    result = await run_sync(
+        graph=graph,
         user_id=user_id,
         session_id=session_id,
         input_data={
             "input_type": "text",
             "prompt": "请帮我计算 3.14 * 2",
             "required_fields": ["user_intent"],
-            "tools": [
-                {
-                    "name": "calculator",
-                    "parameters": {"expression": "3.14*2"},
-                },
-            ],
         },
     )
     logger.info("Tool flow result: %s", json.dumps(result, ensure_ascii=False, indent=2))
 
 
 async def run_llm_swap_flow() -> None:
-    registry = get_registry()
-    coordinator = Coordinator()
+    """LLM 引擎切换 Demo（P0-2: 通过 configurable 覆盖 provider）。"""
+    from langgraph.factory import create_agent
+    from langgraph.runner import run_sync
+
+    graph = create_agent(config={"configurable": {"llm_provider": "glm"}})
     user_id = "demo_user"
     session_id = "demo_session_003"
 
     logger.info("=== Using GLM engine ===")
-    result = await coordinator.process_request(
+    result = await run_sync(
+        graph=graph,
         user_id=user_id,
         session_id=session_id,
         input_data={

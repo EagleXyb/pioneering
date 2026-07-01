@@ -53,7 +53,7 @@ def _init_moduagent() -> None:
     from components.action.executors.synchronous import SyncActionExecutor
     from components.action.tools.calculator import CalculatorTool
     from components.action.tools.search import SearchTool
-    from components.memory.cache.redis_adapter import InMemoryShortTermMemory
+    from components.memory.cache.short_term_memory import InMemoryShortTermMemory
     from components.memory.vector.chroma import ChromaLongTermMemory
     from components.perception.text.rule_based import TextPreprocessor
     from components.reasoning.llm.base_llm import BaseLLMReasoner
@@ -96,7 +96,8 @@ async def stream_agent_completion(
 ) -> AsyncGenerator[Dict[str, str], None]:
     """Agent ReAct 流式对话，输出 AG-UI 标准 SSE 事件。
 
-    通过 AGUIStreamAdapter 将 Coordinator 帧转换为 AG-UI 协议事件，
+    P1-2: 使用 LangGraph 替代 Coordinator，通过 AGUIStreamAdapter.transform_langgraph_events
+    将 LangGraph stream 事件转换为 AG-UI 协议事件，
     产出兼容 sse_starlette EventSourceResponse 的 {"data": "..."} dict。
 
     Args:
@@ -110,31 +111,18 @@ async def stream_agent_completion(
     """
     _init_moduagent()
 
-    from core.registry import get_registry
-    from orchestration.coordinator import Coordinator
+    from langgraph.factory import create_agent
+    from langgraph.runner import stream_response
     from orchestration.communication.agui_adapter import AGUIStreamAdapter
 
-    registry = get_registry()
-
+    # 根据是否需要动态模型覆盖选择构建方式
     if model and model != settings.llm_default_model:
-        from components.reasoning.llm.base_llm import BaseLLMReasoner
-        registry.register_reasoning_engine(
-            "agent_dynamic",
-            BaseLLMReasoner(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                default_model=model,
-                system_prompt=system_prompt,
-            ),
-        )
-        from adapters.llm_adapter import LLMAdapter
-        dynamic_adapter = LLMAdapter(engine_name="agent_dynamic")
+        configurable: Dict[str, Any] = {"model": model}
+        if system_prompt:
+            configurable["system_prompt"] = system_prompt
+        graph = create_agent(config={"configurable": configurable})
     else:
-        dynamic_adapter = None
-
-    coordinator = Coordinator()
-    if dynamic_adapter:
-        coordinator._llm_adapter = dynamic_adapter
+        graph = create_agent()
 
     # 注入会话历史到 input_data
     input_data: Dict[str, Any] = {"input_type": "text", "prompt": message}
@@ -145,8 +133,9 @@ async def stream_agent_completion(
     adapter = AGUIStreamAdapter(trace_id=trace_id)
 
     try:
-        async for event_dict in adapter.transform_streaming_events(
-            coordinator.stream_request(
+        async for event_dict in adapter.transform_langgraph_events(
+            stream_response(
+                graph=graph,
                 user_id=user_id,
                 session_id=session_id,
                 input_data=input_data,

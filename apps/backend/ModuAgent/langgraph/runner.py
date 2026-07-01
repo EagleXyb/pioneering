@@ -1,12 +1,12 @@
 """ModuAgent LangGraph 运行入口（流式/非流式）。
 
-用 LangGraph 原生流式替代 Coordinator.stream_request() + SSEEncoder + EventBus 三件套。
+P0-2: LangGraph 成为唯一引擎，移除 legacy Coordinator 分支。
 
 提供：
-    - stream_response(): 替代 Coordinator.stream_request()，使用 LangGraph astream
-    - run_sync(): 替代 Coordinator.process_request()，非流式调用
-    - get_runner(): 灰度切换入口（legacy / langgraph）
-    - process_request_compat(): 统一调用接口（兼容 legacy 和 langgraph）
+    - stream_response(): 流式调用，使用 LangGraph astream
+    - run_sync(): 非流式调用
+    - get_runner(): 获取 LangGraph CompiledGraph 实例
+    - process_request_compat(): 统一调用接口（保留向后兼容）
 
 LangGraph 提供 4 种 stream_mode：
     - messages: token 级流式
@@ -18,17 +18,90 @@ LangGraph 提供 4 种 stream_mode：
 from __future__ import annotations
 
 import logging
+import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, Optional
+from contextlib import contextmanager
+from typing import Any, AsyncGenerator, Dict, Iterator, Optional
 
 from langgraph.graph.graph import CompiledGraph
 
 from config.runtime_config import get_config
+from config.schemas import PerceptionInputSchema
 from langgraph.adapters.event_bridge import LangGraphEventBridge
 from langgraph.state import ModuAgentState, make_initial_state
 from orchestration.communication.protocol import ErrorCode
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _span(
+    name: str,
+    trace_id: str = "",
+    **attributes: Any,
+) -> Iterator[None]:
+    """P2-9: 轻量级 span 埋点。
+
+    记录 span 的开始/结束/耗时/异常到 logger。
+    为后续接入 OpenTelemetry 提供基础——替换此函数即可升级为 OTel span。
+
+    Args:
+        name: span 名称（如 "run_sync", "stream_response"）
+        trace_id: 链路追踪 ID
+        **attributes: span 属性（如 user_id, session_id）
+    """
+    start = time.perf_counter()
+    attrs = {"trace_id": trace_id, **attributes}
+    logger.debug("span.start: %s attrs=%s", name, attrs)
+    try:
+        yield
+    except Exception as e:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.error(
+            "span.error: %s elapsed=%.2fms error=%s attrs=%s",
+            name, elapsed_ms, str(e), attrs,
+        )
+        raise
+    else:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "span.end: %s elapsed=%.2fms attrs=%s",
+            name, elapsed_ms, attrs,
+        )
+
+
+def _validate_input_data(input_data: Dict[str, Any]) -> None:
+    """P1-6: 入口层输入校验。
+
+    使用 PerceptionInputSchema 验证 input_data 的关键字段，
+    在进入 LangGraph 图之前拒绝非法输入。
+
+    Args:
+        input_data: 输入数据字典
+
+    Raises:
+        ValueError: 输入数据不合法
+    """
+    input_type = input_data.get("input_type", "text")
+    prompt = input_data.get("prompt", "")
+
+    # 使用 PerceptionInputSchema 校验 input_type 和 sensitivity_level
+    raw_content = prompt.encode("utf-8") if isinstance(prompt, str) else b""
+    sensitivity_level = input_data.get("sensitivity_level", 0)
+
+    try:
+        PerceptionInputSchema(
+            input_type=input_type,
+            raw_content=raw_content,
+            sensitivity_level=sensitivity_level,
+        )
+    except ValueError as e:
+        logger.warning("Input validation failed: %s", str(e))
+        raise ValueError(f"Invalid input data: {e}") from e
+
+    # 文本输入必须有 prompt
+    if input_type == "text" and not prompt:
+        raise ValueError("prompt is required for text input")
 
 
 async def stream_response(
@@ -58,6 +131,9 @@ async def stream_response(
             - {"type": "updates", "node": "...", "data": {...}}: 节点更新
             - {"type": "values", "data": {...}}: 完整状态快照
     """
+    # P1-6: 入口层输入校验
+    _validate_input_data(input_data)
+
     if not trace_id:
         trace_id = str(uuid.uuid4())
 
@@ -73,10 +149,14 @@ async def stream_response(
     }
 
     if event_bridge is None:
+        # P0-1: 从图上读取 orchestrator 的 evolution_collector，激活 EventBridge 的信号收集
+        evolution_collector = getattr(graph, "orchestrator", None)
+        evolution_collector = evolution_collector.evolution_collector if evolution_collector else None
         event_bridge = LangGraphEventBridge(
             trace_id=trace_id,
             session_id=session_id,
             user_id=user_id,
+            evolution_collector=evolution_collector,
         )
 
     raw_stream = graph.astream(
@@ -85,8 +165,17 @@ async def stream_response(
         stream_mode=["messages", "updates", "values"],
     )
 
-    async for event in event_bridge.consume(raw_stream):
-        yield event
+    # P2-9: span 埋点——流式响应的总耗时（生成器生命周期由调用者控制，用 try/finally 确保结束记录）
+    _stream_start = time.perf_counter()
+    try:
+        async for event in event_bridge.consume(raw_stream):
+            yield event
+    finally:
+        _elapsed_ms = (time.perf_counter() - _stream_start) * 1000
+        logger.info(
+            "span.end: stream_response elapsed=%.2fms trace_id=%s user_id=%s session_id=%s",
+            _elapsed_ms, trace_id, user_id, session_id,
+        )
 
 
 async def run_sync(
@@ -121,6 +210,16 @@ async def run_sync(
                 }
             }
     """
+    # P1-6: 入口层输入校验
+    try:
+        _validate_input_data(input_data)
+    except ValueError as e:
+        return {
+            "status": "error",
+            "error_code": ErrorCode.PERCEPTION_INPUT_INVALID,
+            "data": {"message": str(e), "trace_id": trace_id or str(uuid.uuid4())},
+        }
+
     if not trace_id:
         trace_id = str(uuid.uuid4())
 
@@ -136,26 +235,32 @@ async def run_sync(
     }
 
     if event_bridge is None:
+        # P0-1: 从图上读取 orchestrator 的 evolution_collector
+        evolution_collector = getattr(graph, "orchestrator", None)
+        evolution_collector = evolution_collector.evolution_collector if evolution_collector else None
         event_bridge = LangGraphEventBridge(
             trace_id=trace_id,
             session_id=session_id,
             user_id=user_id,
+            evolution_collector=evolution_collector,
         )
 
     try:
-        final_state: Optional[Dict[str, Any]] = None
-        async for event in event_bridge.consume(
-            graph.astream(
-                initial_state,
-                config=lg_config,
-                stream_mode=["updates", "values"],
-            )
-        ):
-            if event.get("type") == "values":
-                final_state = event.get("data", {})
+        # P2-9: span 埋点——run_sync 总耗时
+        with _span("run_sync", trace_id=trace_id, user_id=user_id, session_id=session_id):
+            final_state: Optional[Dict[str, Any]] = None
+            async for event in event_bridge.consume(
+                graph.astream(
+                    initial_state,
+                    config=lg_config,
+                    stream_mode=["updates", "values"],
+                )
+            ):
+                if event.get("type") == "values":
+                    final_state = event.get("data", {})
 
-        if final_state is None:
-            final_state = await graph.ainvoke(initial_state, config=lg_config)
+            if final_state is None:
+                final_state = await graph.ainvoke(initial_state, config=lg_config)
 
         error_code = final_state.get("error_code", "")
         if error_code:
@@ -198,28 +303,27 @@ async def run_sync(
 
 
 def get_runner(engine: Optional[str] = None) -> Any:
-    """根据配置选择运行引擎（灰度切换入口）。
+    """获取 LangGraph CompiledGraph 实例。
 
-    对应重构方案阶段 6 的双轨运行：
-        - legacy: 使用原 Coordinator
-        - langgraph: 使用 LangGraph 重构版
+    P0-2: LangGraph 成为唯一引擎，移除 legacy Coordinator 分支。
+    engine 参数保留用于向后兼容，但仅支持 "langgraph"（其他值将记录警告）。
 
     Args:
-        engine: 引擎类型（None=从配置读取 orchestration.engine）
+        engine: 引擎类型（保留向后兼容，默认从配置读取）
 
     Returns:
-        legacy: Coordinator 实例
-        langgraph: CompiledGraph 实例（通过 create_agent() 创建）
+        CompiledGraph 实例（通过 create_agent() 创建）
     """
     config = get_config()
-    engine = engine or config.get("orchestration.engine", "legacy")
+    engine = engine or config.get("orchestration.engine", "langgraph")
 
-    if engine == "langgraph":
-        from langgraph.factory import create_agent
-        return create_agent()
-    else:
-        from orchestration.coordinator import Coordinator
-        return Coordinator()
+    if engine != "langgraph":
+        logger.warning(
+            "Engine '%s' is no longer supported, falling back to langgraph", engine
+        )
+
+    from langgraph.factory import create_agent
+    return create_agent()
 
 
 async def process_request_compat(
@@ -229,14 +333,10 @@ async def process_request_compat(
     input_data: Dict[str, Any],
     trace_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """统一调用接口（兼容 legacy Coordinator 和 langgraph）。
-
-    根据 runner 类型自动选择调用方式：
-        - Coordinator: 调用 process_request()
-        - CompiledGraph: 调用 run_sync()
+    """统一调用接口（P0-2: 仅支持 LangGraph CompiledGraph）。
 
     Args:
-        runner: Coordinator 或 CompiledGraph 实例
+        runner: CompiledGraph 实例
         user_id: 用户标识
         session_id: 会话标识
         input_data: 输入数据
@@ -245,14 +345,7 @@ async def process_request_compat(
     Returns:
         统一格式的响应字典
     """
-    if hasattr(runner, "process_request"):
-        return await runner.process_request(
-            user_id=user_id,
-            session_id=session_id,
-            input_data=input_data,
-            trace_id=trace_id,
-        )
-    elif hasattr(runner, "ainvoke"):
+    if hasattr(runner, "ainvoke"):
         return await run_sync(
             graph=runner,
             user_id=user_id,
@@ -260,8 +353,7 @@ async def process_request_compat(
             input_data=input_data,
             trace_id=trace_id,
         )
-    else:
-        raise TypeError(f"Unsupported runner type: {type(runner)}")
+    raise TypeError(f"Unsupported runner type: {type(runner)}")
 
 
 async def stream_request_compat(
@@ -271,31 +363,19 @@ async def stream_request_compat(
     input_data: Dict[str, Any],
     trace_id: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """统一流式调用接口（兼容 legacy Coordinator 和 langgraph）。
-
-    根据 runner 类型自动选择调用方式：
-        - Coordinator: 调用 stream_request()
-        - CompiledGraph: 调用 stream_response()
+    """统一流式调用接口（P0-2: 仅支持 LangGraph CompiledGraph）。
 
     Args:
-        runner: Coordinator 或 CompiledGraph 实例
+        runner: CompiledGraph 实例
         user_id: 用户标识
         session_id: 会话标识
         input_data: 输入数据
         trace_id: 链路追踪 ID
 
     Yields:
-        事件字典（legacy: SSE frame 格式；langgraph: LangGraph stream 事件格式）
+        LangGraph stream 事件字典
     """
-    if hasattr(runner, "stream_request"):
-        async for event in runner.stream_request(
-            user_id=user_id,
-            session_id=session_id,
-            input_data=input_data,
-            trace_id=trace_id,
-        ):
-            yield event
-    elif hasattr(runner, "astream"):
+    if hasattr(runner, "astream"):
         async for event in stream_response(
             graph=runner,
             user_id=user_id,

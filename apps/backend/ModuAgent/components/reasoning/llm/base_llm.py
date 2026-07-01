@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
 
 import httpx
 
@@ -118,6 +118,108 @@ class BaseLLMReasoner(BaseReasoningEngine):
             with client.stream("POST", url, json=payload, headers=headers) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+
+    async def areason(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        **kwargs: Any,
+    ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
+        """异步推理（P1-3：使用 httpx.AsyncClient，避免线程池开销）。
+
+        与 reason() 语义等价，但在 async 环境下不占用线程池。
+        """
+        messages = self._build_messages(prompt, context)
+        temperature = kwargs.get("temperature", 0.7)
+        max_tokens = kwargs.get("max_tokens", 512)
+        model = kwargs.get("model", self._default_model)
+        tools = context.get("native_tools") or kwargs.get("tools")
+
+        url = f"{self._base_url}/chat/completions"
+        headers = self._build_headers()
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        if tools:
+            payload["tools"] = tools
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+        message = data.get("choices", [{}])[0].get("message", {})
+        content = message.get("content", "") or ""
+        raw_tool_calls = message.get("tool_calls", [])
+
+        usage_data = data.get("usage", {})
+        usage = {
+            "prompt_tokens": usage_data.get("prompt_tokens", 0),
+            "completion_tokens": usage_data.get("completion_tokens", 0),
+            "total_tokens": usage_data.get("total_tokens", 0),
+        }
+
+        parsed_tool_calls: List[Dict[str, Any]] = []
+        for tc in raw_tool_calls:
+            try:
+                func = tc.get("function", {})
+                tc_name = func.get("name", "")
+                args_str = func.get("arguments", "{}")
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                if tc_name:
+                    parsed_tool_calls.append({"tool": tc_name, "parameters": args})
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning("Failed to parse tool_call arguments: %s", e)
+
+        logger.debug(
+            "LLM async response: model=%s tokens=%s tool_calls=%d",
+            data.get("model", model),
+            usage,
+            len(parsed_tool_calls),
+        )
+        return content, usage, parsed_tool_calls
+
+    async def astream(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+    ) -> AsyncGenerator[str, None]:
+        """异步流式推理（P1-3：使用 httpx.AsyncClient，发挥 async 优势）。
+
+        与 stream() 语义等价，但在 async 环境下不占用线程池。
+        """
+        messages = self._build_messages(prompt, context)
+        url = f"{self._base_url}/chat/completions"
+        headers = self._build_headers()
+        payload = {
+            "model": self._default_model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 512,
+            "stream": True,
+        }
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
                     data = line[6:]

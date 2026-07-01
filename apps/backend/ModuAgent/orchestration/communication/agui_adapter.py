@@ -303,17 +303,16 @@ class AGUIEncoder:
 
 class AGUIStreamAdapter:
     """
-    将 ModuAgent Coordinator 的 stream_request() 输出转换为 AG-UI 标准 SSE 事件流。
+    将 ModuAgent 事件流转换为 AG-UI 标准 SSE 事件流。
 
-    当前 Coordinator 的输出格式：
-      frame = {"event": "token|error|done", "data": "<json_string>"}
+    支持两种输入格式：
+    1. Coordinator 风格 SSE 帧（transform/transform_streaming/transform_streaming_events）：
+       frame = {"event": "token|error|done", "data": "<json_string>"}
+    2. LangGraph stream 事件（transform_langgraph/transform_langgraph_events）：
+       event = {"type": "messages|updates|values", ...}
 
-    其中 done 事件的 data 格式：
-      {"trace_id": "...", "tool_results": [{"tool": "name", "params": {...}, "result": {...}}, ...]}
-
-    注意：tool_results 中每项的 tool/params/result 字段需要 Coordinator 在编码 done
-    事件时显式提供。如果 Coordinator 仅输出原始 tool_result dict 列表（不含 tool/params），
-    则适配器将跳过工具调用事件的生成。
+    P0-2: LangGraph 成为唯一引擎，推荐使用 transform_langgraph_events()。
+    transform_streaming_events() 保留用于兼容旧格式 SSE 帧输入。
     """
 
     def __init__(self, trace_id: str = ""):
@@ -327,14 +326,11 @@ class AGUIStreamAdapter:
         coordinator_stream: AsyncGenerator[Dict[str, Any], None],
     ) -> AsyncGenerator[str, None]:
         """
-        消费 Coordinator 的原始 SSE frame 流，产出 AG-UI 格式的 SSE 字符串流。
+        消费 SSE frame 流，产出 AG-UI 格式的 SSE 字符串流。
 
         用法：
-            coordinator = Coordinator()
             adapter = AGUIStreamAdapter(trace_id="xxx")
-            async for agui_frame in adapter.transform(
-                coordinator.stream_request(user_id=..., session_id=..., input_data=...)
-            ):
+            async for agui_frame in adapter.transform(stream):
                 yield agui_frame
         """
         if not self._trace_id:
@@ -483,7 +479,7 @@ class AGUIStreamAdapter:
         coordinator_stream: AsyncGenerator[Dict[str, Any], None],
     ) -> AsyncGenerator[str, None]:
         """
-        流式转换：逐帧消费 Coordinator 输出，实时产出 AG-UI SSE 事件流。
+        流式转换：逐帧消费 SSE 帧输出，实时产出 AG-UI SSE 事件流。
 
         与 transform() 的区别：
         - transform() 先收集所有事件再一次性输出
@@ -692,7 +688,7 @@ class AGUIStreamAdapter:
         coordinator_stream: AsyncGenerator[Dict[str, Any], None],
     ) -> AsyncGenerator[Dict[str, str], None]:
         """
-        流式转换：逐帧消费 Coordinator 输出，实时产出兼容
+        流式转换：逐帧消费 SSE 帧输出，实时产出兼容
         sse_starlette EventSourceResponse 的 dict 格式事件。
 
         与 transform_streaming() 的区别：
@@ -867,6 +863,225 @@ class AGUIStreamAdapter:
             thread_id=self._trace_id,
             run_id=self._trace_id,
         ).to_event_dict()
+
+    # ============================================================
+    # P1-1: LangGraph 输入源适配（新增方法）
+    # ============================================================
+
+    async def transform_langgraph_events(
+        self,
+        langgraph_stream: AsyncGenerator[Dict[str, Any], None],
+    ) -> AsyncGenerator[Dict[str, str], None]:
+        """消费 LangGraph stream 事件，产出 AG-UI dict 事件流（P1-1）。
+
+        替代 transform_streaming_events() 的 Coordinator SSE 帧输入，
+        改为消费 LangGraph EventBridge 输出的事件流。
+
+        事件映射：
+            - messages stream (AIMessageChunk) → TEXT_MESSAGE_CONTENT
+            - thinking SSE 事件 → THINKING_START / THINKING_CONTENT
+            - tool_call_start SSE 事件 → TOOL_CALL_START / TOOL_CALL_ARGS / TOOL_CALL_END
+            - tool_result SSE 事件 → TOOL_CALL_RESULT
+            - updates (response 节点) → 提取最终响应
+            - values (error_code) → RUN_ERROR
+
+        用法：
+            bridge = LangGraphEventBridge(...)
+            async for event in adapter.transform_langgraph_events(
+                bridge.consume(graph.astream(...))
+            ):
+                yield event
+        """
+        if not self._trace_id:
+            self._trace_id = str(uuid.uuid4())
+        self._message_id = str(uuid.uuid4())
+
+        has_error = False
+        text_message_started = False
+        thinking_started = False
+        final_response = ""
+
+        yield RunStartedEvent(
+            thread_id=self._trace_id,
+            run_id=self._trace_id,
+        ).to_event_dict()
+
+        async for event in langgraph_stream:
+            event_type = event.get("type", "")
+
+            # --- LangGraph 原生事件 ---
+
+            if event_type == "messages":
+                # token 级流式：提取 AIMessageChunk 内容
+                msg = event.get("event") or event.get("data", {})
+                content = ""
+                if hasattr(msg, "content"):
+                    content = msg.content or ""
+                elif isinstance(msg, dict):
+                    content = msg.get("content", "")
+
+                if content:
+                    if not text_message_started:
+                        yield TextMessageStartEvent(
+                            message_id=self._message_id,
+                            role="assistant",
+                        ).to_event_dict()
+                        text_message_started = True
+                    yield TextMessageContentEvent(
+                        message_id=self._message_id,
+                        delta=content,
+                    ).to_event_dict()
+                    final_response += content
+
+            elif event_type == "updates":
+                node = event.get("node", "")
+                data = event.get("data", {})
+
+                # response 节点：提取最终响应（非流式回退）
+                if node == "response" and isinstance(data, dict):
+                    resp = data.get("response", "")
+                    if resp and not text_message_started:
+                        final_response = resp
+
+                # 检查 agent 节点的 tool_calls
+                if node == "agent" and isinstance(data, dict):
+                    messages = data.get("messages", [])
+                    if messages:
+                        last_msg = messages[-1]
+                        if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                            for tc in last_msg.tool_calls:
+                                tc_id = tc.get("id", str(uuid.uuid4()))
+                                tc_name = tc.get("name", "unknown")
+                                tc_args = json.dumps(
+                                    tc.get("args", tc.get("parameters", {})),
+                                    ensure_ascii=False,
+                                )
+                                self._pending_tool_calls[tc_id] = {
+                                    "tool_name": tc_name,
+                                    "arguments": tc_args,
+                                }
+                                yield ToolCallStartEvent(
+                                    tool_call_id=tc_id,
+                                    tool_call_name=tc_name,
+                                    parent_message_id=self._message_id,
+                                ).to_event_dict()
+                                if tc_args and tc_args != "{}":
+                                    yield ToolCallArgsEvent(
+                                        tool_call_id=tc_id,
+                                        delta=tc_args,
+                                    ).to_event_dict()
+                                yield ToolCallEndEvent(tool_call_id=tc_id).to_event_dict()
+
+                # tools 节点：工具执行结果
+                if node == "tools" and isinstance(data, dict):
+                    messages = data.get("messages", [])
+                    for msg in messages:
+                        if hasattr(msg, "type") and msg.type == "tool":
+                            tool_call_id = getattr(msg, "tool_call_id", "")
+                            tool_name = getattr(msg, "name", "unknown")
+                            content = getattr(msg, "content", "")
+                            self._tool_call_records.append(ToolCallRecord(
+                                tool_name=tool_name,
+                                params=json.loads(
+                                    self._pending_tool_calls.get(tool_call_id, {}).get("arguments", "{}")
+                                ),
+                                result={"data": content, "status": "success"},
+                            ))
+                            yield ToolCallResultEvent(
+                                message_id=self._message_id,
+                                tool_call_id=tool_call_id,
+                                tool_call_name=tool_name,
+                                content=content,
+                            ).to_event_dict()
+
+            elif event_type == "values":
+                # 完整状态快照：检查错误
+                data = event.get("data", {})
+                if isinstance(data, dict):
+                    error_code = data.get("error_code", "")
+                    if error_code:
+                        has_error = True
+                        yield RunErrorEvent(
+                            code=error_code,
+                            message=data.get("error_message", ""),
+                        ).to_event_dict()
+                        return
+
+                    # 提取最终响应（如果尚未通过 messages 获取）
+                    resp = data.get("response", "")
+                    if resp and not final_response:
+                        final_response = resp
+
+            # --- SSE 细粒度事件（由 EventBridge 生成） ---
+
+            elif event_type == "thinking":
+                thinking_data = event.get("data", {})
+                if not thinking_started:
+                    yield ThinkingStartEvent(title="深度思考").to_event_dict()
+                    thinking_started = True
+
+            elif event_type == "tool_call_start":
+                tc_data = event.get("data", {})
+                tc_id = tc_data.get("tool_call_id", str(uuid.uuid4()))
+                tc_name = tc_data.get("tool_name", "unknown")
+                self._pending_tool_calls[tc_id] = {"tool_name": tc_name, "arguments": "{}"}
+                yield ToolCallStartEvent(
+                    tool_call_id=tc_id,
+                    tool_call_name=tc_name,
+                    parent_message_id=self._message_id,
+                ).to_event_dict()
+
+            elif event_type == "tool_result":
+                tc_data = event.get("data", {})
+                tc_id = tc_data.get("tool_call_id", "")
+                tc_name = tc_data.get("tool_name", "unknown")
+                result_content = tc_data.get("result", "{}")
+                yield ToolCallResultEvent(
+                    message_id=self._message_id,
+                    tool_call_id=tc_id,
+                    tool_call_name=tc_name,
+                    content=result_content,
+                ).to_event_dict()
+
+        if has_error:
+            return
+
+        if thinking_started:
+            yield ThinkingEndEvent().to_event_dict()
+
+        # 如果未通过 messages 流式输出，但有最终响应，则一次性输出
+        if not text_message_started and final_response:
+            yield TextMessageStartEvent(
+                message_id=self._message_id,
+                role="assistant",
+            ).to_event_dict()
+            yield TextMessageContentEvent(
+                message_id=self._message_id,
+                delta=final_response,
+            ).to_event_dict()
+            text_message_started = True
+
+        if text_message_started:
+            yield TextMessageEndEvent(message_id=self._message_id).to_event_dict()
+
+        yield RunFinishedEvent(
+            thread_id=self._trace_id,
+            run_id=self._trace_id,
+        ).to_event_dict()
+
+    async def transform_langgraph(
+        self,
+        langgraph_stream: AsyncGenerator[Dict[str, Any], None],
+    ) -> AsyncGenerator[str, None]:
+        """消费 LangGraph stream 事件，产出 AG-UI SSE 字符串流（P1-1）。
+
+        与 transform_langgraph_events() 的区别：
+        - transform_langgraph_events() 产出 dict（用于 EventSourceResponse）
+        - transform_langgraph() 产出原始 SSE 字符串（data: {...}\\n\\n）
+        """
+        async for event_dict in self.transform_langgraph_events(langgraph_stream):
+            data = event_dict.get("data", "")
+            yield f"data: {data}\n\n"
 
 
 def encode_thinking_block(title: str, content: str) -> str:

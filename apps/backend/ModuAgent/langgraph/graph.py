@@ -29,8 +29,11 @@ from langgraph.prebuilt import ToolNode
 
 from langgraph.nodes import (
     make_agent_node,
+    make_feedback_node,
     make_memory_query_node,
+    make_memory_update_node,
     make_tool_result_processor,
+    memory_update_node,
     perception_node,
     response_node,
     route_after_agent,
@@ -48,6 +51,7 @@ def build_modu_graph(
     store: Any = None,
     system_prompt: Optional[str] = None,
     recursion_limit: Optional[int] = None,
+    orchestrator: Any = None,
 ) -> CompiledGraph:
     """构建 ModuAgent LangGraph。
 
@@ -58,6 +62,7 @@ def build_modu_graph(
         store: 长期记忆存储（None=跳过长期记忆查询）
         system_prompt: 系统提示词（可选）
         recursion_limit: 递归限制（对应 max_iterations * 2 + 4）
+        orchestrator: EvolutionOrchestrator 实例（None=跳过反馈评估）
 
     Returns:
         编译后的 StateGraph
@@ -66,8 +71,11 @@ def build_modu_graph(
         START → perception → route_after_perception
                                   ├─ memory_query → agent → route_after_agent
                                   │                                    ├─ tools → tool_processor → agent
-                                  │                                    └─ response → END
-                                  └─ END (熔断)
+                                  │                                    └─ response → feedback → memory_update → END
+                                  └─ response → feedback → memory_update → END (熔断)
+
+    P0-3: memory_update 节点接入图结构，替代 fire-and-forget 异步任务。
+    P0-1: feedback 节点接入图结构，接通 feedback/evolution 闭环。
     """
     # 绑定工具到 LLM（原生 function calling）
     bound_llm = llm.bind_tools(tools) if tools else llm
@@ -78,7 +86,11 @@ def build_modu_graph(
     # 创建节点函数
     agent_node = make_agent_node(bound_llm, system_prompt=system_prompt)
     memory_node = make_memory_query_node(store) if store else None
+    # P0-3: 创建记忆更新节点（带 Store 时写入长期记忆，否则跳过）
+    memory_update = make_memory_update_node(store) if store else memory_update_node
     tool_result_processor = make_tool_result_processor()
+    # P0-1: 创建反馈评估节点（有 orchestrator 时评估，否则跳过）
+    feedback_node = make_feedback_node(orchestrator) if orchestrator else None
 
     # 添加节点
     graph.add_node("perception", perception_node)
@@ -94,11 +106,16 @@ def build_modu_graph(
     graph.add_node("tools", ToolNode(tools) if tools else _noop_tools_node)
     graph.add_node("tool_processor", tool_result_processor)
     graph.add_node("response", response_node)
+    # P0-1: 反馈评估节点接入图
+    if feedback_node:
+        graph.add_node("feedback", feedback_node)
+    # P0-3: 记忆更新节点接入图
+    graph.add_node("memory_update", memory_update)
 
     # 添加边
     graph.add_edge(START, "perception")
 
-    # 感知后条件路由：熔断 → END，正常 → memory_query
+    # 感知后条件路由：熔断 → response，正常 → memory_query
     graph.add_conditional_edges(
         "perception",
         route_after_perception,
@@ -125,8 +142,14 @@ def build_modu_graph(
     graph.add_edge("tools", "tool_processor")
     graph.add_edge("tool_processor", "agent")
 
-    # 响应节点 → END
-    graph.add_edge("response", END)
+    # P0-1/P0-3: response → feedback → memory_update → END
+    if feedback_node:
+        graph.add_edge("response", "feedback")
+        graph.add_edge("feedback", "memory_update")
+    else:
+        # 无 orchestrator 时直接 response → memory_update
+        graph.add_edge("response", "memory_update")
+    graph.add_edge("memory_update", END)
 
     # 编译图
     compile_kwargs: dict[str, Any] = {}
@@ -141,11 +164,11 @@ def build_modu_graph(
     if recursion_limit:
         compiled.recursion_limit = recursion_limit
     else:
-        # 默认：max_reasoning_iterations * 2 + 4（每个 ReAct 循环 2 个节点 + 固定开销）
+        # 默认：max_reasoning_iterations * 2 + 7（每个 ReAct 循环 2 个节点 + 固定开销含 feedback + memory_update）
         from config.runtime_config import get_config
         config = get_config()
         max_iterations = config.get("llm.max_reasoning_iterations", 3)
-        compiled.recursion_limit = max_iterations * 2 + 4
+        compiled.recursion_limit = max_iterations * 2 + 7
 
     logger.info(
         "ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d",

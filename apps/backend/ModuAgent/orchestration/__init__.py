@@ -13,6 +13,7 @@ from orchestration.communication.protocol import (
     ToolCallRequest,
     ToolCallResponse,
 )
+from orchestration.sensor_manager import SensorManager
 
 __all__ = [
     "EventBus",
@@ -29,12 +30,5 @@ __all__ = [
     "PerceptionInput",
     "ToolCallRequest",
     "ToolCallResponse",
-    "Coordinator",
+    "SensorManager",
 ]
-
-
-def __getattr__(name):
-    if name == "Coordinator":
-        from orchestration.coordinator import Coordinator
-        return Coordinator
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

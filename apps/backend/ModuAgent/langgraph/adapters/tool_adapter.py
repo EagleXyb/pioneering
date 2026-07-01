@@ -3,6 +3,9 @@
 将现有 components/action/tools/ 下的工具（CalculatorTool / SearchTool 等）
 包装为 LangChain BaseTool，使 LangGraph 的 ToolNode 可直接消费。
 
+P2-8: 通过 `with_tool_retry` 为工具 invoke 添加指数退避重试，
+仅捕获瞬时网络异常（TimeoutError / ConnectionError / httpx.TransportError）。
+
 保留原 BaseTool 接口以支持双轨运行（legacy Coordinator 仍可调用原工具）。
 """
 
@@ -14,7 +17,9 @@ from typing import Any, Dict, List, Optional
 from langchain_core.tools import BaseTool as LCTool, StructuredTool
 from pydantic import BaseModel, create_model
 
+from config.runtime_config import RuntimeConfig, get_config
 from core.registry import ComponentRegistry, get_registry
+from langgraph.adapters.retry import with_tool_retry
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +76,10 @@ def _schema_to_pydantic_model(
     return create_model(name, **fields)  # type: ignore[arg-type]
 
 
-def wrap_modu_tool(modu_tool: Any) -> LCTool:
+def wrap_modu_tool(
+    modu_tool: Any,
+    config: Optional[RuntimeConfig] = None,
+) -> LCTool:
     """将 ModuAgent BaseTool 包装为 LangChain StructuredTool。
 
     ModuAgent BaseTool 接口：
@@ -80,8 +88,12 @@ def wrap_modu_tool(modu_tool: Any) -> LCTool:
         - parameters_schema() → Dict (JSON Schema)
         - invoke(params: Dict, context: Dict) → Dict
 
+    P2-8: 若提供 config 且 `tools.retry.max_attempts > 1`，则为 _invoke
+    包装指数退避重试，仅捕获瞬时网络异常。
+
     Args:
         modu_tool: ModuAgent BaseTool 实例
+        config: 运行时配置（None=不启用重试）
 
     Returns:
         LangChain StructuredTool 实例
@@ -99,6 +111,10 @@ def wrap_modu_tool(modu_tool: Any) -> LCTool:
         result = modu_tool.invoke(params=kwargs, context={})
         return json.dumps(result, ensure_ascii=False)
 
+    # P2-8: 应用指数退避重试包装
+    if config is not None:
+        _invoke = with_tool_retry(_invoke, tool_name, config)
+
     return StructuredTool.from_function(
         func=_invoke,
         name=tool_name,
@@ -110,18 +126,24 @@ def wrap_modu_tool(modu_tool: Any) -> LCTool:
 def build_langchain_tools(
     registry: Optional[ComponentRegistry] = None,
     tool_names: Optional[List[str]] = None,
+    config: Optional[RuntimeConfig] = None,
 ) -> List[LCTool]:
     """从注册表构建 LangChain 工具列表。
+
+    P2-8: 若提供 config，则为每个工具应用重试包装。
 
     Args:
         registry: 组件注册表（默认使用全局单例）
         tool_names: 指定工具名列表（None=注册表中全部工具）
+        config: 运行时配置（None=不启用重试）
 
     Returns:
         LangChain BaseTool 列表
     """
     if registry is None:
         registry = get_registry()
+    if config is None:
+        config = get_config()
 
     all_tools = registry.list_tools()
 
@@ -139,7 +161,7 @@ def build_langchain_tools(
             logger.warning("Tool '%s' not found in registry, skipping", tool_name)
             continue
         try:
-            lc_tools.append(wrap_modu_tool(modu_tool))
+            lc_tools.append(wrap_modu_tool(modu_tool, config=config))
         except Exception as e:
             logger.error("Failed to wrap tool '%s': %s", tool_name, str(e))
 

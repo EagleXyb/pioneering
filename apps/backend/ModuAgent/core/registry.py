@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, Optional
 
 from core.interfaces.action import BaseActionExecutor, BaseTool
 from core.interfaces.feedback import BaseEvolutionSignal, BaseFeedbackLoop
@@ -170,8 +171,41 @@ class ComponentRegistry:
 _registry: Optional[ComponentRegistry] = None
 
 
-def get_registry() -> ComponentRegistry:
+def get_registry(override: Optional[ComponentRegistry] = None) -> ComponentRegistry:
+    """获取全局 ComponentRegistry 单例。
+
+    P2-1: 新增 `override` 参数用于测试隔离。
+    ComponentRegistry 本身支持非全局实例化（可直接 `ComponentRegistry()` 创建），
+    测试中可构造专属实例后通过 override 注入。
+    生产代码不应使用此参数；测试在 teardown 中应调用 `reset_registry()` 清理。
+
+    Args:
+        override: 测试时注入的实例。若提供，将替换全局单例并返回。
+
+    Returns:
+        全局 ComponentRegistry 实例
+    """
     global _registry
+    if override is not None:
+        _registry = override
     if _registry is None:
         _registry = ComponentRegistry()
     return _registry
+
+
+def reset_registry() -> None:
+    """重置全局 registry 单例（测试清理用）。"""
+    global _registry
+    _registry = None
+
+
+@contextmanager
+def override_registry(registry: ComponentRegistry) -> Iterator[ComponentRegistry]:
+    """P2-1: 测试用上下文管理器——临时替换全局 registry 单例，退出时自动恢复。"""
+    global _registry
+    old = _registry
+    _registry = registry
+    try:
+        yield _registry
+    finally:
+        _registry = old

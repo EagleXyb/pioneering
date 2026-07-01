@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from contextlib import contextmanager
+from typing import Any, Callable, Coroutine, Dict, Iterator, List, Optional
 
 from .protocol import AgentEvent, EventDomain, EventPriority
 
@@ -39,9 +40,10 @@ class EventBus:
     def __init__(self):
         self._subscriptions: List[Subscription] = []
         self._domain_index: Dict[str, List[Subscription]] = defaultdict(list)
-        self._event_log: List[AgentEvent] = []
-        self._max_log_size: int = 1000
-        self._lock = asyncio.Lock()
+        # P2-2: 移除内存事件日志 _event_log/_max_log_size 及保护它的 _lock，
+        # 事件持久化统一由 PersistentEventLog 订阅处理（避免双份内存开销与职责重叠）。
+        # 在单线程 asyncio 事件循环中，subscribe/publish 的同步段不会被 await 之间打断，
+        # 因此无需额外锁保护订阅集合。
 
     def subscribe(
         self,
@@ -69,11 +71,7 @@ class EventBus:
         return unsubscribe
 
     async def publish(self, event: AgentEvent) -> None:
-        async with self._lock:
-            self._event_log.append(event)
-            if len(self._event_log) > self._max_log_size:
-                self._event_log = self._event_log[-self._max_log_size:]
-
+        # P2-2: 不再追加到内存 _event_log，事件持久化由 PersistentEventLog 订阅处理。
         matched = self._domain_index.get(event.domain, self._subscriptions)
         if not matched:
             matched = self._subscriptions
@@ -128,22 +126,6 @@ class EventBus:
             return None
         finally:
             unsub()
-
-    def get_event_log(
-        self,
-        domain: Optional[str] = None,
-        session_id: Optional[str] = None,
-        limit: int = 100,
-    ) -> List[AgentEvent]:
-        logs = self._event_log
-        if domain:
-            logs = [e for e in logs if e.domain == domain]
-        if session_id:
-            logs = [e for e in logs if e.session_id == session_id]
-        return logs[-limit:]
-
-    def clear_log(self) -> None:
-        self._event_log.clear()
 
 
 class PersistentEventLog:
@@ -371,8 +353,39 @@ class EvolutionSignalCollector:
 _event_bus: Optional[EventBus] = None
 
 
-def get_event_bus() -> EventBus:
+def get_event_bus(override: Optional[EventBus] = None) -> EventBus:
+    """获取全局 EventBus 单例。
+
+    P2-1: 新增 `override` 参数用于测试隔离。
+    生产代码不应使用此参数；测试在 teardown 中应调用 `reset_event_bus()` 清理。
+
+    Args:
+        override: 测试时注入的实例。若提供，将替换全局单例并返回。
+
+    Returns:
+        全局 EventBus 实例
+    """
     global _event_bus
+    if override is not None:
+        _event_bus = override
     if _event_bus is None:
         _event_bus = EventBus()
     return _event_bus
+
+
+def reset_event_bus() -> None:
+    """重置全局 event_bus 单例（测试清理用）。"""
+    global _event_bus
+    _event_bus = None
+
+
+@contextmanager
+def override_event_bus(event_bus: EventBus) -> Iterator[EventBus]:
+    """P2-1: 测试用上下文管理器——临时替换全局 event_bus 单例，退出时自动恢复。"""
+    global _event_bus
+    old = _event_bus
+    _event_bus = event_bus
+    try:
+        yield _event_bus
+    finally:
+        _event_bus = old

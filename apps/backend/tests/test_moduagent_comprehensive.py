@@ -12,7 +12,7 @@ ModuAgent 综合测试套件
   - core.registry (ComponentRegistry)
   - config.runtime_config (RuntimeConfig)
   - config.schemas (所有 Schema)
-  - orchestration.coordinator (Coordinator - pipeline)
+  - components.perception.pipeline (run_perception_pipeline)
   - orchestration.communication.agui_adapter (AGUIEncoder/Adapter)
   - adapters.llm_adapter (LLMAdapter)
   - adapters.storage_adapter (StorageAdapter)
@@ -750,7 +750,7 @@ class TestAGUIEncoderFunctionality:
 
 
 class TestPerceptionPipeline:
-    """Coordinator 感知管线功能测试"""
+    """感知管线功能测试（P0-2: 使用 run_perception_pipeline 替代 Coordinator）"""
 
     @staticmethod
     def _register_text_preprocessor():
@@ -765,19 +765,20 @@ class TestPerceptionPipeline:
 
     @pytest.mark.asyncio
     async def test_perception_pipeline_routing(self):
-        """验证 Coordinator 的 _run_perception_pipeline 方法"""
+        """验证 run_perception_pipeline 函数"""
         self._register_text_preprocessor()
-        from orchestration.coordinator import Coordinator
+        from components.perception.pipeline import run_perception_pipeline
         from config.runtime_config import reset_config, get_config
 
         reset_config()
         config = get_config()
         config.set("perception.routing.text.pipeline", ["text_preprocessor"])
 
-        coord = Coordinator()
-        result = coord._run_perception_pipeline(
+        from core.registry import get_registry
+        result = run_perception_pipeline(
             {"input_type": "text", "prompt": "你好世界"},
             config,
+            get_registry(),
         )
         assert result is not None
         assert result.get("parsed_content", {}).get("text") is not None
@@ -785,7 +786,7 @@ class TestPerceptionPipeline:
     @pytest.mark.asyncio
     async def test_perception_pipeline_security_rejection(self):
         self._register_text_preprocessor()
-        from orchestration.coordinator import Coordinator
+        from components.perception.pipeline import run_perception_pipeline
         from config.runtime_config import reset_config, get_config
 
         reset_config()
@@ -793,13 +794,14 @@ class TestPerceptionPipeline:
         config.set("perception.sensitivity_threshold", 3)
         config.set("perception.routing.text.pipeline", ["text_preprocessor"])
 
-        coord = Coordinator()
-        result = coord._run_perception_pipeline(
+        from core.registry import get_registry
+        result = run_perception_pipeline(
             {
                 "input_type": "text",
                 "prompt": "password=super_secret_123",
             },
             config,
+            get_registry(),
         )
         assert result is not None
         # 密码泄露可能触发高敏感
@@ -1286,6 +1288,7 @@ class TestCompatibility:
             "components.perception.audio.asr_processor",
             "components.perception.fusion",
             "components.perception",
+            "components.perception.pipeline",
             "core.registry",
             "core.interfaces.perception",
             "core.interfaces.reasoning",
@@ -1293,7 +1296,7 @@ class TestCompatibility:
             "core.interfaces.action",
             "config.runtime_config",
             "config.schemas",
-            "orchestration.coordinator",
+            "orchestration.sensor_manager",
             "orchestration.communication.agui_adapter",
             "orchestration.communication.protocol",
             "orchestration.communication.message_bus",
@@ -1303,10 +1306,8 @@ class TestCompatibility:
             "adapters.tool_adapter",
             "components.reasoning.llm.base_llm",
             "components.memory.vector.chroma",
-            "components.memory.cache.redis_adapter",
-            "components.action.executors.async_executor",
+            "components.memory.cache.short_term_memory",
             "components.action.executors.synchronous",
-            "components.action.tools.api_client",
             "components.action.tools.calculator",
             "components.action.tools.search",
         ]
@@ -1393,10 +1394,11 @@ class TestIntegration:
         assert len(fused["parsed_content"]["modalities"]) == 2
 
     def test_coordinator_pipeline_security_threshold(self):
-        """Coordinator 安全阈值集成测试"""
+        """感知管线安全阈值集成测试（P0-2: 使用 run_perception_pipeline）"""
         TestPerceptionPipeline._register_text_preprocessor()
-        from orchestration.coordinator import Coordinator
+        from components.perception.pipeline import run_perception_pipeline
         from config.runtime_config import reset_config, get_config
+        from core.registry import get_registry
 
         reset_config()
         config = get_config()
@@ -1404,27 +1406,28 @@ class TestIntegration:
         config.set("perception.sensitivity_threshold", 3)
         config.set("perception.security.block_on_injection", True)
 
-        coord = Coordinator()
-        result = coord._run_perception_pipeline(
+        result = run_perception_pipeline(
             {
                 "input_type": "text",
                 "prompt": "password=super_secret",
             },
             config,
+            get_registry(),
         )
         assert result is not None
 
     def test_full_pipeline_no_crash(self):
-        """完整管线不崩溃测试"""
+        """完整管线不崩溃测试（P0-2: 使用 run_perception_pipeline）"""
         TestPerceptionPipeline._register_text_preprocessor()
-        from orchestration.coordinator import Coordinator
+        from components.perception.pipeline import run_perception_pipeline
         from config.runtime_config import reset_config, get_config
+        from core.registry import get_registry
 
         reset_config()
         config = get_config()
         config.set("perception.routing.text.pipeline", ["text_preprocessor"])
 
-        coord = Coordinator()
+        registry = get_registry()
         # 各种极端输入
         inputs = [
             {"input_type": "text", "prompt": "hello"},
@@ -1434,5 +1437,5 @@ class TestIntegration:
             {"input_type": "text", "prompt": "x" * 100000},
         ]
         for inp in inputs:
-            result = coord._run_perception_pipeline(inp, config)
+            result = run_perception_pipeline(inp, config, registry)
             assert result is not None, f"Pipeline failed for: {inp}"

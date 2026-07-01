@@ -35,6 +35,7 @@ class ModuAgentState(TypedDict, total=False):
         sensitivity_level: 敏感度级别（0-5）。
         confidence: 感知置信度。
         injection_detected: 是否检测到 Prompt Injection。
+        pii_detected: 是否检测到 PII（个人隐私信息）。
         history: 短期记忆历史（由 Checkpointer 自动管理）。
         knowledge: 长期记忆检索结果。
         tool_results: 工具执行结果列表。
@@ -63,6 +64,7 @@ class ModuAgentState(TypedDict, total=False):
     sensitivity_level: int
     confidence: float
     injection_detected: bool
+    pii_detected: bool
 
     # 记忆
     history: List[Dict[str, Any]]
@@ -79,6 +81,14 @@ class ModuAgentState(TypedDict, total=False):
     error_code: str
     error_message: str
     usage: Dict[str, int]
+
+    # 记忆更新状态（P0-3: memory_update_node 接入图结构）
+    memory_update_status: str
+
+    # 反馈评估与进化（P0-1: feedback/evolution 闭环）
+    evaluation: Optional[Dict[str, Any]]
+    should_evolve: bool
+    evolution_action: Optional[Dict[str, Any]]
 
 
 def make_initial_state(
@@ -110,6 +120,7 @@ def make_initial_state(
         sensitivity_level=0,
         confidence=1.0,
         injection_detected=False,
+        pii_detected=False,
         history=[],
         knowledge=[],
         tool_results=[],
@@ -118,4 +129,8 @@ def make_initial_state(
         error_code="",
         error_message="",
         usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        memory_update_status="",
+        evaluation=None,
+        should_evolve=False,
+        evolution_action=None,
     )

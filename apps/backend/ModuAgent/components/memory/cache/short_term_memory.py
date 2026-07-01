@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryShortTermMemory(BaseMemory):
+    """纯内存短期记忆实现。
+
+    P2-3: 原 redis_adapter.py 名不副实（无 Redis），重命名为 short_term_memory.py
+    以准确反映其实现。如需 Redis 支持，请新建 redis_short_term_memory.py。
+    """
+
     def __init__(
         self,
         max_turns: int = 5,
