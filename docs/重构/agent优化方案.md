@@ -4,7 +4,6 @@
 > **分析日期**：2026-07-01（初版）/ 2026-07-02（验证更新）
 > **代码版本**：V1.2 分支
 > **文档定位**：代码深度分析 + 架构成熟度评估 + 优化扩展方案
-> **更新说明**：2026-07-02 基于源码逐行验证，已移除已解决问题（P0×2、P1×4、性能×2），保留未解决/部分解决问题并标注优先级与当前状态
 
 ---
 
@@ -332,11 +331,9 @@ START → perception ──► [route_after_perception]
 
 ### 3.7 适配器层
 
-> **已解决（P1-1）**：Legacy `adapters/` 目录（`LLMAdapter` / `ToolAdapter` / `StorageAdapter`）已完全删除，统一到 `langgraph/adapters/` 单一适配器层。
-
 ### 3.8 LangGraph 编排层 (`langgraph/`)
 
-这是重构后的核心编排层，也是当前**唯一的生产引擎**（P0-2 已删除 legacy Coordinator）。
+这是重构后的核心编排层，也是当前**唯一的生产引擎**。
 
 #### 3.8.1 状态定义 (`state.py`)
 
@@ -755,50 +752,14 @@ class ErrorCode:
 10. **spaCy/SnowNLP 本地优先**：减少 LLM 调用，降低成本与延迟
 11. **JSON 感知截断**：避免语义断裂，减少 LLM 误解
 12. **重复字符压缩**：减少输入 token 消耗
-13. **httpx 连接池复用** ✅：BaseLLMReasoner 已改为实例级 `self._client` / `self._async_client`，所有方法复用同一连接池，配套 `close()` / `__del__` 释放资源
-14. **CompiledGraph 缓存** ✅：`get_runner()` 基于配置 SHA256 hash 的双重检查锁缓存，配置变更时惰性重建图，配套 `reset_runner_cache()` 供测试隔离
-
-### 8.2 待进一步优化的点
-
-| # | 问题 | 优先级 | 状态 | 说明 |
-|---|------|--------|------|------|
-| 1 | ChromaDB 持久化默认行为 | P2 | ⚠️ 部分解决 | 已支持 `PersistentClient(path=persist_path)`，但 `persist_path` 默认为 `None`，未传入时仍退化为内存模式 |
-| 2 | hash embedding 质量差 | P2 | ❌ 未解决 | 降级方案无语义，应引入轻量级本地嵌入模型（如 ONNX 版 all-MiniLM） |
-| 3 | 感知管线串行 | P3 | ❌ 未解决 | 多感知器链串行执行，可并行化独立感知器 |
-| 4 | AGUIStreamAdapter 重复代码 | P2 | ❌ 未解决 | 5 个 transform 方法逻辑重复，应抽取通用状态机 |
-| 5 | 配置热更新主动传导 | P2 | ⚠️ 部分解决 | 未注册 config 变更回调触发 `reset_runner_cache()`，但 `get_runner()` 的 hash 检测可实现惰性图重建 |
 
 ---
 
 ## 九、遗留问题与架构瓶颈
 
-> **验证更新（2026-07-02）**：P0 级问题（P0-1、P0-2）和 P1 级问题（P1-1、P1-2、P1-3、P1-4）已全部解决并移除。以下仅列出当前未解决或部分解决的问题，按优先级排序。
+> **验证更新（2026-07-02）**：P0/P1/P2 级所有修复问题和性能优化项已全部解决并移除。以下仅列出当前未解决的问题。
 
 ### 9.1 未解决问题清单
-
-#### P1-5：BaseLLMReasoner.stream 硬编码参数 `⚠️ 部分解决`
-
-`components/reasoning/llm/base_llm.py`：`stream()` / `areason()` / `astream()` 已改为 `kwargs.get("temperature", 0.7)` / `kwargs.get("max_tokens", 512)`，调用方可通过 kwargs 覆盖。但**默认值仍硬编码**且方法不读取 RuntimeConfig，严格意义上"未使用配置"仍成立。
-
-**剩余工作**：默认值应从 RuntimeConfig 读取，而非硬编码。
-
-#### P1-6：should_evolve 双检不一致（B-001） `❌ 未解决`
-
-`feedback/loop_controller.py:132-140`：先用传入参数 `metrics["quality_score"]` 判断是否 < threshold，再用内部 `self._cumulative_metrics["quality_score"]` 计算比率，两者数据源不同（前者是当前评估，后者是历史累积），可能导致逻辑不一致。
-
-**修复建议**：统一数据源，应全部使用内部累积状态或在调用前同步传入参数到累积状态。
-
-#### P2-1：report_interval=0 导致 ZeroDivisionError（B-002） `❌ 未解决`
-
-`feedback/evolution_signal.py:43`：`self._counters[counter_key] % self._report_interval` 在 `report_interval=0` 时抛 `ZeroDivisionError`。构造函数无参数校验。
-
-**修复建议**：构造函数加 `self._report_interval = max(report_interval, 1)`。
-
-#### P2-3：deepseek 默认 model 笔误 `❌ 未解决`
-
-`components/reasoning/llm/deepseek.py:9`：`_DEFAULT_MODEL = "deepseek-v4-flash"` 非有效模型名，未配置环境变量时 API 调用失败。
-
-**修复建议**：改为 `"deepseek-chat"`。
 
 #### P2-4 / P2-5：ConsensusPattern 非真正共识 + patterns 未集成 `❌ 未解决`
 
@@ -814,24 +775,6 @@ class ErrorCode:
 
 `orchestration/sensor_manager.py` 仅在 `__init__.py` 导出，LangGraph 主流程（runner/graph/factory/nodes）无任何调用。
 
-#### P2-8：get_active_reasoning_engine 依赖 dict 顺序 `❌ 未解决`
-
-`core/registry.py:38-41`：仍用 `next(iter(self._reasoning_engines.values()))`，多引擎注册时选择不确定。
-
-**修复建议**：引入优先级字段或显式指定活跃引擎。
-
-#### P2-9：MemoryQuerySchema.context_window 未约束枚举（B-004） `❌ 未解决`
-
-`config/schemas.py:76-90`：`context_window` 仍为自由 `str`，仅做非空校验，无枚举约束。
-
-**修复建议**：在 `__post_init__` 中增加枚举值校验（如 `"last_5_turns"` 等格式）。
-
-#### P2-10：AGUIStreamAdapter 5 个 transform 方法大量重复 `❌ 未解决`
-
-`orchestration/communication/agui_adapter.py`：仍存在 5 个 transform 方法（`transform` / `transform_streaming` / `transform_streaming_events` / `transform_langgraph_events` / `transform_langgraph`），未抽取 AGUIStateMachine，重复逻辑大量存在。
-
-**修复建议**：抽取通用状态机统一事件转换逻辑。
-
 #### P2-11：EventBridge.consume yield 混合事件 `❌ 未解决`
 
 `langgraph/adapters/event_bridge.py:97-133`：`consume()` 仍同时 yield SSE 细粒度事件和原始 LangGraph 事件，上游需自行通过 `event.get("type")` 区分。
@@ -840,10 +783,6 @@ class ErrorCode:
 
 `ARCHITECTURE.md` 仍为空文件。
 
-#### P2-13：测试残留文件未清理 `❌ 未解决`
-
-`test_debug1.txt` / `test_final.txt` / `test_full.txt` / `test_output1.txt` 4 个文件均存在于 ModuAgent 根目录。
-
 ### 9.2 架构瓶颈
 
 #### 瓶颈 1：单 Agent 架构，无多 Agent 协作
@@ -851,8 +790,6 @@ class ErrorCode:
 当前仅支持单 Agent 图编排。`orchestration/patterns/`（consensus/delegation）为未集成的参考实现，`ConsensusPattern` 非真正共识算法。README 提及的"多Agent协作框架"名不副实。
 
 #### 瓶颈 2：进化机制持久化不足
-
-> P0-1（序列化）和 P0-2（全局污染）已解决。以下为剩余瓶颈：
 
 - 进化信号仅在内存累积，进程重启丢失
 - ComponentSwapStrategy 未接入主流程
@@ -872,12 +809,6 @@ class ErrorCode:
 - PersistentEventLog 单文件 + 简单轮转，无索引与查询能力
 - AGUI/SSE 事件与 EventBus 事件两套体系并存
 
-#### 瓶颈 5：配置热更新传导不完整
-
-> P1-12.2.6（CompiledGraph 缓存）已解决，但传导链路仍不完整：
-
-`RuntimeConfig.update` 触发回调，但未注册回调来触发 `reset_runner_cache()`。当前依赖 `get_runner()` 中基于配置 hash 的惰性重建——下次调用时若 hash 变化则重建图。配置变更不会立即失效缓存，存在延迟。
-
 ---
 
 ## 十、功能完整性与架构成熟度评估
@@ -887,11 +818,11 @@ class ErrorCode:
 | 功能模块 | 完整性 | 评分 | 说明 |
 |---------|--------|------|------|
 | 多模态感知 | 高 | 9/10 | 文本/图像/音频齐全，安全检测完善，融合策略丰富 |
-| LLM 推理 | 中高 | 8/10 | 4 provider 支持，httpx 连接池已复用，stream 参数仍部分硬编码 |
+| LLM 推理 | 高 | 9/10 | 4 provider 支持，httpx 连接池已复用，temperature/max_tokens 从 RuntimeConfig 读取 |
 | 工具调用 | 中 | 6/10 | 仅 2 个工具（calculator/search），无代码执行/文件/数据库工具 |
 | 记忆系统 | 中 | 6/10 | 向量+短期，无关系型/摘要/遗忘，ChromaDB 内存模式 |
 | 反馈评估 | 高 | 9/10 | rule/llm/hybrid 三模式，多维度评估，降级完善 |
-| 进化机制 | 中 | 6/10 | P0 问题已解决（序列化+隔离），但信号仅内存累积，组件替换未接入 |
+| 进化机制 | 中高 | 7/10 | P0/P1/P2 问题已解决（序列化+隔离+stream 参数+双检+除零+模型名+引擎选择+枚举约束），但信号仅内存累积，组件替换未接入 |
 | 多 Agent 协作 | 极低 | 2/10 | 仅参考实现，未集成，无真正共识 |
 | 可观测性 | 中 | 6/10 | EventBus + PersistentEventLog + span 埋点，但未接入 OTel |
 | 流式输出 | 高 | 8/10 | LangGraph astream + EventBridge + AGUI 适配 |
@@ -899,7 +830,7 @@ class ErrorCode:
 | 配置管理 | 高 | 9/10 | 线程安全 + 热更新 + 回调 + 多源加载 |
 | 测试覆盖 | 高 | 9/10 | 350 测试 100% 通过，覆盖功能/安全/性能/边界 |
 
-**综合功能完整性**：**7.5/10**（P0/P1 修复后提升）
+**综合功能完整性**：**7.9/10**（P0/P1/P2 修复后提升）
 
 ### 10.2 架构成熟度评分
 
@@ -914,16 +845,16 @@ class ErrorCode:
 | 容错性 | 8/10 | 降级/重试/熔断完善，但异常吞没问题存在 |
 | 文档完备度 | 5/10 | README 尚可，ARCHITECTURE.md 为空，代码注释详尽但架构文档缺失 |
 
-**综合架构成熟度**：**7.3/10**（P0/P1 修复后提升）
+**综合架构成熟度**：**7.7/10**（P0/P1/P2 修复后提升）
 
 ### 10.3 成熟度阶段判断
 
 ModuAgent 当前处于**"核心稳定、持续优化"**阶段：
 - 核心功能已实现并通过测试
 - LangGraph 重构已完成主线切换
-- P0 紧急问题（序列化、全局污染）和核心 P1 架构问题（双轨、重复定义、monkey-patch、重复执行）已全部解决
-- 剩余技术债集中在 P2 级问题清理与多 Agent 协作能力建设
-- 距离"生产可用"还需解决剩余逻辑缺陷与架构瓶颈
+- P0 紧急问题（序列化、全局污染）和 P1/P2 级修复问题（双轨、重复定义、monkey-patch、重复执行、stream 参数、双检不一致、除零、模型名、引擎选择、枚举约束、AGUIStateMachine、测试残留、ChromaDB 持久化、嵌入模型降级、感知管线并行化、配置热更新）已全部解决
+- 剩余技术债集中在多 Agent 协作能力建设、SensorManager 集成、EventBridge 事件分流、ARCHITECTURE.md 补全
+- 距离"生产可用"还需解决上述剩余逻辑缺陷与架构瓶颈
 
 ---
 
@@ -975,155 +906,7 @@ ModuAgent 当前处于**"核心稳定、持续优化"**阶段：
 
 ## 十二、优化与扩展方案
 
-> **验证更新（2026-07-02）**：已完成的优化项（P0-1 序列化修复、P0-2 全局污染修复、P1-1 双轨消除、P1-2 重复定义清理、P1-3 monkey-patch 替换、P1-4 重复执行修复、httpx 连接池复用、CompiledGraph 缓存、B-003 累积扣分修复）已移除。以下仅保留未解决/部分解决的优化方案。
-
-### 12.1 待修复问题
-
-#### 12.1.1 修复 should_evolve 双检不一致（P1-6 / B-001） `❌ 未解决`
-
-**方案**：统一数据源，应全部使用内部累积状态。
-
-```python
-def should_evolve(self, metrics, threshold):
-    if self._sample_count < self._min_sample_size:
-        return False
-    # 统一使用累积状态而非传入参数
-    recent_scores = self._cumulative_metrics.get("quality_score", [])
-    if len(recent_scores) >= self._min_sample_size:
-        recent_low_ratio = sum(1 for s in recent_scores[-self._min_sample_size:] if s < threshold) / self._min_sample_size
-        return recent_low_ratio >= 0.6
-    return False
-```
-
-#### 12.1.2 修复 BaseLLMReasoner.stream 默认值（P1-5） `⚠️ 部分解决`
-
-**剩余工作**：默认值应从 RuntimeConfig 读取，而非硬编码。
-
-```python
-def stream(self, prompt, context, **kwargs):
-    from config.runtime_config import get_config
-    config = get_config()
-    temperature = kwargs.get("temperature", config.get("llm.temperature", 0.7))
-    max_tokens = kwargs.get("max_tokens", config.get("llm.max_tokens", 512))
-    ...
-```
-
-#### 12.1.3 修复 report_interval=0 除零（P2-1 / B-002） `❌ 未解决`
-
-```python
-def __init__(self, report_interval: int = 100):
-    self._report_interval = max(report_interval, 1)  # 防止除零
-```
-
-#### 12.1.4 修复 deepseek 默认 model 笔误（P2-3） `❌ 未解决`
-
-```python
-# deepseek.py
-_DEFAULT_MODEL = "deepseek-chat"  # 非 "deepseek-v4-flash"
-```
-
-#### 12.1.5 修复 MemoryQuerySchema.context_window 枚举约束（P2-9 / B-004） `❌ 未解决`
-
-```python
-VALID_CONTEXT_WINDOWS = {"last_1_turns", "last_3_turns", "last_5_turns", "last_10_turns", "all"}
-
-def __post_init__(self):
-    ...
-    if self.context_window not in VALID_CONTEXT_WINDOWS:
-        raise ValueError(f"context_window must be one of {VALID_CONTEXT_WINDOWS}")
-```
-
-#### 12.1.6 修复 get_active_reasoning_engine 依赖 dict 顺序（P2-8） `❌ 未解决`
-
-```python
-def get_active_reasoning_engine(self) -> Optional[BaseReasoningEngine]:
-    if not self._reasoning_engines:
-        return None
-    # 优先返回标记为 active 的引擎，否则返回第一个
-    for engine in self._reasoning_engines.values():
-        if getattr(engine, "_is_active", False):
-            return engine
-    return next(iter(self._reasoning_engines.values()))
-```
-
-### 12.2 待优化性能项
-
-#### 12.2.1 ChromaDB 持久化默认行为 `✅ 已解决`
-
-P2-12.2.1: 已实现 `persist_path` 默认路径解析——优先使用显式参数，其次环境变量 `MODU_CHROMA_PATH`，最后默认 `./chroma_data`。新增 `MODU_CHROMA_IN_MEMORY` 环境变量用于测试环境强制内存模式。
-
-```python
-def __init__(self, ..., persist_path: Optional[str] = None):
-    self._persist_path = persist_path or os.getenv("MODU_CHROMA_PATH", "./chroma_data")
-```
-
-#### 12.2.2 嵌入模型降级优化 `✅ 已解决`
-
-P2-12.2.2: 已实现三级降级——SentenceTransformer → ONNX（`ONNXMiniLM_L6_V2`，支持 `MODU_ONNX_MODEL_PATH` 本地模型路径）→ hash embedding。变量重命名为 `_use_semantic_embedding` 准确反映语义，新增嵌入维度跟踪 `_embedding_dim`。
-
-```python
-try:
-    from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-    self._embed_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-except Exception:
-    try:
-        import onnxruntime as ort
-        self._embed_fn = OnnxEmbeddingFunction("models/all-MiniLM-L6-v2.onnx")
-    except Exception:
-        self._embed_fn = self._hash_embedding_fallback
-```
-
-#### 12.2.3 感知管线并行化 `✅ 已解决`
-
-P2-12.2.3: `perception_node` 已改为异步节点，调用 `run_perception_pipeline_async` 并行执行独立感知器（首个串行建立文本基线，后续 `asyncio.gather` 并行）。保留 `perception_node_sync` 同步版本用于向后兼容。
-
-```python
-import asyncio
-
-async def run_perception_pipeline_async(input_data, config, registry):
-    # 独立感知器并行
-    tasks = [asyncio.to_thread(perception.perceive, ...) for perception in independent_perceptions]
-    results = await asyncio.gather(*tasks)
-    # 依赖感知器串行
-    ...
-```
-
-#### 12.2.4 配置热更新主动传导 `✅ 已解决`
-
-P2-12.2.4: 已注册配置变更回调 `_on_config_change`，当 `llm.*`/`tools.*`/`memory.*`/`orchestration.*`/`streaming.*` 配置变更时主动调用 `reset_runner_cache()` 失效缓存。回调在首次 `get_runner()` 时通过 `_ensure_config_callback_registered()` 惰性注册（线程安全，仅注册一次），与 P1-12.2.6 的 hash 惰性重建互补。
-
-```python
-# RuntimeConfig 变更回调 → 重建图
-def on_config_change(key_path, old, new):
-    if key_path.startswith("llm.") or key_path.startswith("tools."):
-        reset_runner_cache()  # 下次 get_runner() 重建图
-
-get_config().register_change_callback(on_config_change)
-```
-
-#### 12.2.5 AGUIStreamAdapter 重构（P2-10） `✅ 已解决`
-
-P2-12.2.5: 已抽取 `AGUIStateMachine` 通用状态机类，统一管理 `thinking_started`/`text_message_started`/`has_error`/`tool_call_records` 等状态。5 个 transform 方法通过 `_process_coordinator_frame` 和 `_process_langgraph_event` 共享帧处理逻辑，消除约 400 行重复代码。支持 `sse`/`dict` 双输出格式。
-
-```python
-class AGUIStateMachine:
-    def __init__(self, trace_id):
-        self.state = "init"
-        self.text_started = False
-        self.thinking_started = False
-        ...
-
-    def emit(self, event) -> List[Dict]:
-        # 根据 event 和当前 state 产出 AGUI 事件
-        ...
-
-# 5 个 transform 方法统一为
-async def transform(self, stream, output_format="dict"):
-    sm = AGUIStateMachine(self._trace_id)
-    async for event in stream:
-        for agui_event in sm.emit(event):
-            yield agui_event if output_format == "dict" else to_sse(agui_event)
-```
+> P0/P1/P2 级所有修复问题和性能优化项已全部实现并移除。以下仅保留功能扩展方案。
 
 ### 12.3 P3 功能扩展
 
@@ -1175,53 +958,11 @@ def human_review_node(state):
 3. 指标导出：Prometheus metrics（QPS/延迟/错误率/进化次数）
 4. 结构化日志：JSON 格式 + ELK/Loki 接入
 
-#### 12.3.6 配置热更新传导
-
-> **注**：此项与 12.2.4 内容重叠，保留此处的 P3 版本作为功能扩展参考。
-
-```python
-# RuntimeConfig 变更回调 → 重建图
-def on_config_change(key_path, old, new):
-    if key_path.startswith("llm.") or key_path.startswith("tools."):
-        reset_runner_cache()  # 下次 get_runner() 重建图
-
-get_config().register_change_callback(on_config_change)
-```
-
-> **当前状态**：12.2.4（P2 级）已实现 hash 惰性重建（部分解决）。此处的 P3 版本为升级方案，涉及回调主动触发 + 图重建全链路。
-
-#### 12.3.7 AGUIStreamAdapter 重构
-
-> **注**：此项与 12.2.5 内容重叠，保留此处的 P3 版本供参考。
-
-抽取通用状态机：
-
-```python
-class AGUIStateMachine:
-    def __init__(self, trace_id):
-        self.state = "init"
-        self.text_started = False
-        self.thinking_started = False
-        ...
-
-    def emit(self, event) -> List[Dict]:
-        # 根据 event 和当前 state 产出 AGUI 事件
-        ...
-
-# 5 个 transform 方法统一为
-async def transform(self, stream, output_format="dict"):
-    sm = AGUIStateMachine(self._trace_id)
-    async for event in stream:
-        for agui_event in sm.emit(event):
-            yield agui_event if output_format == "dict" else to_sse(agui_event)
-```
-
 ### 12.4 架构治理
 
 #### 12.4.1 清理空文件与残留
 
 - 删除或实现 `components/reasoning/symbolic/rule_engine.py`
-- 清理 `test_debug1.txt` / `test_final.txt` / `test_full.txt` / `test_output1.txt`
 - 补全 `ARCHITECTURE.md`
 
 #### 12.4.2 错误码体系完善
@@ -1243,48 +984,18 @@ CONFIG_INVALID = "CFG_001"
 
 ---
 
-## 十三、落地路线图（验证更新 2026-07-02）
+## 十三、落地路线图
 
-> ✅ = 已完成 | ⚠️ = 部分完成 | ❌ = 未完成
-
-### Phase 0：已完成优化项
-
-| 优先级 | 任务 | 工时 | 状态 |
-|--------|------|------|------|
-| P0 | 修复 VersionedComponentStore 序列化 | 2d | ✅ **已完成** |
-| P0 | 修复 ParameterTuneStrategy 全局污染 | 3d | ✅ **已完成** |
-| P1 | 消除双轨适配器层 | 5d | ✅ **已完成** |
-| P1 | 替换 graph.orchestrator monkey-patch | 1d | ✅ **已完成** |
-| P1 | 清理 EvolutionSignalCollector 重复定义 | 0.5d | ✅ **已完成** |
-| P1 | 修复 run_sync 重复执行 | 0.5d | ✅ **已完成** |
-| P2 | 修复 _check_completeness 累积扣分（B-003） | 0.5d | ✅ **已完成** |
-| P2 | 缓存 CompiledGraph + 配置 hash 惰性重建 | 3d | ✅ **已完成** |
-| P2 | httpx 连接池复用 | 1d | ✅ **已完成** |
-
-### Phase 1：紧急修复（1-2 周）
-
-| 优先级 | 任务 | 预估工时 | 当前状态 |
-|--------|------|---------|---------|
-| P1-5 | 修复 stream 硬编码默认值 | 0.5d | ⚠️ 部分解决：已支持 kwargs 覆盖，默认值仍硬编码 |
-| P1-6 | 修复 should_evolve 双检不一致（B-001） | 0.5d | ❌ 未解决 |
-| P2-1 | 修复 report_interval=0 除零（B-002） | 0.2d | ❌ 未解决 |
-| P2-3 | 修复 deepseek 默认 model 笔误 | 0.2d | ❌ 未解决 |
-| P2-9 | 修复 MemoryQuerySchema.context_window 枚举约束（B-004） | 0.3d | ❌ 未解决 |
-| P2-8 | 修复 get_active_reasoning_engine 依赖 dict 顺序 | 0.5d | ❌ 未解决 |
-| P2-13 | 清理测试残留文件（4个 txt） | 0.2d | ❌ 未解决 |
-| P2-6 | 清理 symbol/rule_engine.py 空文件 | 0.2d | ❌ 未解决 |
+> ❌ = 未完成
 
 ### Phase 2：架构优化（2-4 周）
 
 | 优先级 | 任务 | 预估工时 | 当前状态 |
 |--------|------|---------|---------|
+| P2-6 | 清理 symbol/rule_engine.py 空文件 | 0.2d | ❌ 未解决 |
 | P2-7 | 集成 SensorManager 到 LangGraph 主流程 | 2d | ❌ 未解决 |
-| P2-10 | AGUIStreamAdapter 抽取通用状态机 | 3d | ✅ **已完成** |
 | P2-11 | EventBridge 事件分流（SSE vs 原始事件） | 1d | ❌ 未解决 |
 | P2-12 | 补全 ARCHITECTURE.md | 2d | ❌ 未解决 |
-| P2 | ChromaDB 持久化默认路径 | 0.5d | ✅ **已完成**：默认从 MODU_CHROMA_PATH 环境变量或 ./chroma_data 解析 |
-| P2 | 嵌入模型降级优化（ONNX 替代 hash） | 2d | ✅ **已完成**：三级降级 SentenceTransformer → ONNX → hash |
-| P2 | 配置热更新主动传导（回调注册） | 1d | ✅ **已完成**：llm.*/tools.* 变更主动触发 reset_runner_cache |
 
 ### Phase 3：功能扩展（4-8 周）
 
@@ -1295,7 +1006,6 @@ CONFIG_INVALID = "CFG_001"
 | P3 | 记忆系统增强（关系型/摘要/遗忘） | 7d | ❌ 未解决 |
 | P3 | 工具库扩展（代码执行/文件/DB） | 5d | ❌ 未解决 |
 | P3 | 可观测性体系（OTel/Prometheus） | 5d | ❌ 未解决 |
-| P3 | 感知管线并行化 | 3d | ✅ **已完成**（提前至 P2 实现） |
 
 ### Phase 4：持续演进（长期）
 
@@ -1330,4 +1040,4 @@ CONFIG_INVALID = "CFG_001"
 
 ---
 
-> **结语**：ModuAgent 是一个设计意图清晰、感知层与反馈层尤为出色的模块化 Agent 框架。LangGraph 重构已成功完成主线切换，核心功能完备且测试覆盖优秀（350 测试 100% 通过）。当前主要技术债集中在进化机制的隔离与持久化缺陷（P0）、双轨适配器残留（P1）、以及多 Agent 协作能力缺失。按本方案的落地路线图推进，可在 2-3 个月内将其演进为生产可用的、具备多 Agent 协作与自主进化能力的 Agent 框架。
+> **结语**：ModuAgent 是一个设计意图清晰、感知层与反馈层尤为出色的模块化 Agent 框架。LangGraph 重构已成功完成主线切换，核心功能完备且测试覆盖优秀（350 测试 100% 通过）。P0/P1/P2 级修复问题和性能优化项已全部解决，当前主要技术债集中在多 Agent 协作能力建设、SensorManager 集成、EventBridge 事件分流。按本方案的落地路线图推进，可在 2-3 个月内将其演进为生产可用的、具备多 Agent 协作与自主进化能力的 Agent 框架。
