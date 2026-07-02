@@ -29,7 +29,10 @@ from components.perception import (
     build_perception_event_metadata,
     extract_perception_context,
 )
-from components.perception.pipeline import run_perception_pipeline
+from components.perception.pipeline import (
+    run_perception_pipeline,
+    run_perception_pipeline_async,
+)
 from config.runtime_config import get_config
 from core.registry import get_registry
 from langgraph.state import ModuAgentState
@@ -48,25 +51,14 @@ logger = logging.getLogger(__name__)
 # 感知节点（对应 Coordinator._run_perception_pipeline + 熔断）
 # ============================================================
 
-def perception_node(state: ModuAgentState) -> dict:
-    """感知层节点：输入路由 + 感知器链 + 多路融合。
+def _build_perception_result(
+    fused: Optional[dict],
+    prompt: str,
+) -> dict:
+    """从融合后的感知结果构建状态更新字典。
 
-    P1-5: 委托至公共感知管线函数，消除与 coordinator._run_perception_pipeline 的重复逻辑。
-
-    Args:
-        state: 当前图状态
-
-    Returns:
-        状态更新字典（perception_result / cleaned_text / sensitivity_level /
-        confidence / detected_language / injection_detected / pii_detected）
+    供 perception_node（异步）和 perception_node_sync（同步回退）共用。
     """
-    config = get_config()
-    registry = get_registry()
-    input_data = state.get("input_data", {})
-    prompt = input_data.get("prompt", "")
-
-    fused = run_perception_pipeline(input_data, config, registry)
-
     if not fused:
         return {
             "perception_result": None,
@@ -98,6 +90,44 @@ def perception_node(state: ModuAgentState) -> dict:
         "injection_detected": injection_detected,
         "pii_detected": pii_detected,
     }
+
+
+async def perception_node(state: ModuAgentState) -> dict:
+    """感知层节点：输入路由 + 感知器链 + 多路融合。
+
+    P1-5: 委托至公共感知管线函数，消除与 coordinator._run_perception_pipeline 的重复逻辑。
+    P2-12.2.3: 改为异步节点，使用 run_perception_pipeline_async 并行执行独立感知器，
+    显著提升多感知器场景下的感知延迟（如 text+image+audio 多模态输入）。
+
+    Args:
+        state: 当前图状态
+
+    Returns:
+        状态更新字典（perception_result / cleaned_text / sensitivity_level /
+        confidence / detected_language / injection_detected / pii_detected）
+    """
+    config = get_config()
+    registry = get_registry()
+    input_data = state.get("input_data", {})
+    prompt = input_data.get("prompt", "")
+
+    fused = await run_perception_pipeline_async(input_data, config, registry)
+    return _build_perception_result(fused, prompt)
+
+
+def perception_node_sync(state: ModuAgentState) -> dict:
+    """感知层节点同步版本（向后兼容 / 测试直接调用）。
+
+    使用同步串行的 run_perception_pipeline，不享受并行加速。
+    生产环境推荐使用异步 perception_node。
+    """
+    config = get_config()
+    registry = get_registry()
+    input_data = state.get("input_data", {})
+    prompt = input_data.get("prompt", "")
+
+    fused = run_perception_pipeline(input_data, config, registry)
+    return _build_perception_result(fused, prompt)
 
 
 # ============================================================

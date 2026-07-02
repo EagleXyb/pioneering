@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -45,6 +46,9 @@ class _MockCollection:
 
 _safe_import("chromadb")
 
+# P2-12.2.1: 测试环境强制 ChromaDB 内存模式，避免在测试目录创建持久化文件
+os.environ.setdefault("MODU_CHROMA_IN_MEMORY", "1")
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -82,5 +86,12 @@ def _cleanup_globals():
     try:
         from langgraph.runner import reset_runner_cache
         reset_runner_cache()
+    except Exception:
+        pass
+
+    # P2-12.2.4: 重置配置回调注册标志，确保新 RuntimeConfig 实例能重新注册回调
+    try:
+        import langgraph.runner as _runner_mod
+        _runner_mod._config_callback_registered = False
     except Exception:
         pass

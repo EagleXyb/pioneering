@@ -32,7 +32,8 @@ _DEFAULT_CONFIG = {
         # LangGraph 重构新增字段
         "checkpointer_type": "memory",  # memory | sqlite | none
         "store_type": "chroma",         # chroma | in_memory | none
-        # P2-12.3.2: ChromaDB 持久化路径（None=内存模式，生产环境建议设置为本地路径）
+        # P2-12.2.1: ChromaDB 持久化路径（None=由 ChromaLongTermMemory 从
+        # MODU_CHROMA_PATH 环境变量或默认路径 ./chroma_data 解析；生产环境建议显式设置）
         "chroma_persist_path": None,
     },
     "orchestration": {

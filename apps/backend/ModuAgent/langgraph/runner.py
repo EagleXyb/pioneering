@@ -43,6 +43,13 @@ _runner_cache: Optional[Any] = None
 _runner_config_hash: Optional[str] = None
 _runner_cache_lock = threading.Lock()
 
+# P2-12.2.4: 配置热更新主动传导——回调注册标志
+_config_callback_registered: bool = False
+_config_callback_lock = threading.Lock()
+
+# P2-12.2.4: 触发图重建的配置 key 前缀
+_GRAPH_REBUILD_PREFIXES = ("llm.", "tools.", "memory.", "orchestration.", "streaming.")
+
 
 def _hash_config(config: Any) -> str:
     """P1-12.2.6: 计算运行时配置的哈希，用于判断是否需要重建图。
@@ -411,12 +418,18 @@ def get_runner(engine: Optional[str] = None) -> Any:
     P1-12.2.6: 缓存编译图实例，配合配置 hash 检测；配置变更时自动重建。
     避免每次请求都重新构建图（含 LLM/工具/checkpointer/store 初始化）的开销。
 
+    P2-12.2.4: 注册配置变更回调，llm.*/tools.* 等关键配置变更时主动触发缓存失效，
+    无需等待下次 get_runner() 的 hash 检测——实现"主动传导"而非"惰性重建"。
+
     Args:
         engine: 引擎类型（保留向后兼容，默认从配置读取）
 
     Returns:
         ModuGraph 包装器（透明委托 CompiledGraph 的所有方法）
     """
+    # P2-12.2.4: 首次调用时注册配置变更回调（仅注册一次）
+    _ensure_config_callback_registered()
+
     config = get_config()
     engine = engine or config.get("orchestration.engine", "langgraph")
 
@@ -445,6 +458,50 @@ def get_runner(engine: Optional[str] = None) -> Any:
         _runner_cache = create_agent()
         _runner_config_hash = current_hash
         return _runner_cache
+
+
+def _ensure_config_callback_registered() -> None:
+    """P2-12.2.4: 确保配置变更回调已注册（线程安全，仅注册一次）。
+
+    注册一个回调到 RuntimeConfig，当 llm.*/tools.*/memory.* 等影响图结构的
+    配置变更时，主动调用 reset_runner_cache() 使缓存失效。
+    下次 get_runner() 调用时将重建图——实现配置热更新的主动传导。
+
+    与 P1-12.2.6 的 hash 惰性重建互补：
+    - hash 惰性重建：兜底机制，确保最终一致性
+    - 回调主动传导：即时响应，避免缓存窗口期内的旧图请求
+    """
+    global _config_callback_registered
+    if _config_callback_registered:
+        return
+    with _config_callback_lock:
+        if _config_callback_registered:
+            return
+        try:
+            config = get_config()
+            config.register_change_callback(_on_config_change)
+            _config_callback_registered = True
+            logger.info("Config change callback registered for runner cache invalidation")
+        except Exception as e:
+            logger.warning("Failed to register config change callback: %s", str(e))
+
+
+def _on_config_change(key_path: str, old_value: Any, new_value: Any) -> None:
+    """P2-12.2.4: 配置变更回调——影响图结构的配置变更时主动失效缓存。
+
+    Args:
+        key_path: 变更的配置路径（如 "llm.temperature"）
+        old_value: 旧值
+        new_value: 新值
+    """
+    for prefix in _GRAPH_REBUILD_PREFIXES:
+        if key_path.startswith(prefix):
+            logger.info(
+                "Config change detected ('%s'), invalidating runner cache for proactive rebuild",
+                key_path,
+            )
+            reset_runner_cache()
+            return
 
 
 def reset_runner_cache() -> None:

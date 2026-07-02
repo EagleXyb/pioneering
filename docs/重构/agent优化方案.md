@@ -1,9 +1,10 @@
 # ModuAgent 深度代码分析与优化方案
 
 > **分析对象**：`apps/backend/ModuAgent` 模块化 Agent 框架
-> **分析日期**：2026-07-01
+> **分析日期**：2026-07-01（初版）/ 2026-07-02（验证更新）
 > **代码版本**：V1.2 分支
 > **文档定位**：代码深度分析 + 架构成熟度评估 + 优化扩展方案
+> **更新说明**：2026-07-02 基于源码逐行验证，已移除已解决问题（P0×2、P1×4、性能×2），保留未解决/部分解决问题并标注优先级与当前状态
 
 ---
 
@@ -156,8 +157,8 @@ START → perception ──► [route_after_perception]
   - `swap_component(category, name, component)` 支持运行时热替换（供进化机制使用）
   - 提供 `get_registry(override)` / `reset_registry()` / `override_registry()` 上下文管理器，支持测试隔离
 
-- **问题**：
-  - `get_active_reasoning_engine()` 返回 `next(iter(self._reasoning_engines.values()))`，依赖 dict 插入顺序，**多引擎时选择不确定**
+- **遗留问题**：
+  - `get_active_reasoning_engine()` 返回 `next(iter(self._reasoning_engines.values()))`，依赖 dict 插入顺序，**多引擎时选择不确定** `「P2-8 未解决」`
   - `swap_component` 不做类型校验（注释说明是设计如此，但风险较高）
   - 全局单例 `_registry` 在多进程场景下不共享
 
@@ -184,7 +185,7 @@ START → perception ──► [route_after_perception]
 9 个 dataclass 定义了跨层数据契约：`PerceptionInputSchema`、`PerceptionOutputSchema`、`MemoryQuerySchema`、`MemoryUpdateSchema`、`ToolCallSchema`、`ToolResultSchema`、`LLMCallSchema`、`LLMResultSchema`、`FeedbackSignalSchema`。
 
 - **亮点**：`__post_init__` 做字段校验，`to_dict()` / `from_dict()` 支持序列化
-- **问题**：`MemoryQuerySchema.context_window` 接受任意字符串，未约束为枚举值（B-004）
+- **遗留问题**：`MemoryQuerySchema.context_window` 接受任意字符串，未约束为枚举值 `「P2-9 / B-004 未解决」`
 
 ### 3.3 感知层 (`components/perception/`)
 
@@ -280,19 +281,18 @@ START → perception ──► [route_after_perception]
 - `_build_messages()`：构建 system + memory_context + tool_descriptions + history + user 消息序列
 - 原生解析 `tool_calls`（function calling）
 
-**问题**：
-- `stream()` 硬编码 `temperature=0.7, max_tokens=512`，未使用配置
-- 每次 `reason()` 新建 `httpx.Client`，**连接未复用**
+**遗留问题**：
+- `stream()` / `areason()` / `astream()` 默认 `temperature=0.7, max_tokens=512` 仍为硬编码，虽已支持 kwargs 覆盖但不读取 RuntimeConfig `「P1-5 部分解决」`
 
 #### 3.4.2 LLM 子类
 
 `GLMLLMReasoner` / `DeepSeekLLMReasoner` / `GPTLLMReasoner` / `QwenLLMReasoner` 仅差异在默认 base_url/model/环境变量名，逻辑完全继承基类。
 
-**注意**：`deepseek.py` 默认 model 为 `deepseek-v4-flash`（疑似笔误，应为 `deepseek-chat`）；`llm_adapter.py`（LangGraph 版）中 deepseek 默认 model 为 `deepseek-chat`，**两处不一致**。
+**遗留问题**：`deepseek.py` 默认 model 为 `deepseek-v4-flash`（非有效模型名，应为 `deepseek-chat`），未配置环境变量时 API 调用失败 `「P2-3 未解决」`
 
 #### 3.4.3 符号推理 (`symbolic/rule_engine.py`)
 
-**空文件**，仅占位。
+**空文件**，仅占位 `「P2-6 未解决」`
 
 ### 3.5 记忆层 (`components/memory/`)
 
@@ -304,9 +304,9 @@ START → perception ──► [route_after_perception]
 - `update()`：upsert 文档 + enriched metadata
 - 按 user_id 隔离 collection
 
-**问题**：
+**遗留问题**：
 - `_simple_hash_embedding` 无语义信息，检索质量极差，仅应作为兜底
-- ChromaDB 使用内存模式（`chromadb.Client()`），**进程重启数据丢失**
+- ChromaDB 已支持 `PersistentClient`，但 `persist_path` 默认为 `None`，未传入时仍退化为内存模式 `「部分解决」`
 - `query()` 中 `context_window.startswith("last_")` 直接返回空，与短期记忆协议耦合
 
 #### 3.5.2 InMemoryShortTermMemory (`cache/short_term_memory.py`)
@@ -330,14 +330,9 @@ START → perception ──► [route_after_perception]
 
 从 registry 查找工具并执行，异常捕获返回结构化错误。
 
-### 3.7 适配器层 (`adapters/`，legacy)
+### 3.7 适配器层
 
-`LLMAdapter` / `ToolAdapter` / `StorageAdapter` 是 LangGraph 重构前的适配层：
-- `LLMAdapter`：从 registry 获取 `BaseReasoningEngine`，校验 `trace_id`/`session_id`
-- `ToolAdapter`：实例级 `ThreadPoolExecutor`（8 workers）复用，参数 schema 校验，超时控制
-- `StorageAdapter`：双记忆查询（short_term + long_term），`_build_vectorization_text` 构建向量化文本
-
-**问题**：LangGraph 重构后，这层与 `langgraph/adapters/` 功能重叠，形成**双轨制**，增加维护成本。
+> **已解决（P1-1）**：Legacy `adapters/` 目录（`LLMAdapter` / `ToolAdapter` / `StorageAdapter`）已完全删除，统一到 `langgraph/adapters/` 单一适配器层。
 
 ### 3.8 LangGraph 编排层 (`langgraph/`)
 
@@ -382,7 +377,7 @@ START → perception ──► [route_after_perception]
 - `build_checkpointer()`：MemorySaver / SqliteSaver
 - `build_store()`：ChromaStore / InMemoryStoreAdapter
 - `_build_judge_llm()`：LLM-as-Judge 评估器构造
-- `EvolutionOrchestrator` 挂载到 `graph.orchestrator`（monkey-patch）
+- `EvolutionOrchestrator` 通过 `ModuGraph` 包装类显式持有（替代原 monkey-patch）
 
 #### 3.8.6 适配器 (`langgraph/adapters/`)
 
@@ -407,11 +402,11 @@ LLM Judge prompt 输出 JSON，`_parse_judge_response` 有正则提取 + 逐字�
 
 - `evaluate()`：QualityMonitor + AccuracyMetrics 综合评估
 - `_accumulate_sample()`：累积样本用于统计
-- `should_evolve()`：样本量 ≥ min_sample_size 且最近 N 次中 60%+ 低于阈值
+- `should_evolve()`：样本量 ≥ min_sample_size 且最近 N 次中 60%+ 低于阈值。**遗留问题**：传入参数 `metrics` 做门控与内部 `self._cumulative_metrics` 算比率两数据源不同步 `「P1-6 / B-001 未解决」`
 
 #### 3.9.3 EvolutionSignalCollector (`evolution_signal.py`)
 
-从 EventBus 事件按 `report_interval` 生成 `EvolutionSignal`。
+从 EventBus 事件按 `report_interval` 生成 `EvolutionSignal`。**遗留问题**：`report_interval=0` 时取模运算抛 `ZeroDivisionError`，构造函数无参数校验 `「P2-1 / B-002 未解决」`
 
 #### 3.9.4 Metrics
 
@@ -431,7 +426,7 @@ LLM Judge prompt 输出 JSON，`_parse_judge_response` 有正则提取 + 逐字�
 - 高迭代次数 → 降 max_iterations
 - 高工具失败率 → 保持低 temperature
 
-**问题**：直接 `self._config.set("llm.temperature", new_temp)` **修改全局配置**，影响所有后续请求，无隔离。
+> **已解决（P0-2）**：不再直接修改全局 `RuntimeConfig`，改为返回 `config_overrides` 字典（含 `scope:"session"` / `session_id`），由 runner 通过 `RunnableConfig.configurable` 注入实现 per-session 隔离。
 
 #### 3.10.3 ComponentSwapStrategy (`strategy/component_swap.py`)
 
@@ -441,7 +436,7 @@ A/B 测试得分对比，候选版本平均分 > 当前 + threshold 则切换。
 
 JSON 文件存储组件版本快照。
 
-**严重问题**：`save_version` 中 `json.dump({"component": component})`，component 是 Python 对象实例，`json.dump` **无法序列化对象**，运行时会抛 `TypeError`。
+> **已解决（P0-1）**：不再直接序列化组件对象，改为通过 `_serialize_component_config()` 提取构造配置（`module_path` / `class_name` / `init_params`），反序列化时由 `_deserialize_component_config()` 通过 `importlib` 反射重建实例。`json.dump` 另加 `default=str` 兜底。
 
 #### 3.10.5 RollbackMechanism (`registry/rollback_mechanism.py`)
 
@@ -454,9 +449,8 @@ JSON 文件存储组件版本快照。
 - `subscribe` / `publish`，按 domain 索引优化匹配
 - `request`：请求-响应模式（带超时）
 - `PersistentEventLog`：JSONL 文件持久化 + 轮转
-- **`EvolutionSignalCollector`**（此处又定义了一份！）
 
-**问题**：`EvolutionSignalCollector` 在 `feedback/evolution_signal.py` 和 `orchestration/communication/message_bus.py` **重复定义**，且实现不同（前者基于 `AgentEvent` 生成 `EvolutionSignal` dataclass，后者收集感知统计指标 dict）。`EvolutionOrchestrator` 使用前者，`LangGraphEventBridge` 调用的 `on_agent_event` 也是前者，但后者未被清理，造成混淆。
+> **已解决（P1-2）**：`orchestration/communication/message_bus.py` 中的重复 `EvolutionSignalCollector` 已清理，全代码库仅 `feedback/evolution_signal.py` 保留唯一定义。
 
 #### 3.11.2 Protocol (`communication/protocol.py`)
 
@@ -467,15 +461,15 @@ JSON 文件存储组件版本快照。
 - `SSEEncoder`：token/error/done/status/thinking/tool_call 等 SSE 帧
 - `AGUIStreamAdapter`：AG-UI 协议适配，支持 Coordinator SSE 帧 + LangGraph stream 两种输入，4 个 transform 方法（transform / transform_streaming / transform_streaming_events / transform_langgraph / transform_langgraph_events）
 
-**问题**：AGUIStreamAdapter 有大量重复代码，5 个 transform 方法逻辑高度相似。
+**遗留问题**：AGUIStreamAdapter 有大量重复代码，5 个 transform 方法逻辑高度相似，未抽取通用状态机 `「P2-10 未解决」`
 
 #### 3.11.4 协作模式 (`patterns/`)
 
-`ConsensusPattern` / `DelegationPattern`，**未集成**，为参考实现。`ConsensusPattern.reach_consensus` 仅取首个成功结果，非真正共识。
+`ConsensusPattern` / `DelegationPattern`，**未集成**，为参考实现。`ConsensusPattern.reach_consensus` 仅取首个成功结果，非真正共识 `「P2-4 / P2-5 未解决」`
 
 #### 3.11.5 SensorManager (`sensor_manager.py`)
 
-后台异步运行传感器采集循环，发布 EventBus 事件。**未被 LangGraph 主流程调用**。
+后台异步运行传感器采集循环，发布 EventBus 事件。**未被 LangGraph 主流程调用** `「P2-7 未解决」`
 
 ---
 
@@ -761,125 +755,108 @@ class ErrorCode:
 10. **spaCy/SnowNLP 本地优先**：减少 LLM 调用，降低成本与延迟
 11. **JSON 感知截断**：避免语义断裂，减少 LLM 误解
 12. **重复字符压缩**：减少输入 token 消耗
+13. **httpx 连接池复用** ✅：BaseLLMReasoner 已改为实例级 `self._client` / `self._async_client`，所有方法复用同一连接池，配套 `close()` / `__del__` 释放资源
+14. **CompiledGraph 缓存** ✅：`get_runner()` 基于配置 SHA256 hash 的双重检查锁缓存，配置变更时惰性重建图，配套 `reset_runner_cache()` 供测试隔离
 
-### 8.2 可进一步优化的点
+### 8.2 待进一步优化的点
 
-1. **httpx.Client 未复用**：BaseLLMReasoner 每次 reason() 新建 Client，应改为实例级复用或连接池
-2. **ChromaDB 内存模式**：进程重启数据丢失，生产应改用 PersistentClient
-3. **hash embedding 质量差**：降级方案无语义，应引入轻量级本地嵌入模型（如 ONNX 版 all-MiniLM）
-4. **LangGraph 图未缓存**：`get_runner()` 每次调用 `create_agent()` 重新构建图，应缓存
-5. **感知管线串行**：多感知器链串行执行，可并行化独立感知器
-6. **AGUIStreamAdapter 重复代码**：5 个 transform 方法逻辑重复，应抽取通用状态机
+| # | 问题 | 优先级 | 状态 | 说明 |
+|---|------|--------|------|------|
+| 1 | ChromaDB 持久化默认行为 | P2 | ⚠️ 部分解决 | 已支持 `PersistentClient(path=persist_path)`，但 `persist_path` 默认为 `None`，未传入时仍退化为内存模式 |
+| 2 | hash embedding 质量差 | P2 | ❌ 未解决 | 降级方案无语义，应引入轻量级本地嵌入模型（如 ONNX 版 all-MiniLM） |
+| 3 | 感知管线串行 | P3 | ❌ 未解决 | 多感知器链串行执行，可并行化独立感知器 |
+| 4 | AGUIStreamAdapter 重复代码 | P2 | ❌ 未解决 | 5 个 transform 方法逻辑重复，应抽取通用状态机 |
+| 5 | 配置热更新主动传导 | P2 | ⚠️ 部分解决 | 未注册 config 变更回调触发 `reset_runner_cache()`，但 `get_runner()` 的 hash 检测可实现惰性图重建 |
 
 ---
 
-## 九、潜在问题与架构瓶颈
+## 九、遗留问题与架构瓶颈
 
-### 9.1 严重问题（P0）
+> **验证更新（2026-07-02）**：P0 级问题（P0-1、P0-2）和 P1 级问题（P1-1、P1-2、P1-3、P1-4）已全部解决并移除。以下仅列出当前未解决或部分解决的问题，按优先级排序。
 
-#### P0-1：VersionedComponentStore 无法序列化组件对象
+### 9.1 未解决问题清单
 
-`evolution/registry/versioned_store.py:75`：
-```python
-version_data = {"component": component, ...}
-with open(version_file_path, "w") as f:
-    json.dump(version_data, f)  # component 是 Python 对象，json.dump 会抛 TypeError
-```
+#### P1-5：BaseLLMReasoner.stream 硬编码参数 `⚠️ 部分解决`
 
-**影响**：版本快照保存失败，回滚机制（RollbackMechanism）完全不可用，进化闭环的"安全网"失效。
+`components/reasoning/llm/base_llm.py`：`stream()` / `areason()` / `astream()` 已改为 `kwargs.get("temperature", 0.7)` / `kwargs.get("max_tokens", 512)`，调用方可通过 kwargs 覆盖。但**默认值仍硬编码**且方法不读取 RuntimeConfig，严格意义上"未使用配置"仍成立。
 
-**修复**：组件对象应改为存储其构造配置（provider/api_key/model 等），回滚时根据配置重建实例。
+**剩余工作**：默认值应从 RuntimeConfig 读取，而非硬编码。
 
-#### P0-2：ParameterTuneStrategy 修改全局配置
+#### P1-6：should_evolve 双检不一致（B-001） `❌ 未解决`
 
-`evolution/strategy/parameter_tune.py:101`：
-```python
-self._config.set("llm.temperature", new_temp)
-```
+`feedback/loop_controller.py:132-140`：先用传入参数 `metrics["quality_score"]` 判断是否 < threshold，再用内部 `self._cumulative_metrics["quality_score"]` 计算比率，两者数据源不同（前者是当前评估，后者是历史累积），可能导致逻辑不一致。
 
-**影响**：进化调参影响**全局所有后续请求**，无用户/会话隔离。一个低质量用户的反馈会拉低所有人的 temperature，造成"污染"。
+**修复建议**：统一数据源，应全部使用内部累积状态或在调用前同步传入参数到累积状态。
 
-**修复**：应将调参结果写入 per-session 或 per-user 的 configurable 覆盖，而非全局 config。
+#### P2-1：report_interval=0 导致 ZeroDivisionError（B-002） `❌ 未解决`
 
-### 9.2 中等问题（P1）
+`feedback/evolution_signal.py:43`：`self._counters[counter_key] % self._report_interval` 在 `report_interval=0` 时抛 `ZeroDivisionError`。构造函数无参数校验。
 
-#### P1-1：双轨适配器层并存
+**修复建议**：构造函数加 `self._report_interval = max(report_interval, 1)`。
 
-`adapters/`（legacy: LLMAdapter/ToolAdapter/StorageAdapter）与 `langgraph/adapters/`（新: build_chat_model/build_langchain_tools/ChromaStore）功能重叠。LangGraph 已是唯一引擎，legacy 层应废弃，但目前仍被 `examples/single_agent.py` 注册流程间接依赖（通过 registry）。
+#### P2-3：deepseek 默认 model 笔误 `❌ 未解决`
 
-**影响**：维护成本翻倍，新人认知负担重。
+`components/reasoning/llm/deepseek.py:9`：`_DEFAULT_MODEL = "deepseek-v4-flash"` 非有效模型名，未配置环境变量时 API 调用失败。
 
-#### P1-2：EvolutionSignalCollector 重复定义
+**修复建议**：改为 `"deepseek-chat"`。
 
-`feedback/evolution_signal.py` 与 `orchestration/communication/message_bus.py:250` 各定义一个 `EvolutionSignalCollector`，实现不同：
-- feedback 版：基于 AgentEvent 生成 EvolutionSignal dataclass
-- orchestration 版：收集感知统计指标 dict
+#### P2-4 / P2-5：ConsensusPattern 非真正共识 + patterns 未集成 `❌ 未解决`
 
-**影响**：命名冲突，import 时易混淆，且 orchestration 版未被使用却未清理。
+`orchestration/patterns/consensus.py:64`：`reach_consensus` 仍取 `valid_results[0]`，非真正共识。`ConsensusPattern` / `DelegationPattern` 均为参考实现，未被生产流程引用。代码文档字符串已明确标注为"参考实现，未集成"。
 
-#### P1-3：graph.orchestrator monkey-patch
+#### P2-6：symbolic/rule_engine.py 空文件 `❌ 未解决`
 
-`langgraph/factory.py:265`：
-```python
-graph.orchestrator = orchestrator  # type: ignore[attr-defined]
-```
+`components/reasoning/symbolic/rule_engine.py` 仍为空文件，无任何代码。
 
-**影响**：向 CompiledGraph 动态添加属性，无类型检查，runner 通过 `getattr(graph, "orchestrator", None)` 读取。脆弱且不符合类型安全原则。
+**建议**：删除或实现基础规则引擎。
 
-#### P1-4：run_sync 重复执行风险
+#### P2-7：SensorManager 未被 LangGraph 主流程调用 `❌ 未解决`
 
-`langgraph/runner.py:262`：
-```python
-if final_state is None:
-    final_state = await graph.ainvoke(initial_state, config=lg_config)
-```
+`orchestration/sensor_manager.py` 仅在 `__init__.py` 导出，LangGraph 主流程（runner/graph/factory/nodes）无任何调用。
 
-当 astream 未产出 values 事件时回退到 ainvoke，可能导致**请求被执行两次**（一次 astream 一次 ainvoke）。
+#### P2-8：get_active_reasoning_engine 依赖 dict 顺序 `❌ 未解决`
 
-#### P1-5：BaseLLMReasoner.stream 硬编码参数
+`core/registry.py:38-41`：仍用 `next(iter(self._reasoning_engines.values()))`，多引擎注册时选择不确定。
 
-`components/reasoning/llm/base_llm.py:112-114`：
-```python
-"temperature": 0.7,  # 硬编码，未使用配置
-"max_tokens": 512,
-```
+**修复建议**：引入优先级字段或显式指定活跃引擎。
 
-stream() 不接受 temperature/max_tokens 参数，与 reason() 行为不一致。且此路径在 LangGraph 重构后可能已不再使用（LangGraph 用 ChatOpenAI.stream），但 legacy LLMAdapter.stream 仍会调用。
+#### P2-9：MemoryQuerySchema.context_window 未约束枚举（B-004） `❌ 未解决`
 
-#### P1-6：should_evolve 双检不一致（B-001）
+`config/schemas.py:76-90`：`context_window` 仍为自由 `str`，仅做非空校验，无枚举约束。
 
-`feedback/loop_controller.py:132-140`：先用 `metrics["quality_score"]` 判断是否 < threshold，再用 `self._cumulative_metrics["quality_score"]` 计算比率，两者数据源不同（前者是当前评估，后者是历史累积），可能导致逻辑不一致。
+**修复建议**：在 `__post_init__` 中增加枚举值校验（如 `"last_5_turns"` 等格式）。
 
-### 9.3 低级问题（P2）
+#### P2-10：AGUIStreamAdapter 5 个 transform 方法大量重复 `❌ 未解决`
 
-| ID | 问题 | 位置 |
-|----|------|------|
-| P2-1 | `report_interval=0` 导致 ZeroDivisionError（B-002） | evolution_signal.py:43 |
-| P2-2 | `_check_completeness` if/elif 无法累积扣分（B-003） | quality_monitor.py:510 |
-| P2-3 | `deepseek.py` 默认 model `deepseek-v4-flash` 疑似笔误 | deepseek.py:9 |
-| P2-4 | `ConsensusPattern` 非真正共识（取首个结果） | consensus.py:64 |
-| P2-5 | `orchestration/patterns/` 未集成 | consensus.py / delegation.py |
-| P2-6 | `symbolic/rule_engine.py` 空文件 | symbolic/ |
-| P2-7 | `SensorManager` 未被 LangGraph 主流程调用 | sensor_manager.py |
-| P2-8 | `get_active_reasoning_engine` 依赖 dict 顺序 | registry.py:41 |
-| P2-9 | `MemoryQuerySchema.context_window` 未约束枚举 | schemas.py:78 |
-| P2-10 | AGUIStreamAdapter 5 个 transform 方法大量重复 | agui_adapter.py |
-| P2-11 | `EventBridge.consume` yield 原始 event + SSE event，上游需区分 | event_bridge.py:130-133 |
-| P2-12 | ARCHITECTURE.md 为空文件 | ARCHITECTURE.md |
-| P2-13 | test_debug1.txt / test_final.txt 等测试残留文件未清理 | 根目录 |
+`orchestration/communication/agui_adapter.py`：仍存在 5 个 transform 方法（`transform` / `transform_streaming` / `transform_streaming_events` / `transform_langgraph_events` / `transform_langgraph`），未抽取 AGUIStateMachine，重复逻辑大量存在。
 
-### 9.4 架构瓶颈
+**修复建议**：抽取通用状态机统一事件转换逻辑。
+
+#### P2-11：EventBridge.consume yield 混合事件 `❌ 未解决`
+
+`langgraph/adapters/event_bridge.py:97-133`：`consume()` 仍同时 yield SSE 细粒度事件和原始 LangGraph 事件，上游需自行通过 `event.get("type")` 区分。
+
+#### P2-12：ARCHITECTURE.md 为空文件 `❌ 未解决`
+
+`ARCHITECTURE.md` 仍为空文件。
+
+#### P2-13：测试残留文件未清理 `❌ 未解决`
+
+`test_debug1.txt` / `test_final.txt` / `test_full.txt` / `test_output1.txt` 4 个文件均存在于 ModuAgent 根目录。
+
+### 9.2 架构瓶颈
 
 #### 瓶颈 1：单 Agent 架构，无多 Agent 协作
 
 当前仅支持单 Agent 图编排。`orchestration/patterns/`（consensus/delegation）为未集成的参考实现，`ConsensusPattern` 非真正共识算法。README 提及的"多Agent协作框架"名不副实。
 
-#### 瓶颈 2：进化机制缺乏隔离与持久化
+#### 瓶颈 2：进化机制持久化不足
 
-- 参数调优影响全局（P0-2）
-- 版本快照无法序列化（P0-1）
+> P0-1（序列化）和 P0-2（全局污染）已解决。以下为剩余瓶颈：
+
 - 进化信号仅在内存累积，进程重启丢失
 - ComponentSwapStrategy 未接入主流程
+- 版本快照虽可序列化，但回滚机制未在主流程验证
 
 #### 瓶颈 3：记忆系统单一
 
@@ -895,9 +872,11 @@ stream() 不接受 temperature/max_tokens 参数，与 reason() 行为不一致�
 - PersistentEventLog 单文件 + 简单轮转，无索引与查询能力
 - AGUI/SSE 事件与 EventBus 事件两套体系并存
 
-#### 瓶颈 5：配置热更新未传导到已编译图
+#### 瓶颈 5：配置热更新传导不完整
 
-`RuntimeConfig.update` 触发回调，但已编译的 `CompiledGraph` 不会自动重建。`create_agent()` 在 `get_runner()` 中每次调用都重建，但又未缓存，导致每次请求都重新构建图（性能损耗）或缓存后配置变更不生效（功能缺陷）的两难。
+> P1-12.2.6（CompiledGraph 缓存）已解决，但传导链路仍不完整：
+
+`RuntimeConfig.update` 触发回调，但未注册回调来触发 `reset_runner_cache()`。当前依赖 `get_runner()` 中基于配置 hash 的惰性重建——下次调用时若 hash 变化则重建图。配置变更不会立即失效缓存，存在延迟。
 
 ---
 
@@ -908,11 +887,11 @@ stream() 不接受 temperature/max_tokens 参数，与 reason() 行为不一致�
 | 功能模块 | 完整性 | 评分 | 说明 |
 |---------|--------|------|------|
 | 多模态感知 | 高 | 9/10 | 文本/图像/音频齐全，安全检测完善，融合策略丰富 |
-| LLM 推理 | 中高 | 7/10 | 4 provider 支持，但 stream 硬编码参数，连接未复用 |
+| LLM 推理 | 中高 | 8/10 | 4 provider 支持，httpx 连接池已复用，stream 参数仍部分硬编码 |
 | 工具调用 | 中 | 6/10 | 仅 2 个工具（calculator/search），无代码执行/文件/数据库工具 |
 | 记忆系统 | 中 | 6/10 | 向量+短期，无关系型/摘要/遗忘，ChromaDB 内存模式 |
 | 反馈评估 | 高 | 9/10 | rule/llm/hybrid 三模式，多维度评估，降级完善 |
-| 进化机制 | 低 | 4/10 | 参数调优有全局污染问题，版本快照不可用，组件替换未接入 |
+| 进化机制 | 中 | 6/10 | P0 问题已解决（序列化+隔离），但信号仅内存累积，组件替换未接入 |
 | 多 Agent 协作 | 极低 | 2/10 | 仅参考实现，未集成，无真正共识 |
 | 可观测性 | 中 | 6/10 | EventBus + PersistentEventLog + span 埋点，但未接入 OTel |
 | 流式输出 | 高 | 8/10 | LangGraph astream + EventBridge + AGUI 适配 |
@@ -920,30 +899,31 @@ stream() 不接受 temperature/max_tokens 参数，与 reason() 行为不一致�
 | 配置管理 | 高 | 9/10 | 线程安全 + 热更新 + 回调 + 多源加载 |
 | 测试覆盖 | 高 | 9/10 | 350 测试 100% 通过，覆盖功能/安全/性能/边界 |
 
-**综合功能完整性**：**7.3/10**
+**综合功能完整性**：**7.5/10**（P0/P1 修复后提升）
 
 ### 10.2 架构成熟度评分
 
 | 维度 | 评分 | 说明 |
 |------|------|------|
-| 分层清晰度 | 8/10 | core/components/adapters/langgraph 分层合理，但双轨适配器扣分 |
+| 分层清晰度 | 9/10 | legacy 双轨适配器已消除，单一 langgraph/adapters 适配层 |
 | 接口抽象 | 7/10 | ABC 协议完善，但 3 个接口无实现（预留点过多） |
-| 解耦程度 | 7/10 | 组件可插拔，但 ParameterTuneStrategy 全局污染、graph monkey-patch 扣分 |
+| 解耦程度 | 8/10 | 组件可插拔，P0-2 全局污染已修复，graph monkey-patch 已消除 |
 | 可扩展性 | 6/10 | 单 Agent 架构限制扩展，多 Agent 模式未集成 |
 | 可测试性 | 9/10 | override/contextmanager 设计优秀，350 测试通过 |
 | 可观测性 | 6/10 | 事件体系完善但碎片化，未接入分布式追踪 |
 | 容错性 | 8/10 | 降级/重试/熔断完善，但异常吞没问题存在 |
 | 文档完备度 | 5/10 | README 尚可，ARCHITECTURE.md 为空，代码注释详尽但架构文档缺失 |
 
-**综合架构成熟度**：**7.0/10**
+**综合架构成熟度**：**7.3/10**（P0/P1 修复后提升）
 
 ### 10.3 成熟度阶段判断
 
-ModuAgent 当前处于**"功能完备但架构待沉淀"**阶段：
+ModuAgent 当前处于**"核心稳定、持续优化"**阶段：
 - 核心功能已实现并通过测试
 - LangGraph 重构已完成主线切换
-- 但存在双轨残留、进化机制缺陷、多 Agent 缺失等架构债
-- 距离"生产可用"还需解决 P0 问题与架构瓶颈
+- P0 紧急问题（序列化、全局污染）和核心 P1 架构问题（双轨、重复定义、monkey-patch、重复执行）已全部解决
+- 剩余技术债集中在 P2 级问题清理与多 Agent 协作能力建设
+- 距离"生产可用"还需解决剩余逻辑缺陷与架构瓶颈
 
 ---
 
@@ -995,166 +975,91 @@ ModuAgent 当前处于**"功能完备但架构待沉淀"**阶段：
 
 ## 十二、优化与扩展方案
 
-### 12.1 P0 紧急修复
+> **验证更新（2026-07-02）**：已完成的优化项（P0-1 序列化修复、P0-2 全局污染修复、P1-1 双轨消除、P1-2 重复定义清理、P1-3 monkey-patch 替换、P1-4 重复执行修复、httpx 连接池复用、CompiledGraph 缓存、B-003 累积扣分修复）已移除。以下仅保留未解决/部分解决的优化方案。
 
-#### 12.1.1 修复 VersionedComponentStore 序列化问题
+### 12.1 待修复问题
 
-**方案**：组件对象改为存储构造配置，回滚时重建。
+#### 12.1.1 修复 should_evolve 双检不一致（P1-6 / B-001） `❌ 未解决`
 
-```python
-# 修改前
-version_data = {"component": component, ...}
-json.dump(version_data, f)
-
-# 修改后
-version_data = {
-    "version": version,
-    "state": state,  # 已有的配置状态
-    "metadata": metadata,
-    "category": category,
-    "component_config": _serialize_component_config(component),  # 新增
-}
-```
-
-其中 `_serialize_component_config` 提取组件的 `__init__` 参数（如 provider/api_key/model），回滚时通过反射重建。
-
-#### 12.1.2 修复 ParameterTuneStrategy 全局污染
-
-**方案**：引入 per-session configurable 覆盖层。
+**方案**：统一数据源，应全部使用内部累积状态。
 
 ```python
-class ParameterTuneStrategy:
-    def analyze_and_adjust(self, signals, session_id=None):
-        # 不再修改全局 config
-        # 而是返回调整建议，由调用方注入 RunnableConfig.configurable
-        return {
-            "adjusted": True,
-            "config_overrides": {
-                "temperature": new_temp,
-                "max_reasoning_iterations": new_max_iter,
-            },
-            "scope": "session",  # session / user / global
-            "session_id": session_id,
-        }
+def should_evolve(self, metrics, threshold):
+    if self._sample_count < self._min_sample_size:
+        return False
+    # 统一使用累积状态而非传入参数
+    recent_scores = self._cumulative_metrics.get("quality_score", [])
+    if len(recent_scores) >= self._min_sample_size:
+        recent_low_ratio = sum(1 for s in recent_scores[-self._min_sample_size:] if s < threshold) / self._min_sample_size
+        return recent_low_ratio >= 0.6
+    return False
 ```
 
-调用方（`create_agent`）在构建图时合并 configurable 覆盖。
+#### 12.1.2 修复 BaseLLMReasoner.stream 默认值（P1-5） `⚠️ 部分解决`
 
-### 12.2 P1 架构优化
-
-#### 12.2.1 消除双轨适配器层
-
-**方案**：废弃 `adapters/` legacy 层，统一到 `langgraph/adapters/`。
-
-- `LLMAdapter` → 由 `build_chat_model` + LangGraph agent_node 替代
-- `ToolAdapter` → 由 `build_langchain_tools` + ToolNode 替代
-- `StorageAdapter` → 由 `ChromaStore` + memory_query/update_node 替代
-
-迁移完成后删除 `adapters/` 目录，更新 `examples/single_agent.py` 的注册逻辑（保留 registry 注册，但调用路径走 LangGraph）。
-
-#### 12.2.2 清理重复定义
-
-- 删除 `orchestration/communication/message_bus.py` 中的 `EvolutionSignalCollector`（未使用版本）
-- 统一到 `feedback/evolution_signal.py`
-
-#### 12.2.3 替换 graph.orchestrator monkey-patch
-
-**方案**：将 orchestrator 注入到 `RunnableConfig.configurable`，通过 `config` 在节点内获取。
-
-```python
-# factory.py
-graph = build_modu_graph(..., orchestrator=orchestrator)
-
-# runner.py
-lg_config = {
-    "configurable": {
-        "thread_id": session_id,
-        "orchestrator": orchestrator,  # 通过 config 传递
-    },
-}
-```
-
-或封装为 `ModuGraph` wrapper 类持有 orchestrator 引用。
-
-#### 12.2.4 修复 run_sync 重复执行
-
-**方案**：astream 失败时不应回退到 ainvoke，应直接报错。
-
-```python
-# 修改前
-if final_state is None:
-    final_state = await graph.ainvoke(initial_state, config=lg_config)
-
-# 修改后
-if final_state is None:
-    logger.error("LangGraph astream produced no values event, trace_id=%s", trace_id)
-    return {
-        "status": "error",
-        "error_code": ErrorCode.LLM_GENERATION_FAILED,
-        "data": {"message": "No output produced", "trace_id": trace_id},
-    }
-```
-
-#### 12.2.5 修复 BaseLLMReasoner.stream 硬编码
+**剩余工作**：默认值应从 RuntimeConfig 读取，而非硬编码。
 
 ```python
 def stream(self, prompt, context, **kwargs):
-    temperature = kwargs.get("temperature", 0.7)
-    max_tokens = kwargs.get("max_tokens", 512)
+    from config.runtime_config import get_config
+    config = get_config()
+    temperature = kwargs.get("temperature", config.get("llm.temperature", 0.7))
+    max_tokens = kwargs.get("max_tokens", config.get("llm.max_tokens", 512))
     ...
 ```
 
-#### 12.2.6 缓存 CompiledGraph
-
-**方案**：`get_runner()` 缓存图实例，配合 config 变更回调重建。
+#### 12.1.3 修复 report_interval=0 除零（P2-1 / B-002） `❌ 未解决`
 
 ```python
-_runner_cache: Optional[CompiledGraph] = None
-_runner_config_hash: Optional[str] = None
-
-def get_runner() -> CompiledGraph:
-    global _runner_cache, _runner_config_hash
-    config = get_config()
-    current_hash = _hash_config(config)
-    if _runner_cache is None or current_hash != _runner_config_hash:
-        _runner_cache = create_agent()
-        _runner_config_hash = current_hash
-    return _runner_cache
+def __init__(self, report_interval: int = 100):
+    self._report_interval = max(report_interval, 1)  # 防止除零
 ```
 
-### 12.3 P2 性能优化
-
-#### 12.3.1 httpx 连接池复用
+#### 12.1.4 修复 deepseek 默认 model 笔误（P2-3） `❌ 未解决`
 
 ```python
-class BaseLLMReasoner:
-    def __init__(self, ...):
-        self._client = httpx.Client(timeout=self._timeout)
-        self._async_client = httpx.AsyncClient(timeout=self._timeout)
-
-    def reason(self, ...):
-        response = self._client.post(url, json=payload, headers=headers)
-        # 不再 with httpx.Client(...) as client
-
-    def __del__(self):
-        self._client.close()
-        self._async_client.close()
+# deepseek.py
+_DEFAULT_MODEL = "deepseek-chat"  # 非 "deepseek-v4-flash"
 ```
 
-#### 12.3.2 ChromaDB 持久化
+#### 12.1.5 修复 MemoryQuerySchema.context_window 枚举约束（P2-9 / B-004） `❌ 未解决`
 
 ```python
-def _get_client(self):
-    if self._client is None:
-        import chromadb
-        # 内存模式 → 持久化模式
-        self._client = chromadb.PersistentClient(path="./chroma_data")
-    return self._client
+VALID_CONTEXT_WINDOWS = {"last_1_turns", "last_3_turns", "last_5_turns", "last_10_turns", "all"}
+
+def __post_init__(self):
+    ...
+    if self.context_window not in VALID_CONTEXT_WINDOWS:
+        raise ValueError(f"context_window must be one of {VALID_CONTEXT_WINDOWS}")
 ```
 
-#### 12.3.3 嵌入模型降级优化
+#### 12.1.6 修复 get_active_reasoning_engine 依赖 dict 顺序（P2-8） `❌ 未解决`
 
-引入 ONNX Runtime 版 all-MiniLM-L6-v2 作为 SentenceTransformer 不可用时的降级，而非 hash embedding：
+```python
+def get_active_reasoning_engine(self) -> Optional[BaseReasoningEngine]:
+    if not self._reasoning_engines:
+        return None
+    # 优先返回标记为 active 的引擎，否则返回第一个
+    for engine in self._reasoning_engines.values():
+        if getattr(engine, "_is_active", False):
+            return engine
+    return next(iter(self._reasoning_engines.values()))
+```
+
+### 12.2 待优化性能项
+
+#### 12.2.1 ChromaDB 持久化默认行为 `✅ 已解决`
+
+P2-12.2.1: 已实现 `persist_path` 默认路径解析——优先使用显式参数，其次环境变量 `MODU_CHROMA_PATH`，最后默认 `./chroma_data`。新增 `MODU_CHROMA_IN_MEMORY` 环境变量用于测试环境强制内存模式。
+
+```python
+def __init__(self, ..., persist_path: Optional[str] = None):
+    self._persist_path = persist_path or os.getenv("MODU_CHROMA_PATH", "./chroma_data")
+```
+
+#### 12.2.2 嵌入模型降级优化 `✅ 已解决`
+
+P2-12.2.2: 已实现三级降级——SentenceTransformer → ONNX（`ONNXMiniLM_L6_V2`，支持 `MODU_ONNX_MODEL_PATH` 本地模型路径）→ hash embedding。变量重命名为 `_use_semantic_embedding` 准确反映语义，新增嵌入维度跟踪 `_embedding_dim`。
 
 ```python
 try:
@@ -1168,9 +1073,9 @@ except Exception:
         self._embed_fn = self._hash_embedding_fallback
 ```
 
-#### 12.3.4 感知管线并行化
+#### 12.2.3 感知管线并行化 `✅ 已解决`
 
-独立感知器（如 text_preprocessor 与 llm_parser 的 NER 部分）可并行：
+P2-12.2.3: `perception_node` 已改为异步节点，调用 `run_perception_pipeline_async` 并行执行独立感知器（首个串行建立文本基线，后续 `asyncio.gather` 并行）。保留 `perception_node_sync` 同步版本用于向后兼容。
 
 ```python
 import asyncio
@@ -1183,9 +1088,46 @@ async def run_perception_pipeline_async(input_data, config, registry):
     ...
 ```
 
-### 12.4 P3 功能扩展
+#### 12.2.4 配置热更新主动传导 `✅ 已解决`
 
-#### 12.4.1 多 Agent 协作（基于 LangGraph Subgraph + Send API）
+P2-12.2.4: 已注册配置变更回调 `_on_config_change`，当 `llm.*`/`tools.*`/`memory.*`/`orchestration.*`/`streaming.*` 配置变更时主动调用 `reset_runner_cache()` 失效缓存。回调在首次 `get_runner()` 时通过 `_ensure_config_callback_registered()` 惰性注册（线程安全，仅注册一次），与 P1-12.2.6 的 hash 惰性重建互补。
+
+```python
+# RuntimeConfig 变更回调 → 重建图
+def on_config_change(key_path, old, new):
+    if key_path.startswith("llm.") or key_path.startswith("tools."):
+        reset_runner_cache()  # 下次 get_runner() 重建图
+
+get_config().register_change_callback(on_config_change)
+```
+
+#### 12.2.5 AGUIStreamAdapter 重构（P2-10） `✅ 已解决`
+
+P2-12.2.5: 已抽取 `AGUIStateMachine` 通用状态机类，统一管理 `thinking_started`/`text_message_started`/`has_error`/`tool_call_records` 等状态。5 个 transform 方法通过 `_process_coordinator_frame` 和 `_process_langgraph_event` 共享帧处理逻辑，消除约 400 行重复代码。支持 `sse`/`dict` 双输出格式。
+
+```python
+class AGUIStateMachine:
+    def __init__(self, trace_id):
+        self.state = "init"
+        self.text_started = False
+        self.thinking_started = False
+        ...
+
+    def emit(self, event) -> List[Dict]:
+        # 根据 event 和当前 state 产出 AGUI 事件
+        ...
+
+# 5 个 transform 方法统一为
+async def transform(self, stream, output_format="dict"):
+    sm = AGUIStateMachine(self._trace_id)
+    async for event in stream:
+        for agui_event in sm.emit(event):
+            yield agui_event if output_format == "dict" else to_sse(agui_event)
+```
+
+### 12.3 P3 功能扩展
+
+#### 12.3.1 多 Agent 协作（基于 LangGraph Subgraph + Send API）
 
 ```
 [Supervisor Agent]
@@ -1200,7 +1142,7 @@ async def run_perception_pipeline_async(input_data, config, registry):
 3. 利用 `ConsensusPattern`（需实现真正共识算法）聚合结果
 4. 与 evolution 联动，将共识失败作为进化信号
 
-#### 12.4.2 Human-in-the-loop（基于 LangGraph interrupt）
+#### 12.3.2 Human-in-the-loop（基于 LangGraph interrupt）
 
 ```python
 def human_review_node(state):
@@ -1210,14 +1152,14 @@ def human_review_node(state):
     return {}
 ```
 
-#### 12.4.3 记忆系统增强
+#### 12.3.3 记忆系统增强
 
 1. **关系型记忆**：引入 SQLite/PostgreSQL 存储用户画像、偏好、事实
 2. **记忆摘要**：定期将短期记忆摘要为长期记忆（LLM 总结）
 3. **遗忘机制**：基于时间衰减 + 访问频率的遗忘曲线
 4. **相似度阈值**：向量检索时过滤低于阈值的结果
 
-#### 12.4.4 工具库扩展
+#### 12.3.4 工具库扩展
 
 补充常用工具：
 - 代码执行工具（沙箱 Python）
@@ -1226,14 +1168,16 @@ def human_review_node(state):
 - 时间/日期工具
 - HTTP 请求工具
 
-#### 12.4.5 可观测性体系
+#### 12.3.5 可观测性体系
 
 1. 接入 OpenTelemetry：将 `_span()` 升级为 OTel span
 2. 分布式追踪：trace_id 跨服务传播
 3. 指标导出：Prometheus metrics（QPS/延迟/错误率/进化次数）
 4. 结构化日志：JSON 格式 + ELK/Loki 接入
 
-#### 12.4.6 配置热更新传导
+#### 12.3.6 配置热更新传导
+
+> **注**：此项与 12.2.4 内容重叠，保留此处的 P3 版本作为功能扩展参考。
 
 ```python
 # RuntimeConfig 变更回调 → 重建图
@@ -1244,7 +1188,11 @@ def on_config_change(key_path, old, new):
 get_config().register_change_callback(on_config_change)
 ```
 
-#### 12.4.7 AGUIStreamAdapter 重构
+> **当前状态**：12.2.4（P2 级）已实现 hash 惰性重建（部分解决）。此处的 P3 版本为升级方案，涉及回调主动触发 + 图重建全链路。
+
+#### 12.3.7 AGUIStreamAdapter 重构
+
+> **注**：此项与 12.2.5 内容重叠，保留此处的 P3 版本供参考。
 
 抽取通用状态机：
 
@@ -1268,15 +1216,15 @@ async def transform(self, stream, output_format="dict"):
             yield agui_event if output_format == "dict" else to_sse(agui_event)
 ```
 
-### 12.5 架构治理
+### 12.4 架构治理
 
-#### 12.5.1 清理空文件与残留
+#### 12.4.1 清理空文件与残留
 
 - 删除或实现 `components/reasoning/symbolic/rule_engine.py`
 - 清理 `test_debug1.txt` / `test_final.txt` / `test_full.txt` / `test_output1.txt`
 - 补全 `ARCHITECTURE.md`
 
-#### 12.5.2 错误码体系完善
+#### 12.4.2 错误码体系完善
 
 新增错误码：
 ```python
@@ -1287,7 +1235,7 @@ GRAPH_BUILD_FAILED = "GRAPH_001"
 CONFIG_INVALID = "CFG_001"
 ```
 
-#### 12.5.3 异常传播策略
+#### 12.4.3 异常传播策略
 
 区分"可恢复异常"与"致命异常"：
 - 可恢复（工具失败/记忆失败）：降级 + 日志 + 继续
@@ -1295,43 +1243,59 @@ CONFIG_INVALID = "CFG_001"
 
 ---
 
-## 十三、落地路线图
+## 十三、落地路线图（验证更新 2026-07-02）
+
+> ✅ = 已完成 | ⚠️ = 部分完成 | ❌ = 未完成
+
+### Phase 0：已完成优化项
+
+| 优先级 | 任务 | 工时 | 状态 |
+|--------|------|------|------|
+| P0 | 修复 VersionedComponentStore 序列化 | 2d | ✅ **已完成** |
+| P0 | 修复 ParameterTuneStrategy 全局污染 | 3d | ✅ **已完成** |
+| P1 | 消除双轨适配器层 | 5d | ✅ **已完成** |
+| P1 | 替换 graph.orchestrator monkey-patch | 1d | ✅ **已完成** |
+| P1 | 清理 EvolutionSignalCollector 重复定义 | 0.5d | ✅ **已完成** |
+| P1 | 修复 run_sync 重复执行 | 0.5d | ✅ **已完成** |
+| P2 | 修复 _check_completeness 累积扣分（B-003） | 0.5d | ✅ **已完成** |
+| P2 | 缓存 CompiledGraph + 配置 hash 惰性重建 | 3d | ✅ **已完成** |
+| P2 | httpx 连接池复用 | 1d | ✅ **已完成** |
 
 ### Phase 1：紧急修复（1-2 周）
 
-| 优先级 | 任务 | 预估工时 |
-|--------|------|---------|
-| P0 | 修复 VersionedComponentStore 序列化 | 2d |
-| P0 | 修复 ParameterTuneStrategy 全局污染 | 3d |
-| P1 | 修复 run_sync 重复执行 | 0.5d |
-| P1 | 修复 stream 硬编码参数 | 0.5d |
-| P1 | 清理 EvolutionSignalCollector 重复定义 | 0.5d |
-| P1 | 替换 graph.orchestrator monkey-patch | 1d |
-| P2 | 修复 B-001/B-002/B-003/B-004 | 1d |
-| P2 | 清理空文件与残留 | 0.5d |
+| 优先级 | 任务 | 预估工时 | 当前状态 |
+|--------|------|---------|---------|
+| P1-5 | 修复 stream 硬编码默认值 | 0.5d | ⚠️ 部分解决：已支持 kwargs 覆盖，默认值仍硬编码 |
+| P1-6 | 修复 should_evolve 双检不一致（B-001） | 0.5d | ❌ 未解决 |
+| P2-1 | 修复 report_interval=0 除零（B-002） | 0.2d | ❌ 未解决 |
+| P2-3 | 修复 deepseek 默认 model 笔误 | 0.2d | ❌ 未解决 |
+| P2-9 | 修复 MemoryQuerySchema.context_window 枚举约束（B-004） | 0.3d | ❌ 未解决 |
+| P2-8 | 修复 get_active_reasoning_engine 依赖 dict 顺序 | 0.5d | ❌ 未解决 |
+| P2-13 | 清理测试残留文件（4个 txt） | 0.2d | ❌ 未解决 |
+| P2-6 | 清理 symbol/rule_engine.py 空文件 | 0.2d | ❌ 未解决 |
 
 ### Phase 2：架构优化（2-4 周）
 
-| 优先级 | 任务 | 预估工时 |
-|--------|------|---------|
-| P1 | 消除双轨适配器层 | 5d |
-| P2 | 缓存 CompiledGraph + 配置热更新传导 | 3d |
-| P2 | httpx 连接池复用 | 1d |
-| P2 | ChromaDB 持久化 | 1d |
-| P2 | 嵌入模型降级优化 | 2d |
-| P2 | AGUIStreamAdapter 重构 | 3d |
-| P2 | 补全 ARCHITECTURE.md | 2d |
+| 优先级 | 任务 | 预估工时 | 当前状态 |
+|--------|------|---------|---------|
+| P2-7 | 集成 SensorManager 到 LangGraph 主流程 | 2d | ❌ 未解决 |
+| P2-10 | AGUIStreamAdapter 抽取通用状态机 | 3d | ✅ **已完成** |
+| P2-11 | EventBridge 事件分流（SSE vs 原始事件） | 1d | ❌ 未解决 |
+| P2-12 | 补全 ARCHITECTURE.md | 2d | ❌ 未解决 |
+| P2 | ChromaDB 持久化默认路径 | 0.5d | ✅ **已完成**：默认从 MODU_CHROMA_PATH 环境变量或 ./chroma_data 解析 |
+| P2 | 嵌入模型降级优化（ONNX 替代 hash） | 2d | ✅ **已完成**：三级降级 SentenceTransformer → ONNX → hash |
+| P2 | 配置热更新主动传导（回调注册） | 1d | ✅ **已完成**：llm.*/tools.* 变更主动触发 reset_runner_cache |
 
 ### Phase 3：功能扩展（4-8 周）
 
-| 优先级 | 任务 | 预估工时 |
-|--------|------|---------|
-| P3 | 多 Agent 协作（Subgraph + Send API） | 10d |
-| P3 | Human-in-the-loop（interrupt） | 3d |
-| P3 | 记忆系统增强（关系型/摘要/遗忘） | 7d |
-| P3 | 工具库扩展（代码执行/文件/DB） | 5d |
-| P3 | 可观测性体系（OTel/Prometheus） | 5d |
-| P3 | 感知管线并行化 | 3d |
+| 优先级 | 任务 | 预估工时 | 当前状态 |
+|--------|------|---------|---------|
+| P3 | 多 Agent 协作（Subgraph + Send API） | 10d | ❌ 未解决 |
+| P3 | Human-in-the-loop（interrupt） | 3d | ❌ 未解决 |
+| P3 | 记忆系统增强（关系型/摘要/遗忘） | 7d | ❌ 未解决 |
+| P3 | 工具库扩展（代码执行/文件/DB） | 5d | ❌ 未解决 |
+| P3 | 可观测性体系（OTel/Prometheus） | 5d | ❌ 未解决 |
+| P3 | 感知管线并行化 | 3d | ✅ **已完成**（提前至 P2 实现） |
 
 ### Phase 4：持续演进（长期）
 

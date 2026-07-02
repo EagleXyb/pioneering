@@ -301,6 +301,318 @@ class AGUIEncoder:
         return {"data": payload}
 
 
+# P2-12.2.5: 流处理哨兵——表示应停止迭代（错误或 done 事件）
+_STREAM_STOP_SENTINEL = object()
+
+
+class AGUIStateMachine:
+    """AG-UI 事件流状态机（P2-12.2.5）。
+
+    统一管理 AGUIStreamAdapter 各 transform 方法中重复的状态跟踪逻辑：
+    - thinking_started / text_message_started 懒启动
+    - error 处理与短路
+    - tool_call 生命周期跟踪（pending → record）
+    - 生命周期事件产出（RunStarted / RunFinished / ThinkingEnd / TextMessageEnd）
+
+    支持两种输出格式：
+    - "sse": 原始 SSE 字符串（data: {...}\\n\\n）
+    - "dict": {"data": "..."} 兼容 sse_starlette EventSourceResponse
+
+    用法：
+        sm = AGUIStateMachine(trace_id, message_id, "dict")
+        yield sm.emit_run_started()
+        for event in input_stream:
+            for agui_event in sm.process_coordinator_frame(event_type, data):
+                yield agui_event
+        for closing in sm.emit_closing():
+            yield closing
+    """
+
+    def __init__(
+        self,
+        trace_id: str,
+        message_id: str,
+        output_format: str = "dict",
+    ) -> None:
+        self.trace_id = trace_id
+        self.message_id = message_id
+        self.output_format = output_format
+
+        # 状态标志
+        self.thinking_started = False
+        self.text_message_started = False
+        self.has_error = False
+        self.response_text = ""
+        self.collected_text = ""
+
+        # 工具调用跟踪
+        self.pending_tool_calls: Dict[str, Dict[str, Any]] = {}
+        self.tool_call_records: List[ToolCallRecord] = []
+
+    def _emit(self, event_type: AGUIEventType, data: Dict[str, Any]) -> Dict[str, str]:
+        """产出单个 AGUI 事件（根据 output_format 选择格式）。"""
+        if self.output_format == "sse":
+            return AGUIEncoder.to_sse(event_type, data)
+        return AGUIEncoder.to_event_dict(event_type, data)
+
+    # ---- 生命周期事件 ----
+
+    def emit_run_started(self) -> Dict[str, str]:
+        return self._emit(
+            AGUIEventType.RUN_STARTED,
+            {"threadId": self.trace_id, "runId": self.trace_id},
+        )
+
+    def emit_run_finished(self) -> Dict[str, str]:
+        return self._emit(
+            AGUIEventType.RUN_FINISHED,
+            {"threadId": self.trace_id, "runId": self.trace_id},
+        )
+
+    def emit_run_error(self, code: str, message: str) -> Dict[str, str]:
+        self.has_error = True
+        return self._emit(
+            AGUIEventType.RUN_ERROR,
+            {"code": code, "message": message},
+        )
+
+    # ---- 思考事件 ----
+
+    def emit_thinking(self, content: str, chunk_size: int = 30) -> List[Dict[str, str]]:
+        """产出思考事件（懒启动 THINKING_START + 分块 THINKING_CONTENT）。"""
+        events: List[Dict[str, str]] = []
+        if not self.thinking_started:
+            events.append(self._emit(
+                AGUIEventType.THINKING_START, {"title": "深度思考"},
+            ))
+            self.thinking_started = True
+        if content:
+            for i in range(0, len(content), chunk_size):
+                events.append(self._emit(
+                    AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT,
+                    {"delta": content[i:i + chunk_size]},
+                ))
+        return events
+
+    def emit_thinking_end(self) -> Optional[Dict[str, str]]:
+        """结束思考块（如已启动）。"""
+        if self.thinking_started:
+            return self._emit(AGUIEventType.THINKING_END, {})
+        return None
+
+    # ---- 文本消息事件 ----
+
+    def emit_token(self, token: str) -> List[Dict[str, str]]:
+        """产出 token 事件（懒启动 TEXT_MESSAGE_START + TEXT_MESSAGE_CONTENT）。"""
+        self.response_text += token
+        self.collected_text = self.response_text
+        events: List[Dict[str, str]] = []
+        if not self.text_message_started:
+            events.append(self._emit(
+                AGUIEventType.TEXT_MESSAGE_START,
+                {"messageId": self.message_id, "role": "assistant"},
+            ))
+            self.text_message_started = True
+        events.append(self._emit(
+            AGUIEventType.TEXT_MESSAGE_CONTENT,
+            {"messageId": self.message_id, "delta": token},
+        ))
+        return events
+
+    def emit_text_content(self, content: str) -> List[Dict[str, str]]:
+        """产出完整文本内容（非流式一次性输出）。"""
+        self.response_text += content
+        events: List[Dict[str, str]] = []
+        if not self.text_message_started:
+            events.append(self._emit(
+                AGUIEventType.TEXT_MESSAGE_START,
+                {"messageId": self.message_id, "role": "assistant"},
+            ))
+            self.text_message_started = True
+        events.append(self._emit(
+            AGUIEventType.TEXT_MESSAGE_CONTENT,
+            {"messageId": self.message_id, "delta": content},
+        ))
+        return events
+
+    def emit_text_end(self) -> List[Dict[str, str]]:
+        """结束文本消息（处理未启动但有 response_text 的情况）。"""
+        events: List[Dict[str, str]] = []
+        if self.text_message_started:
+            events.append(self._emit(
+                AGUIEventType.TEXT_MESSAGE_END,
+                {"messageId": self.message_id},
+            ))
+        elif self.response_text:
+            events.append(self._emit(
+                AGUIEventType.TEXT_MESSAGE_START,
+                {"messageId": self.message_id, "role": "assistant"},
+            ))
+            events.append(self._emit(
+                AGUIEventType.TEXT_MESSAGE_CONTENT,
+                {"messageId": self.message_id, "delta": self.response_text},
+            ))
+            events.append(self._emit(
+                AGUIEventType.TEXT_MESSAGE_END,
+                {"messageId": self.message_id},
+            ))
+        return events
+
+    # ---- 工具调用事件 ----
+
+    def emit_tool_call_start(
+        self,
+        tool_id: str,
+        tool_name: str,
+        args_str: str = "{}",
+    ) -> List[Dict[str, str]]:
+        """产出工具调用开始事件（含参数流式输出）。"""
+        events: List[Dict[str, str]] = []
+        self.pending_tool_calls[tool_id] = {
+            "tool_name": tool_name,
+            "arguments": args_str,
+        }
+        events.append(self._emit(
+            AGUIEventType.TOOL_CALL_START,
+            {
+                "toolCallId": tool_id,
+                "toolCallName": tool_name,
+                "parentMessageId": self.message_id,
+            },
+        ))
+        if args_str and args_str != "{}":
+            events.append(self._emit(
+                AGUIEventType.TOOL_CALL_ARGS,
+                {"toolCallId": tool_id, "delta": args_str},
+            ))
+        return events
+
+    def emit_tool_call_end(self, tool_id: str) -> Optional[Dict[str, str]]:
+        """产出工具调用结束事件。"""
+        if tool_id in self.pending_tool_calls:
+            return self._emit(
+                AGUIEventType.TOOL_CALL_END,
+                {"toolCallId": tool_id},
+            )
+        return None
+
+    def emit_tool_result(
+        self,
+        tool_id: str,
+        tool_name: str,
+        result_str: str,
+        status: str = "unknown",
+    ) -> List[Dict[str, str]]:
+        """产出工具执行结果事件，并记录到 tool_call_records。"""
+        events: List[Dict[str, str]] = []
+        if tool_id in self.pending_tool_calls:
+            tool_name = tool_name or self.pending_tool_calls[tool_id]["tool_name"]
+            params = json.loads(
+                self.pending_tool_calls[tool_id].get("arguments", "{}"),
+            )
+            self.tool_call_records.append(ToolCallRecord(
+                tool_name=tool_name,
+                params=params,
+                result={"data": result_str, "status": status},
+            ))
+        events.append(self._emit(
+            AGUIEventType.TOOL_CALL_RESULT,
+            {
+                "messageId": self.message_id,
+                "toolCallId": tool_id,
+                "toolCallName": tool_name,
+                "content": result_str,
+            },
+        ))
+        return events
+
+    # ---- 状态增量事件 ----
+
+    def emit_state_delta(self, **kwargs: Any) -> Dict[str, str]:
+        """产出 STATE_DELTA 事件（阶段切换/迭代进度等）。"""
+        data = {"traceId": self.trace_id, **kwargs}
+        return self._emit(AGUIEventType.STATE_DELTA, data)
+
+    # ---- 批量结束事件 ----
+
+    def emit_tool_records_batch(self) -> List[Dict[str, str]]:
+        """批量产出已完成工具记录的 AGUI 事件（transform 批量模式用）。"""
+        events: List[Dict[str, str]] = []
+        for record in self.tool_call_records:
+            tool_call_id = str(uuid.uuid4())
+            events.append(self._emit(
+                AGUIEventType.TOOL_CALL_START,
+                {
+                    "toolCallId": tool_call_id,
+                    "toolCallName": record.tool_name,
+                    "parentMessageId": self.message_id,
+                },
+            ))
+            params_json = json.dumps(record.params, ensure_ascii=False)
+            if params_json and params_json != "{}":
+                events.append(self._emit(
+                    AGUIEventType.TOOL_CALL_ARGS,
+                    {"toolCallId": tool_call_id, "delta": params_json},
+                ))
+            events.append(self._emit(
+                AGUIEventType.TOOL_CALL_END,
+                {"toolCallId": tool_call_id},
+            ))
+            result_content = json.dumps(record.result, ensure_ascii=False)
+            events.append(self._emit(
+                AGUIEventType.TOOL_CALL_RESULT,
+                {
+                    "messageId": self.message_id,
+                    "toolCallId": tool_call_id,
+                    "toolCallName": record.tool_name,
+                    "content": result_content,
+                },
+            ))
+        return events
+
+    def emit_extra_tool_records(self, raw_tool_results: List[Any]) -> List[Dict[str, str]]:
+        """处理 done 事件中附加的 tool_results，补充未记录的工具调用。"""
+        events: List[Dict[str, str]] = []
+        extra_records = AGUIStreamAdapter._parse_tool_records(raw_tool_results)
+        existing_names = {r.tool_name for r in self.tool_call_records}
+        for rec in extra_records:
+            if rec.tool_name not in existing_names:
+                self.tool_call_records.append(rec)
+                tc_id = str(uuid.uuid4())
+                events.append(self._emit(
+                    AGUIEventType.TOOL_CALL_START,
+                    {
+                        "toolCallId": tc_id,
+                        "toolCallName": rec.tool_name,
+                        "parentMessageId": self.message_id,
+                    },
+                ))
+                events.append(self._emit(
+                    AGUIEventType.TOOL_CALL_END,
+                    {"toolCallId": tc_id},
+                ))
+                events.append(self._emit(
+                    AGUIEventType.TOOL_CALL_RESULT,
+                    {
+                        "messageId": self.message_id,
+                        "toolCallId": tc_id,
+                        "toolCallName": rec.tool_name,
+                        "content": json.dumps(rec.result, ensure_ascii=False),
+                    },
+                ))
+        return events
+
+    def emit_closing(self) -> List[Dict[str, str]]:
+        """产出所有结束事件（ThinkingEnd + TextEnd + RunFinished）。"""
+        events: List[Dict[str, str]] = []
+        thinking_end = self.emit_thinking_end()
+        if thinking_end is not None:
+            events.append(thinking_end)
+        events.extend(self.emit_text_end())
+        events.append(self.emit_run_finished())
+        return events
+
+
 class AGUIStreamAdapter:
     """
     将 ModuAgent 事件流转换为 AG-UI 标准 SSE 事件流。
@@ -481,6 +793,9 @@ class AGUIStreamAdapter:
         """
         流式转换：逐帧消费 SSE 帧输出，实时产出 AG-UI SSE 事件流。
 
+        P2-12.2.5: 使用 AGUIStateMachine 统一状态管理，消除与
+        transform_streaming_events 的重复逻辑。
+
         与 transform() 的区别：
         - transform() 先收集所有事件再一次性输出
         - transform_streaming() 边消费边输出，实现真正的实时流式体验
@@ -489,18 +804,9 @@ class AGUIStreamAdapter:
             self._trace_id = str(uuid.uuid4())
         self._message_id = str(uuid.uuid4())
 
-        # 初始化状态
-        has_error = False
-        response_text = ""
-        thinking_started = False
-        text_message_started = False
-        current_iteration = 0
-        max_iterations = 3
+        sm = AGUIStateMachine(self._trace_id, self._message_id, "sse")
 
-        yield RunStartedEvent(
-            thread_id=self._trace_id,
-            run_id=self._trace_id,
-        ).to_sse()
+        yield sm.emit_run_started()
 
         async for frame in coordinator_stream:
             event_type = frame.get("event", "")
@@ -512,159 +818,23 @@ class AGUIStreamAdapter:
                 logger.warning("Failed to parse Coordinator frame data: %s", data_str[:200])
                 continue
 
-            if event_type == "status":
-                # 阶段切换 → 用于前端 Activity 面板状态更新
-                phase = data.get("phase", "")
-                yield AGUIEncoder.to_sse(
-                    AGUIEventType.STATE_DELTA,
-                    {"phase": phase, "traceId": self._trace_id},
-                )
-
-            elif event_type == "reasoning_iteration":
-                current_iteration = data.get("index", 0)
-                max_iterations = data.get("max", 3)
-                yield AGUIEncoder.to_sse(
-                    AGUIEventType.STATE_DELTA,
-                    {
-                        "iteration": current_iteration,
-                        "maxIterations": max_iterations,
-                        "traceId": self._trace_id,
-                    },
-                )
-
-            elif event_type == "thinking":
-                # 思考内容 → 流式输出 Thinking 事件
-                content = data.get("content", "")
-                if not thinking_started:
-                    yield ThinkingStartEvent(title="深度思考").to_sse()
-                    thinking_started = True
-
-                # 分块输出思考内容
-                chunk_size = 30
-                for i in range(0, len(content), chunk_size):
-                    yield ThinkingContentEvent(
-                        delta=content[i:i + chunk_size],
-                    ).to_sse()
-
-            elif event_type == "tool_call_start":
-                tool_id = data.get("id", str(uuid.uuid4()))
-                tool_name = data.get("name", "unknown")
-                args_str = data.get("arguments", "{}")
-                self._pending_tool_calls[tool_id] = {
-                    "tool_name": tool_name,
-                    "arguments": args_str,
-                }
-                yield ToolCallStartEvent(
-                    tool_call_id=tool_id,
-                    tool_call_name=tool_name,
-                    parent_message_id=self._message_id,
-                ).to_sse()
-
-                # 流式输出参数
-                if args_str and args_str != "{}":
-                    yield ToolCallArgsEvent(
-                        tool_call_id=tool_id,
-                        delta=args_str,
-                    ).to_sse()
-
-            elif event_type == "tool_call_end":
-                tool_id = data.get("id", "")
-                if tool_id in self._pending_tool_calls:
-                    yield ToolCallEndEvent(tool_call_id=tool_id).to_sse()
-
-            elif event_type == "tool_result":
-                tool_id = data.get("id", "")
-                tool_name = data.get("name", "")
-                result_str = data.get("result", "{}")
-                result_status = data.get("status", "unknown")
-
-                if tool_id in self._pending_tool_calls:
-                    tool_name = tool_name or self._pending_tool_calls[tool_id]["tool_name"]
-                    params = json.loads(self._pending_tool_calls[tool_id].get("arguments", "{}"))
-                    self._tool_call_records.append(ToolCallRecord(
-                        tool_name=tool_name,
-                        params=params,
-                        result={"data": result_str, "status": result_status},
-                    ))
-
-                yield ToolCallResultEvent(
-                    message_id=self._message_id,
-                    tool_call_id=tool_id,
-                    tool_call_name=tool_name,
-                    content=result_str,
-                ).to_sse()
-
-            elif event_type == "error":
-                has_error = True
-                error_code = data.get("error_code", "")
-                error_message = data.get("message", "")
-                yield RunErrorEvent(code=error_code, message=error_message).to_sse()
-                return
-
-            elif event_type == "token":
-                token = data.get("token", "")
-                response_text += token
-                if not text_message_started:
-                    yield TextMessageStartEvent(
-                        message_id=self._message_id,
-                        role="assistant",
-                    ).to_sse()
-                    text_message_started = True
-                yield TextMessageContentEvent(
-                    message_id=self._message_id,
-                    delta=token,
-                ).to_sse()
-
-            elif event_type == "done":
-                # 处理 done 事件中附加的 tool_results
-                raw_tool_results = data.get("tool_results", [])
-                extra_records = self._parse_tool_records(raw_tool_results)
-                existing_names = {r.tool_name for r in self._tool_call_records}
-                for rec in extra_records:
-                    if rec.tool_name not in existing_names:
-                        self._tool_call_records.append(rec)
-                        yield ToolCallStartEvent(
-                            tool_call_id=str(uuid.uuid4()),
-                            tool_call_name=rec.tool_name,
-                            parent_message_id=self._message_id,
-                        ).to_sse()
-                        yield ToolCallEndEvent(
-                            tool_call_id=str(uuid.uuid4()),
-                        ).to_sse()
-                        yield ToolCallResultEvent(
-                            message_id=self._message_id,
-                            tool_call_id=str(uuid.uuid4()),
-                            tool_call_name=rec.tool_name,
-                            content=json.dumps(rec.result, ensure_ascii=False),
-                        ).to_sse()
+            should_break = False
+            for ev in self._process_coordinator_frame(sm, event_type, data):
+                if ev is _STREAM_STOP_SENTINEL:
+                    should_break = True
+                    break
+                yield ev
+            if should_break:
                 break
 
-        if has_error:
+        if sm.has_error:
+            self._sync_state_machine(sm)
             return
 
-        # 结束思考块
-        if thinking_started:
-            yield ThinkingEndEvent().to_sse()
+        for ev in sm.emit_closing():
+            yield ev
 
-        # 结束文本消息
-        if text_message_started:
-            yield TextMessageEndEvent(message_id=self._message_id).to_sse()
-        elif response_text:
-            # 如果思考过程中包含了回答但未启动 text message
-            yield TextMessageStartEvent(
-                message_id=self._message_id,
-                role="assistant",
-            ).to_sse()
-            yield TextMessageContentEvent(
-                message_id=self._message_id,
-                delta=response_text,
-            ).to_sse()
-            yield TextMessageEndEvent(message_id=self._message_id).to_sse()
-
-        yield RunFinishedEvent(
-            thread_id=self._trace_id,
-            run_id=self._trace_id,
-        ).to_sse()
+        self._sync_state_machine(sm)
 
     @property
     def trace_id(self) -> str:
@@ -691,6 +861,9 @@ class AGUIStreamAdapter:
         流式转换：逐帧消费 SSE 帧输出，实时产出兼容
         sse_starlette EventSourceResponse 的 dict 格式事件。
 
+        P2-12.2.5: 使用 AGUIStateMachine 统一状态管理，与 transform_streaming
+        共享 _process_coordinator_frame 逻辑，仅输出格式不同。
+
         与 transform_streaming() 的区别：
         - transform_streaming() 产出原始 SSE 字符串 (data: {...}\\n\\n)
         - transform_streaming_events() 产出 {"data": "..."} dict，直接用于 EventSourceResponse
@@ -699,16 +872,9 @@ class AGUIStreamAdapter:
             self._trace_id = str(uuid.uuid4())
         self._message_id = str(uuid.uuid4())
 
-        has_error = False
-        response_text = ""
-        thinking_started = False
-        text_message_started = False
-        self._collected_text = ""
+        sm = AGUIStateMachine(self._trace_id, self._message_id, "dict")
 
-        yield RunStartedEvent(
-            thread_id=self._trace_id,
-            run_id=self._trace_id,
-        ).to_event_dict()
+        yield sm.emit_run_started()
 
         async for frame in coordinator_stream:
             event_type = frame.get("event", "")
@@ -720,149 +886,97 @@ class AGUIStreamAdapter:
                 logger.warning("Failed to parse Coordinator frame data: %s", data_str[:200])
                 continue
 
-            if event_type == "status":
-                phase = data.get("phase", "")
-                yield AGUIEncoder.to_event_dict(
-                    AGUIEventType.STATE_DELTA,
-                    {"phase": phase, "traceId": self._trace_id},
-                )
-
-            elif event_type == "reasoning_iteration":
-                yield AGUIEncoder.to_event_dict(
-                    AGUIEventType.STATE_DELTA,
-                    {
-                        "iteration": data.get("index", 0),
-                        "maxIterations": data.get("max", 3),
-                        "traceId": self._trace_id,
-                    },
-                )
-
-            elif event_type == "thinking":
-                content = data.get("content", "")
-                if not thinking_started:
-                    yield ThinkingStartEvent(title="深度思考").to_event_dict()
-                    thinking_started = True
-                if content:
-                    chunk_size = 30
-                    for i in range(0, len(content), chunk_size):
-                        yield ThinkingContentEvent(
-                            delta=content[i:i + chunk_size],
-                        ).to_event_dict()
-
-            elif event_type == "tool_call_start":
-                tool_id = data.get("id", str(uuid.uuid4()))
-                tool_name = data.get("name", "unknown")
-                args_str = data.get("arguments", "{}")
-                self._pending_tool_calls[tool_id] = {
-                    "tool_name": tool_name,
-                    "arguments": args_str,
-                }
-                yield ToolCallStartEvent(
-                    tool_call_id=tool_id,
-                    tool_call_name=tool_name,
-                    parent_message_id=self._message_id,
-                ).to_event_dict()
-                if args_str and args_str != "{}":
-                    yield ToolCallArgsEvent(
-                        tool_call_id=tool_id,
-                        delta=args_str,
-                    ).to_event_dict()
-
-            elif event_type == "tool_call_end":
-                tool_id = data.get("id", "")
-                if tool_id in self._pending_tool_calls:
-                    yield ToolCallEndEvent(tool_call_id=tool_id).to_event_dict()
-
-            elif event_type == "tool_result":
-                tool_id = data.get("id", "")
-                tool_name = data.get("name", "")
-                result_str = data.get("result", "{}")
-                result_status = data.get("status", "unknown")
-
-                if tool_id in self._pending_tool_calls:
-                    tool_name = tool_name or self._pending_tool_calls[tool_id]["tool_name"]
-                    params = json.loads(self._pending_tool_calls[tool_id].get("arguments", "{}"))
-                    self._tool_call_records.append(ToolCallRecord(
-                        tool_name=tool_name,
-                        params=params,
-                        result={"data": result_str, "status": result_status},
-                    ))
-
-                yield ToolCallResultEvent(
-                    message_id=self._message_id,
-                    tool_call_id=tool_id,
-                    tool_call_name=tool_name,
-                    content=result_str,
-                ).to_event_dict()
-
-            elif event_type == "error":
-                has_error = True
-                yield RunErrorEvent(
-                    code=data.get("error_code", ""),
-                    message=data.get("message", ""),
-                ).to_event_dict()
-                return
-
-            elif event_type == "token":
-                token = data.get("token", "")
-                response_text += token
-                self._collected_text = response_text
-                if not text_message_started:
-                    yield TextMessageStartEvent(
-                        message_id=self._message_id,
-                        role="assistant",
-                    ).to_event_dict()
-                    text_message_started = True
-                yield TextMessageContentEvent(
-                    message_id=self._message_id,
-                    delta=token,
-                ).to_event_dict()
-
-            elif event_type == "done":
-                raw_tool_results = data.get("tool_results", [])
-                extra_records = self._parse_tool_records(raw_tool_results)
-                existing_names = {r.tool_name for r in self._tool_call_records}
-                for rec in extra_records:
-                    if rec.tool_name not in existing_names:
-                        self._tool_call_records.append(rec)
-                        tc_id = str(uuid.uuid4())
-                        yield ToolCallStartEvent(
-                            tool_call_id=tc_id,
-                            tool_call_name=rec.tool_name,
-                            parent_message_id=self._message_id,
-                        ).to_event_dict()
-                        yield ToolCallEndEvent(tool_call_id=tc_id).to_event_dict()
-                        yield ToolCallResultEvent(
-                            message_id=self._message_id,
-                            tool_call_id=tc_id,
-                            tool_call_name=rec.tool_name,
-                            content=json.dumps(rec.result, ensure_ascii=False),
-                        ).to_event_dict()
+            should_break = False
+            for ev in self._process_coordinator_frame(sm, event_type, data):
+                if ev is _STREAM_STOP_SENTINEL:
+                    should_break = True
+                    break
+                yield ev
+            if should_break:
                 break
 
-        if has_error:
+        if sm.has_error:
+            self._sync_state_machine(sm)
             return
 
-        if thinking_started:
-            yield ThinkingEndEvent().to_event_dict()
+        for ev in sm.emit_closing():
+            yield ev
 
-        if text_message_started:
-            yield TextMessageEndEvent(message_id=self._message_id).to_event_dict()
-        elif response_text:
-            yield TextMessageStartEvent(
-                message_id=self._message_id,
-                role="assistant",
-            ).to_event_dict()
-            yield TextMessageContentEvent(
-                message_id=self._message_id,
-                delta=response_text,
-            ).to_event_dict()
-            yield TextMessageEndEvent(message_id=self._message_id).to_event_dict()
+        self._sync_state_machine(sm)
 
-        yield RunFinishedEvent(
-            thread_id=self._trace_id,
-            run_id=self._trace_id,
-        ).to_event_dict()
+    def _sync_state_machine(self, sm: AGUIStateMachine) -> None:
+        """将状态机的状态同步回 adapter 实例属性。"""
+        self._tool_call_records = sm.tool_call_records
+        self._pending_tool_calls = sm.pending_tool_calls
+        self._collected_text = sm.collected_text
+
+    @staticmethod
+    def _process_coordinator_frame(
+        sm: AGUIStateMachine,
+        event_type: str,
+        data: Dict[str, Any],
+    ) -> List[Any]:
+        """P2-12.2.5: 处理 Coordinator SSE 帧，返回 AGUI 事件列表。
+
+        统一 transform_streaming 和 transform_streaming_events 的帧处理逻辑。
+        返回 _STREAM_STOP_SENTINEL 表示应停止迭代（错误或 done 事件）。
+
+        Args:
+            sm: AGUIStateMachine 实例
+            event_type: 帧事件类型
+            data: 帧数据
+
+        Returns:
+            AGUI 事件列表（可能包含 _STREAM_STOP_SENTINEL）
+        """
+        if event_type == "status":
+            phase = data.get("phase", "")
+            return [sm.emit_state_delta(phase=phase)]
+
+        if event_type == "reasoning_iteration":
+            return [sm.emit_state_delta(
+                iteration=data.get("index", 0),
+                maxIterations=data.get("max", 3),
+            )]
+
+        if event_type == "thinking":
+            content = data.get("content", "")
+            return sm.emit_thinking(content)
+
+        if event_type == "tool_call_start":
+            tool_id = data.get("id", str(uuid.uuid4()))
+            tool_name = data.get("name", "unknown")
+            args_str = data.get("arguments", "{}")
+            return sm.emit_tool_call_start(tool_id, tool_name, args_str)
+
+        if event_type == "tool_call_end":
+            tool_id = data.get("id", "")
+            end_ev = sm.emit_tool_call_end(tool_id)
+            return [end_ev] if end_ev is not None else []
+
+        if event_type == "tool_result":
+            tool_id = data.get("id", "")
+            tool_name = data.get("name", "")
+            result_str = data.get("result", "{}")
+            result_status = data.get("status", "unknown")
+            return sm.emit_tool_result(tool_id, tool_name, result_str, result_status)
+
+        if event_type == "error":
+            error_code = data.get("error_code", "")
+            error_message = data.get("message", "")
+            return [sm.emit_run_error(error_code, error_message), _STREAM_STOP_SENTINEL]
+
+        if event_type == "token":
+            token = data.get("token", "")
+            return sm.emit_token(token)
+
+        if event_type == "done":
+            raw_tool_results = data.get("tool_results", [])
+            events = sm.emit_extra_tool_records(raw_tool_results)
+            events.append(_STREAM_STOP_SENTINEL)
+            return events
+
+        return []
 
     # ============================================================
     # P1-1: LangGraph 输入源适配（新增方法）
@@ -873,6 +987,8 @@ class AGUIStreamAdapter:
         langgraph_stream: AsyncGenerator[Dict[str, Any], None],
     ) -> AsyncGenerator[Dict[str, str], None]:
         """消费 LangGraph stream 事件，产出 AG-UI dict 事件流（P1-1）。
+
+        P2-12.2.5: 使用 AGUIStateMachine 统一状态管理。
 
         替代 transform_streaming_events() 的 Coordinator SSE 帧输入，
         改为消费 LangGraph EventBridge 输出的事件流。
@@ -896,178 +1012,165 @@ class AGUIStreamAdapter:
             self._trace_id = str(uuid.uuid4())
         self._message_id = str(uuid.uuid4())
 
-        has_error = False
-        text_message_started = False
-        thinking_started = False
+        sm = AGUIStateMachine(self._trace_id, self._message_id, "dict")
         final_response = ""
 
-        yield RunStartedEvent(
-            thread_id=self._trace_id,
-            run_id=self._trace_id,
-        ).to_event_dict()
+        yield sm.emit_run_started()
 
         async for event in langgraph_stream:
             event_type = event.get("type", "")
+            should_stop = False
 
-            # --- LangGraph 原生事件 ---
+            for ev in self._process_langgraph_event(sm, event, event_type):
+                if ev is _STREAM_STOP_SENTINEL:
+                    should_stop = True
+                    break
+                # 跟踪 final_response（非流式回退）
+                if final_response == "" and sm.response_text:
+                    final_response = sm.response_text
+                yield ev
 
-            if event_type == "messages":
-                # token 级流式：提取 AIMessageChunk 内容
-                msg = event.get("event") or event.get("data", {})
-                content = ""
-                if hasattr(msg, "content"):
-                    content = msg.content or ""
-                elif isinstance(msg, dict):
-                    content = msg.get("content", "")
+            if should_stop:
+                break
 
-                if content:
-                    if not text_message_started:
-                        yield TextMessageStartEvent(
-                            message_id=self._message_id,
-                            role="assistant",
-                        ).to_event_dict()
-                        text_message_started = True
-                    yield TextMessageContentEvent(
-                        message_id=self._message_id,
-                        delta=content,
-                    ).to_event_dict()
-                    final_response += content
-
-            elif event_type == "updates":
-                node = event.get("node", "")
-                data = event.get("data", {})
-
-                # response 节点：提取最终响应（非流式回退）
-                if node == "response" and isinstance(data, dict):
-                    resp = data.get("response", "")
-                    if resp and not text_message_started:
-                        final_response = resp
-
-                # 检查 agent 节点的 tool_calls
-                if node == "agent" and isinstance(data, dict):
-                    messages = data.get("messages", [])
-                    if messages:
-                        last_msg = messages[-1]
-                        if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                            for tc in last_msg.tool_calls:
-                                tc_id = tc.get("id", str(uuid.uuid4()))
-                                tc_name = tc.get("name", "unknown")
-                                tc_args = json.dumps(
-                                    tc.get("args", tc.get("parameters", {})),
-                                    ensure_ascii=False,
-                                )
-                                self._pending_tool_calls[tc_id] = {
-                                    "tool_name": tc_name,
-                                    "arguments": tc_args,
-                                }
-                                yield ToolCallStartEvent(
-                                    tool_call_id=tc_id,
-                                    tool_call_name=tc_name,
-                                    parent_message_id=self._message_id,
-                                ).to_event_dict()
-                                if tc_args and tc_args != "{}":
-                                    yield ToolCallArgsEvent(
-                                        tool_call_id=tc_id,
-                                        delta=tc_args,
-                                    ).to_event_dict()
-                                yield ToolCallEndEvent(tool_call_id=tc_id).to_event_dict()
-
-                # tools 节点：工具执行结果
-                if node == "tools" and isinstance(data, dict):
-                    messages = data.get("messages", [])
-                    for msg in messages:
-                        if hasattr(msg, "type") and msg.type == "tool":
-                            tool_call_id = getattr(msg, "tool_call_id", "")
-                            tool_name = getattr(msg, "name", "unknown")
-                            content = getattr(msg, "content", "")
-                            self._tool_call_records.append(ToolCallRecord(
-                                tool_name=tool_name,
-                                params=json.loads(
-                                    self._pending_tool_calls.get(tool_call_id, {}).get("arguments", "{}")
-                                ),
-                                result={"data": content, "status": "success"},
-                            ))
-                            yield ToolCallResultEvent(
-                                message_id=self._message_id,
-                                tool_call_id=tool_call_id,
-                                tool_call_name=tool_name,
-                                content=content,
-                            ).to_event_dict()
-
-            elif event_type == "values":
-                # 完整状态快照：检查错误
+            # values 事件中提取 final_response
+            if event_type == "values":
                 data = event.get("data", {})
                 if isinstance(data, dict):
-                    error_code = data.get("error_code", "")
-                    if error_code:
-                        has_error = True
-                        yield RunErrorEvent(
-                            code=error_code,
-                            message=data.get("error_message", ""),
-                        ).to_event_dict()
-                        return
-
-                    # 提取最终响应（如果尚未通过 messages 获取）
                     resp = data.get("response", "")
-                    if resp and not final_response:
+                    if resp and not final_response and not sm.text_message_started:
                         final_response = resp
 
-            # --- SSE 细粒度事件（由 EventBridge 生成） ---
-
-            elif event_type == "thinking":
-                thinking_data = event.get("data", {})
-                if not thinking_started:
-                    yield ThinkingStartEvent(title="深度思考").to_event_dict()
-                    thinking_started = True
-
-            elif event_type == "tool_call_start":
-                tc_data = event.get("data", {})
-                tc_id = tc_data.get("tool_call_id", str(uuid.uuid4()))
-                tc_name = tc_data.get("tool_name", "unknown")
-                self._pending_tool_calls[tc_id] = {"tool_name": tc_name, "arguments": "{}"}
-                yield ToolCallStartEvent(
-                    tool_call_id=tc_id,
-                    tool_call_name=tc_name,
-                    parent_message_id=self._message_id,
-                ).to_event_dict()
-
-            elif event_type == "tool_result":
-                tc_data = event.get("data", {})
-                tc_id = tc_data.get("tool_call_id", "")
-                tc_name = tc_data.get("tool_name", "unknown")
-                result_content = tc_data.get("result", "{}")
-                yield ToolCallResultEvent(
-                    message_id=self._message_id,
-                    tool_call_id=tc_id,
-                    tool_call_name=tc_name,
-                    content=result_content,
-                ).to_event_dict()
-
-        if has_error:
+        if sm.has_error:
+            self._sync_state_machine(sm)
             return
 
-        if thinking_started:
-            yield ThinkingEndEvent().to_event_dict()
+        # 结束事件
+        thinking_end = sm.emit_thinking_end()
+        if thinking_end is not None:
+            yield thinking_end
 
         # 如果未通过 messages 流式输出，但有最终响应，则一次性输出
-        if not text_message_started and final_response:
-            yield TextMessageStartEvent(
-                message_id=self._message_id,
-                role="assistant",
-            ).to_event_dict()
-            yield TextMessageContentEvent(
-                message_id=self._message_id,
-                delta=final_response,
-            ).to_event_dict()
-            text_message_started = True
+        if not sm.text_message_started and final_response:
+            for ev in sm.emit_text_content(final_response):
+                yield ev
 
-        if text_message_started:
-            yield TextMessageEndEvent(message_id=self._message_id).to_event_dict()
+        for ev in sm.emit_text_end():
+            yield ev
 
-        yield RunFinishedEvent(
-            thread_id=self._trace_id,
-            run_id=self._trace_id,
-        ).to_event_dict()
+        yield sm.emit_run_finished()
+
+        self._sync_state_machine(sm)
+
+    @staticmethod
+    def _process_langgraph_event(
+        sm: AGUIStateMachine,
+        event: Dict[str, Any],
+        event_type: str,
+    ) -> List[Any]:
+        """P2-12.2.5: 处理 LangGraph 事件，返回 AGUI 事件列表。
+
+        统一 transform_langgraph_events 的事件处理逻辑。
+        返回 _STREAM_STOP_SENTINEL 表示应停止迭代。
+
+        Args:
+            sm: AGUIStateMachine 实例
+            event: LangGraph 事件字典
+            event_type: 事件类型
+
+        Returns:
+            AGUI 事件列表（可能包含 _STREAM_STOP_SENTINEL）
+        """
+        # --- LangGraph 原生事件 ---
+
+        if event_type == "messages":
+            msg = event.get("event") or event.get("data", {})
+            content = ""
+            if hasattr(msg, "content"):
+                content = msg.content or ""
+            elif isinstance(msg, dict):
+                content = msg.get("content", "")
+            if content:
+                return sm.emit_text_content(content)
+            return []
+
+        if event_type == "updates":
+            node = event.get("node", "")
+            data = event.get("data", {})
+            events: List[Any] = []
+
+            if not isinstance(data, dict):
+                return []
+
+            # response 节点：提取最终响应（非流式回退，不产出事件）
+            if node == "response":
+                # final_response 由调用方处理
+                pass
+
+            # agent 节点的 tool_calls
+            if node == "agent":
+                messages = data.get("messages", [])
+                if messages:
+                    last_msg = messages[-1]
+                    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                        for tc in last_msg.tool_calls:
+                            tc_id = tc.get("id", str(uuid.uuid4()))
+                            tc_name = tc.get("name", "unknown")
+                            tc_args = json.dumps(
+                                tc.get("args", tc.get("parameters", {})),
+                                ensure_ascii=False,
+                            )
+                            events.extend(sm.emit_tool_call_start(tc_id, tc_name, tc_args))
+                            # agent 节点的 tool_calls 立即结束（等待 tools 节点返回结果）
+                            end_ev = sm.emit_tool_call_end(tc_id)
+                            if end_ev is not None:
+                                events.append(end_ev)
+
+            # tools 节点：工具执行结果
+            if node == "tools":
+                messages = data.get("messages", [])
+                for msg in messages:
+                    if hasattr(msg, "type") and msg.type == "tool":
+                        tool_call_id = getattr(msg, "tool_call_id", "")
+                        tool_name = getattr(msg, "name", "unknown")
+                        content = getattr(msg, "content", "")
+                        events.extend(sm.emit_tool_result(
+                            tool_call_id, tool_name, content, "success",
+                        ))
+
+            return events
+
+        if event_type == "values":
+            data = event.get("data", {})
+            if isinstance(data, dict):
+                error_code = data.get("error_code", "")
+                if error_code:
+                    return [
+                        sm.emit_run_error(error_code, data.get("error_message", "")),
+                        _STREAM_STOP_SENTINEL,
+                    ]
+            return []
+
+        # --- SSE 细粒度事件（由 EventBridge 生成） ---
+
+        if event_type == "thinking":
+            # 仅触发 THINKING_START，内容由 messages 事件流式输出
+            return sm.emit_thinking("")
+
+        if event_type == "tool_call_start":
+            tc_data = event.get("data", {})
+            tc_id = tc_data.get("tool_call_id", str(uuid.uuid4()))
+            tc_name = tc_data.get("tool_name", "unknown")
+            return sm.emit_tool_call_start(tc_id, tc_name, "{}")
+
+        if event_type == "tool_result":
+            tc_data = event.get("data", {})
+            tc_id = tc_data.get("tool_call_id", "")
+            tc_name = tc_data.get("tool_name", "unknown")
+            result_content = tc_data.get("result", "{}")
+            return sm.emit_tool_result(tc_id, tc_name, result_content, "success")
+
+        return []
 
     async def transform_langgraph(
         self,
