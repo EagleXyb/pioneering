@@ -72,6 +72,25 @@ class PerceptionOutputSchema:
         }
 
 
+# P2-9: context_window 允许的取值
+# 支持 "all" 与 "last_<N>_turns"（N 为正整数），与 InMemoryShortTermMemory._parse_context_window 解析逻辑对齐
+VALID_CONTEXT_WINDOWS = frozenset({"last_1_turns", "last_3_turns", "last_5_turns", "last_10_turns", "all"})
+
+
+def _is_valid_context_window(value: str) -> bool:
+    """校验 context_window 是否为合法格式。
+
+    接受 VALID_CONTEXT_WINDOWS 中的枚举值，以及任意 ``last_<N>_turns``
+    （N 为正整数）格式，保持与短期记忆解析器的向前兼容。
+    """
+    if value in VALID_CONTEXT_WINDOWS:
+        return True
+    if value.startswith("last_") and value.endswith("_turns"):
+        num_part = value[len("last_"):-len("_turns")]
+        return num_part.isdigit() and int(num_part) >= 1
+    return False
+
+
 @dataclass
 class MemoryQuerySchema:
     user_id: str = ""
@@ -88,6 +107,12 @@ class MemoryQuerySchema:
             raise ValueError("context_window is required")
         if not self.required_fields:
             raise ValueError("required_fields must be explicitly declared")
+        # P2-9: 校验 context_window 为合法枚举值或 last_<N>_turns 格式
+        if not _is_valid_context_window(self.context_window):
+            raise ValueError(
+                f"Invalid context_window: {self.context_window!r}, "
+                f"must be one of {sorted(VALID_CONTEXT_WINDOWS)} or 'last_<N>_turns'"
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return {

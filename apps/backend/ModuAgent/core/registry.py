@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 class ComponentRegistry:
     def __init__(self):
         self._reasoning_engines: Dict[str, BaseReasoningEngine] = {}
+        # P2-8: 显式追踪活跃推理引擎名称，避免依赖 dict 插入顺序导致多引擎时选择不确定
+        self._active_reasoning_engine_name: Optional[str] = None
         self._reasoning_strategies: Dict[str, BaseReasoningStrategy] = {}
         self._action_executors: Dict[str, BaseActionExecutor] = {}
         self._tools: Dict[str, BaseTool] = {}
@@ -30,14 +32,40 @@ class ComponentRegistry:
         if not isinstance(engine, BaseReasoningEngine):
             raise TypeError(f"engine must implement BaseReasoningEngine, got {type(engine)}")
         self._reasoning_engines[name] = engine
+        # P2-8: 首个注册的引擎自动成为活跃引擎，后续可通过 set_active_reasoning_engine 切换
+        if self._active_reasoning_engine_name is None:
+            self._active_reasoning_engine_name = name
         logger.info("Registered reasoning engine: %s", name)
+
+    def set_active_reasoning_engine(self, name: str) -> None:
+        """P2-8: 显式设置活跃推理引擎。
+
+        Args:
+            name: 已注册的引擎名称
+
+        Raises:
+            KeyError: 当 name 未注册时
+        """
+        if name not in self._reasoning_engines:
+            raise KeyError(f"reasoning engine '{name}' not registered")
+        self._active_reasoning_engine_name = name
+        logger.info("Set active reasoning engine: %s", name)
 
     def get_reasoning_engine(self, name: str) -> Optional[BaseReasoningEngine]:
         return self._reasoning_engines.get(name)
 
     def get_active_reasoning_engine(self) -> Optional[BaseReasoningEngine]:
+        """P2-8: 返回活跃推理引擎。
+
+        优先返回通过 ``set_active_reasoning_engine`` 显式指定的引擎；
+        若未显式指定则回退到首个注册引擎（保持单引擎场景的兼容性）。
+        """
         if not self._reasoning_engines:
             return None
+        active_name = self._active_reasoning_engine_name
+        if active_name and active_name in self._reasoning_engines:
+            return self._reasoning_engines[active_name]
+        # 回退：返回首个注册引擎（兼容未显式设置活跃引擎的场景）
         return next(iter(self._reasoning_engines.values()))
 
     def register_reasoning_strategy(self, name: str, strategy: BaseReasoningStrategy) -> None:

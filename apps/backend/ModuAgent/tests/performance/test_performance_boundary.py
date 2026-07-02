@@ -382,9 +382,10 @@ class TestEvolutionCollectorBoundary:
         assert len(collector.get_signals()) == 1
 
     def test_report_interval_zero(self, monkeypatch):
-        """interval=0 会导致除零错误，验证不崩溃或正确跳过（已知限制）。"""
+        """P2-1 修复：interval=0 不再导致除零错误，应被钳制为 1。"""
         from unittest.mock import MagicMock
-        collector = EvolutionSignalCollector(report_interval=1)  # 使用 1 避免除零
+        collector = EvolutionSignalCollector(report_interval=0)
+        assert collector._report_interval == 1  # 钳制为 1
         fake = MagicMock()
         fake.domain = "d"
         fake.action = "a"
@@ -393,9 +394,10 @@ class TestEvolutionCollectorBoundary:
         fake.trace_id = "t"
         fake.session_id = "s"
         fake.metadata = {}
+        # 不再抛 ZeroDivisionError，每个事件生成一个信号
         collector.on_agent_event(fake)
-        assert len(collector.get_signals()) == 1
-        # interval=0 是已知限制（会除零），在此不作为测试场景
+        collector.on_agent_event(fake)
+        assert len(collector.get_signals()) == 2
 
     def test_large_number_of_events(self, monkeypatch):
         from unittest.mock import MagicMock

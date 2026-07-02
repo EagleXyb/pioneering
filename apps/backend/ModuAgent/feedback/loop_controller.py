@@ -115,10 +115,18 @@ class FeedbackLoop(BaseFeedbackLoop):
     ) -> bool:
         """判断是否应触发进化。
 
-        条件：综合得分低于阈值 且 样本量足够。
+        P1-6 修复：统一数据源，全部使用内部累积状态 ``_cumulative_metrics``
+        判断，消除原先"传入参数 ``metrics`` 做门控 + 内部累积状态算比率"
+        双数据源不一致的问题。``metrics`` 参数保留以兼容现有调用方
+        （``EvolutionOrchestrator`` 传入完整 evaluation 字典），
+        其 ``quality_score`` 已在 ``evaluate()`` 中通过 ``_accumulate_sample``
+        累积到内部状态，故决策仅依赖内部累积状态。
+
+        触发条件：样本量充足 且 最近 ``min_sample_size`` 次评估中
+        有 60%+ 的 quality_score 低于阈值。
 
         Args:
-            metrics: 指标字典
+            metrics: 指标字典（保留兼容调用方，决策不直接依赖其 quality_score）
             threshold: 质量阈值（0-1）
 
         Returns:
@@ -128,16 +136,12 @@ class FeedbackLoop(BaseFeedbackLoop):
         if self._sample_count < self._min_sample_size:
             return False
 
-        # 使用综合质量得分判断
-        quality_score = metrics.get("quality_score", 1.0)
-
-        # 连续多次低于阈值才触发
-        if quality_score < threshold:
-            # 检查最近 N 次是否有足够比例低于阈值
-            recent_scores = self._cumulative_metrics.get("quality_score", [])
-            if len(recent_scores) >= self._min_sample_size:
-                recent_low_ratio = sum(1 for s in recent_scores[-self._min_sample_size:] if s < threshold) / self._min_sample_size
-                return recent_low_ratio >= 0.6  # 60% 以上低于阈值
+        # P1-6: 统一使用内部累积状态判断，不再用传入 metrics 的 quality_score 做门控
+        recent_scores = self._cumulative_metrics.get("quality_score", [])
+        if len(recent_scores) >= self._min_sample_size:
+            window = recent_scores[-self._min_sample_size:]
+            recent_low_ratio = sum(1 for s in window if s < threshold) / self._min_sample_size
+            return recent_low_ratio >= 0.6  # 60% 以上低于阈值
         return False
 
     def get_cumulative_metrics(self) -> Dict[str, float]:

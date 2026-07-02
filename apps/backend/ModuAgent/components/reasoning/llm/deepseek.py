@@ -6,7 +6,8 @@ from typing import Optional
 from components.reasoning.llm.base_llm import BaseLLMReasoner
 
 _DEFAULT_BASE_URL = "https://api.deepseek.com"
-_DEFAULT_MODEL = "deepseek-v4-flash"
+# P2-3 修复：deepseek-v4-flash 非有效模型名，未配置环境变量时 API 调用必然失败
+_DEFAULT_MODEL = "deepseek-chat"
 
 
 class DeepSeekLLMReasoner(BaseLLMReasoner):

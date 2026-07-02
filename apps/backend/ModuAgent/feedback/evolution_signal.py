@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from orchestration.communication.protocol import AgentEvent
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,7 +29,12 @@ class EvolutionSignalCollector:
     def __init__(self, report_interval: int = 100):
         self._signals: List[EvolutionSignal] = []
         self._counters: Dict[str, int] = defaultdict(int)
-        self._report_interval = report_interval
+        # P2-1 修复：防止 report_interval=0 导致取模除零，下限钳制为 1
+        if report_interval < 1:
+            logger.warning(
+                "report_interval=%d 无效，已钳制为 1（必须为正整数）", report_interval
+            )
+        self._report_interval = max(report_interval, 1)
 
     def on_agent_event(self, event: AgentEvent | None) -> None:
         """EventBus 订阅回调：收集推理事件。

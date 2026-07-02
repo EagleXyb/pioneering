@@ -47,6 +47,33 @@ class BaseLLMReasoner(BaseReasoningEngine):
         except Exception:
             pass
 
+    def _resolve_temperature(self, kwargs: Dict[str, Any]) -> float:
+        """P1-5: temperature 默认值从 RuntimeConfig 读取，kwargs 优先覆盖。
+
+        解析优先级：显式 kwargs > RuntimeConfig(llm.temperature) > 0.7 兜底。
+        使用惰性导入避免循环依赖，配置不可用时安全降级。
+        """
+        if "temperature" in kwargs:
+            return kwargs["temperature"]
+        try:
+            from config.runtime_config import get_config
+            return get_config().get("llm.temperature", 0.7)
+        except Exception:  # noqa: BLE001
+            return 0.7
+
+    def _resolve_max_tokens(self, kwargs: Dict[str, Any]) -> int:
+        """P1-5: max_tokens 默认值从 RuntimeConfig 读取，kwargs 优先覆盖。
+
+        解析优先级：显式 kwargs > RuntimeConfig(llm.max_tokens) > 512 兜底。
+        """
+        if "max_tokens" in kwargs:
+            return kwargs["max_tokens"]
+        try:
+            from config.runtime_config import get_config
+            return get_config().get("llm.max_tokens", 512)
+        except Exception:  # noqa: BLE001
+            return 512
+
     @property
     def api_key(self) -> str:
         return self._api_key
@@ -67,8 +94,8 @@ class BaseLLMReasoner(BaseReasoningEngine):
     ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
         """同步推理（P2-12.3.1：复用实例级 httpx 连接池）。"""
         messages = self._build_messages(prompt, context)
-        temperature = kwargs.get("temperature", 0.7)
-        max_tokens = kwargs.get("max_tokens", 512)
+        temperature = self._resolve_temperature(kwargs)
+        max_tokens = self._resolve_max_tokens(kwargs)
         model = kwargs.get("model", self._default_model)
         tools = context.get("native_tools") or kwargs.get("tools")
 
@@ -132,8 +159,8 @@ class BaseLLMReasoner(BaseReasoningEngine):
         P2-12.3.1：复用实例级 httpx 连接池。
         """
         messages = self._build_messages(prompt, context)
-        temperature = kwargs.get("temperature", 0.7)
-        max_tokens = kwargs.get("max_tokens", 512)
+        temperature = self._resolve_temperature(kwargs)
+        max_tokens = self._resolve_max_tokens(kwargs)
         model = kwargs.get("model", self._default_model)
         url = f"{self._base_url}/chat/completions"
         headers = self._build_headers()
@@ -174,8 +201,8 @@ class BaseLLMReasoner(BaseReasoningEngine):
         与 reason() 语义等价，但在 async 环境下不占用线程池。
         """
         messages = self._build_messages(prompt, context)
-        temperature = kwargs.get("temperature", 0.7)
-        max_tokens = kwargs.get("max_tokens", 512)
+        temperature = self._resolve_temperature(kwargs)
+        max_tokens = self._resolve_max_tokens(kwargs)
         model = kwargs.get("model", self._default_model)
         tools = context.get("native_tools") or kwargs.get("tools")
 
@@ -239,8 +266,8 @@ class BaseLLMReasoner(BaseReasoningEngine):
         P2-12.3.1：复用实例级 httpx.AsyncClient 连接池，发挥 async 优势。
         """
         messages = self._build_messages(prompt, context)
-        temperature = kwargs.get("temperature", 0.7)
-        max_tokens = kwargs.get("max_tokens", 512)
+        temperature = self._resolve_temperature(kwargs)
+        max_tokens = self._resolve_max_tokens(kwargs)
         model = kwargs.get("model", self._default_model)
         url = f"{self._base_url}/chat/completions"
         headers = self._build_headers()
