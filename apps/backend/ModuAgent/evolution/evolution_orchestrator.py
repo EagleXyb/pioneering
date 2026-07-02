@@ -128,14 +128,20 @@ class EvolutionOrchestrator:
         self,
         output: Dict[str, Any],
         context: Dict[str, Any],
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """评估输出质量并决定是否触发进化。
 
         P0-1 闭环核心方法，在 feedback_node 中调用。
 
+        P0-2 修复：将 session_id 传递给 ParameterTuneStrategy，
+        使其返回的 config_overrides 带有会话标识，
+        由调用方注入 RunnableConfig.configurable 实现 per-session 覆盖。
+
         Args:
             output: 输出字典，包含 response / tool_results / usage
             context: 上下文字典，包含 prompt / perception_result 等
+            session_id: 会话标识（用于参数调优的作用域标记）
 
         Returns:
             评估与进化结果字典：
@@ -165,7 +171,7 @@ class EvolutionOrchestrator:
             "sample_count": self._feedback_loop.get_sample_count(),
         }
 
-        # 3. 触发参数调优
+        # 3. 触发参数调优（P0-2: 传递 session_id，返回 config_overrides 而非修改全局）
         if should_evolve and self._parameter_tune is not None:
             try:
                 signals = self._evolution_collector.get_signals()
@@ -175,15 +181,18 @@ class EvolutionOrchestrator:
                         if "evaluation" not in signal.context:
                             signal.context["evaluation"] = evaluation
 
-                evolution_action = self._parameter_tune.analyze_and_adjust(signals)
+                evolution_action = self._parameter_tune.analyze_and_adjust(
+                    signals, session_id=session_id
+                )
                 result["evolution_action"] = evolution_action
 
                 if evolution_action.get("adjusted"):
                     logger.info(
-                        "Evolution triggered: sample_count=%d quality_score=%.3f threshold=%.2f reasons=%s",
+                        "Evolution triggered: sample_count=%d quality_score=%.3f threshold=%.2f session_id=%s reasons=%s",
                         self._feedback_loop.get_sample_count(),
                         evaluation.get("quality_score", 0.0),
                         threshold,
+                        session_id or "unknown",
                         evolution_action.get("reasons", []),
                     )
             except Exception as e:

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from config.runtime_config import RuntimeConfig
 from feedback.evolution_signal import EvolutionSignal, EvolutionSignalCollector
 
 
 class ParameterTuneStrategy:
-    """基于反馈信号的参数调优策略。"""
+    """基于反馈信号的参数调优策略。
+
+    P0-2 修复：不再直接修改全局 RuntimeConfig，
+    而是返回调整建议（config_overrides），
+    由调用方注入 RunnableConfig.configurable 实现 per-session 覆盖。
+    """
 
     # 调优阈值
     ACCURACY_THRESHOLD = 0.6
@@ -41,20 +46,45 @@ class ParameterTuneStrategy:
     def analyze_and_adjust(
         self,
         signals: List[EvolutionSignal],
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """分析进化信号并生成参数调整建议。
+
+        P0-2 修复：不再修改全局 config，而是返回 config_overrides，
+        由调用方注入 RunnableConfig.configurable。
 
         策略：
         - 低准确性 → 降低 temperature（更保守）
         - 高迭代次数 → 降低 max_iterations（节省资源）
         - 高工具失败率 → 保持低 temperature
+
+        Args:
+            signals: 进化信号列表
+            session_id: 会话标识（用于标记调整建议的作用域）
+
+        Returns:
+            包含调整建议的字典：
+            - adjusted: 是否有调整
+            - config_overrides: 可注入 RunnableConfig.configurable 的覆盖字典
+            - scope: 作用域（session / user / global）
+            - session_id: 会话标识
+            - temperature: 调整后的 temperature
+            - max_iterations: 调整后的 max_iterations
+            - reasons: 调整原因列表
+            - analyzed_metrics: 分析后的指标
         """
         if not signals:
+            current_temp = self._config.get("llm.temperature", 0.7)
+            current_max_iter = self._config.get("llm.max_reasoning_iterations", 3)
             return {
                 "adjusted": False,
-                "temperature": self._config.get("llm.temperature"),
-                "max_iterations": self._config.get("llm.max_reasoning_iterations"),
+                "config_overrides": {},
+                "scope": "session",
+                "session_id": session_id,
+                "temperature": current_temp,
+                "max_iterations": current_max_iter,
                 "reasons": [],
+                "analyzed_metrics": {},
             }
 
         # 分析信号提取指标
@@ -95,17 +125,22 @@ class ParameterTuneStrategy:
                 f"保持低 temperature {new_temp}"
             )
 
-        # 应用调整
+        # 构建 config_overrides（不再修改全局 config）
         adjusted = False
+        config_overrides: Dict[str, Any] = {}
+
         if new_temp != current_temp:
-            self._config.set("llm.temperature", new_temp)
+            config_overrides["temperature"] = new_temp
             adjusted = True
         if new_max_iter != current_max_iter:
-            self._config.set("llm.max_reasoning_iterations", new_max_iter)
+            config_overrides["max_reasoning_iterations"] = new_max_iter
             adjusted = True
 
         return {
             "adjusted": adjusted,
+            "config_overrides": config_overrides,
+            "scope": "session",
+            "session_id": session_id,
             "temperature": new_temp,
             "max_iterations": new_max_iter,
             "reasons": reasons,

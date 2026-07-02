@@ -316,6 +316,8 @@ def make_agent_node(
     新增功能：
     - 当感知置信度 < confidence_threshold 时，
       使用保守温度 conservative_temperature
+    - P0-2: 从 state.config_overrides 读取 per-session 参数覆盖
+      （temperature、max_reasoning_iterations 等）
 
     Args:
         bound_llm: 已通过 llm.bind_tools(tools) 绑定工具的 ChatModel
@@ -374,17 +376,36 @@ def make_agent_node(
         if not messages:
             return {"response": ""}
 
+        # P0-2: 从 state.config_overrides 读取 per-session 参数覆盖
+        config_overrides = state.get("config_overrides", {})
+        override_temperature = config_overrides.get("temperature")
+
         # 低置信度保守模式：检测置信度并调整温度
         confidence = state.get("confidence", 1.0)
         effective_temperature = _default_temperature
 
+        # P0-2: config_overrides 中的 temperature 优先级高于默认值
+        if override_temperature is not None:
+            effective_temperature = float(override_temperature)
+
+        need_custom_temp = False
+
         if confidence < confidence_threshold:
             effective_temperature = conservative_temperature
+            need_custom_temp = True
             logger.info(
                 "Low confidence (%.2f < %.2f), using conservative temperature %.2f",
                 confidence, confidence_threshold, conservative_temperature
             )
-            # 克隆 LLM 并设置保守温度
+        elif override_temperature is not None:
+            need_custom_temp = True
+            logger.debug(
+                "Using config_overrides temperature: %.2f",
+                override_temperature,
+            )
+
+        if need_custom_temp:
+            # 克隆 LLM 并设置温度
             try:
                 llm_with_temp = bound_llm.bind(temperature=effective_temperature)
                 response = llm_with_temp.invoke(messages)
@@ -499,6 +520,10 @@ def make_feedback_node(orchestrator: Any) -> Callable[[ModuAgentState], dict]:
 
     在 response 之后、memory_update 之前执行，评估响应质量并决定是否触发进化。
 
+    P0-2 修复：将 session_id 传递给 orchestrator，
+    并将 config_overrides 保存到 state 中，
+    供下一次请求时注入 RunnableConfig.configurable。
+
     Args:
         orchestrator: EvolutionOrchestrator 实例
 
@@ -517,6 +542,8 @@ def make_feedback_node(orchestrator: Any) -> Callable[[ModuAgentState], dict]:
                 "evolution_action": None,
             }
 
+        session_id = state.get("session_id", "")
+
         # 构建评估输入
         output = {
             "response": state.get("response", ""),
@@ -532,11 +559,27 @@ def make_feedback_node(orchestrator: Any) -> Callable[[ModuAgentState], dict]:
         }
 
         try:
-            result = await orchestrator.evaluate_and_evolve(output, context)
+            result = await orchestrator.evaluate_and_evolve(
+                output, context, session_id=session_id
+            )
+            evolution_action = result.get("evolution_action")
+
+            # P0-2: 从 evolution_action 提取 config_overrides，保存到 state
+            # 供下一次同会话请求时注入 RunnableConfig.configurable
+            config_overrides: Dict[str, Any] = {}
+            if evolution_action and evolution_action.get("adjusted"):
+                config_overrides = evolution_action.get("config_overrides", {})
+                if config_overrides:
+                    logger.info(
+                        "Config overrides saved for session %s: %s",
+                        session_id, list(config_overrides.keys()),
+                    )
+
             return {
                 "evaluation": result.get("evaluation"),
                 "should_evolve": result.get("should_evolve", False),
-                "evolution_action": result.get("evolution_action"),
+                "evolution_action": evolution_action,
+                "config_overrides": config_overrides,
             }
         except Exception as e:
             logger.error("Feedback node failed: %s", str(e))
@@ -544,6 +587,7 @@ def make_feedback_node(orchestrator: Any) -> Callable[[ModuAgentState], dict]:
                 "evaluation": None,
                 "should_evolve": False,
                 "evolution_action": None,
+                "config_overrides": {},
             }
 
     return _feedback_node

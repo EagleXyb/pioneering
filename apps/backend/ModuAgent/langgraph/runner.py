@@ -104,6 +104,63 @@ def _validate_input_data(input_data: Dict[str, Any]) -> None:
         raise ValueError("prompt is required for text input")
 
 
+def _load_prev_config_overrides(
+    graph: CompiledGraph,
+    session_id: str,
+) -> Dict[str, Any]:
+    """P0-2: 从 checkpointer 读取上一次会话状态的 config_overrides。
+
+    Args:
+        graph: 编译后的 LangGraph 实例
+        session_id: 会话标识
+
+    Returns:
+        config_overrides 字典（空字典表示无覆盖）
+    """
+    config_overrides: Dict[str, Any] = {}
+
+    try:
+        checkpointer = getattr(graph, "checkpointer", None)
+        if checkpointer is not None and hasattr(checkpointer, "get_tuple"):
+            config = {"configurable": {"thread_id": session_id}}
+            state_tuple = checkpointer.get_tuple(config)
+            if state_tuple is not None:
+                state_values = state_tuple.values if hasattr(state_tuple, "values") else None
+                if state_values and isinstance(state_values, dict):
+                    prev_overrides = state_values.get("config_overrides", {})
+                    if prev_overrides and isinstance(prev_overrides, dict):
+                        config_overrides = dict(prev_overrides)
+                        logger.info(
+                            "Loaded config overrides from previous state for session %s: %s",
+                            session_id, list(prev_overrides.keys()),
+                        )
+    except Exception as e:
+        logger.debug("Failed to load config overrides from checkpointer: %s", str(e))
+
+    return config_overrides
+
+
+def _build_config_with_overrides(
+    session_id: str,
+    config_overrides: Dict[str, Any],
+) -> Dict[str, Any]:
+    """P0-2: 构建带 config_overrides 的 LangGraph 配置。
+
+    将 config_overrides 合并到 configurable 中。
+
+    Args:
+        session_id: 会话标识
+        config_overrides: 配置覆盖字典
+
+    Returns:
+        包含 configurable 字段的配置字典
+    """
+    configurable: Dict[str, Any] = {"thread_id": session_id}
+    if config_overrides:
+        configurable.update(config_overrides)
+    return {"configurable": configurable}
+
+
 async def stream_response(
     graph: CompiledGraph,
     user_id: str,
@@ -137,16 +194,20 @@ async def stream_response(
     if not trace_id:
         trace_id = str(uuid.uuid4())
 
+    # P0-2: 从 checkpointer 读取上一次会话的 config_overrides
+    config_overrides = _load_prev_config_overrides(graph, session_id)
+
     initial_state = make_initial_state(
         user_id=user_id,
         session_id=session_id,
         trace_id=trace_id,
         input_data=input_data,
     )
+    # P0-2: 将 config_overrides 注入 initial_state，供 agent_node 读取
+    if config_overrides:
+        initial_state["config_overrides"] = config_overrides
 
-    lg_config: Dict[str, Any] = {
-        "configurable": {"thread_id": session_id},
-    }
+    lg_config = _build_config_with_overrides(session_id, config_overrides)
 
     if event_bridge is None:
         # P0-1: 从图上读取 orchestrator 的 evolution_collector，激活 EventBridge 的信号收集
@@ -223,16 +284,20 @@ async def run_sync(
     if not trace_id:
         trace_id = str(uuid.uuid4())
 
+    # P0-2: 从 checkpointer 读取上一次会话的 config_overrides
+    config_overrides = _load_prev_config_overrides(graph, session_id)
+
     initial_state = make_initial_state(
         user_id=user_id,
         session_id=session_id,
         trace_id=trace_id,
         input_data=input_data,
     )
+    # P0-2: 将 config_overrides 注入 initial_state，供 agent_node 读取
+    if config_overrides:
+        initial_state["config_overrides"] = config_overrides
 
-    lg_config: Dict[str, Any] = {
-        "configurable": {"thread_id": session_id},
-    }
+    lg_config = _build_config_with_overrides(session_id, config_overrides)
 
     if event_bridge is None:
         # P0-1: 从图上读取 orchestrator 的 evolution_collector
@@ -259,8 +324,15 @@ async def run_sync(
                 if event.get("type") == "values":
                     final_state = event.get("data", {})
 
+            # P1-4: astream 失败时不应回退到 ainvoke，应直接报错
+            # 避免请求被执行两次（一次 astream 一次 ainvoke）
             if final_state is None:
-                final_state = await graph.ainvoke(initial_state, config=lg_config)
+                logger.error("LangGraph astream produced no values event, trace_id=%s", trace_id)
+                return {
+                    "status": "error",
+                    "error_code": ErrorCode.LLM_GENERATION_FAILED,
+                    "data": {"message": "No output produced", "trace_id": trace_id},
+                }
 
         error_code = final_state.get("error_code", "")
         if error_code:

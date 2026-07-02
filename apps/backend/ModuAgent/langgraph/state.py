@@ -90,6 +90,9 @@ class ModuAgentState(TypedDict, total=False):
     should_evolve: bool
     evolution_action: Optional[Dict[str, Any]]
 
+    # P0-2: per-session 配置覆盖（由 ParameterTuneStrategy 生成，下一次请求时应用）
+    config_overrides: Dict[str, Any]
+
 
 def make_initial_state(
     user_id: str,
@@ -133,4 +136,5 @@ def make_initial_state(
         evaluation=None,
         should_evolve=False,
         evolution_action=None,
+        config_overrides={},
     )
