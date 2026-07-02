@@ -25,6 +25,27 @@ class BaseLLMReasoner(BaseReasoningEngine):
         self._default_model = default_model
         self._timeout = timeout
         self._system_prompt = system_prompt
+        # P2-12.3.1: 复用 httpx 连接池，避免每次调用创建/销毁 Client 的开销
+        self._client = httpx.Client(timeout=self._timeout)
+        self._async_client = httpx.AsyncClient(timeout=self._timeout)
+
+    def close(self) -> None:
+        """释放底层 httpx 连接池资源。"""
+        try:
+            self._client.close()
+        except Exception:
+            pass
+        try:
+            # AsyncClient.close 是协程，但在销毁场景下用同步关闭避免悬挂
+            self._async_client.aclose()
+        except Exception:
+            pass
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     @property
     def api_key(self) -> str:
@@ -44,6 +65,7 @@ class BaseLLMReasoner(BaseReasoningEngine):
         context: Dict[str, Any],
         **kwargs: Any,
     ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
+        """同步推理（P2-12.3.1：复用实例级 httpx 连接池）。"""
         messages = self._build_messages(prompt, context)
         temperature = kwargs.get("temperature", 0.7)
         max_tokens = kwargs.get("max_tokens", 512)
@@ -62,10 +84,10 @@ class BaseLLMReasoner(BaseReasoningEngine):
         if tools:
             payload["tools"] = tools
 
-        with httpx.Client(timeout=self._timeout) as client:
-            response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+        # P2-12.3.1: 复用实例级连接池，不再每次创建 httpx.Client
+        response = self._client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()
 
         message = data.get("choices", [{}])[0].get("message", {})
         content = message.get("content", "") or ""
@@ -102,35 +124,44 @@ class BaseLLMReasoner(BaseReasoningEngine):
         self,
         prompt: str,
         context: Dict[str, Any],
+        **kwargs: Any,
     ) -> Generator[str, None, None]:
+        """同步流式推理。
+
+        P1-12.2.5：temperature/max_tokens 不再硬编码，通过 kwargs 覆盖。
+        P2-12.3.1：复用实例级 httpx 连接池。
+        """
         messages = self._build_messages(prompt, context)
+        temperature = kwargs.get("temperature", 0.7)
+        max_tokens = kwargs.get("max_tokens", 512)
+        model = kwargs.get("model", self._default_model)
         url = f"{self._base_url}/chat/completions"
         headers = self._build_headers()
         payload = {
-            "model": self._default_model,
+            "model": model,
             "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 512,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
             "stream": True,
         }
 
-        with httpx.Client(timeout=self._timeout) as client:
-            with client.stream("POST", url, json=payload, headers=headers) as response:
-                response.raise_for_status()
-                for line in response.iter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:]
-                    if data.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+        # P2-12.3.1: 复用实例级连接池（stream 上下文管理器仅管理流，不复用底层连接）
+        with self._client.stream("POST", url, json=payload, headers=headers) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except json.JSONDecodeError:
+                    continue
 
     async def areason(
         self,
@@ -138,7 +169,7 @@ class BaseLLMReasoner(BaseReasoningEngine):
         context: Dict[str, Any],
         **kwargs: Any,
     ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
-        """异步推理（P1-3：使用 httpx.AsyncClient，避免线程池开销）。
+        """异步推理（P2-12.3.1：复用实例级 httpx.AsyncClient 连接池）。
 
         与 reason() 语义等价，但在 async 环境下不占用线程池。
         """
@@ -160,10 +191,10 @@ class BaseLLMReasoner(BaseReasoningEngine):
         if tools:
             payload["tools"] = tools
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+        # P2-12.3.1: 复用实例级 AsyncClient 连接池
+        response = await self._async_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()
 
         message = data.get("choices", [{}])[0].get("message", {})
         content = message.get("content", "") or ""
@@ -200,39 +231,44 @@ class BaseLLMReasoner(BaseReasoningEngine):
         self,
         prompt: str,
         context: Dict[str, Any],
+        **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
-        """异步流式推理（P1-3：使用 httpx.AsyncClient，发挥 async 优势）。
+        """异步流式推理。
 
-        与 stream() 语义等价，但在 async 环境下不占用线程池。
+        P1-12.2.5：temperature/max_tokens 不再硬编码，通过 kwargs 覆盖。
+        P2-12.3.1：复用实例级 httpx.AsyncClient 连接池，发挥 async 优势。
         """
         messages = self._build_messages(prompt, context)
+        temperature = kwargs.get("temperature", 0.7)
+        max_tokens = kwargs.get("max_tokens", 512)
+        model = kwargs.get("model", self._default_model)
         url = f"{self._base_url}/chat/completions"
         headers = self._build_headers()
         payload = {
-            "model": self._default_model,
+            "model": model,
             "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 512,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
             "stream": True,
         }
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:]
-                    if data.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+        # P2-12.3.1: 复用实例级 AsyncClient 连接池
+        async with self._async_client.stream("POST", url, json=payload, headers=headers) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except json.JSONDecodeError:
+                    continue
 
     def _build_headers(self) -> Dict[str, str]:
         return {

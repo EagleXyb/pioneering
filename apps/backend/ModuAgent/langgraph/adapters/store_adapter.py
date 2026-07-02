@@ -49,6 +49,7 @@ class ChromaStore(BaseStore):
         chroma_memory: Optional[ChromaLongTermMemory] = None,
         collection_prefix: str = "modu_memory",
         top_k: int = 5,
+        persist_path: Optional[str] = None,
     ) -> None:
         """初始化 ChromaStore。
 
@@ -56,10 +57,12 @@ class ChromaStore(BaseStore):
             chroma_memory: 已有的 ChromaLongTermMemory 实例（None=新建）
             collection_prefix: Chroma collection 名称前缀
             top_k: 检索返回的最大结果数
+            persist_path: ChromaDB 持久化路径（None=内存模式）
         """
         self._chroma = chroma_memory or ChromaLongTermMemory(
             collection_prefix=collection_prefix,
             top_k=top_k,
+            persist_path=persist_path,
         )
         self._top_k = top_k
 

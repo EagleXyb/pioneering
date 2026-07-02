@@ -6,7 +6,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Coroutine, Dict, Iterator, List, Optional
 
-from .protocol import AgentEvent, EventDomain, EventPriority
+from .protocol import AgentEvent, EventPriority
 
 logger = logging.getLogger(__name__)
 
@@ -245,109 +245,6 @@ class PersistentEventLog:
             logger.info("Event log rotated: %s → %s", self._log_file_path, rotated_path)
         except OSError as e:
             logger.warning("Log rotation failed: %s", str(e))
-
-
-class EvolutionSignalCollector:
-    """进化信号收集器（P1：事件追踪 + 进化信号联动）。
-
-    订阅感知事件，收集进化信号指标：
-    - 低置信度频率（感知准确度信号）
-    - 敏感词触发频率（安全风险信号）
-    - 截断频率（输入质量信号）
-    - 语种分布（用户群体信号）
-    - 多模态输入比例（模态使用信号）
-
-    定期输出信号摘要，供进化系统消费。
-    """
-
-    def __init__(self, report_interval: int = 100) -> None:
-        """初始化进化信号收集器。
-
-        Args:
-            report_interval: 每处理 N 个事件输出一次信号摘要
-        """
-        self._report_interval = report_interval
-        self._event_count = 0
-        self._signals: Dict[str, Any] = {
-            "total_perceptions": 0,
-            "low_confidence_count": 0,
-            "sensitivity_triggered": {str(i): 0 for i in range(6)},
-            "truncation_count": 0,
-            "language_distribution": {},
-            "input_type_distribution": {},
-            "injection_detected_count": 0,
-            "pii_detected_count": 0,
-            "avg_confidence": 0.0,
-        }
-        self._confidence_sum = 0.0
-        self._signal_handlers: List[Callable[[Dict[str, Any]], None]] = []
-
-    def add_signal_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
-        """注册信号处理器，当信号摘要生成时被调用。"""
-        self._signal_handlers.append(handler)
-
-    async def on_perception_event(self, event: AgentEvent) -> None:
-        """感知事件回调：收集进化信号。"""
-        if event.domain != EventDomain.PERCEPTION:
-            return
-
-        self._event_count += 1
-        self._signals["total_perceptions"] += 1
-
-        metadata = event.metadata
-
-        # 置信度统计
-        confidence = float(metadata.get("confidence", "1.0"))
-        self._confidence_sum += confidence
-        self._signals["avg_confidence"] = round(self._confidence_sum / self._event_count, 3)
-
-        if confidence < 0.5:
-            self._signals["low_confidence_count"] += 1
-
-        # 敏感度统计
-        sensitivity = metadata.get("sensitivity_level", "0")
-        if sensitivity in self._signals["sensitivity_triggered"]:
-            self._signals["sensitivity_triggered"][sensitivity] += 1
-
-        # 截断统计
-        if metadata.get("truncated", "False") == "True":
-            self._signals["truncation_count"] += 1
-
-        # 语种分布
-        language = metadata.get("detected_language", "unknown")
-        lang_dist = self._signals["language_distribution"]
-        lang_dist[language] = lang_dist.get(language, 0) + 1
-
-        # 输入类型分布
-        input_type = metadata.get("input_type", "text")
-        type_dist = self._signals["input_type_distribution"]
-        type_dist[input_type] = type_dist.get(input_type, 0) + 1
-
-        # 安全检测统计
-        if metadata.get("injection_detected", "False") == "True":
-            self._signals["injection_detected_count"] += 1
-        if metadata.get("pii_detected", "False") == "True":
-            self._signals["pii_detected_count"] += 1
-
-        # 定期输出信号摘要
-        if self._event_count % self._report_interval == 0:
-            self._emit_signals()
-
-    def _emit_signals(self) -> None:
-        """输出进化信号摘要。"""
-        signal_snapshot = dict(self._signals)
-        signal_snapshot["snapshot_at"] = self._event_count
-        logger.info("Evolution signals: %s", signal_snapshot)
-
-        for handler in self._signal_handlers:
-            try:
-                handler(signal_snapshot)
-            except Exception as e:
-                logger.warning("Signal handler error: %s", str(e))
-
-    def get_signals(self) -> Dict[str, Any]:
-        """获取当前信号摘要。"""
-        return dict(self._signals)
 
 
 _event_bus: Optional[EventBus] = None

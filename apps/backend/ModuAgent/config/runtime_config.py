@@ -32,6 +32,8 @@ _DEFAULT_CONFIG = {
         # LangGraph 重构新增字段
         "checkpointer_type": "memory",  # memory | sqlite | none
         "store_type": "chroma",         # chroma | in_memory | none
+        # P2-12.3.2: ChromaDB 持久化路径（None=内存模式，生产环境建议设置为本地路径）
+        "chroma_persist_path": None,
     },
     "orchestration": {
         # P0-2: LangGraph 成为唯一引擎（legacy Coordinator 已删除）

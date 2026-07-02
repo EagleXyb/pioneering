@@ -28,7 +28,7 @@ from langgraph.adapters.llm_adapter import build_chat_model
 from langgraph.adapters.retry import apply_llm_retry
 from langgraph.adapters.store_adapter import ChromaStore, InMemoryStoreAdapter
 from langgraph.adapters.tool_adapter import build_langchain_tools
-from langgraph.graph import build_modu_graph
+from langgraph.graph import ModuGraph, build_modu_graph
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,10 @@ def build_store(store_type: str = "chroma") -> Any:
         return InMemoryStoreAdapter()
 
     try:
-        store = ChromaStore()
-        logger.info("Built ChromaStore")
+        # P2-12.3.2: 从配置读取持久化路径（None=内存模式）
+        persist_path = get_config().get("memory.chroma_persist_path", None)
+        store = ChromaStore(persist_path=persist_path)
+        logger.info("Built ChromaStore (persist_path=%s)", persist_path)
         return store
     except Exception as e:
         logger.warning("ChromaStore init failed (%s), falling back to InMemoryStore", str(e))
@@ -153,11 +155,14 @@ def create_agent(
     config: Optional[RunnableConfig] = None,
     runtime_config: Optional[RuntimeConfig] = None,
     system_prompt: Optional[str] = None,
-) -> CompiledGraph:
+) -> ModuGraph:
     """根据配置创建 ModuAgent LangGraph 实例。
 
     支持通过 config 覆盖运行时参数（如 LLM provider、temperature 等），
     替代 ComponentRegistry.swap_component 的运行时热替换。
+
+    P1-12.2.3: 返回 ModuGraph 包装器（显式持有 orchestrator 引用），
+    替代在 CompiledGraph 上 monkey-patch `graph.orchestrator`。
 
     Args:
         config: RunnableConfig，支持 configurable 字段覆盖：
@@ -172,7 +177,7 @@ def create_agent(
         system_prompt: 系统提示词（优先级低于 config.configurable.system_prompt）
 
     Returns:
-        编译后的 CompiledGraph
+        ModuGraph 包装器（透明委托 CompiledGraph 的所有方法）
 
     Examples:
         # 默认配置
@@ -251,7 +256,7 @@ def create_agent(
             logger.warning("EvolutionOrchestrator init failed, feedback loop disabled: %s", str(e))
 
     # 构建并编译图
-    graph = build_modu_graph(
+    compiled = build_modu_graph(
         tools=tools,
         llm=llm,
         checkpointer=checkpointer,
@@ -260,9 +265,9 @@ def create_agent(
         orchestrator=orchestrator,
     )
 
-    # P0-1: 将 orchestrator 挂载到图上，供 runner 读取以共享 evolution_collector
-    if orchestrator:
-        graph.orchestrator = orchestrator  # type: ignore[attr-defined]
+    # P1-12.2.3: 通过 ModuGraph wrapper 显式持有 orchestrator 引用，
+    # 替代在 CompiledGraph 上 monkey-patch `graph.orchestrator` 的做法。
+    graph = ModuGraph(compiled=compiled, orchestrator=orchestrator)
 
     logger.info(
         "ModuAgent LangGraph created: provider=%s tools=%d checkpointer=%s store=%s",

@@ -17,7 +17,10 @@ LangGraph 提供 4 种 stream_mode：
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -32,6 +35,31 @@ from langgraph.state import ModuAgentState, make_initial_state
 from orchestration.communication.protocol import ErrorCode
 
 logger = logging.getLogger(__name__)
+
+
+# P1-12.2.6: CompiledGraph 实例缓存，避免每次 get_runner() 都重建图。
+# 配置变更（通过 hash 检测）时自动失效重建。
+_runner_cache: Optional[Any] = None
+_runner_config_hash: Optional[str] = None
+_runner_cache_lock = threading.Lock()
+
+
+def _hash_config(config: Any) -> str:
+    """P1-12.2.6: 计算运行时配置的哈希，用于判断是否需要重建图。
+
+    Args:
+        config: RuntimeConfig 实例
+
+    Returns:
+        配置内容的 SHA256 十六进制摘要
+    """
+    try:
+        data = config.as_dict()
+    except Exception:
+        data = {}
+    return hashlib.sha256(
+        json.dumps(data, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
 
 
 @contextmanager
@@ -380,11 +408,14 @@ def get_runner(engine: Optional[str] = None) -> Any:
     P0-2: LangGraph 成为唯一引擎，移除 legacy Coordinator 分支。
     engine 参数保留用于向后兼容，但仅支持 "langgraph"（其他值将记录警告）。
 
+    P1-12.2.6: 缓存编译图实例，配合配置 hash 检测；配置变更时自动重建。
+    避免每次请求都重新构建图（含 LLM/工具/checkpointer/store 初始化）的开销。
+
     Args:
         engine: 引擎类型（保留向后兼容，默认从配置读取）
 
     Returns:
-        CompiledGraph 实例（通过 create_agent() 创建）
+        ModuGraph 包装器（透明委托 CompiledGraph 的所有方法）
     """
     config = get_config()
     engine = engine or config.get("orchestration.engine", "langgraph")
@@ -394,8 +425,37 @@ def get_runner(engine: Optional[str] = None) -> Any:
             "Engine '%s' is no longer supported, falling back to langgraph", engine
         )
 
-    from langgraph.factory import create_agent
-    return create_agent()
+    global _runner_cache, _runner_config_hash
+
+    current_hash = _hash_config(config)
+    # 双重检查：锁外快速路径（命中且 hash 一致），锁内兜底防止并发重建
+    if _runner_cache is not None and current_hash == _runner_config_hash:
+        return _runner_cache
+
+    with _runner_cache_lock:
+        # 持锁后再次检查，避免多个线程同时进入并重复构建
+        if _runner_cache is not None and current_hash == _runner_config_hash:
+            return _runner_cache
+
+        from langgraph.factory import create_agent
+        logger.info(
+            "Rebuilding LangGraph runner (config_hash changed: %s -> %s)",
+            _runner_config_hash, current_hash,
+        )
+        _runner_cache = create_agent()
+        _runner_config_hash = current_hash
+        return _runner_cache
+
+
+def reset_runner_cache() -> None:
+    """重置 runner 缓存（测试隔离用）。
+
+    P1-12.2.6: 测试在修改配置后应调用此函数，确保下次 get_runner() 重建图。
+    """
+    global _runner_cache, _runner_config_hash
+    with _runner_cache_lock:
+        _runner_cache = None
+        _runner_config_hash = None
 
 
 async def process_request_compat(

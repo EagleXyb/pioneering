@@ -33,22 +33,31 @@ class ChromaLongTermMemory(BaseMemory):
         self,
         collection_prefix: str = "modu_memory",
         top_k: int = 5,
+        persist_path: Optional[str] = None,
     ) -> None:
         self._collection_prefix = collection_prefix
         self._top_k = top_k
+        self._persist_path = persist_path
         self._client: Optional[Any] = None
         self._use_sentence_transformer: Optional[bool] = None
+        self._st_fn: Optional[Any] = None
 
     def _get_client(self) -> Any:
         if self._client is None:
             import chromadb
 
-            self._client = chromadb.Client()
-            logger.info("ChromaDB in-memory client initialized")
+            # P2-12.3.2: 持久化模式优先，无 path 时退化为内存模式
+            if self._persist_path:
+                self._client = chromadb.PersistentClient(path=self._persist_path)
+                logger.info("ChromaDB PersistentClient initialized: %s", self._persist_path)
+            else:
+                self._client = chromadb.Client()
+                logger.info("ChromaDB in-memory client initialized")
         return self._client
 
     def _embed_texts(self, texts: List[str]) -> List[List[float]]:
         if self._use_sentence_transformer is None:
+            # P2-12.3.3: 三级降级——SentenceTransformer → ONNX → hash embedding
             try:
                 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
@@ -57,11 +66,27 @@ class ChromaLongTermMemory(BaseMemory):
                 self._use_sentence_transformer = True
                 self._st_fn = fn
                 logger.info("Using SentenceTransformer embedding")
-            except Exception as e:
-                logger.warning("SentenceTransformer unavailable (%s), using hash embedding", e)
-                self._use_sentence_transformer = False
+            except Exception as st_err:
+                # ONNX Runtime 版 all-MiniLM-L6-v2 作为中间降级（chromadb 内置）
+                try:
+                    from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
-        if self._use_sentence_transformer:
+                    onnx_fn = ONNXMiniLM_L6_V2()
+                    onnx_fn([__name__])
+                    self._use_sentence_transformer = True
+                    self._st_fn = onnx_fn
+                    logger.info(
+                        "Using ONNXMiniLM_L6_V2 embedding (fallback, SentenceTransformer unavailable: %s)",
+                        st_err,
+                    )
+                except Exception as onnx_err:
+                    logger.warning(
+                        "SentenceTransformer and ONNX unavailable (onnx=%s), using hash embedding",
+                        onnx_err,
+                    )
+                    self._use_sentence_transformer = False
+
+        if self._use_sentence_transformer and self._st_fn is not None:
             return self._st_fn(texts)
 
         return [_simple_hash_embedding(t) for t in texts]

@@ -20,7 +20,9 @@ def _safe_import(name: str) -> None:
         __import__(name)
     except ImportError:
         _mock = _types_mod.ModuleType(name)
+        # P2-12.3.2: 同时支持 Client（内存）与 PersistentClient（持久化）
         _mock.Client = lambda *a, **kw: _MockChromaClient()  # noqa
+        _mock.PersistentClient = lambda *a, **kw: _MockChromaClient()  # noqa
         sys.modules[name] = _mock
 
 
@@ -75,3 +77,10 @@ def _cleanup_globals():
 
     reset_config()
     reset_registry()
+
+    # P1-12.2.6: 清理 runner 图缓存，避免配置变更后测试间复用旧图
+    try:
+        from langgraph.runner import reset_runner_cache
+        reset_runner_cache()
+    except Exception:
+        pass

@@ -44,6 +44,42 @@ from langgraph.state import ModuAgentState
 logger = logging.getLogger(__name__)
 
 
+class ModuGraph:
+    """P1-12.2.3: CompiledGraph 包装类，显式持有 orchestrator 引用。
+
+    替代在 CompiledGraph 实例上 monkey-patch `graph.orchestrator` 的做法：
+    第三方对象（CompiledGraph）不应被附加非标准属性，否则会引入隐式契约、
+    难以追踪的副作用与类型检查盲区。
+
+    本包装器通过 `__getattr__` 将所有未在自身定义的属性访问透明委托给底层
+    编译图（astream / ainvoke / checkpointer / recursion_limit 等），
+    同时以普通实例属性形式持有 orchestrator，供 runner 读取以共享
+    evolution_collector。
+
+    用法与 CompiledGraph 一致：
+        graph = create_agent()        # 返回 ModuGraph
+        async for ev in graph.astream(state, config=...): ...
+        orch = graph.orchestrator     # 显式属性，非 monkey-patch
+    """
+
+    def __init__(self, compiled: CompiledGraph, orchestrator: Any = None) -> None:
+        # 必须先设置 _compiled，使后续 __getattr__ 委托可生效
+        self._compiled: CompiledGraph = compiled
+        # orchestrator 作为显式实例属性（不再 setattr 到 CompiledGraph 上）
+        self.orchestrator: Any = orchestrator
+
+    @property
+    def compiled(self) -> CompiledGraph:
+        """返回底层编译图实例。"""
+        return self._compiled
+
+    def __getattr__(self, name: str) -> Any:
+        # 仅当属性未在 ModuGraph 自身找到时才委托给底层编译图；
+        # 使用 object.__getattribute__ 取 _compiled，避免对自身属性的递归 __getattr__。
+        compiled = object.__getattribute__(self, "_compiled")
+        return getattr(compiled, name)
+
+
 def build_modu_graph(
     tools: List[LCTool],
     llm: Any,

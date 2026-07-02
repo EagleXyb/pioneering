@@ -1,28 +1,21 @@
-"""集成测试：跨模块协作场景。"""
+"""集成测试：跨模块协作场景。
+
+P1-12.2.1: legacy `adapters/` 层已废弃删除。本文件原通过 LLMAdapter/ToolAdapter
+进行的集成测试，改为直接通过 ComponentRegistry 调用组件，验证 registry + 组件协作。
+"""
 
 from __future__ import annotations
 
 import asyncio
 import time
 
-import pytest
-
-from adapters.llm_adapter import LLMAdapter
-from adapters.tool_adapter import ToolAdapter
-from adapters.storage_adapter import StorageAdapter
 from components.action.tools.calculator import CalculatorTool
-from components.action.tools.search import SearchTool
-from components.action.executors.synchronous import SyncActionExecutor
 from components.memory.cache.short_term_memory import InMemoryShortTermMemory
 from components.perception.text.rule_based import TextPreprocessor
-from components.perception.security.guard import SecurityGuard
 from config.runtime_config import RuntimeConfig
 from core.registry import ComponentRegistry, get_registry, reset_registry
 from feedback.loop_controller import FeedbackLoop
-from feedback.quality_monitor import QualityMonitor
-from feedback.metrics.accuracy import AccuracyMetrics
 from core.interfaces.reasoning import BaseReasoningEngine
-from core.interfaces.memory import BaseMemory
 
 
 # ======================================================================
@@ -76,14 +69,18 @@ class TestFullPipelineIntegration:
         assert "2+2" in history["history"][0]["prompt"]
 
     def test_reasoning_to_action_flow(self):
-        """测试：推理 → 工具选择 → 工具执行 流程。"""
+        """测试：推理 → 工具选择 → 工具执行 流程。
+
+        P1-12.2.1: 直接通过 registry 调用组件，不再经由 legacy 适配器。
+        """
         # 1. 注册推理引擎和工具
         self.registry.register_reasoning_engine("mock", MockReasoningEngine())
         self.registry.register_tool(CalculatorTool())
 
-        # LLM 推理
-        adapter_llm = LLMAdapter(engine_name="mock")
-        content, usage, tool_calls = adapter_llm.generate(
+        # LLM 推理（直接调用 reasoning engine）
+        engine = self.registry.get_reasoning_engine("mock")
+        assert engine is not None
+        content, usage, tool_calls = engine.reason(
             "Calculate 2+2",
             {"trace_id": "trace_001", "session_id": "session_001"},
         )
@@ -92,12 +89,12 @@ class TestFullPipelineIntegration:
         assert len(tool_calls) > 0
         assert tool_calls[0]["tool"] == "calculator"
 
-        # 2. 执行工具
-        tool_adapter = ToolAdapter()
-        result = tool_adapter.invoke_tool(
-            "calculator",
-            tool_calls[0]["parameters"],
-            {"trace_id": "trace_001", "session_id": "session_001"},
+        # 2. 执行工具（直接调用 tool.invoke）
+        tool = self.registry.get_tool("calculator")
+        assert tool is not None
+        result = tool.invoke(
+            params=tool_calls[0]["parameters"],
+            context={"trace_id": "trace_001", "session_id": "session_001"},
         )
         assert result["status"] == "success"
         assert result["data"]["result"] == 4.0
@@ -156,17 +153,23 @@ class TestFullPipelineIntegration:
 class TestErrorRecoveryIntegration:
     """异常容错恢复场景测试。"""
 
-    def test_tool_failure_with_memory_record(self):
-        """工具调用失败 → 错误信息被记录到记忆。"""
+    def setup_method(self):
+        reset_registry()
         self.registry = get_registry()
+
+    def test_tool_failure_with_memory_record(self):
+        """工具调用失败 → 错误信息被记录到记忆。
+
+        P1-12.2.1: 直接通过 registry 获取 tool 并调用 invoke，不再经由 ToolAdapter。
+        """
         self.registry.register_tool(CalculatorTool())
 
-        # 模拟非法表达式调用
-        tool_adapter = ToolAdapter()
-        result = tool_adapter.invoke_tool(
-            "calculator",
-            {"expression": "invalid##"},
-            {"trace_id": "t", "session_id": "s"},
+        # 直接调用 tool.invoke（非法表达式触发错误）
+        tool = self.registry.get_tool("calculator")
+        assert tool is not None
+        result = tool.invoke(
+            params={"expression": "invalid##"},
+            context={"trace_id": "t", "session_id": "s"},
         )
         assert result["status"] == "error"
 
@@ -182,11 +185,18 @@ class TestErrorRecoveryIntegration:
         assert len(history["history"]) == 1
         assert history["history"][0]["error_tool"] == "calculator"
 
-    def test_adapter_graceful_degradation(self):
-        """适配器降级：无注册引擎时应优雅报错而非崩溃。"""
-        adapter_llm = LLMAdapter(engine_name="nonexistent")
-        with pytest.raises(RuntimeError, match="No reasoning engine"):
-            adapter_llm.generate("test", {"trace_id": "t", "session_id": "s"})
+    def test_registry_graceful_degradation(self):
+        """Registry 降级：查询不存在的引擎时返回 None 而非崩溃。
+
+        P1-12.2.1: 替代原 LLMAdapter 降级测试，验证 registry 行为。
+        """
+        # 未注册任何引擎时，get_reasoning_engine 应返回 None（不抛异常）
+        assert self.registry.get_reasoning_engine("nonexistent") is None
+
+        # 注册一个引擎后查询另一个不存在的名字仍返回 None
+        self.registry.register_reasoning_engine("mock", MockReasoningEngine())
+        assert self.registry.get_reasoning_engine("still_nonexistent") is None
+        assert self.registry.get_reasoning_engine("mock") is not None
 
     def test_multiple_memory_instances_coexist(self):
         """多个记忆实例独立工作，互不干扰。"""
