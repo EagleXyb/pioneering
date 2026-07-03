@@ -39,6 +39,15 @@ _DEFAULT_CONFIG = {
     "orchestration": {
         # P0-2: LangGraph 成为唯一引擎（legacy Coordinator 已删除）
         "engine": "langgraph",
+        # P3-12.3.1 多 Agent 协作（默认关闭，避免影响现有单 Agent 流程）
+        "multi_agent": {
+            "enabled": False,                              # 是否启用 Supervisor + Subgraph 多 Agent 协作
+            "max_subagents": 5,                            # 单次任务拆分的最大子 Agent 数
+            "consensus_strategy": "majority_vote",         # majority_vote / weighted / llm_judge
+            "consensus_quorum": 2,                         # 共识通过所需最少有效结果数
+            "subgraph_timeout_ms": 30000,                  # 子 Agent 执行超时（毫秒）
+            "consensus_failure_as_evolution_signal": True, # 共识失败是否作为进化信号
+        },
     },
     "tools": {
         "default_timeout_ms": 1800000,
@@ -47,6 +56,17 @@ _DEFAULT_CONFIG = {
             "max_attempts": 3,      # 最大尝试次数（含首次）
             "base_delay": 0.5,      # 指数退避基础延迟（秒）
             "max_delay": 5.0,       # 单次延迟上限（秒）
+        },
+        # P3-12.3.2 Human-in-the-loop
+        "human_in_loop": {
+            "enabled": False,                    # 默认关闭，避免影响现有流程
+            "approval_timeout_seconds": 300,     # 审批超时（秒）
+            "auto_reject_on_timeout": True,       # 超时自动拒绝
+            "sensitive_tools": [                 # 强制审批工具名列表
+                "code_executor",
+                "sql_query",
+                "file_ops_write",
+            ],
         },
     },
     "streaming": {
@@ -109,6 +129,27 @@ _DEFAULT_CONFIG = {
         "quality_monitor_llm_provider": None,  # None=复用 llm.default_provider
         "quality_monitor_llm_temperature": 0.0,# LLM Judge 用低温度确保稳定
         "quality_monitor_llm_max_tokens": 256, # Judge 输出 JSON 所需 token 数
+    },
+    # P3-12.3.5 可观测性体系
+    "observability": {
+        # OpenTelemetry tracing
+        "tracing": {
+            "enabled": False,             # 默认关闭，避免 venv 未配置 OTLP 时报错
+            "otlp_endpoint": "",          # 空=不导出（如 "http://localhost:4317"）
+            "service_name": "modu-agent",
+            "sampling_rate": 0.1,          # 采样率 0.0-1.0
+        },
+        # Prometheus metrics
+        "metrics": {
+            "enabled": False,
+            "prometheus_port": 9090,
+            "path": "/metrics",
+        },
+        # 结构化日志
+        "logging": {
+            "structured": False,           # True=JSON 格式，False=printf 风格
+            "level": "INFO",
+        },
     },
 }
 

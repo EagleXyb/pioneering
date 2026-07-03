@@ -29,17 +29,23 @@ from langgraph.prebuilt import ToolNode
 
 from langgraph.nodes import (
     make_agent_node,
+    make_consensus_node,
     make_feedback_node,
+    make_human_review_node,
     make_memory_query_node,
     make_memory_update_node,
+    make_subagent_node,
     make_tool_result_processor,
     memory_update_node,
     perception_node,
     response_node,
     route_after_agent,
+    route_after_human_review,
+    route_after_memory_query,
     route_after_perception,
 )
 from langgraph.state import ModuAgentState
+from langgraph.subgraph.supervisor import make_supervisor_node, route_from_supervisor
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +94,9 @@ def build_modu_graph(
     system_prompt: Optional[str] = None,
     recursion_limit: Optional[int] = None,
     orchestrator: Any = None,
+    hitl_enabled: Optional[bool] = None,
+    multi_agent_enabled: Optional[bool] = None,
+    judge_llm: Any = None,
 ) -> CompiledGraph:
     """构建 ModuAgent LangGraph。
 
@@ -99,22 +108,49 @@ def build_modu_graph(
         system_prompt: 系统提示词（可选）
         recursion_limit: 递归限制（对应 max_iterations * 2 + 4）
         orchestrator: EvolutionOrchestrator 实例（None=跳过反馈评估）
+        hitl_enabled: P3-12.3.2 是否启用人工审批节点；None 时从配置读取
+        multi_agent_enabled: P3-12.3.1 是否启用多 Agent 协作；None 时从配置读取
+        judge_llm: P3-12.3.1 LLM 裁决器（仅 llm_judge 共识策略需要）
 
     Returns:
         编译后的 StateGraph
 
-    图结构：
+    图结构（multi_agent 关闭，HITL 关闭）：
         START → perception → route_after_perception
                                   ├─ memory_query → agent → route_after_agent
                                   │                                    ├─ tools → tool_processor → agent
                                   │                                    └─ response → feedback → memory_update → END
                                   └─ response → feedback → memory_update → END (熔断)
 
-    P0-3: memory_update 节点接入图结构，替代 fire-and-forget 异步任务。
-    P0-1: feedback 节点接入图结构，接通 feedback/evolution 闭环。
+    图结构（multi_agent 开启，P3-12.3.1）：
+        START → perception → route_after_perception
+                                  ├─ memory_query → route_after_memory_query
+                                  │                    ├─ supervisor → route_from_supervisor (Send × N)
+                                  │                    │                ├─ subagent_run → consensus → response
+                                  │                    └─ agent (multi_agent 关闭时)
+                                  └─ response (熔断)
+
+    P3-12.3.1: supervisor + subagent_run + consensus 节点接入图结构。
+    P3-12.3.2: human_review 节点接入图结构，敏感工具执行前 interrupt 等待人工审批。
     """
     # 绑定工具到 LLM（原生 function calling）
     bound_llm = llm.bind_tools(tools) if tools else llm
+
+    # 读取 HITL 配置（P3-12.3.2）
+    if hitl_enabled is None:
+        from config.runtime_config import get_config as _get_cfg
+        try:
+            hitl_enabled = bool(_get_cfg().get("tools.human_in_loop.enabled", False))
+        except Exception:
+            hitl_enabled = False
+
+    # 读取多 Agent 配置（P3-12.3.1）
+    if multi_agent_enabled is None:
+        from config.runtime_config import get_config as _get_cfg
+        try:
+            multi_agent_enabled = bool(_get_cfg().get("orchestration.multi_agent.enabled", False))
+        except Exception:
+            multi_agent_enabled = False
 
     # 创建图
     graph = StateGraph(ModuAgentState)
@@ -127,6 +163,16 @@ def build_modu_graph(
     tool_result_processor = make_tool_result_processor()
     # P0-1: 创建反馈评估节点（有 orchestrator 时评估，否则跳过）
     feedback_node = make_feedback_node(orchestrator) if orchestrator else None
+    # P3-12.3.2: 人工审批节点（HITL 开启时插入 agent → tools 之间）
+    human_review_node = make_human_review_node() if hitl_enabled else None
+    # P3-12.3.1: 多 Agent 协作节点（multi_agent 开启时替代单 agent 路径）
+    supervisor_node = None
+    subagent_node = None
+    consensus_node = None
+    if multi_agent_enabled:
+        supervisor_node = make_supervisor_node()
+        subagent_node = make_subagent_node(bound_llm, system_prompt=system_prompt)
+        consensus_node = make_consensus_node(judge_llm=judge_llm)
 
     # 添加节点
     graph.add_node("perception", perception_node)
@@ -147,6 +193,14 @@ def build_modu_graph(
         graph.add_node("feedback", feedback_node)
     # P0-3: 记忆更新节点接入图
     graph.add_node("memory_update", memory_update)
+    # P3-12.3.2: 人工审批节点接入图
+    if human_review_node:
+        graph.add_node("human_review", human_review_node)
+    # P3-12.3.1: 多 Agent 协作节点接入图
+    if supervisor_node:
+        graph.add_node("supervisor", supervisor_node)
+        graph.add_node("subagent_run", subagent_node)
+        graph.add_node("consensus", consensus_node)
 
     # 添加边
     graph.add_edge(START, "perception")
@@ -161,18 +215,56 @@ def build_modu_graph(
         },
     )
 
-    # 记忆查询后进入 agent
-    graph.add_edge("memory_query", "agent")
+    # 记忆查询后进入 agent 或 supervisor（P3-12.3.1 多 Agent 路由）
+    if supervisor_node:
+        graph.add_conditional_edges(
+            "memory_query",
+            route_after_memory_query,
+            {"agent": "agent", "supervisor": "supervisor"},
+        )
+        # Supervisor 通过 Send API 并行分发到 subagent_run
+        graph.add_conditional_edges(
+            "supervisor",
+            route_from_supervisor,
+            ["subagent_run"],
+        )
+        # subagent_run 完成后进入 consensus
+        graph.add_edge("subagent_run", "consensus")
+        # consensus → response（进入响应阶段）
+        graph.add_edge("consensus", "response")
+    else:
+        graph.add_edge("memory_query", "agent")
 
-    # Agent 后条件路由：有 tool_calls → tools，无 tool_calls → response
-    graph.add_conditional_edges(
-        "agent",
-        route_after_agent,
-        {
-            "tools": "tools",
-            "__end__": "response",
-        },
-    )
+    # Agent 后条件路由：
+    # - HITL 关闭: 有 tool_calls → tools，无 tool_calls → response（原行为）
+    # - HITL 开启: 有 tool_calls → human_review，无 tool_calls → response（P3-12.3.2）
+    if human_review_node:
+        graph.add_conditional_edges(
+            "agent",
+            route_after_agent,
+            {
+                "tools": "human_review",  # P3-12.3.2: 改路由到 human_review
+                "__end__": "response",
+            },
+        )
+        # human_review 后条件路由：通过 → tools，拒绝/错误 → response
+        graph.add_conditional_edges(
+            "human_review",
+            route_after_human_review,
+            {
+                "tools": "tools",
+                "response": "response",
+            },
+        )
+    else:
+        graph.add_conditional_edges(
+            "agent",
+            route_after_agent,
+            {
+                "tools": "tools",
+                "__end__": "response",
+            },
+        )
 
     # 工具执行后处理结果，再回到 agent（ReAct 循环）
     graph.add_edge("tools", "tool_processor")
@@ -201,17 +293,26 @@ def build_modu_graph(
         compiled.recursion_limit = recursion_limit
     else:
         # 默认：max_reasoning_iterations * 2 + 7（每个 ReAct 循环 2 个节点 + 固定开销含 feedback + memory_update）
+        # P3-12.3.2: HITL 开启时额外加 2（human_review + 路由开销）
+        # P3-12.3.1: multi_agent 开启时额外加 4（supervisor + subagent_run + consensus + 路由开销）
         from config.runtime_config import get_config
         config = get_config()
         max_iterations = config.get("llm.max_reasoning_iterations", 3)
-        compiled.recursion_limit = max_iterations * 2 + 7
+        base_limit = max_iterations * 2 + 7
+        if human_review_node:
+            base_limit += 2  # 为 human_review 节点预留递归预算
+        if supervisor_node:
+            base_limit += 4  # 为 supervisor + subagent + consensus 预留递归预算
+        compiled.recursion_limit = base_limit
 
     logger.info(
-        "ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d",
+        "ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d hitl=%s multi_agent=%s",
         len(tools),
         type(checkpointer).__name__ if checkpointer else "None",
         type(store).__name__ if store else "None",
         compiled.recursion_limit,
+        "enabled" if human_review_node else "disabled",
+        "enabled" if supervisor_node else "disabled",
     )
 
     return compiled

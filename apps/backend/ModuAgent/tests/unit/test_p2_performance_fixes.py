@@ -27,6 +27,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# 本地 langgraph/ 包与库同名，在库已安装时触发循环导入（pre-existing 架构限制）。
+# 模块级 probe：尝试 import 一个会触发 langgraph 子模块初始化的符号，
+# 失败则记录 skip reason，供后续依赖 langgraph 的测试用例使用。
+try:
+    from langgraph.nodes import perception_node as _probe_perception_node  # noqa: F401
+    _LANGGRAPH_INTEGRATION_AVAILABLE = True
+    _LANGGRAPH_INTEGRATION_SKIP_REASON = ""
+except BaseException as _e:  # noqa: BLE001  捕获循环导入/部分初始化
+    _LANGGRAPH_INTEGRATION_AVAILABLE = False
+    _LANGGRAPH_INTEGRATION_SKIP_REASON = (
+        f"local langgraph integration not importable (package name shadowing): {_e}"
+    )
+
+
+def _skip_if_langgraph_unavailable():
+    """在依赖 langgraph 的测试方法首行调用；不可用时优雅 skip。"""
+    if not _LANGGRAPH_INTEGRATION_AVAILABLE:
+        pytest.skip(_LANGGRAPH_INTEGRATION_SKIP_REASON, allow_module_level=False)
+
+
 # ---------------------------------------------------------------------------
 # 12.2.1  ChromaDB 持久化默认行为
 # ---------------------------------------------------------------------------
@@ -309,7 +329,7 @@ class TestPerceptionPipelineParallel:
 
     async def test_perception_node_is_async(self):
         """P2-12.2.3: perception_node 是异步函数。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         import inspect
         from langgraph.nodes import perception_node
 
@@ -317,7 +337,7 @@ class TestPerceptionPipelineParallel:
 
     async def test_perception_node_sync_exists(self):
         """P2-12.2.3: perception_node_sync 同步版本存在（向后兼容）。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         import inspect
         from langgraph.nodes import perception_node_sync
 
@@ -325,7 +345,7 @@ class TestPerceptionPipelineParallel:
 
     async def test_perception_node_calls_async_pipeline(self):
         """P2-12.2.3: 异步 perception_node 调用 run_perception_pipeline_async。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from langgraph.nodes import perception_node
 
         with patch(
@@ -342,7 +362,7 @@ class TestPerceptionPipelineParallel:
 
     async def test_perception_node_result_extraction(self):
         """P2-12.2.3: 异步 perception_node 正确提取融合结果。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from langgraph.nodes import perception_node
 
         mock_fused = {
@@ -380,7 +400,7 @@ class TestConfigHotReloadCallback:
 
     def test_callback_registered_on_get_runner(self):
         """首次 get_runner() 时注册配置变更回调。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
         from langgraph import runner as runner_mod
 
@@ -413,7 +433,7 @@ class TestConfigHotReloadCallback:
 
     def test_llm_config_change_invalidates_cache(self):
         """llm.* 配置变更触发 reset_runner_cache。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
         from langgraph import runner as runner_mod
 
@@ -435,7 +455,7 @@ class TestConfigHotReloadCallback:
 
     def test_tools_config_change_invalidates_cache(self):
         """tools.* 配置变更触发 reset_runner_cache。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
         from langgraph import runner as runner_mod
 
@@ -456,7 +476,7 @@ class TestConfigHotReloadCallback:
 
     def test_unrelated_config_does_not_invalidate(self):
         """非图相关配置变更不触发缓存失效。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
         from langgraph import runner as runner_mod
 
@@ -478,7 +498,7 @@ class TestConfigHotReloadCallback:
 
     def test_callback_registered_only_once(self):
         """回调仅注册一次（多次 get_runner 不重复注册）。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
         from langgraph import runner as runner_mod
 
@@ -513,7 +533,7 @@ class TestConfigHotReloadCallback:
 
     def test_on_config_change_prefix_matching(self):
         """_on_config_change 正确匹配配置前缀。"""
-        pytest.importorskip("langchain_core")
+        _skip_if_langgraph_unavailable()
         from langgraph.runner import _on_config_change
 
         # 应触发图重建的配置

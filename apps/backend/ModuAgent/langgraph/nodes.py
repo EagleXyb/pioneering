@@ -9,10 +9,12 @@
     - agent_node: 对应 _llm_adapter.generate + bind_tools（原生 function calling）
     - tools_node: 对应 _tool_adapter.invoke_tool（由 LangGraph ToolNode 接管）
     - memory_update_node: 记忆更新节点（新增）
+    - human_review_node (P3-12.3.2): 工具调用审批节点，敏感工具执行前 interrupt
 
 路由函数：
     - route_after_perception: 敏感度熔断 + 注入检测熔断
     - route_after_agent: ReAct 循环退出判断（检查 tool_calls）
+    - route_after_human_review (P3-12.3.2): 审批后路由（通过→tools，拒绝→response）
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from components.perception import (
     build_perception_event_metadata,
@@ -738,3 +740,385 @@ async def publish_tool_events(
             },
         )
         await event_bus.publish(execute_event)
+
+
+# ============================================================
+# P3-12.3.2 Human-in-the-loop 节点
+# ============================================================
+
+def _tool_requires_approval(
+    tool_name: str,
+    registry: Any,
+    sensitive_tools: List[str],
+) -> bool:
+    """P3-12.3.2: 检测工具是否需要人工审批。
+
+    判定逻辑（任一命中即视为需要审批）：
+        1. 工具名在 sensitive_tools 配置列表中
+        2. 工具实例的 requires_approval() 返回 True
+
+    Args:
+        tool_name: 工具名
+        registry: ComponentRegistry 实例（可能为 None）
+        sensitive_tools: 配置中的敏感工具名列表
+
+    Returns:
+        bool: True 表示需要审批
+    """
+    if tool_name in sensitive_tools:
+        return True
+    if registry is not None:
+        modu_tool = registry.get_tool(tool_name)
+        if modu_tool is not None:
+            try:
+                return bool(modu_tool.requires_approval())
+            except Exception:
+                # 工具方法异常时不阻断流程，按不需要审批处理
+                return False
+    return False
+
+
+def make_human_review_node(
+    registry: Any = None,
+    config: Any = None,
+) -> Callable[[ModuAgentState], dict]:
+    """P3-12.3.2: 创建人工审批节点工厂。
+
+    节点行为：
+        1. 检查最近一条 AIMessage 的 tool_calls
+        2. 若任一工具调用需要审批，调用 ``interrupt(...)`` 暂停图执行
+        3. 调用者通过 ``Command(resume={"approved": bool, "feedback": str})`` 恢复
+        4. 审批通过：返回 ``{"approval_status": "approved"}``，由后续节点（ToolNode）执行工具
+        5. 审批拒绝：构造每个被拒工具的降级 ToolMessage，路由到 response 节点
+
+    当 ``tools.human_in_loop.enabled=False`` 时，节点为 no-op，透传到 ToolNode。
+
+    Args:
+        registry: ComponentRegistry 实例（None=使用全局单例）
+        config: RuntimeConfig 实例（None=使用全局单例）
+
+    Returns:
+        human_review 节点函数
+    """
+
+    async def _human_review_node(state: ModuAgentState) -> dict:
+        """P3-12.3.2: 人工审批节点。"""
+        # 读取 HITL 配置
+        if config is not None:
+            hitl_cfg = config.get("tools.human_in_loop", {})
+        else:
+            hitl_cfg = get_config().get("tools.human_in_loop", {})
+
+        if not hitl_cfg.get("enabled", False):
+            # HITL 关闭，直接透传
+            return {"approval_status": "skipped"}
+
+        sensitive_tools = hitl_cfg.get("sensitive_tools", [])
+
+        # 获取最近一条 AIMessage
+        messages = state.get("messages", [])
+        if not messages:
+            return {"approval_status": "no_tool_calls"}
+
+        last_msg = messages[-1]
+        tool_calls = getattr(last_msg, "tool_calls", None) or []
+        if not tool_calls:
+            return {"approval_status": "no_tool_calls"}
+
+        # 识别需要审批的工具调用
+        reg = registry if registry is not None else get_registry()
+        pending = [
+            tc for tc in tool_calls
+            if _tool_requires_approval(tc.get("name", ""), reg, sensitive_tools)
+        ]
+
+        if not pending:
+            # 无需审批，透传
+            return {
+                "approval_status": "not_required",
+                "tool_requires_approval": False,
+                "pending_tool_calls": [],
+            }
+
+        # 触发 interrupt 暂停图执行
+        # interrupt(value) 返回由 Command(resume=...) 提供的恢复值
+        try:
+            from langgraph.types import interrupt
+        except ImportError as e:
+            logger.error("langgraph.types.interrupt unavailable: %s", str(e))
+            return {
+                "approval_status": "error",
+                "error_code": "HITL_INTERRUPT_UNAVAILABLE",
+                "error_message": str(e),
+            }
+
+        resume_payload = interrupt({
+            "tool_calls": pending,
+            "trace_id": state.get("trace_id", ""),
+            "session_id": state.get("session_id", ""),
+            "user_id": state.get("user_id", ""),
+            "message": "Tool calls require human approval before execution",
+        })
+
+        # 解析 resume payload
+        if isinstance(resume_payload, dict):
+            approved = bool(resume_payload.get("approved", False))
+            feedback = str(resume_payload.get("feedback", "") or "")
+        else:
+            approved = False
+            feedback = ""
+
+        if approved:
+            return {
+                "approval_status": "approved",
+                "approval_feedback": feedback,
+                "tool_requires_approval": False,
+                "pending_tool_calls": [],
+            }
+
+        # 拒绝：为每个待审批工具调用生成降级 ToolMessage
+        rejection_messages: List[ToolMessage] = []
+        for tc in pending:
+            tool_name = tc.get("name", "")
+            args = tc.get("args", {}) or {}
+            call_id = tc.get("id", "")
+
+            modu_tool = reg.get_tool(tool_name) if reg else None
+            if modu_tool is not None:
+                try:
+                    rejection_result = modu_tool.on_approval_rejected(args)
+                except Exception as e:
+                    rejection_result = {
+                        "status": "error",
+                        "error_code": "TOOL_APPROVAL_REJECTED",
+                        "data": {"message": f"Tool {tool_name} rejected: {e}"},
+                    }
+            else:
+                rejection_result = {
+                    "status": "error",
+                    "error_code": "TOOL_APPROVAL_REJECTED",
+                    "data": {"message": f"Tool {tool_name} rejected by reviewer"},
+                }
+
+            rejection_messages.append(ToolMessage(
+                content=json.dumps(rejection_result, ensure_ascii=False, default=str),
+                tool_call_id=call_id,
+                name=tool_name,
+            ))
+
+        return {
+            "approval_status": "rejected",
+            "approval_feedback": feedback,
+            "tool_requires_approval": False,
+            "pending_tool_calls": [],
+            "messages": rejection_messages,
+        }
+
+    return _human_review_node
+
+
+def route_after_human_review(state: ModuAgentState) -> str:
+    """P3-12.3.2: 审批后路由。
+
+    - "rejected" / "error" → "response"（跳过工具执行，进入响应阶段）
+    - 其他（approved / not_required / no_tool_calls / skipped）→ "tools"（执行 ToolNode）
+
+    Returns:
+        "tools" 或 "response"
+    """
+    approval_status = state.get("approval_status", "")
+    if approval_status in ("rejected", "error"):
+        return "response"
+    return "tools"
+
+
+# ============================================================
+# P3-12.3.1 多 Agent 协作节点
+# ============================================================
+
+def route_after_memory_query(state: ModuAgentState) -> str:
+    """P3-12.3.1: memory_query 后路由——多 Agent 或单 Agent。
+
+    - orchestration.multi_agent.enabled=True → "supervisor"
+    - 否则 → "agent"（原行为）
+
+    Returns:
+        "supervisor" 或 "agent"
+    """
+    config = get_config()
+    if config.get("orchestration.multi_agent.enabled", False):
+        return "supervisor"
+    return "agent"
+
+
+def make_subagent_node(
+    bound_llm: Any,
+    system_prompt: Optional[str] = None,
+) -> Callable[[ModuAgentState], dict]:
+    """P3-12.3.1: 创建子 Agent 节点（处理单个子任务）。
+
+    通过 Send API 并行调用，每次处理一个 ``current_subtask``。
+    结果写入 ``subtask_results``（经 merge_subtask_results reducer 合并）。
+
+    Args:
+        bound_llm: 已绑定工具的 ChatModel
+        system_prompt: 系统提示词（None=按 task_type 选择默认）
+
+    Returns:
+        子 Agent 节点函数
+    """
+    from langgraph.subgraph.builder import _get_system_prompt
+
+    def _subagent_node(state: ModuAgentState) -> dict:
+        """子 Agent 节点：处理 current_subtask 并返回结果。"""
+        task = state.get("current_subtask", {})
+        if not task:
+            return {"subtask_results": {}}
+
+        task_id = task.get("task_id", "")
+        task_type = task.get("task_type", "default")
+        task_input = task.get("task_input", {})
+        prompt_text = task_input.get("prompt", "") or str(task_input)
+
+        # 选择系统提示词
+        effective_prompt = system_prompt or _get_system_prompt(task_type)
+
+        messages: List[BaseMessage] = [
+            SystemMessage(content=effective_prompt),
+            HumanMessage(content=prompt_text),
+        ]
+
+        try:
+            response = bound_llm.invoke(messages)
+            content = getattr(response, "content", str(response))
+            result = {
+                "task_id": task_id,
+                "task_type": task_type,
+                "status": "success",
+                "output": content,
+            }
+        except Exception as e:
+            logger.error("Sub-agent LLM invoke failed (task_id=%s): %s", task_id, str(e))
+            result = {
+                "task_id": task_id,
+                "task_type": task_type,
+                "status": "error",
+                "error": str(e),
+                "output": "",
+            }
+
+        # 仅返回 subtask_results（不返回 current_subtask，避免并行写冲突）
+        return {"subtask_results": {task_id: result}}
+
+    return _subagent_node
+
+
+def make_consensus_node(
+    strategy: Any = None,
+    judge_llm: Any = None,
+    event_bus: Any = None,
+) -> Callable[[ModuAgentState], dict]:
+    """P3-12.3.1: 创建共识聚合节点。
+
+    收集所有子 Agent 结果，通过共识策略聚合，生成最终响应。
+    共识失败时发布 FEEDBACK 事件作为进化信号。
+
+    Args:
+        strategy: ConsensusStrategy 实例（None=从配置读取策略名并创建）
+        judge_llm: LLM 裁决器（仅 llm_judge 策略需要）
+        event_bus: EventBus 实例（None=使用全局单例）
+
+    Returns:
+        共识节点函数
+    """
+
+    async def _consensus_node(state: ModuAgentState) -> dict:
+        """共识节点：聚合子任务结果，生成最终响应。"""
+        from orchestration.patterns.consensus import create_consensus_strategy
+
+        subtask_results = state.get("subtask_results", {})
+        subtasks = state.get("subtasks", [])
+        trace_id = state.get("trace_id", "")
+        session_id = state.get("session_id", "")
+        user_id = state.get("user_id", "")
+
+        config = get_config()
+        multi_agent_cfg = config.get("orchestration.multi_agent", {})
+        quorum = multi_agent_cfg.get("consensus_quorum", 2)
+
+        # 收集有效结果
+        results = list(subtask_results.values())
+        valid_results = [r for r in results if r.get("status") == "success"]
+
+        # quorum 校验
+        if len(valid_results) < quorum:
+            logger.warning(
+                "Consensus quorum not met: %d/%d (trace_id=%s)",
+                len(valid_results), quorum, trace_id,
+            )
+            # 发布共识失败事件（进化信号）
+            if multi_agent_cfg.get("consensus_failure_as_evolution_signal", True):
+                try:
+                    from orchestration.patterns.consensus import ConsensusPattern
+                    pattern = ConsensusPattern(quorum=quorum, event_bus=event_bus)
+                    await pattern._publish_consensus_failure(
+                        {"trace_id": trace_id, "session_id": session_id, "user_id": user_id},
+                        results,
+                        reason=f"Quorum not met: {len(valid_results)}/{quorum}",
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.error("Failed to publish consensus failure: %s", str(e))
+
+            # 降级：取最佳可用结果或空响应
+            fallback_output = ""
+            if valid_results:
+                fallback_output = valid_results[0].get("output", "")
+            elif results:
+                fallback_output = results[0].get("output", "Consensus failed")
+
+            return {
+                "consensus_result": {"status": "failed", "consensus": None},
+                "consensus_failed": True,
+                "response": fallback_output or "Unable to reach consensus among agents.",
+            }
+
+        # 创建/使用策略
+        effective_strategy = strategy
+        if effective_strategy is None:
+            strategy_name = multi_agent_cfg.get("consensus_strategy", "majority_vote")
+            task_desc = state.get("input_data", {}).get("prompt", "")
+            effective_strategy = create_consensus_strategy(
+                strategy_name, judge_llm=judge_llm, task_description=task_desc,
+            )
+
+        # 聚合
+        try:
+            consensus = effective_strategy.aggregate(valid_results, quorum)
+            consensus_content = consensus.get("consensus", {})
+            # 提取响应文本
+            if isinstance(consensus_content, dict):
+                response_text = consensus_content.get("output", str(consensus_content))
+            elif isinstance(consensus_content, str):
+                response_text = consensus_content
+            else:
+                response_text = str(consensus_content)
+
+            return {
+                "consensus_result": {
+                    "status": "success",
+                    "consensus": consensus,
+                    "agreement_count": consensus.get("agreement_count", len(valid_results)),
+                    "strategy": consensus.get("strategy", effective_strategy.__class__.__name__),
+                },
+                "consensus_failed": False,
+                "response": response_text,
+            }
+        except Exception as e:
+            logger.error("Consensus aggregation failed: %s", str(e))
+            return {
+                "consensus_result": {"status": "error", "error": str(e)},
+                "consensus_failed": True,
+                "response": f"Consensus aggregation error: {e}",
+            }
+
+    return _consensus_node

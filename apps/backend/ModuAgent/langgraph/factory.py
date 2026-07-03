@@ -263,6 +263,10 @@ def create_agent(
         store=store,
         system_prompt=effective_system_prompt,
         orchestrator=orchestrator,
+        multi_agent_enabled=runtime_config.get("orchestration.multi_agent.enabled", False),
+        judge_llm=judge_llm if runtime_config.get(
+            "orchestration.multi_agent.consensus_strategy", "majority_vote"
+        ) == "llm_judge" else None,
     )
 
     # P1-12.2.3: 通过 ModuGraph wrapper 显式持有 orchestrator 引用，

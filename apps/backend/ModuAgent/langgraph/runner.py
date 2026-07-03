@@ -75,16 +75,36 @@ def _span(
     trace_id: str = "",
     **attributes: Any,
 ) -> Iterator[None]:
-    """P2-9: 轻量级 span 埋点。
+    """P2-9 + P3-12.3.5: span 埋点，支持 OTel 升级。
 
-    记录 span 的开始/结束/耗时/异常到 logger。
-    为后续接入 OpenTelemetry 提供基础——替换此函数即可升级为 OTel span。
+    P3-12.3.5: 委托给 ``observability.tracing.OtelSpanManager.span()``：
+        - 当 ``observability.tracing.enabled=True`` 时创建 OTel span（支持分布式追踪）
+        - 当 tracing 未启用时退化为日志记录（与 P2-9 行为一致，零侵入）
+
+    向后兼容：签名与 P2-9 完全一致，所有调用方无需修改。
 
     Args:
         name: span 名称（如 "run_sync", "stream_response"）
         trace_id: 链路追踪 ID
         **attributes: span 属性（如 user_id, session_id）
     """
+    # P3-12.3.5: 尝试委托给 OtelSpanManager
+    _manager: Any = None
+    try:
+        from observability.tracing import get_span_manager
+
+        _manager = get_span_manager()
+    except Exception as _import_err:  # noqa: BLE001
+        logger.debug("OTel span manager unavailable, using fallback: %s", _import_err)
+
+    if _manager is not None:
+        # 委托给 OtelSpanManager（tracing enabled 时创建 OTel span，
+        # 否则内部退化为日志记录——与原 P2-9 行为一致）
+        with _manager.span(name, trace_id=trace_id, **attributes):
+            yield
+        return
+
+    # 降级路径：原始日志记录行为（observability 模块不可用时）
     start = time.perf_counter()
     attrs = {"trace_id": trace_id, **attributes}
     logger.debug("span.start: %s attrs=%s", name, attrs)
@@ -272,6 +292,16 @@ async def stream_response(
             "span.end: stream_response elapsed=%.2fms trace_id=%s user_id=%s session_id=%s",
             _elapsed_ms, trace_id, user_id, session_id,
         )
+        # P3-12.3.5: 记录流式请求指标
+        try:
+            from observability.metrics import get_metrics_registry
+
+            get_metrics_registry().record_request(
+                status="success",
+                duration=(_elapsed_ms / 1000.0),
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def run_sync(
@@ -318,6 +348,21 @@ async def run_sync(
 
     if not trace_id:
         trace_id = str(uuid.uuid4())
+
+    # P3-12.3.5: metrics 计时起点
+    _metrics_start = time.perf_counter()
+
+    def _record_metrics(status: str) -> None:
+        """P3-12.3.5: 记录请求指标（metrics 未启用时为 no-op）。"""
+        try:
+            from observability.metrics import get_metrics_registry
+
+            get_metrics_registry().record_request(
+                status=status,
+                duration=time.perf_counter() - _metrics_start,
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     # P0-2: 从 checkpointer 读取上一次会话的 config_overrides
     config_overrides = _load_prev_config_overrides(graph, session_id)
@@ -371,6 +416,7 @@ async def run_sync(
 
         error_code = final_state.get("error_code", "")
         if error_code:
+            _record_metrics("error")
             return {
                 "status": "error",
                 "error_code": error_code,
@@ -384,12 +430,14 @@ async def run_sync(
         sensitivity_threshold = config.get("perception.sensitivity_threshold", 5)
         sensitivity_level = final_state.get("sensitivity_level", 0)
         if sensitivity_level >= sensitivity_threshold:
+            _record_metrics("circuit_breaker")
             return {
                 "status": "error",
                 "error_code": ErrorCode.PERCEPTION_SENSITIVITY_REJECTED,
                 "data": {"message": "Input rejected due to sensitive content"},
             }
 
+        _record_metrics("success")
         return {
             "status": "success",
             "error_code": "",
@@ -402,6 +450,7 @@ async def run_sync(
 
     except Exception as e:
         logger.error("LangGraph run_sync failed: %s", str(e))
+        _record_metrics("error")
         return {
             "status": "error",
             "error_code": ErrorCode.LLM_GENERATION_FAILED,
@@ -575,3 +624,219 @@ async def stream_request_compat(
             yield event
     else:
         raise TypeError(f"Unsupported runner type: {type(runner)}")
+
+
+# ============================================================
+# P3-12.3.2 Human-in-the-loop resume 入口
+# ============================================================
+
+async def resume_sync(
+    graph: CompiledGraph,
+    session_id: str,
+    approved: bool,
+    feedback: str = "",
+    trace_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """P3-12.3.2: 恢复被 interrupt 暂停的图执行。
+
+    当 ``human_review_node`` 调用 ``interrupt(...)`` 暂停图后，
+    调用者通过此方法提供审批结果并恢复执行。
+
+    Args:
+        graph: 已暂停的 CompiledGraph 实例
+        session_id: 会话标识（必须与原请求一致，用于从 checkpoint 恢复）
+        approved: 审批结果（True=通过，False=拒绝）
+        feedback: 审批反馈备注（可选）
+        trace_id: 链路追踪 ID（可选，用于日志关联）
+
+    Returns:
+        恢复执行后的最终状态字典，结构同 ``run_sync``：
+            {
+                "status": "success" | "error",
+                "error_code": str,
+                "data": {"response": str, "tool_results": List, "trace_id": str},
+            }
+    """
+    if not trace_id:
+        trace_id = str(uuid.uuid4())
+
+    try:
+        from langgraph.types import Command
+    except ImportError as e:
+        logger.error("langgraph.types.Command unavailable: %s", str(e))
+        return {
+            "status": "error",
+            "error_code": ErrorCode.LLM_GENERATION_FAILED,
+            "data": {"message": f"Command API unavailable: {e}", "trace_id": trace_id},
+        }
+
+    lg_config = {"configurable": {"thread_id": session_id}}
+    resume_payload = {"approved": bool(approved), "feedback": str(feedback or "")}
+
+    try:
+        with _span(
+            "resume_sync",
+            trace_id=trace_id,
+            session_id=session_id,
+            approved=approved,
+        ):
+            final_state: Optional[Dict[str, Any]] = None
+            async for event in graph.astream(
+                Command(resume=resume_payload),
+                config=lg_config,
+                stream_mode=["updates", "values"],
+            ):
+                # LangGraph 1.2.7 astream 产出 (mode, chunk) 元组
+                if isinstance(event, tuple) and len(event) == 2:
+                    mode, chunk = event
+                    if mode == "values" and isinstance(chunk, dict):
+                        final_state = chunk
+                elif isinstance(event, dict):
+                    if event.get("type") == "values":
+                        final_state = event.get("data", {})
+
+            if final_state is None:
+                logger.error(
+                    "Resume produced no values event, trace_id=%s session_id=%s",
+                    trace_id, session_id,
+                )
+                return {
+                    "status": "error",
+                    "error_code": ErrorCode.LLM_GENERATION_FAILED,
+                    "data": {"message": "Resume produced no output", "trace_id": trace_id},
+                }
+
+        error_code = final_state.get("error_code", "")
+        if error_code:
+            return {
+                "status": "error",
+                "error_code": error_code,
+                "data": {
+                    "message": final_state.get("error_message", ""),
+                    "trace_id": trace_id,
+                },
+            }
+
+        return {
+            "status": "success",
+            "error_code": "",
+            "data": {
+                "response": final_state.get("response", ""),
+                "tool_results": final_state.get("tool_results", []),
+                "trace_id": trace_id,
+                "approval_status": final_state.get("approval_status", ""),
+            },
+        }
+
+    except Exception as e:
+        logger.error(
+            "Resume failed: %s (trace_id=%s session_id=%s)",
+            str(e), trace_id, session_id,
+        )
+        return {
+            "status": "error",
+            "error_code": ErrorCode.LLM_GENERATION_FAILED,
+            "data": {"message": str(e), "trace_id": trace_id},
+        }
+
+
+async def resume_stream(
+    graph: CompiledGraph,
+    session_id: str,
+    approved: bool,
+    feedback: str = "",
+    trace_id: Optional[str] = None,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """P3-12.3.2: 恢复被 interrupt 暂停的图执行（流式版本）。
+
+    与 ``resume_sync`` 类似，但通过 astream 流式产出事件。
+
+    Args:
+        graph: 已暂停的 CompiledGraph 实例
+        session_id: 会话标识
+        approved: 审批结果
+        feedback: 审批反馈备注
+        trace_id: 链路追踪 ID
+
+    Yields:
+        LangGraph stream 事件字典
+    """
+    if not trace_id:
+        trace_id = str(uuid.uuid4())
+
+    try:
+        from langgraph.types import Command
+    except ImportError as e:
+        logger.error("langgraph.types.Command unavailable: %s", str(e))
+        yield {
+            "type": "error",
+            "data": {"message": f"Command API unavailable: {e}", "trace_id": trace_id},
+        }
+        return
+
+    lg_config = {"configurable": {"thread_id": session_id}}
+    resume_payload = {"approved": bool(approved), "feedback": str(feedback or "")}
+
+    _stream_start = time.perf_counter()
+    try:
+        async for event in graph.astream(
+            Command(resume=resume_payload),
+            config=lg_config,
+            stream_mode=["messages", "updates", "values"],
+        ):
+            # LangGraph 1.2.7 astream 产出 (mode, chunk) 元组
+            if isinstance(event, tuple) and len(event) == 2:
+                mode, chunk = event
+                yield {"type": mode, "data": chunk}
+            elif isinstance(event, dict):
+                yield event
+    finally:
+        _elapsed_ms = (time.perf_counter() - _stream_start) * 1000
+        logger.info(
+            "span.end: resume_stream elapsed=%.2fms trace_id=%s session_id=%s approved=%s",
+            _elapsed_ms, trace_id, session_id, approved,
+        )
+
+
+def get_interrupt_state(
+    graph: CompiledGraph,
+    session_id: str,
+) -> Optional[Dict[str, Any]]:
+    """P3-12.3.2: 查询指定 session 当前是否处于 interrupt 暂停状态。
+
+    用于调用者在决定是否调用 resume_sync 之前检查图状态。
+
+    Args:
+        graph: CompiledGraph 实例
+        session_id: 会话标识
+
+    Returns:
+        - None: 未暂停或无 checkpoint
+        - dict: 暂停时的 interrupt payload（含 tool_calls / message 等）
+    """
+    try:
+        lg_config = {"configurable": {"thread_id": session_id}}
+        state = graph.get_state(lg_config)
+        if state is None:
+            return None
+        # 检查是否在 interrupt 暂停状态
+        # LangGraph 1.2.7: state.next 包含下一个待执行节点；interrupts 包含暂停信息
+        next_nodes = getattr(state, "next", None) or []
+        if not next_nodes:
+            return None
+        # 检查是否为 human_review 节点的暂停
+        if "human_review" not in next_nodes:
+            return None
+        # 从 state.values 提取 interrupt 上下文
+        values = getattr(state, "values", None) or {}
+        return {
+            "session_id": session_id,
+            "next_nodes": list(next_nodes),
+            "pending_tool_calls": values.get("pending_tool_calls", []),
+            "tool_requires_approval": values.get("tool_requires_approval", False),
+            "trace_id": values.get("trace_id", ""),
+            "user_id": values.get("user_id", ""),
+        }
+    except Exception as e:
+        logger.debug("Failed to query interrupt state: %s", str(e))
+        return None

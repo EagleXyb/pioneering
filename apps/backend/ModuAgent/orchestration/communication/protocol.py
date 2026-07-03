@@ -29,6 +29,13 @@ class EventAction(str, Enum):
     STREAM = "stream"
     REGISTER = "register"
     NOTIFY = "notify"
+    # P3-12.3.1 多 Agent 协作共识事件
+    CONSENSUS_REACHED = "consensus_reached"
+    CONSENSUS_FAILED = "consensus_failed"
+    # P3-12.3.2 Human-in-the-loop 审批事件
+    HUMAN_REVIEW_REQUIRED = "human_review_required"
+    HUMAN_REVIEW_APPROVED = "human_review_approved"
+    HUMAN_REVIEW_REJECTED = "human_review_rejected"
 
 
 class EventPriority(str, Enum):
@@ -209,3 +216,7 @@ class ErrorCode:
     PERCEPTION_INPUT_INVALID = "PERCEPTION_001"
     PERCEPTION_SENSITIVITY_REJECTED = "PERCEPTION_002"
     EVENT_BUS_ERROR = "BUS_001"
+    # P3-12.3.1 多 Agent 协作错误码
+    CONSENSUS_NOT_ENOUGH_PARTICIPANTS = "CONSENSUS_001"
+    CONSENSUS_QUORUM_NOT_MET = "CONSENSUS_002"
+    CONSENSUS_STRATEGY_ERROR = "CONSENSUS_003"
