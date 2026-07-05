@@ -8,7 +8,6 @@ import {
   Monitor,
   Moon,
   Sun,
-  Save,
   RefreshCw,
   CheckCircle2,
   XCircle
@@ -17,7 +16,6 @@ import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
 import apiClient from '../services/api/client'
 import { authService } from '../services/api/auth'
-import { healthApi } from '../services/ipc'
 
 export function SettingsPage(): JSX.Element {
   const [apiBaseUrl, setApiBaseUrl] = useState(
@@ -34,9 +32,10 @@ export function SettingsPage(): JSX.Element {
 
   const checkApiHealth = async () => {
     setApiStatus('loading')
+    apiClient.setBaseURL(apiBaseUrl) // 先应用用户输入的 URL
     try {
       const res = await apiClient.get<{ status: string }>('/health')
-      setApiStatus(res.data.status === 'ok' ? 'ok' : 'error')
+      setApiStatus(res.data.status === 'healthy' ? 'ok' : 'error')
     } catch {
       setApiStatus('error')
     }

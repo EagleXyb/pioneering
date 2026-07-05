@@ -35,7 +35,7 @@ export interface ChatSession {
   title: string
   model?: string
   modelConfig?: Record<string, unknown>
-  archived: boolean
+  isArchived: boolean
   createdAt: string
   updatedAt: string
   messageCount?: number

@@ -8,9 +8,16 @@ import type {
   ChatMessage,
   CreateSessionRequest,
   UpdateSessionRequest,
-  SendMessageRequest,
-  PaginatedData
+  SendMessageRequest
 } from '@shared/types'
+
+// 后端会话列表响应格式（字段名与后端对齐）
+interface SessionListData {
+  sessions: ChatSession[]
+  total: number
+  page: number
+  pageSize: number
+}
 
 export const chatService = {
   /** 获取会话列表 */
@@ -18,8 +25,8 @@ export const chatService = {
     page = 1,
     pageSize = 20,
     archived = false
-  ): Promise<PaginatedData<ChatSession>> {
-    const res = await apiClient.get<PaginatedData<ChatSession>>(
+  ): Promise<SessionListData> {
+    const res = await apiClient.get<SessionListData>(
       '/chat/sessions',
       { params: { page, pageSize, archived } }
     )
@@ -114,7 +121,15 @@ export const chatService = {
 
   /**
    * 发送消息并获取流式响应（SSE）
-   * 返回 AbortController 用于取消请求
+   * 适配后端 AG-UI 协议事件格式
+   *
+   * 后端事件流：
+   *   RUN_STARTED → [THINKING_START → THINKING_TEXT_MESSAGE_CONTENT* → THINKING_END*] →
+   *   TEXT_MESSAGE_START → TEXT_MESSAGE_CONTENT* → TEXT_MESSAGE_END →
+   *   RUN_FINISHED
+   *
+   * 异常时：
+    *   RUN_ERROR
    */
   sendMessageStream(
     request: SendMessageRequest,
@@ -128,19 +143,22 @@ export const chatService = {
     onError: (error: string) => void
   ): AbortController {
     const controller = new AbortController()
-    const axiosInstance = apiClient.getAxiosInstance()
 
     const url = `${apiClient.getBaseURL()}/chat/completions`
     const payload = { ...request, stream: true }
+
+    // 跟踪 AG-UI 事件状态
+    let capturedMessageId = ''
+    let capturedSessionId = ''
 
     // 使用 fetch 实现 SSE（axios 对流式支持不佳）
     fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: apiClient.getAccessToken()
-          ? `Bearer ${apiClient.getAccessToken()}`
-          : ''
+        ...(apiClient.getAccessToken()
+          ? { Authorization: `Bearer ${apiClient.getAccessToken()}` }
+          : {})
       },
       body: JSON.stringify(payload),
       signal: controller.signal
@@ -177,18 +195,49 @@ export const chatService = {
             if (jsonStr === '[DONE]') continue
 
             try {
-              const parsed = JSON.parse(jsonStr)
-              if (parsed.type === 'content' && parsed.content) {
-                onChunk(parsed.content)
-              } else if (parsed.type === 'done') {
-                onDone({
-                  messageId: parsed.messageId,
-                  sessionId: parsed.sessionId,
-                  model: parsed.model,
-                  tokenCount: parsed.tokenCount
-                })
-              } else if (parsed.type === 'error') {
-                onError(parsed.error || 'Unknown error')
+              const event = JSON.parse(jsonStr)
+
+              switch (event.type) {
+                // 流开始：记录 sessionId
+                case 'RUN_STARTED':
+                  capturedSessionId = event.threadId || ''
+                  break
+
+                // 文本消息开始：记录 messageId
+                case 'TEXT_MESSAGE_START':
+                  capturedMessageId = event.messageId || ''
+                  break
+
+                // 文本内容块：delta 是增量内容
+                case 'TEXT_MESSAGE_CONTENT':
+                  if (event.delta) {
+                    onChunk(event.delta)
+                  }
+                  break
+
+                // 流结束
+                case 'RUN_FINISHED':
+                  onDone({
+                    messageId: capturedMessageId,
+                    sessionId: capturedSessionId || (request.sessionId ?? ''),
+                    model: event.model,
+                    tokenCount: event.tokenCount
+                  })
+                  break
+
+                // 错误
+                case 'RUN_ERROR':
+                  onError(event.message || 'Unknown error')
+                  break
+
+                // 深度思考/工具调用等事件——当前 UI 直接忽略
+                case 'THINKING_START':
+                case 'THINKING_TEXT_MESSAGE_START':
+                case 'THINKING_TEXT_MESSAGE_CONTENT':
+                case 'THINKING_TEXT_MESSAGE_END':
+                case 'THINKING_END':
+                case 'TEXT_MESSAGE_END':
+                  break
               }
             } catch {
               // 非 JSON 行，跳过

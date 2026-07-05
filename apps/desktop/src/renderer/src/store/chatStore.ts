@@ -52,7 +52,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ sessionsLoading: true, error: null })
     try {
       const data = await chatService.getSessions()
-      set({ sessions: data.items, sessionsLoading: false })
+      set({ sessions: data.sessions, sessionsLoading: false })
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : 'Failed to load sessions',

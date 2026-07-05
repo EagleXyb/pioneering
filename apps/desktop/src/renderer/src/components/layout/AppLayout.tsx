@@ -2,7 +2,7 @@
 // AppLayout — 应用主布局（含侧边栏导航）
 // ============================================================
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   MessageSquare,
@@ -56,9 +56,11 @@ export function AppLayout(): JSX.Element {
   } = useChatStore()
 
   // 进入 Chat 页面时加载会话列表
-  if (location.pathname === '/chat' && sessions.length === 0) {
-    loadSessions()
-  }
+  useEffect(() => {
+    if (location.pathname === '/chat' && sessions.length === 0) {
+      loadSessions()
+    }
+  }, [location.pathname, sessions.length, loadSessions])
 
   const handleNewChat = async () => {
     try {

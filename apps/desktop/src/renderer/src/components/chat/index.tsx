@@ -188,68 +188,150 @@ export function ChatInput({
 }: ChatInputProps): JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [value, setValue] = useState('')
+  const [isFocused, setIsFocused] = useState(false)
 
-  const handleSend = () => {
+  // 自动聚焦
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const charCount = value.length
+  const charLimit = 10000
+  const isNearLimit = charCount > charLimit * 0.9
+  const isOverLimit = charCount > charLimit
+
+  const handleSend = useCallback(() => {
     const trimmed = value.trim()
-    if (!trimmed || isStreaming) return
+    if (!trimmed || isStreaming || isOverLimit) return
     onSend(trimmed)
     setValue('')
     if (inputRef.current) {
       inputRef.current.style.height = 'auto'
     }
-  }
+  }, [value, isStreaming, isOverLimit, onSend])
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
-  }
+  }, [handleSend])
 
-  const autoResize = () => {
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto'
-      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`
-    }
-  }
+  const autoResize = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [])
 
   return (
-    <div className="p-4 border-t border-border shrink-0">
-      <div className="max-w-3xl mx-auto flex gap-2 items-end">
-        <textarea
-          ref={inputRef}
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value)
-            autoResize()
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-          rows={1}
-          disabled={disabled}
-          className="flex-1 resize-none rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 max-h-[200px]"
-        />
-        {isStreaming ? (
-          <Button
-            onClick={onStop}
-            variant="destructive"
-            size="icon"
-            className="shrink-0 rounded-xl"
-            title="停止生成"
+    <div className="shrink-0 border-t border-border/60 bg-gradient-to-t from-background via-background to-transparent pt-2 pb-3 px-4">
+      <div className="max-w-3xl mx-auto">
+        {/* 输入卡片容器 */}
+        <div
+          className={cn(
+            'relative flex items-end gap-2 rounded-2xl border bg-card px-3 py-2.5 transition-all duration-200',
+            isFocused
+              ? 'border-primary/40 shadow-[0_0_0_1px_rgba(0,0,0,0.02)]'
+              : 'border-input hover:border-muted-foreground/30'
+          )}
+        >
+          {/* 附件按钮（占位） */}
+          <button
+            type="button"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:text-muted-foreground hover:bg-accent/50 disabled:opacity-30"
+            disabled={isStreaming}
+            title="附件（即将支持）"
           >
-            <Square className="size-4" />
-          </Button>
-        ) : (
-          <Button
-            onClick={handleSend}
-            size="icon"
-            className="shrink-0 rounded-xl"
-            disabled={!value.trim() || disabled}
-            title="发送"
-          >
-            <Send className="size-4" />
-          </Button>
-        )}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+
+          {/* 文本输入区 */}
+          <textarea
+            ref={inputRef}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value)
+              autoResize()
+            }}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="发消息给 AI..."
+            rows={1}
+            disabled={disabled}
+            className="flex-1 resize-none bg-transparent px-1 py-1 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/40 focus:outline-none disabled:opacity-50 max-h-[160px] scrollbar-thin"
+          />
+
+          {/* 发送 / 停止 按钮 */}
+          {isStreaming ? (
+            <button
+              onClick={onStop}
+              className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-destructive text-destructive-foreground shadow-sm transition-all hover:bg-destructive/90 active:scale-95"
+              title="停止生成"
+            >
+              <Square className="size-3.5" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!value.trim() || disabled || isOverLimit}
+              className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-xl shadow-sm transition-all active:scale-95',
+                value.trim() && !disabled && !isOverLimit
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'bg-muted text-muted-foreground/50 cursor-not-allowed'
+              )}
+              title="发送 (Enter)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M22 2L11 13" />
+                <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* 底部工具栏：字数 */}
+        <div className="flex items-center justify-end px-1 pt-1.5">
+
+          {charCount > 0 && (
+            <span
+              className={cn(
+                'text-[11px] tabular-nums transition-colors',
+                isOverLimit
+                  ? 'text-destructive font-medium'
+                  : isNearLimit
+                    ? 'text-amber-500'
+                    : 'text-muted-foreground/40'
+              )}
+            >
+              {charCount}{isNearLimit ? ` / ${charLimit}` : ''}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )

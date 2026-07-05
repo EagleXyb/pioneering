@@ -137,6 +137,11 @@ class ApiClient {
     return this.instance
   }
 
+  // ---- 基础配置 ----
+  setBaseURL(url: string): void {
+    this.instance.defaults.baseURL = url
+  }
+
   getBaseURL(): string {
     return this.instance.defaults.baseURL ?? DEFAULT_BASE_URL
   }
