@@ -17,7 +17,7 @@ pytest.importorskip("langchain_core")
 # 注意：不使用 pytest.importorskip("langgraph")——库已安装会让其通过，
 # 但本地包遮蔽导致 __import__ 留下部分初始化模块，故用 try/except 显式捕获。
 try:
-    from langgraph.graph import build_modu_graph
+    from modu_graph.graph import build_modu_graph
 except BaseException as _e:  # noqa: F401,BLE001  捕获循环导入/部分初始化
     pytest.skip(
         f"local langgraph integration not importable (package name shadowing): {_e}",

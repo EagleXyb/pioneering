@@ -462,7 +462,7 @@ class TestLangGraphNodes:
     """langgraph/nodes.py 测试"""
 
     def test_perception_node_exists(self):
-        from langgraph.nodes import perception_node, memory_query_node, response_node, route_after_perception, route_after_agent
+        from modu_graph.nodes import perception_node, memory_query_node, response_node, route_after_perception, route_after_agent
         assert callable(perception_node)
         assert callable(memory_query_node)
         assert callable(response_node)
@@ -471,7 +471,7 @@ class TestLangGraphNodes:
 
     def test_memory_update_node_no_store(self):
         """没有 Store 时应返回 skipped_no_store"""
-        from langgraph.nodes import memory_update_node
+        from modu_graph.nodes import memory_update_node
 
         state = {
             "messages": [],
@@ -483,7 +483,7 @@ class TestLangGraphNodes:
 
     def test_memory_update_node_no_messages(self):
         """没有消息时应返回 skipped_no_messages"""
-        from langgraph.nodes import memory_update_node
+        from modu_graph.nodes import memory_update_node
 
         mock_store = MagicMock()
         state = {
@@ -497,7 +497,7 @@ class TestLangGraphNodes:
 
     def test_make_agent_node_confidence_params(self):
         """make_agent_node 应接受置信度参数"""
-        from langgraph.nodes import make_agent_node
+        from modu_graph.nodes import make_agent_node
 
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content="test response")
@@ -511,7 +511,7 @@ class TestLangGraphNodes:
 
     def test_response_node_returns_complete_structure(self):
         """response_node 应返回完整响应结构"""
-        from langgraph.nodes import response_node
+        from modu_graph.nodes import response_node
         from langchain_core.messages import AIMessage
 
         state = {
@@ -527,7 +527,7 @@ class TestLangGraphNodes:
 
     def test_route_after_perception_safe(self):
         """低敏感度应路由到 memory_query"""
-        from langgraph.nodes import route_after_perception
+        from modu_graph.nodes import route_after_perception
         from config.runtime_config import reset_config
 
         reset_config()
@@ -537,7 +537,7 @@ class TestLangGraphNodes:
 
     def test_route_after_perception_high_sensitivity(self):
         """高敏感度应熔断"""
-        from langgraph.nodes import route_after_perception
+        from modu_graph.nodes import route_after_perception
         from config.runtime_config import reset_config
 
         reset_config()
@@ -551,7 +551,7 @@ class TestLangGraphEventBridge:
     """LangGraphEventBridge 测试"""
 
     def test_init(self):
-        from langgraph.adapters.event_bridge import LangGraphEventBridge
+        from modu_graph.adapters.event_bridge import LangGraphEventBridge
 
         bridge = LangGraphEventBridge(
             trace_id="t1",
@@ -563,7 +563,7 @@ class TestLangGraphEventBridge:
         assert bridge._user_id == "u1"
 
     def test_init_with_evolution_collector(self):
-        from langgraph.adapters.event_bridge import LangGraphEventBridge
+        from modu_graph.adapters.event_bridge import LangGraphEventBridge
         from feedback.evolution_signal import EvolutionSignalCollector
 
         collector = EvolutionSignalCollector()
@@ -571,14 +571,14 @@ class TestLangGraphEventBridge:
         assert bridge._evolution_collector is collector
 
     def test_emit_sse_events_messages(self):
-        from langgraph.adapters.event_bridge import LangGraphEventBridge
+        from modu_graph.adapters.event_bridge import LangGraphEventBridge
 
         bridge = LangGraphEventBridge()
         assert hasattr(bridge, "_emit_sse_events")
 
     @pytest.mark.asyncio
     async def test_consume_empty_stream(self):
-        from langgraph.adapters.event_bridge import LangGraphEventBridge
+        from modu_graph.adapters.event_bridge import LangGraphEventBridge
 
         bridge = LangGraphEventBridge()
 

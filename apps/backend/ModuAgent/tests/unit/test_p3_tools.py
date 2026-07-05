@@ -437,7 +437,7 @@ class TestToolAdapter:
         """5 个新工具经 build_langchain_tools 成功包装为 LangChain StructuredTool。"""
         # 由于本地 langgraph 包名遮蔽库，tool_adapter 导入可能失败
         try:
-            from langgraph.adapters.tool_adapter import wrap_modu_tool
+            from modu_graph.adapters.tool_adapter import wrap_modu_tool
         except ImportError:
             pytest.skip("langgraph tool_adapter not importable (package name shadowing)")
 

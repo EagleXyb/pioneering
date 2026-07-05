@@ -21,14 +21,14 @@ import logging
 from typing import Any, Dict, Optional
 
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph.graph import CompiledGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from config.runtime_config import RuntimeConfig, get_config
-from langgraph.adapters.llm_adapter import build_chat_model
-from langgraph.adapters.retry import apply_llm_retry
-from langgraph.adapters.store_adapter import ChromaStore, InMemoryStoreAdapter
-from langgraph.adapters.tool_adapter import build_langchain_tools
-from langgraph.graph import ModuGraph, build_modu_graph
+from modu_graph.adapters.llm_adapter import build_chat_model
+from modu_graph.adapters.retry import apply_llm_retry
+from modu_graph.adapters.store_adapter import ChromaStore, InMemoryStoreAdapter
+from modu_graph.adapters.tool_adapter import build_langchain_tools
+from modu_graph.graph import ModuGraph, build_modu_graph
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def create_agent(
     替代 ComponentRegistry.swap_component 的运行时热替换。
 
     P1-12.2.3: 返回 ModuGraph 包装器（显式持有 orchestrator 引用），
-    替代在 CompiledGraph 上 monkey-patch `graph.orchestrator`。
+    替代在 CompiledStateGraph 上 monkey-patch `graph.orchestrator`。
 
     Args:
         config: RunnableConfig，支持 configurable 字段覆盖：
@@ -177,7 +177,7 @@ def create_agent(
         system_prompt: 系统提示词（优先级低于 config.configurable.system_prompt）
 
     Returns:
-        ModuGraph 包装器（透明委托 CompiledGraph 的所有方法）
+        ModuGraph 包装器（透明委托 CompiledStateGraph 的所有方法）
 
     Examples:
         # 默认配置
@@ -214,12 +214,15 @@ def create_agent(
         model=model,
     )
 
-    # P2-8: 为 LLM 应用重试（指数退避，仅重试瞬时网络异常）
-    llm = apply_llm_retry(llm, runtime_config)
-
     # 工具（支持运行时覆盖工具集；P2-8: 传入 config 启用工具重试）
     tool_names = configurable.get("tools")
     tools = build_langchain_tools(tool_names=tool_names, config=runtime_config)
+
+    # 先绑定工具再应用重试，避免 RunnableRetry 不支持 bind_tools
+    bound_llm = llm.bind_tools(tools) if tools else llm
+
+    # P2-8: 为 LLM 应用重试（指数退避，仅重试瞬时网络异常）
+    bound_llm = apply_llm_retry(bound_llm, runtime_config)
 
     # 检查点保存器
     checkpointer_type = configurable.get(
@@ -258,7 +261,7 @@ def create_agent(
     # 构建并编译图
     compiled = build_modu_graph(
         tools=tools,
-        llm=llm,
+        llm=bound_llm,
         checkpointer=checkpointer,
         store=store,
         system_prompt=effective_system_prompt,
@@ -270,7 +273,7 @@ def create_agent(
     )
 
     # P1-12.2.3: 通过 ModuGraph wrapper 显式持有 orchestrator 引用，
-    # 替代在 CompiledGraph 上 monkey-patch `graph.orchestrator` 的做法。
+    # 替代在 CompiledStateGraph 上 monkey-patch `graph.orchestrator` 的做法。
     graph = ModuGraph(compiled=compiled, orchestrator=orchestrator)
 
     logger.info(

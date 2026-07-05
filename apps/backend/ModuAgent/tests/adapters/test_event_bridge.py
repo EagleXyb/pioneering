@@ -22,7 +22,7 @@ import pytest
 
 # ---- 用 importlib 加载 event_bridge.py，绕过 langgraph/__init__.py ----
 _MODU_ROOT = Path(__file__).resolve().parents[2]
-_BRIDGE_PATH = _MODU_ROOT / "langgraph" / "adapters" / "event_bridge.py"
+_BRIDGE_PATH = _MODU_ROOT / "modu_graph" / "adapters" / "event_bridge.py"
 
 
 def _load_event_bridge() -> ModuleType:

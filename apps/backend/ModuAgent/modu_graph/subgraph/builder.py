@@ -17,10 +17,10 @@ from typing import Any, List, Optional
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool as LCTool
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.graph import CompiledGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
-from langgraph.subgraph.states import SubAgentState
+from modu_graph.subgraph.states import SubAgentState
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def build_subagent_subgraph(
     system_prompt: Optional[str] = None,
     task_type: str = "default",
     recursion_limit: int = 10,
-) -> CompiledGraph:
+) -> CompiledStateGraph:
     """构建子 Agent 独立编译子图。
 
     使用 ``SubAgentState`` 实现状态隔离，避免污染主图 ``ModuAgentState.messages``。
@@ -82,14 +82,14 @@ def build_subagent_subgraph(
         recursion_limit: 子图递归限制（默认 10，独立于主图）
 
     Returns:
-        编译后的子图 CompiledGraph 实例
+        编译后的子图 CompiledStateGraph 实例
 
     Example:
         >>> subgraph = build_subagent_subgraph(llm, task_type="research")
         >>> result = await subgraph.ainvoke(initial_state)
     """
     effective_tools = tools or []
-    bound_llm = llm.bind_tools(effective_tools) if effective_tools else llm
+    bound_llm = llm
     prompt = _get_system_prompt(task_type, system_prompt)
 
     graph = StateGraph(SubAgentState)

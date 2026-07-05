@@ -25,7 +25,7 @@ import uuid
 from typing import Any, Callable, Dict, List
 
 from config.runtime_config import get_config
-from langgraph.state import ModuAgentState
+from modu_graph.state import ModuAgentState
 
 logger = logging.getLogger(__name__)
 

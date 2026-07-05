@@ -78,8 +78,8 @@ def register_components() -> None:
 
 async def run_basic_flow() -> None:
     """基础流程 Demo（P0-2: 使用 LangGraph 替代 Coordinator）。"""
-    from langgraph.factory import create_agent
-    from langgraph.runner import run_sync
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import run_sync
 
     graph = create_agent()
     user_id = "demo_user"
@@ -100,8 +100,8 @@ async def run_basic_flow() -> None:
 
 async def run_tool_flow() -> None:
     """工具调用 Demo（P0-2: 使用 LangGraph 原生 function calling）。"""
-    from langgraph.factory import create_agent
-    from langgraph.runner import run_sync
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import run_sync
 
     graph = create_agent()
     user_id = "demo_user"
@@ -122,8 +122,8 @@ async def run_tool_flow() -> None:
 
 async def run_llm_swap_flow() -> None:
     """LLM 引擎切换 Demo（P0-2: 通过 configurable 覆盖 provider）。"""
-    from langgraph.factory import create_agent
-    from langgraph.runner import run_sync
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import run_sync
 
     graph = create_agent(config={"configurable": {"llm_provider": "glm"}})
     user_id = "demo_user"
@@ -187,8 +187,8 @@ async def run_langgraph_basic_flow() -> None:
     使用 create_agent() 创建 LangGraph 实例，
     通过 run_sync() 调用（替代 Coordinator.process_request）。
     """
-    from langgraph.factory import create_agent
-    from langgraph.runner import run_sync
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import run_sync
 
     graph = create_agent()
     user_id = "demo_user"
@@ -213,8 +213,8 @@ async def run_langgraph_tool_flow() -> None:
     使用 LangGraph 原生 function calling（替代正则解析 ```tool_call```），
     通过 ToolNode 执行工具（替代 ToolAdapter.invoke_tool）。
     """
-    from langgraph.factory import create_agent
-    from langgraph.runner import run_sync
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import run_sync
 
     graph = create_agent()
     user_id = "demo_user"
@@ -239,8 +239,8 @@ async def run_langgraph_stream_flow() -> None:
     使用 LangGraph astream 实现流式输出（替代 Coordinator.stream_request），
     通过 EventBridge 桥接到 EventBus。
     """
-    from langgraph.factory import create_agent
-    from langgraph.runner import stream_response
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import stream_response
 
     graph = create_agent()
     user_id = "demo_user"

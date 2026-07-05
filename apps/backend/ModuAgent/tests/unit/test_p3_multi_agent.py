@@ -28,7 +28,7 @@ pytest.importorskip("langchain_core")
 # 尝试导入本地 langgraph 模块（可能因包名冲突跳过）
 _LANGGRAPH_AVAILABLE = False
 try:
-    from langgraph.state import ModuAgentState, make_initial_state  # noqa: F401
+    from modu_graph.state import ModuAgentState, make_initial_state  # noqa: F401
     _LANGGRAPH_AVAILABLE = True
 except BaseException:
     pass
@@ -430,7 +430,7 @@ class TestStateExtension:
 
     def test_subtask_results_reducer_merges(self):
         """merge_subtask_results reducer 正确合并字典。"""
-        from langgraph.state import merge_subtask_results
+        from modu_graph.state import merge_subtask_results
 
         left = {"t1": {"output": "A"}}
         right = {"t2": {"output": "B"}}
@@ -440,7 +440,7 @@ class TestStateExtension:
 
     def test_subtask_results_reducer_right_wins(self):
         """同 task_id 时右值覆盖。"""
-        from langgraph.state import merge_subtask_results
+        from modu_graph.state import merge_subtask_results
 
         left = {"t1": {"output": "old"}}
         right = {"t1": {"output": "new"}}
@@ -449,7 +449,7 @@ class TestStateExtension:
 
     def test_subtask_results_reducer_empty(self):
         """空输入安全处理。"""
-        from langgraph.state import merge_subtask_results
+        from modu_graph.state import merge_subtask_results
 
         assert merge_subtask_results({}, {}) == {}
         assert merge_subtask_results(None, {"t1": {}}) == {"t1": {}}
@@ -461,7 +461,7 @@ class TestSubgraphStateIsolation:
 
     def test_subagent_state_is_separate_type(self):
         """SubAgentState 与 ModuAgentState 字段不同。"""
-        from langgraph.subgraph.states import SubAgentState, make_subagent_initial_state
+        from modu_graph.subgraph.states import SubAgentState, make_subagent_initial_state
 
         state = make_subagent_initial_state(
             task_id="test_1", task_type="research",
@@ -474,7 +474,7 @@ class TestSubgraphStateIsolation:
 
     def test_subagent_node_returns_only_subtask_results(self):
         """子 Agent 节点仅返回 subtask_results。"""
-        from langgraph.nodes import make_subagent_node
+        from modu_graph.nodes import make_subagent_node
 
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content="result")
@@ -493,7 +493,7 @@ class TestSubgraphStateIsolation:
 
     def test_subagent_node_llm_failure(self):
         """LLM 调用失败时返回 error 结果。"""
-        from langgraph.nodes import make_subagent_node
+        from modu_graph.nodes import make_subagent_node
 
         mock_llm = MagicMock()
         mock_llm.invoke = MagicMock(side_effect=RuntimeError("LLM down"))
@@ -506,7 +506,7 @@ class TestSubgraphStateIsolation:
 
     def test_subagent_node_empty_task(self):
         """空任务时返回空结果。"""
-        from langgraph.nodes import make_subagent_node
+        from modu_graph.nodes import make_subagent_node
 
         mock_llm = MagicMock()
         node = make_subagent_node(mock_llm)
@@ -520,7 +520,7 @@ class TestSendParallelDispatch:
 
     def test_supervisor_node_decomposes_task(self, fresh_config):
         """Supervisor 节点正确拆分任务。"""
-        from langgraph.subgraph.supervisor import make_supervisor_node
+        from modu_graph.subgraph.supervisor import make_supervisor_node
 
         fresh_config.set("orchestration.multi_agent.max_subagents", 3)
         node = make_supervisor_node()
@@ -535,7 +535,7 @@ class TestSendParallelDispatch:
 
     def test_supervisor_respects_max_subagents(self, fresh_config):
         """子任务数不超过 max_subagents。"""
-        from langgraph.subgraph.supervisor import make_supervisor_node
+        from modu_graph.subgraph.supervisor import make_supervisor_node
 
         node = make_supervisor_node(max_subagents=2)
         state = make_initial_state(
@@ -547,7 +547,7 @@ class TestSendParallelDispatch:
 
     def test_route_from_supervisor_returns_sends(self):
         """route_from_supervisor 返回 Send 列表。"""
-        from langgraph.subgraph.supervisor import route_from_supervisor
+        from modu_graph.subgraph.supervisor import route_from_supervisor
 
         state = {
             "subtasks": [
@@ -561,7 +561,7 @@ class TestSendParallelDispatch:
 
     def test_route_from_supervisor_empty_subtasks(self):
         """无子任务时返回空列表。"""
-        from langgraph.subgraph.supervisor import route_from_supervisor
+        from modu_graph.subgraph.supervisor import route_from_supervisor
 
         sends = route_from_supervisor({"subtasks": []})
         assert sends == []
@@ -573,7 +573,7 @@ class TestTaskDecomposition:
 
     def test_decompose_default_task_types(self):
         """默认拆分为 research/coding/review 三类。"""
-        from langgraph.subgraph.supervisor import decompose_task
+        from modu_graph.subgraph.supervisor import decompose_task
 
         state = make_initial_state(
             user_id="u1", session_id="s1", trace_id="t1",
@@ -586,7 +586,7 @@ class TestTaskDecomposition:
 
     def test_decompose_respects_max_subagents(self):
         """max_subagents 限制子任务数。"""
-        from langgraph.subgraph.supervisor import decompose_task
+        from modu_graph.subgraph.supervisor import decompose_task
 
         state = make_initial_state(
             user_id="u1", session_id="s1", trace_id="t1",
@@ -597,7 +597,7 @@ class TestTaskDecomposition:
 
     def test_decompose_custom_task_types(self):
         """自定义任务类型列表。"""
-        from langgraph.subgraph.supervisor import decompose_task
+        from modu_graph.subgraph.supervisor import decompose_task
 
         state = make_initial_state(
             user_id="u1", session_id="s1", trace_id="t1",
@@ -609,7 +609,7 @@ class TestTaskDecomposition:
 
     def test_decompose_unique_task_ids(self):
         """每个子任务有唯一 task_id。"""
-        from langgraph.subgraph.supervisor import decompose_task
+        from modu_graph.subgraph.supervisor import decompose_task
 
         state = make_initial_state(
             user_id="u1", session_id="s1", trace_id="t1",
@@ -621,7 +621,7 @@ class TestTaskDecomposition:
 
     def test_decompose_carries_trace_id(self):
         """子任务携带 trace_id。"""
-        from langgraph.subgraph.supervisor import decompose_task
+        from modu_graph.subgraph.supervisor import decompose_task
 
         state = make_initial_state(
             user_id="u1", session_id="s1", trace_id="trace_abc",
@@ -639,7 +639,7 @@ class TestConsensusNode:
     @pytest.mark.asyncio
     async def test_consensus_node_success(self, fresh_config):
         """共识节点成功聚合结果。"""
-        from langgraph.nodes import make_consensus_node
+        from modu_graph.nodes import make_consensus_node
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
         fresh_config.set("orchestration.multi_agent.consensus_quorum", 2)
@@ -662,7 +662,7 @@ class TestConsensusNode:
     @pytest.mark.asyncio
     async def test_consensus_node_quorum_failure(self, fresh_config):
         """共识节点 quorum 不足时标记失败。"""
-        from langgraph.nodes import make_consensus_node
+        from modu_graph.nodes import make_consensus_node
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
         fresh_config.set("orchestration.multi_agent.consensus_quorum", 2)
@@ -682,7 +682,7 @@ class TestConsensusNode:
     @pytest.mark.asyncio
     async def test_consensus_node_empty_results(self, fresh_config):
         """共识节点无结果时标记失败。"""
-        from langgraph.nodes import make_consensus_node
+        from modu_graph.nodes import make_consensus_node
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
         node = make_consensus_node()
@@ -697,7 +697,7 @@ class TestConsensusNode:
     @pytest.mark.asyncio
     async def test_consensus_node_llm_judge(self, fresh_config, mock_judge_llm):
         """共识节点使用 LLM Judge 策略。"""
-        from langgraph.nodes import make_consensus_node
+        from modu_graph.nodes import make_consensus_node
         from orchestration.patterns.consensus import LLMJudgeStrategy
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
@@ -723,14 +723,16 @@ class TestRoutingFunctions:
 
     def test_route_to_supervisor_when_enabled(self, fresh_config):
         """multi_agent 启用时路由到 supervisor。"""
-        from langgraph.nodes import route_after_memory_query
+        from config.runtime_config import override_config
+        from modu_graph.nodes import route_after_memory_query
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
-        assert route_after_memory_query({}) == "supervisor"
+        with override_config(fresh_config):
+            assert route_after_memory_query({}) == "supervisor"
 
     def test_route_to_agent_when_disabled(self, fresh_config):
         """multi_agent 禁用时路由到 agent。"""
-        from langgraph.nodes import route_after_memory_query
+        from modu_graph.nodes import route_after_memory_query
 
         assert route_after_memory_query({}) == "agent"
 
@@ -741,7 +743,7 @@ class TestSubgraphBuilder:
 
     def test_build_subgraph_basic(self):
         """基本子图构建。"""
-        from langgraph.subgraph.builder import build_subagent_subgraph
+        from modu_graph.subgraph.builder import build_subagent_subgraph
 
         mock_llm = MagicMock()
         subgraph = build_subagent_subgraph(mock_llm, task_type="research")
@@ -750,16 +752,21 @@ class TestSubgraphBuilder:
 
     def test_build_subgraph_with_tools(self):
         """带工具的子图构建。"""
-        from langgraph.subgraph.builder import build_subagent_subgraph
+        from langchain_core.tools import StructuredTool
+        from modu_graph.subgraph.builder import build_subagent_subgraph
 
         mock_llm = MagicMock()
-        mock_tool = MagicMock()
+        mock_tool = StructuredTool.from_function(
+            func=lambda x: x,
+            name="test_tool",
+            description="A test tool",
+        )
         subgraph = build_subagent_subgraph(mock_llm, tools=[mock_tool], task_type="coding")
         assert subgraph is not None
 
     def test_build_subgraph_custom_recursion(self):
         """自定义递归限制。"""
-        from langgraph.subgraph.builder import build_subagent_subgraph
+        from modu_graph.subgraph.builder import build_subagent_subgraph
 
         mock_llm = MagicMock()
         subgraph = build_subagent_subgraph(mock_llm, recursion_limit=20)
@@ -767,7 +774,7 @@ class TestSubgraphBuilder:
 
     def test_get_system_prompt_by_type(self):
         """按 task_type 获取系统提示词。"""
-        from langgraph.subgraph.builder import _get_system_prompt
+        from modu_graph.subgraph.builder import _get_system_prompt
 
         assert "Research" in _get_system_prompt("research")
         assert "Code" in _get_system_prompt("coding")
@@ -776,7 +783,7 @@ class TestSubgraphBuilder:
 
     def test_get_system_prompt_custom(self):
         """自定义提示词覆盖类型模板。"""
-        from langgraph.subgraph.builder import _get_system_prompt
+        from modu_graph.subgraph.builder import _get_system_prompt
 
         assert _get_system_prompt("research", "Custom") == "Custom"
 
@@ -787,7 +794,7 @@ class TestGraphBuildMultiAgent:
 
     def test_build_graph_multi_agent_disabled(self, fresh_config):
         """默认（multi_agent 关闭）行为与现有一致。"""
-        from langgraph.graph import build_modu_graph
+        from modu_graph.graph import build_modu_graph
 
         mock_llm = MagicMock()
         mock_llm.bind_tools = MagicMock(return_value=mock_llm)
@@ -797,18 +804,20 @@ class TestGraphBuildMultiAgent:
 
     def test_build_graph_multi_agent_enabled(self, fresh_config):
         """multi_agent 启用时图构建成功。"""
-        from langgraph.graph import build_modu_graph
+        from config.runtime_config import override_config
+        from modu_graph.graph import build_modu_graph
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
         mock_llm = MagicMock()
         mock_llm.bind_tools = MagicMock(return_value=mock_llm)
-        graph = build_modu_graph(tools=[], llm=mock_llm, checkpointer=None, store=None)
+        with override_config(fresh_config):
+            graph = build_modu_graph(tools=[], llm=mock_llm, checkpointer=None, store=None)
         assert graph is not None
         assert graph.recursion_limit >= 15
 
     def test_build_graph_custom_recursion_override(self, fresh_config):
         """自定义 recursion_limit 优先。"""
-        from langgraph.graph import build_modu_graph
+        from modu_graph.graph import build_modu_graph
 
         fresh_config.set("orchestration.multi_agent.enabled", True)
         mock_llm = MagicMock()
@@ -823,7 +832,7 @@ class TestSubagentPerformance:
 
     def test_subgraph_build_overhead(self):
         """子图构建开销 < 100ms。"""
-        from langgraph.subgraph.builder import build_subagent_subgraph
+        from modu_graph.subgraph.builder import build_subagent_subgraph
 
         mock_llm = MagicMock()
         start = time.perf_counter()
@@ -834,7 +843,7 @@ class TestSubagentPerformance:
 
     def test_task_decomposition_latency(self):
         """任务拆分延迟 < 5ms。"""
-        from langgraph.subgraph.supervisor import decompose_task
+        from modu_graph.subgraph.supervisor import decompose_task
 
         state = make_initial_state(
             user_id="u1", session_id="s1", trace_id="t1",
@@ -848,7 +857,7 @@ class TestSubagentPerformance:
 
     def test_merge_subtask_results_latency(self):
         """结果合并延迟 < 0.1ms。"""
-        from langgraph.state import merge_subtask_results
+        from modu_graph.state import merge_subtask_results
 
         left = {f"t{i}": {"output": f"a{i}"} for i in range(10)}
         right = {f"t{i+10}": {"output": f"b{i}"} for i in range(10)}

@@ -31,7 +31,7 @@ import pytest
 # 模块级 probe：尝试 import 一个会触发 langgraph 子模块初始化的符号，
 # 失败则记录 skip reason，供后续依赖 langgraph 的测试用例使用。
 try:
-    from langgraph.nodes import perception_node as _probe_perception_node  # noqa: F401
+    from modu_graph.nodes import perception_node as _probe_perception_node  # noqa: F401
     _LANGGRAPH_INTEGRATION_AVAILABLE = True
     _LANGGRAPH_INTEGRATION_SKIP_REASON = ""
 except BaseException as _e:  # noqa: BLE001  捕获循环导入/部分初始化
@@ -331,7 +331,7 @@ class TestPerceptionPipelineParallel:
         """P2-12.2.3: perception_node 是异步函数。"""
         _skip_if_langgraph_unavailable()
         import inspect
-        from langgraph.nodes import perception_node
+        from modu_graph.nodes import perception_node
 
         assert inspect.iscoroutinefunction(perception_node), "perception_node should be async"
 
@@ -339,21 +339,21 @@ class TestPerceptionPipelineParallel:
         """P2-12.2.3: perception_node_sync 同步版本存在（向后兼容）。"""
         _skip_if_langgraph_unavailable()
         import inspect
-        from langgraph.nodes import perception_node_sync
+        from modu_graph.nodes import perception_node_sync
 
         assert not inspect.iscoroutinefunction(perception_node_sync), "perception_node_sync should be sync"
 
     async def test_perception_node_calls_async_pipeline(self):
         """P2-12.2.3: 异步 perception_node 调用 run_perception_pipeline_async。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.nodes import perception_node
+        from modu_graph.nodes import perception_node
 
         with patch(
-            "langgraph.nodes.run_perception_pipeline_async",
+            "modu_graph.nodes.run_perception_pipeline_async",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_async, patch(
-            "langgraph.nodes.run_perception_pipeline",
+            "modu_graph.nodes.run_perception_pipeline",
         ) as mock_sync:
             state = {"input_data": {"prompt": "test"}}
             await perception_node(state)
@@ -363,7 +363,7 @@ class TestPerceptionPipelineParallel:
     async def test_perception_node_result_extraction(self):
         """P2-12.2.3: 异步 perception_node 正确提取融合结果。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.nodes import perception_node
+        from modu_graph.nodes import perception_node
 
         mock_fused = {
             "parsed_content": {"text": "cleaned", "input_type": "text"},
@@ -372,7 +372,7 @@ class TestPerceptionPipelineParallel:
             "detected_language": "en",
         }
         with patch(
-            "langgraph.nodes.run_perception_pipeline_async",
+            "modu_graph.nodes.run_perception_pipeline_async",
             new_callable=AsyncMock,
             return_value=mock_fused,
         ):
@@ -395,14 +395,14 @@ class TestPerceptionPipelineParallel:
 class TestConfigHotReloadCallback:
     """12.2.4: 配置变更回调主动触发 runner 缓存失效。
 
-    需要 langchain_core（通过 langgraph.runner → langgraph.factory）。
+    需要 langchain_core（通过 modu_graph.runner → modu_graph.factory）。
     """
 
     def test_callback_registered_on_get_runner(self):
         """首次 get_runner() 时注册配置变更回调。"""
         _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
-        from langgraph import runner as runner_mod
+        from modu_graph import runner as runner_mod
 
         # 重置回调标志
         runner_mod._config_callback_registered = False
@@ -417,7 +417,7 @@ class TestConfigHotReloadCallback:
 
         with override_config(cfg):
             # mock create_agent 避免实际构建图
-            with patch("langgraph.factory.create_agent") as mock_create:
+            with patch("modu_graph.factory.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 try:
                     runner_mod.get_runner()
@@ -435,13 +435,13 @@ class TestConfigHotReloadCallback:
         """llm.* 配置变更触发 reset_runner_cache。"""
         _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
-        from langgraph import runner as runner_mod
+        from modu_graph import runner as runner_mod
 
         runner_mod._config_callback_registered = False
         cfg = RuntimeConfig()
 
         with override_config(cfg):
-            with patch("langgraph.factory.create_agent") as mock_create:
+            with patch("modu_graph.factory.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 try:
                     runner_mod.get_runner()
@@ -457,13 +457,13 @@ class TestConfigHotReloadCallback:
         """tools.* 配置变更触发 reset_runner_cache。"""
         _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
-        from langgraph import runner as runner_mod
+        from modu_graph import runner as runner_mod
 
         runner_mod._config_callback_registered = False
         cfg = RuntimeConfig()
 
         with override_config(cfg):
-            with patch("langgraph.factory.create_agent") as mock_create:
+            with patch("modu_graph.factory.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 try:
                     runner_mod.get_runner()
@@ -478,13 +478,13 @@ class TestConfigHotReloadCallback:
         """非图相关配置变更不触发缓存失效。"""
         _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
-        from langgraph import runner as runner_mod
+        from modu_graph import runner as runner_mod
 
         runner_mod._config_callback_registered = False
         cfg = RuntimeConfig()
 
         with override_config(cfg):
-            with patch("langgraph.factory.create_agent") as mock_create:
+            with patch("modu_graph.factory.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 try:
                     runner_mod.get_runner()
@@ -500,13 +500,13 @@ class TestConfigHotReloadCallback:
         """回调仅注册一次（多次 get_runner 不重复注册）。"""
         _skip_if_langgraph_unavailable()
         from config.runtime_config import RuntimeConfig, override_config
-        from langgraph import runner as runner_mod
+        from modu_graph import runner as runner_mod
 
         runner_mod._config_callback_registered = False
         cfg = RuntimeConfig()
 
         with override_config(cfg):
-            with patch("langgraph.factory.create_agent") as mock_create:
+            with patch("modu_graph.factory.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 try:
                     runner_mod.get_runner()
@@ -534,20 +534,20 @@ class TestConfigHotReloadCallback:
     def test_on_config_change_prefix_matching(self):
         """_on_config_change 正确匹配配置前缀。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.runner import _on_config_change
+        from modu_graph.runner import _on_config_change
 
         # 应触发图重建的配置
         for prefix in ["llm.temperature", "tools.default_timeout_ms",
                        "memory.store_type", "orchestration.engine",
                        "streaming.chunk_size"]:
-            with patch("langgraph.runner.reset_runner_cache") as mock_reset:
+            with patch("modu_graph.runner.reset_runner_cache") as mock_reset:
                 _on_config_change(prefix, "old", "new")
                 mock_reset.assert_called_once()
 
         # 不应触发图重建的配置
         for key in ["feedback.evolution_threshold", "perception.max_length",
                      "event_bus.max_log_size"]:
-            with patch("langgraph.runner.reset_runner_cache") as mock_reset:
+            with patch("modu_graph.runner.reset_runner_cache") as mock_reset:
                 _on_config_change(key, "old", "new")
                 mock_reset.assert_not_called()
 

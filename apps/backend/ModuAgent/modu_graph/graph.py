@@ -24,10 +24,10 @@ from typing import Any, List, Optional
 
 from langchain_core.tools import BaseTool as LCTool
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.graph import CompiledGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
-from langgraph.nodes import (
+from modu_graph.nodes import (
     make_agent_node,
     make_consensus_node,
     make_feedback_node,
@@ -44,17 +44,17 @@ from langgraph.nodes import (
     route_after_memory_query,
     route_after_perception,
 )
-from langgraph.state import ModuAgentState
-from langgraph.subgraph.supervisor import make_supervisor_node, route_from_supervisor
+from modu_graph.state import ModuAgentState
+from modu_graph.subgraph.supervisor import make_supervisor_node, route_from_supervisor
 
 logger = logging.getLogger(__name__)
 
 
 class ModuGraph:
-    """P1-12.2.3: CompiledGraph 包装类，显式持有 orchestrator 引用。
+    """P1-12.2.3: CompiledStateGraph 包装类，显式持有 orchestrator 引用。
 
-    替代在 CompiledGraph 实例上 monkey-patch `graph.orchestrator` 的做法：
-    第三方对象（CompiledGraph）不应被附加非标准属性，否则会引入隐式契约、
+    替代在 CompiledStateGraph 实例上 monkey-patch `graph.orchestrator` 的做法：
+    第三方对象（CompiledStateGraph）不应被附加非标准属性，否则会引入隐式契约、
     难以追踪的副作用与类型检查盲区。
 
     本包装器通过 `__getattr__` 将所有未在自身定义的属性访问透明委托给底层
@@ -62,20 +62,20 @@ class ModuGraph:
     同时以普通实例属性形式持有 orchestrator，供 runner 读取以共享
     evolution_collector。
 
-    用法与 CompiledGraph 一致：
+    用法与 CompiledStateGraph 一致：
         graph = create_agent()        # 返回 ModuGraph
         async for ev in graph.astream(state, config=...): ...
         orch = graph.orchestrator     # 显式属性，非 monkey-patch
     """
 
-    def __init__(self, compiled: CompiledGraph, orchestrator: Any = None) -> None:
+    def __init__(self, compiled: CompiledStateGraph, orchestrator: Any = None) -> None:
         # 必须先设置 _compiled，使后续 __getattr__ 委托可生效
-        self._compiled: CompiledGraph = compiled
-        # orchestrator 作为显式实例属性（不再 setattr 到 CompiledGraph 上）
+        self._compiled: CompiledStateGraph = compiled
+        # orchestrator 作为显式实例属性（不再 setattr 到 CompiledStateGraph 上）
         self.orchestrator: Any = orchestrator
 
     @property
-    def compiled(self) -> CompiledGraph:
+    def compiled(self) -> CompiledStateGraph:
         """返回底层编译图实例。"""
         return self._compiled
 
@@ -97,7 +97,7 @@ def build_modu_graph(
     hitl_enabled: Optional[bool] = None,
     multi_agent_enabled: Optional[bool] = None,
     judge_llm: Any = None,
-) -> CompiledGraph:
+) -> CompiledStateGraph:
     """构建 ModuAgent LangGraph。
 
     Args:
@@ -133,8 +133,8 @@ def build_modu_graph(
     P3-12.3.1: supervisor + subagent_run + consensus 节点接入图结构。
     P3-12.3.2: human_review 节点接入图结构，敏感工具执行前 interrupt 等待人工审批。
     """
-    # 绑定工具到 LLM（原生 function calling）
-    bound_llm = llm.bind_tools(tools) if tools else llm
+    # LLM 已经在 factory 中绑定了工具，此处直接使用
+    bound_llm = llm
 
     # 读取 HITL 配置（P3-12.3.2）
     if hitl_enabled is None:
@@ -181,7 +181,7 @@ def build_modu_graph(
         graph.add_node("memory_query", memory_node)
     else:
         # 无 Store 时使用空查询节点
-        from langgraph.nodes import memory_query_node as _empty_memory_node
+        from modu_graph.nodes import memory_query_node as _empty_memory_node
         graph.add_node("memory_query", _empty_memory_node)
 
     graph.add_node("agent", agent_node)

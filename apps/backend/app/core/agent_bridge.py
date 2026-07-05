@@ -111,8 +111,8 @@ async def stream_agent_completion(
     """
     _init_moduagent()
 
-    from langgraph.factory import create_agent
-    from langgraph.runner import stream_response
+    from modu_graph.factory import create_agent
+    from modu_graph.runner import stream_response
     from orchestration.communication.agui_adapter import AGUIStreamAdapter
 
     # 根据是否需要动态模型覆盖选择构建方式

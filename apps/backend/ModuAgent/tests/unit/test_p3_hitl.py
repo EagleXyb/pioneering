@@ -26,7 +26,7 @@ import pytest
 # 模块级 probe import（检测 langgraph 集成是否可用）
 # ============================================================
 try:
-    from langgraph.nodes import (
+    from modu_graph.nodes import (
         _tool_requires_approval,
         make_human_review_node,
         route_after_human_review,
@@ -136,27 +136,27 @@ class TestToolRequiresApprovalHelper:
 class TestHumanReviewNode:
     """human_review 节点测试。"""
 
-    def test_human_review_disabled_returns_skipped(self, fresh_config) -> None:
+    async def test_human_review_disabled_returns_skipped(self, fresh_config) -> None:
         """HITL 关闭时节点返回 skipped。"""
         _skip_if_langgraph_unavailable()
         fresh_config.set("tools.human_in_loop.enabled", False)
         node = make_human_review_node(config=fresh_config)
 
         state = {"messages": [], "trace_id": "t1", "session_id": "s1", "user_id": "u1"}
-        result = asyncio.get_event_loop().run_until_complete(node(state))
+        result = await node(state)
         assert result["approval_status"] == "skipped"
 
-    def test_no_messages_returns_no_tool_calls(self, fresh_config) -> None:
+    async def test_no_messages_returns_no_tool_calls(self, fresh_config) -> None:
         """无消息时返回 no_tool_calls。"""
         _skip_if_langgraph_unavailable()
         fresh_config.set("tools.human_in_loop.enabled", True)
         node = make_human_review_node(config=fresh_config)
 
         state = {"messages": [], "trace_id": "t1"}
-        result = asyncio.get_event_loop().run_until_complete(node(state))
+        result = await node(state)
         assert result["approval_status"] == "no_tool_calls"
 
-    def test_no_tool_calls_in_last_message(self, fresh_config) -> None:
+    async def test_no_tool_calls_in_last_message(self, fresh_config) -> None:
         """最后一条消息无 tool_calls → no_tool_calls。"""
         _skip_if_langgraph_unavailable()
         fresh_config.set("tools.human_in_loop.enabled", True)
@@ -169,10 +169,10 @@ class TestHumanReviewNode:
             "messages": [AIMessage(content="I can help with that.")],
             "trace_id": "t1",
         }
-        result = asyncio.get_event_loop().run_until_complete(node(state))
+        result = await node(state)
         assert result["approval_status"] == "no_tool_calls"
 
-    def test_non_sensitive_tool_no_interrupt(self, fresh_config) -> None:
+    async def test_non_sensitive_tool_no_interrupt(self, fresh_config) -> None:
         """普通工具不触发 interrupt → not_required。"""
         _skip_if_langgraph_unavailable()
         fresh_config.set("tools.human_in_loop.enabled", True)
@@ -186,11 +186,11 @@ class TestHumanReviewNode:
             "messages": [AIMessage(content="", tool_calls=[{"name": "calculator", "args": {}, "id": "tc1"}])],
             "trace_id": "t1",
         }
-        result = asyncio.get_event_loop().run_until_complete(node(state))
+        result = await node(state)
         assert result["approval_status"] == "not_required"
         assert result["tool_requires_approval"] is False
 
-    def test_sensitive_tool_triggers_interrupt_approved(self, fresh_config) -> None:
+    async def test_sensitive_tool_triggers_interrupt_approved(self, fresh_config) -> None:
         """敏感工具触发 interrupt，resume=approved → approved。"""
         _skip_if_langgraph_unavailable()
         fresh_config.set("tools.human_in_loop.enabled", True)
@@ -211,12 +211,12 @@ class TestHumanReviewNode:
 
         # Mock interrupt 返回 approved
         with patch("langgraph.types.interrupt", return_value={"approved": True, "feedback": "ok"}):
-            result = asyncio.get_event_loop().run_until_complete(node(state))
+            result = await node(state)
 
         assert result["approval_status"] == "approved"
         assert result["approval_feedback"] == "ok"
 
-    def test_sensitive_tool_triggers_interrupt_rejected(self, fresh_config, fresh_registry) -> None:
+    async def test_sensitive_tool_triggers_interrupt_rejected(self, fresh_config, fresh_registry) -> None:
         """敏感工具触发 interrupt，resume=rejected → rejected + 降级 ToolMessage。"""
         _skip_if_langgraph_unavailable()
         fresh_config.set("tools.human_in_loop.enabled", True)
@@ -243,7 +243,7 @@ class TestHumanReviewNode:
 
         # Mock interrupt 返回 rejected
         with patch("langgraph.types.interrupt", return_value={"approved": False, "feedback": "dangerous"}):
-            result = asyncio.get_event_loop().run_until_complete(node(state))
+            result = await node(state)
 
         assert result["approval_status"] == "rejected"
         assert result["approval_feedback"] == "dangerous"
@@ -339,7 +339,7 @@ class TestStateFields:
     def test_make_initial_state_includes_hitl_fields(self) -> None:
         """make_initial_state 包含 HITL 字段。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.state import make_initial_state
+        from modu_graph.state import make_initial_state
 
         state = make_initial_state(
             user_id="u1",
@@ -367,7 +367,7 @@ class TestResumeFunctions:
     def test_get_interrupt_state_returns_none_for_no_checkpoint(self) -> None:
         """无 checkpoint 时返回 None。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.runner import get_interrupt_state
+        from modu_graph.runner import get_interrupt_state
 
         mock_graph = MagicMock()
         mock_graph.get_state.return_value = None
@@ -378,7 +378,7 @@ class TestResumeFunctions:
     def test_get_interrupt_state_returns_none_for_no_next_nodes(self) -> None:
         """state.next 为空时返回 None（未暂停）。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.runner import get_interrupt_state
+        from modu_graph.runner import get_interrupt_state
 
         mock_graph = MagicMock()
         mock_state = MagicMock()
@@ -391,7 +391,7 @@ class TestResumeFunctions:
     def test_get_interrupt_state_returns_none_for_non_human_review(self) -> None:
         """next 不含 human_review 时返回 None。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.runner import get_interrupt_state
+        from modu_graph.runner import get_interrupt_state
 
         mock_graph = MagicMock()
         mock_state = MagicMock()
@@ -404,7 +404,7 @@ class TestResumeFunctions:
     def test_get_interrupt_state_returns_dict_for_human_review(self) -> None:
         """next 含 human_review 时返回 interrupt 上下文。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.runner import get_interrupt_state
+        from modu_graph.runner import get_interrupt_state
 
         mock_graph = MagicMock()
         mock_state = MagicMock()
@@ -425,16 +425,14 @@ class TestResumeFunctions:
         assert result["tool_requires_approval"] is True
         assert result["trace_id"] == "trace-1"
 
-    def test_resume_sync_returns_error_when_command_unavailable(self) -> None:
+    async def test_resume_sync_returns_error_when_command_unavailable(self) -> None:
         """Command API 不可用时返回错误。"""
         _skip_if_langgraph_unavailable()
-        from langgraph.runner import resume_sync
+        from modu_graph.runner import resume_sync
 
         mock_graph = MagicMock()
 
         # Mock langgraph.types.Command 导入失败
         with patch.dict("sys.modules", {"langgraph.types": None}):
-            result = asyncio.get_event_loop().run_until_complete(
-                resume_sync(mock_graph, "s1", approved=True)
-            )
+            result = await resume_sync(mock_graph, "s1", approved=True)
         assert result["status"] == "error"

@@ -12,10 +12,11 @@ ModuAgent 自研的 Coordinator 上帝类 + 手写循环 + 隐式状态 + 自定
 
 from __future__ import annotations
 
-from langgraph.factory import create_agent, get_runner
-from langgraph.graph import build_modu_graph
-from langgraph.runner import run_sync, stream_response
-from langgraph.state import ModuAgentState
+from modu_graph.factory import create_agent
+from modu_graph.runner import get_runner
+from modu_graph.graph import build_modu_graph
+from modu_graph.runner import run_sync, stream_response
+from modu_graph.state import ModuAgentState
 
 __all__ = [
     "ModuAgentState",

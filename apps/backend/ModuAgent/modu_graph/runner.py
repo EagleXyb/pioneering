@@ -5,7 +5,7 @@ P0-2: LangGraph 成为唯一引擎，移除 legacy Coordinator 分支。
 提供：
     - stream_response(): 流式调用，使用 LangGraph astream
     - run_sync(): 非流式调用
-    - get_runner(): 获取 LangGraph CompiledGraph 实例
+    - get_runner(): 获取 LangGraph CompiledStateGraph 实例
     - process_request_compat(): 统一调用接口（保留向后兼容）
 
 LangGraph 提供 4 种 stream_mode：
@@ -26,18 +26,18 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, AsyncGenerator, Dict, Iterator, Optional
 
-from langgraph.graph.graph import CompiledGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from config.runtime_config import get_config
 from config.schemas import PerceptionInputSchema
-from langgraph.adapters.event_bridge import LangGraphEventBridge
-from langgraph.state import ModuAgentState, make_initial_state
+from modu_graph.adapters.event_bridge import LangGraphEventBridge
+from modu_graph.state import ModuAgentState, make_initial_state
 from orchestration.communication.protocol import ErrorCode
 
 logger = logging.getLogger(__name__)
 
 
-# P1-12.2.6: CompiledGraph 实例缓存，避免每次 get_runner() 都重建图。
+# P1-12.2.6: CompiledStateGraph 实例缓存，避免每次 get_runner() 都重建图。
 # 配置变更（通过 hash 检测）时自动失效重建。
 _runner_cache: Optional[Any] = None
 _runner_config_hash: Optional[str] = None
@@ -160,7 +160,7 @@ def _validate_input_data(input_data: Dict[str, Any]) -> None:
 
 
 def _load_prev_config_overrides(
-    graph: CompiledGraph,
+    graph: CompiledStateGraph,
     session_id: str,
 ) -> Dict[str, Any]:
     """P0-2: 从 checkpointer 读取上一次会话状态的 config_overrides。
@@ -217,7 +217,7 @@ def _build_config_with_overrides(
 
 
 async def stream_response(
-    graph: CompiledGraph,
+    graph: CompiledStateGraph,
     user_id: str,
     session_id: str,
     input_data: Dict[str, Any],
@@ -305,7 +305,7 @@ async def stream_response(
 
 
 async def run_sync(
-    graph: CompiledGraph,
+    graph: CompiledStateGraph,
     user_id: str,
     session_id: str,
     input_data: Dict[str, Any],
@@ -459,7 +459,7 @@ async def run_sync(
 
 
 def get_runner(engine: Optional[str] = None) -> Any:
-    """获取 LangGraph CompiledGraph 实例。
+    """获取 LangGraph CompiledStateGraph 实例。
 
     P0-2: LangGraph 成为唯一引擎，移除 legacy Coordinator 分支。
     engine 参数保留用于向后兼容，但仅支持 "langgraph"（其他值将记录警告）。
@@ -474,7 +474,7 @@ def get_runner(engine: Optional[str] = None) -> Any:
         engine: 引擎类型（保留向后兼容，默认从配置读取）
 
     Returns:
-        ModuGraph 包装器（透明委托 CompiledGraph 的所有方法）
+        ModuGraph 包装器（透明委托 CompiledStateGraph 的所有方法）
     """
     # P2-12.2.4: 首次调用时注册配置变更回调（仅注册一次）
     _ensure_config_callback_registered()
@@ -499,7 +499,7 @@ def get_runner(engine: Optional[str] = None) -> Any:
         if _runner_cache is not None and current_hash == _runner_config_hash:
             return _runner_cache
 
-        from langgraph.factory import create_agent
+        from modu_graph.factory import create_agent
         logger.info(
             "Rebuilding LangGraph runner (config_hash changed: %s -> %s)",
             _runner_config_hash, current_hash,
@@ -571,10 +571,10 @@ async def process_request_compat(
     input_data: Dict[str, Any],
     trace_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """统一调用接口（P0-2: 仅支持 LangGraph CompiledGraph）。
+    """统一调用接口（P0-2: 仅支持 LangGraph CompiledStateGraph）。
 
     Args:
-        runner: CompiledGraph 实例
+        runner: CompiledStateGraph 实例
         user_id: 用户标识
         session_id: 会话标识
         input_data: 输入数据
@@ -601,10 +601,10 @@ async def stream_request_compat(
     input_data: Dict[str, Any],
     trace_id: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """统一流式调用接口（P0-2: 仅支持 LangGraph CompiledGraph）。
+    """统一流式调用接口（P0-2: 仅支持 LangGraph CompiledStateGraph）。
 
     Args:
-        runner: CompiledGraph 实例
+        runner: CompiledStateGraph 实例
         user_id: 用户标识
         session_id: 会话标识
         input_data: 输入数据
@@ -631,7 +631,7 @@ async def stream_request_compat(
 # ============================================================
 
 async def resume_sync(
-    graph: CompiledGraph,
+    graph: CompiledStateGraph,
     session_id: str,
     approved: bool,
     feedback: str = "",
@@ -643,7 +643,7 @@ async def resume_sync(
     调用者通过此方法提供审批结果并恢复执行。
 
     Args:
-        graph: 已暂停的 CompiledGraph 实例
+        graph: 已暂停的 CompiledStateGraph 实例
         session_id: 会话标识（必须与原请求一致，用于从 checkpoint 恢复）
         approved: 审批结果（True=通过，False=拒绝）
         feedback: 审批反馈备注（可选）
@@ -741,7 +741,7 @@ async def resume_sync(
 
 
 async def resume_stream(
-    graph: CompiledGraph,
+    graph: CompiledStateGraph,
     session_id: str,
     approved: bool,
     feedback: str = "",
@@ -752,7 +752,7 @@ async def resume_stream(
     与 ``resume_sync`` 类似，但通过 astream 流式产出事件。
 
     Args:
-        graph: 已暂停的 CompiledGraph 实例
+        graph: 已暂停的 CompiledStateGraph 实例
         session_id: 会话标识
         approved: 审批结果
         feedback: 审批反馈备注
@@ -799,7 +799,7 @@ async def resume_stream(
 
 
 def get_interrupt_state(
-    graph: CompiledGraph,
+    graph: CompiledStateGraph,
     session_id: str,
 ) -> Optional[Dict[str, Any]]:
     """P3-12.3.2: 查询指定 session 当前是否处于 interrupt 暂停状态。
@@ -807,7 +807,7 @@ def get_interrupt_state(
     用于调用者在决定是否调用 resume_sync 之前检查图状态。
 
     Args:
-        graph: CompiledGraph 实例
+        graph: CompiledStateGraph 实例
         session_id: 会话标识
 
     Returns:

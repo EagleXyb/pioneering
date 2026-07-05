@@ -319,7 +319,7 @@ class TestStateConfigOverrides:
             os.path.dirname(__file__),
             "..",
             "..",
-            "langgraph",
+            "modu_graph",
             "state.py",
         )
         with open(state_file, "r", encoding="utf-8") as f:

@@ -19,7 +19,7 @@ from pydantic import BaseModel, create_model
 
 from config.runtime_config import RuntimeConfig, get_config
 from core.registry import ComponentRegistry, get_registry
-from langgraph.adapters.retry import with_tool_retry
+from modu_graph.adapters.retry import with_tool_retry
 
 logger = logging.getLogger(__name__)
 

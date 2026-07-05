@@ -17,7 +17,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-from langgraph.store.base import BaseStore, Item, Op
+from langgraph.store.base import BaseStore, Item, Op, Result
 
 from components.memory.vector.chroma import ChromaLongTermMemory
 
@@ -212,17 +212,24 @@ class ChromaStore(BaseStore):
             logger.error("ChromaStore.delete error: %s", str(e))
             return False
 
-    def batch(self, ops: Sequence[Op]) -> None:
+    def batch(self, ops: Sequence[Op]) -> list[Result]:
         """批量操作（简化实现：逐个执行）。"""
+        results: list[Result] = []
         for op in ops:
-            # Op 是 NamedTuple，包含 namespace/key/value 等字段
             try:
                 if hasattr(op, "value") and op.value is not None:
                     self.put(op.namespace, op.key, op.value)
                 else:
                     self.delete(op.namespace, op.key)
+                results.append(None)
             except Exception as e:
                 logger.error("ChromaStore.batch op error: %s", str(e))
+                results.append(None)
+        return results
+
+    async def abatch(self, ops: Sequence[Op]) -> list[Result]:
+        """异步批量操作（委托给 batch）。"""
+        return self.batch(ops)
 
 
 class InMemoryStoreAdapter(BaseStore):
@@ -291,7 +298,7 @@ class InMemoryStoreAdapter(BaseStore):
             return False
         return ns.pop(key, None) is not None
 
-    def batch(self, ops: Sequence[Op]) -> None:
+    def batch(self, ops: Sequence[Op]) -> list[Result]:
         for op in ops:
             try:
                 if hasattr(op, "value") and op.value is not None:
@@ -300,3 +307,7 @@ class InMemoryStoreAdapter(BaseStore):
                     self.delete(op.namespace, op.key)
             except Exception as e:
                 logger.error("InMemoryStoreAdapter.batch op error: %s", str(e))
+        return [None] * len(ops)
+
+    async def abatch(self, ops: Sequence[Op]) -> list[Result]:
+        return self.batch(ops)

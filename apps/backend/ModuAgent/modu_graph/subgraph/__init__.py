@@ -12,9 +12,9 @@
 
 from __future__ import annotations
 
-from langgraph.subgraph.builder import build_subagent_subgraph
-from langgraph.subgraph.states import SubAgentState
-from langgraph.subgraph.supervisor import decompose_task, make_supervisor_node
+from modu_graph.subgraph.builder import build_subagent_subgraph
+from modu_graph.subgraph.states import SubAgentState
+from modu_graph.subgraph.supervisor import decompose_task, make_supervisor_node
 
 __all__ = [
     "SubAgentState",

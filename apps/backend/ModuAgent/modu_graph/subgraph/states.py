@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, Optional, TypedDict
+from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages

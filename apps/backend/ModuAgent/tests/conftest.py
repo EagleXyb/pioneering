@@ -84,14 +84,14 @@ def _cleanup_globals():
 
     # P1-12.2.6: 清理 runner 图缓存，避免配置变更后测试间复用旧图
     try:
-        from langgraph.runner import reset_runner_cache
+        from modu_graph.runner import reset_runner_cache
         reset_runner_cache()
     except Exception:
         pass
 
     # P2-12.2.4: 重置配置回调注册标志，确保新 RuntimeConfig 实例能重新注册回调
     try:
-        import langgraph.runner as _runner_mod
+        import modu_graph.runner as _runner_mod
         _runner_mod._config_callback_registered = False
     except Exception:
         pass

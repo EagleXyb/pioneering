@@ -37,7 +37,7 @@ from components.perception.pipeline import (
 )
 from config.runtime_config import get_config
 from core.registry import get_registry
-from langgraph.state import ModuAgentState
+from modu_graph.state import ModuAgentState
 from orchestration.communication.message_bus import get_event_bus
 from orchestration.communication.protocol import (
     AgentEvent,
@@ -967,7 +967,7 @@ def make_subagent_node(
     Returns:
         子 Agent 节点函数
     """
-    from langgraph.subgraph.builder import _get_system_prompt
+    from modu_graph.subgraph.builder import _get_system_prompt
 
     def _subagent_node(state: ModuAgentState) -> dict:
         """子 Agent 节点：处理 current_subtask 并返回结果。"""

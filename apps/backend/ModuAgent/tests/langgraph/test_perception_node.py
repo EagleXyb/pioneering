@@ -17,12 +17,12 @@ from unittest.mock import AsyncMock, patch
 
 # 本地 langgraph/ 包与库同名，在库已安装时触发循环导入（pre-existing 架构限制）。
 try:
-    from langgraph.nodes import (
+    from modu_graph.nodes import (
         perception_node,
         perception_node_sync,
         route_after_perception,
     )
-    from langgraph.state import ModuAgentState
+    from modu_graph.state import ModuAgentState
 except ImportError as _e:  # noqa: F401
     pytest.skip(
         f"local langgraph integration not importable (package name shadowing): {_e}",
@@ -67,7 +67,7 @@ class TestPerceptionNode:
         }
 
         with patch(
-            "langgraph.nodes.run_perception_pipeline_async",
+            "modu_graph.nodes.run_perception_pipeline_async",
             new_callable=AsyncMock,
             return_value=mock_fused,
         ):
@@ -86,11 +86,11 @@ class TestPerceptionNode:
     async def test_perception_node_uses_async_pipeline(self):
         """P2-12.2.3: 验证 perception_node 调用的是异步并行管线而非同步串行管线。"""
         with patch(
-            "langgraph.nodes.run_perception_pipeline_async",
+            "modu_graph.nodes.run_perception_pipeline_async",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_async, patch(
-            "langgraph.nodes.run_perception_pipeline",
+            "modu_graph.nodes.run_perception_pipeline",
         ) as mock_sync:
             state: ModuAgentState = {
                 "input_data": {"prompt": "test"},
@@ -120,7 +120,7 @@ class TestPerceptionNodeSync:
             "detected_language": "en",
         }
         with patch(
-            "langgraph.nodes.run_perception_pipeline",
+            "modu_graph.nodes.run_perception_pipeline",
             return_value=mock_fused,
         ):
             state: ModuAgentState = {
