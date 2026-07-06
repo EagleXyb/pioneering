@@ -1,18 +1,20 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
-import { AppLayout } from './components/layout/AppLayout'
+import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
+import { SettingsPage } from './pages/SettingsPage'
 import { ChatPage } from './pages/ChatPage'
 import { AgentPage } from './pages/AgentPage'
-import { SettingsPage } from './pages/SettingsPage'
+import { WorkspacePage } from './pages/WorkspacePage'
 
 function App(): JSX.Element {
   return (
     <HashRouter>
       <Routes>
-        <Route element={<AppLayout />}>
+        <Route element={<RootLayout />}>
           <Route index element={<HomePage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/agent" element={<AgentPage />} />
+          <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>

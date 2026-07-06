@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -6,12 +6,19 @@ import appIcon from '../../resources/icon.png?asset'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
     show: false,
     autoHideMenuBar: true,
+    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#09090b',
+      symbolColor: '#a1a1aa',
+      height: 40
+    },
     icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -35,6 +42,21 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // Window control IPC
+  ipcMain.handle('window:control', (_, action: string) => {
+    switch (action) {
+      case 'minimize':
+        mainWindow?.minimize()
+        break
+      case 'maximize':
+        mainWindow?.isMaximized() ? mainWindow?.unmaximize() : mainWindow?.maximize()
+        break
+      case 'close':
+        mainWindow?.close()
+        break
+    }
+  })
 }
 
 app.whenReady().then(() => {
@@ -44,7 +66,6 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // 注册所有 IPC 处理器
   registerIpcHandlers()
 
   createWindow()

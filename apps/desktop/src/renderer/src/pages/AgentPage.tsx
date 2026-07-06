@@ -1,205 +1,114 @@
-// ---- AgentPage ----
+// ============================================================
+// AgentPage — Agent 执行页面
+// ============================================================
 
-import { useState, useRef } from 'react'
-import { Bot, Play, Square, Terminal, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, Play, Square, Terminal, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '../components/ui/button'
-import apiClient from '../services/api/client'
-import { cn } from '../lib/utils'
-
-interface AgentLogEntry {
-  id: string
-  type: 'system' | 'user' | 'agent' | 'tool' | 'error'
-  content: string
-  timestamp: string
-}
+import { useAgentStore } from '../stores/useAgentStore'
 
 export function AgentPage(): JSX.Element {
   const [instruction, setInstruction] = useState('')
-  const [isRunning, setIsRunning] = useState(false)
-  const [logs, setLogs] = useState<AgentLogEntry[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const { steps, currentStepIndex, status, error, startExecution, addStep, nextStep, completeExecution, failExecution, reset } = useAgentStore()
 
-  const executeAgent = async () => {
-    if (!instruction.trim() || isRunning) return
+  const handleExecute = async () => {
+    if (!instruction.trim()) return
+    reset()
+    startExecution(instruction)
 
-    setIsRunning(true)
-    setError(null)
-    const controller = new AbortController()
-    abortRef.current = controller
+    // Simulate agent execution
+    const mockSteps = [
+      { id: '1', description: '分析任务需求', status: 'running' as const },
+      { id: '2', description: '搜索相关知识库', status: 'pending' as const, toolName: 'search' },
+      { id: '3', description: '生成解决方案', status: 'pending' as const, toolName: 'generate' },
+      { id: '4', description: '验证结果', status: 'pending' as const, toolName: 'validate' }
+    ]
 
-    const userEntry: AgentLogEntry = {
-      id: `user-${Date.now()}`,
-      type: 'user',
-      content: instruction,
-      timestamp: new Date().toISOString()
+    for (let i = 0; i < mockSteps.length; i++) {
+      await new Promise((r) => setTimeout(r, 800))
+      addStep(mockSteps[i] as any)
+      nextStep()
     }
-    setLogs((prev) => [...prev, userEntry])
 
-    const url = `${apiClient.getBaseURL()}/agent/execute`
-    const token = apiClient.getAccessToken()
-
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          instruction: instruction.trim(),
-          stream: true
-        }),
-        signal: controller.signal
-      })
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
-      }
-
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('No response body')
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data:')) continue
-          const jsonStr = trimmed.slice(5).trim()
-          if (jsonStr === '[DONE]') continue
-
-          try {
-            const parsed = JSON.parse(jsonStr)
-            const entry: AgentLogEntry = {
-              id: `log-${Date.now()}-${Math.random()}`,
-              type: parsed.type || 'agent',
-              content: parsed.content || parsed.message || JSON.stringify(parsed),
-              timestamp: new Date().toISOString()
-            }
-            setLogs((prev) => [...prev, entry])
-          } catch {
-            // skip
-          }
-        }
-      }
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        const msg = (err as Error).message
-        setError(msg)
-        setLogs((prev) => [
-          ...prev,
-          {
-            id: `err-${Date.now()}`,
-            type: 'error',
-            content: msg,
-            timestamp: new Date().toISOString()
-          }
-        ])
-      }
-    } finally {
-      setIsRunning(false)
-      abortRef.current = null
-      setInstruction('')
-    }
-  }
-
-  const stopAgent = () => {
-    abortRef.current?.abort()
-    setIsRunning(false)
-  }
-
-  const logTypeStyles: Record<AgentLogEntry['type'], string> = {
-    system: 'text-muted-foreground',
-    user: 'text-blue-500 font-medium',
-    agent: 'text-foreground',
-    tool: 'text-emerald-500',
-    error: 'text-red-500'
-  }
-
-  const logTypeIcons: Record<AgentLogEntry['type'], React.ReactNode> = {
-    system: <Terminal className="size-3" />,
-    user: <span className="text-xs">▶</span>,
-    agent: <Bot className="size-3" />,
-    tool: <span className="text-xs">🔧</span>,
-    error: <span className="text-xs">✕</span>
+    completeExecution()
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
-        <Bot className="size-5 text-primary" />
-        <h2 className="font-semibold">AI Agent 执行引擎</h2>
-        <div className="flex-1" />
-        {error && (
-          <span className="text-xs text-red-500 max-w-[300px] truncate" title={error}>
-            {error}
-          </span>
-        )}
-      </div>
+    <div className="h-full overflow-y-auto p-6">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex items-center gap-3">
+          <Bot className="size-6 text-primary" />
+          <div>
+            <h1 className="text-xl font-bold">AI Agent</h1>
+            <p className="text-sm text-muted-foreground">智能体执行引擎</p>
+          </div>
+        </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm">
-        {logs.length === 0 && (
-          <div className="text-center text-muted-foreground py-20">
-            <Bot className="size-12 mx-auto mb-3 opacity-30" />
-            <p>输入指令启动 AI Agent</p>
-            <p className="text-xs mt-1">Agent 将自动分解任务、调用工具并返回结果</p>
-          </div>
-        )}
-        {logs.map((entry) => (
-          <div key={entry.id} className="flex gap-2 items-start">
-            <span className={cn('mt-0.5 shrink-0', logTypeStyles[entry.type])}>
-              {logTypeIcons[entry.type]}
-            </span>
-            <span className={cn('whitespace-pre-wrap break-words', logTypeStyles[entry.type])}>
-              {entry.content}
-            </span>
-          </div>
-        ))}
-        {isRunning && (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
-            <span>Agent 执行中...</span>
-          </div>
-        )}
-      </div>
-
-      <div className="p-3 border-t border-border shrink-0">
+        {/* Input */}
         <div className="flex gap-2">
           <input
             type="text"
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                executeAgent()
-              }
-            }}
-            placeholder="输入任务指令，例如：'帮我分析最近一周的销售数据'..."
-            disabled={isRunning}
-            className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+            placeholder="输入任务指令..."
+            disabled={status === 'running'}
+            className="flex-1 px-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          {isRunning ? (
-            <Button onClick={stopAgent} variant="destructive" size="sm">
-              <Square className="size-4 mr-1" />
-              Stop
+          {status === 'running' ? (
+            <Button variant="destructive" onClick={() => failExecution('用户取消')}>
+              <Square className="size-4 mr-1" /> 停止
             </Button>
           ) : (
-            <Button onClick={executeAgent} size="sm" disabled={!instruction.trim()}>
-              <Play className="size-4 mr-1" />
-              Execute
+            <Button onClick={handleExecute} disabled={!instruction.trim()}>
+              <Play className="size-4 mr-1" /> 执行
             </Button>
           )}
         </div>
+
+        {/* Steps */}
+        {steps.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-sm font-medium flex items-center gap-2">
+              <Terminal className="size-4" />
+              执行步骤
+            </h2>
+            {steps.map((step, i) => (
+              <div
+                key={step.id}
+                className={`flex items-start gap-3 p-3 rounded-lg border ${
+                  i < currentStepIndex
+                    ? 'border-green-500/20 bg-green-500/5'
+                    : i === currentStepIndex
+                      ? 'border-primary/20 bg-primary/5'
+                      : 'border-border'
+                }`}
+              >
+                {i < currentStepIndex ? (
+                  <CheckCircle2 className="size-4 text-green-500 mt-0.5 shrink-0" />
+                ) : i === currentStepIndex ? (
+                  <Loader2 className="size-4 text-primary animate-spin mt-0.5 shrink-0" />
+                ) : (
+                  <div className="size-4 rounded-full border-2 border-muted-foreground/30 mt-0.5 shrink-0" />
+                )}
+                <div>
+                  <p className="text-sm">{step.description}</p>
+                  {step.toolName && (
+                    <span className="inline-block mt-1 px-2 py-0.5 text-[10px] rounded bg-primary/10 text-primary">
+                      🔧 {step.toolName}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/5 text-sm text-red-500">
+            ⚠ {error}
+          </div>
+        )}
       </div>
     </div>
   )
