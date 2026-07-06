@@ -7,9 +7,12 @@ import { useNavigate } from 'react-router-dom'
 import { MessageSquare, Bot, Settings, ArrowRight } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
+import { useSetAtom } from 'jotai'
+import { settingsOpenAtom } from '../stores/atoms'
 
 export function HomePage() {
   const navigate = useNavigate()
+  const setSettingsOpen = useSetAtom(settingsOpenAtom)
 
   const features = [
     {
@@ -65,7 +68,7 @@ export function HomePage() {
             <Card
               key={f.path}
               className="p-6 hover:shadow-md transition-shadow cursor-pointer group"
-              onClick={() => navigate(f.path)}
+              onClick={() => (f.path === '/settings' ? setSettingsOpen(true) : navigate(f.path))}
             >
               <div className="mb-4">{f.icon}</div>
               <h3 className="text-lg font-semibold mb-2">{f.title}</h3>

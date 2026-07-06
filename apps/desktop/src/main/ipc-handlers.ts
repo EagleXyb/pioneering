@@ -192,7 +192,7 @@ export function registerIpcHandlers(): void {
     if (!win) return
     const [winX, winY] = win.getPosition()
     dragTarget = win
-    dragState = { offsetX: data.screenX - winX, offsetY: data.screenY - winY }
+    dragState = { offsetX: data.screenX - (winX ?? 0), offsetY: data.screenY - (winY ?? 0) }
   })
 
   ipcMain.on(IpcChannel.WINDOW_DRAG_MOVE, (event, data: { screenX: number; screenY: number }) => {

@@ -18,9 +18,9 @@ import {
 } from '@/components/ui/resizable'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { TitleBar } from './TitleBar'
-import { StatusBar } from './StatusBar'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ContextPanel } from '@/components/context-panel/ContextPanel'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useAtom } from 'jotai'
 import {
@@ -116,7 +116,8 @@ export function RootLayout() {
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <StatusBar />
+      {/* 全局设置弹框（两栏布局，与路由解耦） */}
+      <SettingsDialog />
     </div>
   )
 }

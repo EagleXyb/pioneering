@@ -5,6 +5,8 @@ import { registerIpcHandlers } from './ipc-handlers'
 import appIcon from '../../resources/icon.png?asset'
 
 function createWindow(): void {
+  const isMac = process.platform === 'darwin'
+
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -12,7 +14,11 @@ function createWindow(): void {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
-    frame: false,
+    // macOS：保留原生交通灯的可拖拽隐藏标题栏（frame + hidden），
+    //         渲染端用左侧 w-[70px] 占位避让红绿灯。
+    // Windows/Linux：完全自定义无边框，窗口控件由渲染端 WindowControls 提供。
+    frame: isMac ? true : false,
+    titleBarStyle: isMac ? 'hidden' : undefined,
     icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),

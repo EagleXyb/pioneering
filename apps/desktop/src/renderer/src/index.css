@@ -135,7 +135,7 @@
   }
 
   body {
-    font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-family-sans);
     background-color: var(--color-background);
     color: var(--color-foreground);
     margin: 0;
@@ -157,3 +157,21 @@
    窗口拖拽通过 TitleBar 组件的 IPC 鼠标事件实现
    （不使用 -webkit-app-region 以避免点击事件被 OS 拦截）
    ============================================= */
+
+/* =============================================
+   平台原生字体（条件样式）
+   由 <html data-platform="mac|windows|linux"> 驱动，
+   App 启动时经 IPC 写入，未确定前回退到 Public Sans。
+   ============================================= */
+:root[data-platform='mac'] {
+  --font-family-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Public Sans',
+    ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-platform='windows'] {
+  --font-family-sans: 'Segoe UI', 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-platform='linux'] {
+  --font-family-sans: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+}

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { useAtom } from 'jotai'
-import { sidebarTabAtom } from '@/stores/atoms'
+import { sidebarTabAtom, settingsOpenAtom } from '@/stores/atoms'
 import {
   MessageSquare,
   FolderOpen,
@@ -18,7 +18,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { ConversationList } from './ConversationList'
 import { FileTree } from './FileTree'
-import { Link } from 'react-router-dom'
 
 const tabs = [
   { id: 'conversations', label: '对话', icon: MessageSquare },
@@ -30,6 +29,7 @@ const tabs = [
 
 export function Sidebar() {
   const [activeTab, setActiveTab] = useAtom(sidebarTabAtom)
+  const [, setSettingsOpen] = useAtom(settingsOpenAtom)
 
   const renderContent = () => {
     switch (activeTab) {
@@ -110,11 +110,15 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="flex items-center justify-between px-2 py-1.5 border-t border-border shrink-0">
-        <Link to="/settings">
-          <Button variant="ghost" size="icon-sm" className="h-7 w-7" title="设置">
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-        </Link>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="h-7 w-7"
+          title="设置"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
         <span className="text-[10px] text-muted-foreground/40">v0.1.0</span>
       </div>
     </div>

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link } from 'react-router-dom'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -14,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useAppStore, type WorkMode } from '@/stores/useAppStore'
 import { useAtom } from 'jotai'
-import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import { sidebarVisibleAtom, contextPanelVisibleAtom, settingsOpenAtom } from '@/stores/atoms'
 import { usePlatform } from '@/hooks/usePlatform'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 
@@ -89,7 +88,12 @@ export function TitleBar({ sidebarRef, contextRef }: TitleBarProps) {
   const { activeMode, setActiveMode } = useAppStore()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
-  const { isMac, isWindows } = usePlatform()
+  const [, setSettingsOpen] = useAtom(settingsOpenAtom)
+  const { isMac, isWindows, isLinux, platform } = usePlatform()
+  // Windows/Linux 无原生窗口控件，使用自定义 min/max/close 按钮组；
+  // 在 platformAtom 尚未经 IPC 初始化（'unknown'）时也回退到自定义控件，
+  // 避免异常情况下用户无任何窗口操作入口
+  const showCustomControls = isWindows || isLinux || platform === 'unknown'
   const isDragging = useRef(false)
 
   const toggleSidebar = () => {
@@ -145,7 +149,7 @@ export function TitleBar({ sidebarRef, contextRef }: TitleBarProps) {
       className="flex items-center h-10 border-b border-border bg-background/95 backdrop-blur select-none shrink-0"
       onMouseDown={handleMouseDown}
     >
-      {/* Mac: left spacing for traffic lights */}
+      {/* Mac: left spacing for native traffic lights */}
       {isMac && <div className="w-[70px] shrink-0" />}
 
       {/* Left: sidebar toggle */}
@@ -192,15 +196,19 @@ export function TitleBar({ sidebarRef, contextRef }: TitleBarProps) {
         >
           {contextPanelVisible ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
         </Button>
-        <Link to="/settings">
-          <Button variant="ghost" size="icon" className="h-7 w-7" title="Settings">
-            <Settings className="size-4" />
-          </Button>
-        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title="Settings"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings className="size-4" />
+        </Button>
       </div>
 
-      {/* Windows: custom window controls (min/max/close) */}
-      {isWindows && <WindowControls />}
+      {/* Windows/Linux: custom window controls (min/max/close) */}
+      {showCustomControls && <WindowControls />}
     </header>
   )
 }
