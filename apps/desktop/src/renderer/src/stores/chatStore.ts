@@ -3,29 +3,24 @@
 // ============================================================
 
 import { create } from 'zustand'
-import type { ChatSession, ChatMessage } from '@shared/types'
+import type { ChatSession, ChatMessage, Message } from '@shared/types'
 import { chatService } from '../services/api/chat'
 
 interface ChatState {
-  // 会话列表
   sessions: ChatSession[]
   sessionsLoading: boolean
   currentSessionId: string | null
 
-  // 消息
-  messages: Record<string, ChatMessage[]> // sessionId → messages
+  messages: Record<string, Message[]>
   messagesLoading: boolean
 
-  // 流式输出状态
   streamingContent: string
   streamingMessageId: string | null
   isStreaming: boolean
   abortController: AbortController | null
 
-  // 错误
   error: string | null
 
-  // 操作
   loadSessions: () => Promise<void>
   createSession: (title?: string) => Promise<ChatSession>
   selectSession: (sessionId: string) => void
@@ -34,6 +29,16 @@ interface ChatState {
   stopStreaming: () => void
   deleteSession: (sessionId: string) => Promise<void>
   clearError: () => void
+}
+
+function chatMessageToMessage(msg: ChatMessage): Message {
+  return {
+    ...msg,
+    timestamp: new Date(msg.createdAt).getTime(),
+    thinking: undefined,
+    toolCalls: undefined,
+    tokenUsage: msg.tokenCount ? { prompt: 0, completion: msg.tokenCount, total: msg.tokenCount } : undefined
+  }
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -82,7 +87,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   selectSession: (sessionId) => {
     set({ currentSessionId: sessionId })
-    // 如果消息未加载，自动加载
     const state = get()
     if (!state.messages[sessionId]) {
       state.loadMessages(sessionId)
@@ -93,14 +97,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ messagesLoading: true, error: null })
     try {
       const data = await chatService.getMessages(sessionId)
+      const messages = data.messages.map(chatMessageToMessage)
       set((state) => ({
-        messages: { ...state.messages, [sessionId]: data.messages },
+        messages: { ...state.messages, [sessionId]: messages },
         messagesLoading: false
       }))
     } catch (err) {
       set({
-        error:
-          err instanceof Error ? err.message : 'Failed to load messages',
+        error: err instanceof Error ? err.message : 'Failed to load messages',
         messagesLoading: false
       })
     }
@@ -109,14 +113,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendMessage: async (content) => {
     const { currentSessionId, abortController } = get()
 
-    // 如果正在流式输出，先停止
     if (abortController) {
       abortController.abort()
     }
 
     let sessionId = currentSessionId
 
-    // 没有当前会话则自动创建
     if (!sessionId) {
       try {
         const session = await get().createSession(
@@ -128,30 +130,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    // 添加用户消息到本地
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      sessionId: sessionId!,
+    const _sessionId = sessionId
+    const now = Date.now()
+
+    const userMessage: Message = {
+      id: `user-${now}`,
+      sessionId: _sessionId,
       role: 'user',
       content,
-      createdAt: new Date().toISOString()
+      createdAt: new Date(now).toISOString(),
+      timestamp: now
     }
 
-    // 准备占位 assistant 消息
-    const assistantMsgId = `assistant-${Date.now()}`
-    const assistantPlaceholder: ChatMessage = {
+    const assistantMsgId = `assistant-${now}`
+    const assistantPlaceholder: Message = {
       id: assistantMsgId,
-      sessionId: sessionId!,
+      sessionId: _sessionId,
       role: 'assistant',
       content: '',
-      createdAt: new Date().toISOString()
+      createdAt: new Date(now).toISOString(),
+      timestamp: now
     }
 
     set((state) => ({
       messages: {
         ...state.messages,
-        [sessionId!]: [
-          ...(state.messages[sessionId!] || []),
+        [_sessionId]: [
+          ...(state.messages[_sessionId] || []),
           userMessage,
           assistantPlaceholder
         ]
@@ -162,62 +167,93 @@ export const useChatStore = create<ChatState>((set, get) => ({
       error: null
     }))
 
-    // 发送流式请求
+    let pendingContent = ''
+    let rafId: number | null = null
+
+    const scheduleUpdate = () => {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        const content = pendingContent
+        pendingContent = ''
+        rafId = null
+        set({ streamingContent: content })
+      })
+    }
+
     const controller = chatService.sendMessageStream(
       {
-        sessionId: sessionId!,
+        sessionId: _sessionId,
         message: content,
         stream: true
       },
-      // onChunk
       (chunk) => {
-        set((state) => ({
-          streamingContent: state.streamingContent + chunk
-        }))
+        pendingContent += chunk
+        scheduleUpdate()
       },
-      // onDone
       (meta) => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+          rafId = null
+        }
+        const finalMsgId = meta.messageId || assistantMsgId
+        const finalSid = meta.sessionId || _sessionId
         set((state) => {
-          const msgs = state.messages[sessionId!] || []
+          const finalContent = pendingContent || state.streamingContent
+          pendingContent = ''
+          const msgs = state.messages[_sessionId] || []
           const idx = msgs.findIndex((m) => m.id === assistantMsgId)
           if (idx !== -1) {
+            const prevMsg = msgs[idx]!
             const updated = [...msgs]
             updated[idx] = {
-              ...updated[idx],
-              id: meta.messageId || assistantMsgId,
-              content: state.streamingContent,
+              ...prevMsg,
+              id: finalMsgId,
+              sessionId: finalSid,
+              content: finalContent,
               model: meta.model,
-              tokenCount: meta.tokenCount
+              tokenCount: meta.tokenCount,
+              tokenUsage: meta.tokenCount
+                ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
+                : undefined,
+              timestamp: Date.now()
             }
             return {
-              messages: { ...state.messages, [sessionId!]: updated },
+              messages: { ...state.messages, [_sessionId]: updated },
               isStreaming: false,
               streamingContent: '',
               streamingMessageId: null,
-              abortController: null
+              abortController: null,
+              currentSessionId: finalSid
             }
           }
           return {
             isStreaming: false,
             streamingContent: '',
             streamingMessageId: null,
-            abortController: null
+            abortController: null,
+            currentSessionId: finalSid
           }
         })
       },
-      // onError
       (error) => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+          rafId = null
+        }
+        pendingContent = ''
         set((state) => {
-          const msgs = state.messages[sessionId!] || []
+          const msgs = state.messages[_sessionId] || []
           const idx = msgs.findIndex((m) => m.id === assistantMsgId)
           if (idx !== -1) {
+            const prevMsg = msgs[idx]!
             const updated = [...msgs]
             updated[idx] = {
-              ...updated[idx],
-              content: `[Error] ${error}`
+              ...prevMsg,
+              content: `[Error] ${error}`,
+              timestamp: Date.now()
             }
             return {
-              messages: { ...state.messages, [sessionId!]: updated },
+              messages: { ...state.messages, [_sessionId]: updated },
               isStreaming: false,
               streamingContent: '',
               streamingMessageId: null,
@@ -269,8 +305,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     } catch (err) {
       set({
-        error:
-          err instanceof Error ? err.message : 'Failed to delete session'
+        error: err instanceof Error ? err.message : 'Failed to delete session'
       })
     }
   },

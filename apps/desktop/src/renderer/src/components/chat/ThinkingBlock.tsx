@@ -12,7 +12,7 @@ interface ThinkingBlockProps {
   defaultOpen?: boolean
 }
 
-export function ThinkingBlock({ content, defaultOpen = false }: ThinkingBlockProps): JSX.Element {
+export function ThinkingBlock({ content, defaultOpen = false }: ThinkingBlockProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (

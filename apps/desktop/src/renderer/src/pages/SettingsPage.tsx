@@ -14,17 +14,19 @@ import {
 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
+import { cn } from '../lib/utils'
 import apiClient from '../services/api/client'
 import { authService } from '../services/api/auth'
+import { useAppStore, type ThemeMode } from '../stores/useAppStore'
 
-export function SettingsPage(): JSX.Element {
+export function SettingsPage() {
   const [apiBaseUrl, setApiBaseUrl] = useState(
     apiClient.getBaseURL().replace('/api/v1', '')
   )
   const [apiStatus, setApiStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated())
+  const { theme, setTheme } = useAppStore()
 
-  // 登录表单
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
@@ -32,7 +34,7 @@ export function SettingsPage(): JSX.Element {
 
   const checkApiHealth = async () => {
     setApiStatus('loading')
-    apiClient.setBaseURL(apiBaseUrl) // 先应用用户输入的 URL
+    apiClient.setBaseURL(apiBaseUrl)
     try {
       const res = await apiClient.get<{ status: string }>('/health')
       setApiStatus(res.data.status === 'healthy' ? 'ok' : 'error')
@@ -50,9 +52,7 @@ export function SettingsPage(): JSX.Element {
       setUsername('')
       setPassword('')
     } catch (err) {
-      setLoginError(
-        err instanceof Error ? err.message : 'Login failed'
-      )
+      setLoginError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoginLoading(false)
     }
@@ -63,19 +63,24 @@ export function SettingsPage(): JSX.Element {
     setIsAuthenticated(false)
   }
 
+  const themeOptions: { value: ThemeMode; label: string; icon: React.ReactNode }[] = [
+    { value: 'light', label: '浅色', icon: <Sun className="size-4" /> },
+    { value: 'dark', label: '深色', icon: <Moon className="size-4" /> },
+    { value: 'system', label: '跟随系统', icon: <Monitor className="size-4" /> }
+  ]
+
   return (
     <div className="h-full overflow-y-auto p-8">
       <div className="max-w-2xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <Settings className="size-6" />
-          <h1 className="text-2xl font-bold">Settings</h1>
+          <h1 className="text-2xl font-bold">设置</h1>
         </div>
 
-        {/* API 连接 */}
         <Card className="p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Globe className="size-5 text-primary" />
-            <h2 className="text-lg font-semibold">API Connection</h2>
+            <h2 className="text-lg font-semibold">API 连接</h2>
           </div>
 
           <div className="flex gap-2">
@@ -88,7 +93,7 @@ export function SettingsPage(): JSX.Element {
             />
             <Button size="sm" onClick={checkApiHealth} disabled={apiStatus === 'loading'}>
               <RefreshCw className={`size-4 mr-1 ${apiStatus === 'loading' ? 'animate-spin' : ''}`} />
-              Test
+              测试
             </Button>
           </div>
 
@@ -113,11 +118,10 @@ export function SettingsPage(): JSX.Element {
           )}
         </Card>
 
-        {/* 认证 */}
         <Card className="p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Key className="size-5 text-primary" />
-            <h2 className="text-lg font-semibold">Authentication</h2>
+            <h2 className="text-lg font-semibold">认证</h2>
           </div>
 
           {isAuthenticated ? (
@@ -127,7 +131,7 @@ export function SettingsPage(): JSX.Element {
                 已认证
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout}>
-                Logout
+                登出
               </Button>
             </div>
           ) : (
@@ -136,53 +140,55 @@ export function SettingsPage(): JSX.Element {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username"
+                placeholder="用户名"
                 className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
+                placeholder="密码"
                 className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleLogin()
                 }}
               />
-              {loginError && (
-                <p className="text-sm text-red-500">{loginError}</p>
-              )}
+              {loginError && <p className="text-sm text-red-500">{loginError}</p>}
               <Button onClick={handleLogin} disabled={loginLoading}>
                 {loginLoading ? (
                   <RefreshCw className="size-4 mr-1 animate-spin" />
                 ) : (
                   <Key className="size-4 mr-1" />
                 )}
-                Login
+                登录
               </Button>
             </div>
           )}
         </Card>
 
-        {/* 外观 */}
         <Card className="p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Monitor className="size-5 text-primary" />
-            <h2 className="text-lg font-semibold">Appearance</h2>
+            <h2 className="text-lg font-semibold">外观</h2>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Sun className="size-4 mr-1" /> Light
-            </Button>
-            <Button variant="outline" size="sm">
-              <Moon className="size-4 mr-1" /> Dark
-            </Button>
+            {themeOptions.map(({ value, label, icon }) => (
+              <Button
+                key={value}
+                variant={theme === value ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme(value)}
+                className={cn(theme === value ? '' : '')}
+              >
+                <span className="mr-1.5">{icon}</span>
+                {label}
+              </Button>
+            ))}
           </div>
         </Card>
 
-        {/* App Info */}
         <Card className="p-6 space-y-2">
-          <h2 className="text-lg font-semibold">About</h2>
+          <h2 className="text-lg font-semibold">关于</h2>
           <p className="text-sm text-muted-foreground">
             Pioneering Desktop AI Agent v0.1.0
           </p>

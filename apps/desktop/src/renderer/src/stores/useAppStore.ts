@@ -1,53 +1,51 @@
 // ============================================================
-// App Store — 全局应用状态 (Zustand)
+// App Store — 全局应用状态 (Zustand) — 精简版
+// ============================================================
+// 注：UI 细粒度状态（面板宽度、侧边栏标签等）已移至 stores/atoms.ts (Jotai)
 // ============================================================
 
 import { create } from 'zustand'
 
 export type WorkMode = 'work' | 'code' | 'design'
-export type SidebarTab =
-  | 'files'
-  | 'search'
-  | 'git'
-  | 'tools'
-  | 'skills'
-  | 'history'
-  | 'assets'
-  | 'chat'
-  | 'folder'
+
+export type ThemeMode = 'light' | 'dark' | 'system'
 
 interface AppState {
-  // 布局可见性
-  sidebarVisible: boolean
-  chatPanelVisible: boolean
-  bottomPanelVisible: boolean
-
-  // 模式 & 标签
+  /** 当前工作模式 */
   activeMode: WorkMode
-  activeSidebarTab: SidebarTab
+  /** 主题模式 */
+  theme: ThemeMode
 
-  // 侧边栏宽度记录 (用于 toggle 恢复)
-  _sidebarWidth: number
-
-  // Actions
-  toggleSidebar: () => void
-  toggleChatPanel: () => void
-  toggleBottomPanel: () => void
   setActiveMode: (mode: WorkMode) => void
-  setActiveSidebarTab: (tab: SidebarTab) => void
+  setTheme: (theme: ThemeMode) => void
+  initTheme: () => void
+}
+
+function applyTheme(theme: ThemeMode): void {
+  const root = document.documentElement
+  const resolved =
+    theme === 'system'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+      : theme
+  root.classList.toggle('dark', resolved === 'dark')
+  root.setAttribute('data-theme', resolved)
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  sidebarVisible: true,
-  chatPanelVisible: true,
-  bottomPanelVisible: false,
   activeMode: 'work',
-  activeSidebarTab: 'files',
-  _sidebarWidth: 260,
+  theme: 'dark',
 
-  toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
-  toggleChatPanel: () => set((s) => ({ chatPanelVisible: !s.chatPanelVisible })),
-  toggleBottomPanel: () => set((s) => ({ bottomPanelVisible: !s.bottomPanelVisible })),
   setActiveMode: (mode) => set({ activeMode: mode }),
-  setActiveSidebarTab: (tab) => set({ activeSidebarTab: tab, sidebarVisible: true })
+  setTheme: (theme) => {
+    applyTheme(theme)
+    set({ theme })
+  },
+  initTheme: () => {
+    set((s) => {
+      applyTheme(s.theme)
+      return s
+    })
+  }
 }))

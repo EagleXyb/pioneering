@@ -1,9 +1,9 @@
 // ============================================================
-// ChatPage — 聊天页面 (由 ChatPanel 替代，保留用于路由兼容)
+// ChatPage — 聊天页面（中栏核心视图）
 // ============================================================
 
-import { ChatPanel } from '../components/chat/ChatPanel'
+import { ChatArea } from '../components/chat/ChatArea'
 
-export function ChatPage(): JSX.Element {
-  return <ChatPanel />
+export function ChatPage() {
+  return <ChatArea />
 }

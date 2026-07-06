@@ -1,22 +1,23 @@
+// ============================================================
+// Jotai Atoms — UI 细粒度状态（面板宽度、显隐等）
+// ============================================================
+
+import { atomWithStorage } from 'jotai/utils'
 import { atom } from 'jotai'
 
-// 面板尺寸（适合存储频繁独立读写的状态）
-export const sidebarWidthAtom = atom(260)
-export const chatPanelWidthAtom = atom(380)
-export const bottomPanelHeightAtom = atom(200)
+// 面板宽度 (持久化到 localStorage)
+export const sidebarWidthAtom = atomWithStorage('sidebar-width', 15)
+export const contextPanelWidthAtom = atomWithStorage('context-width', 30)
 
-// 当前编辑器内光标位置等临时 UI 状态
-export const cursorPositionAtom = atom({ line: 1, column: 1 })
+// 面板显隐
+export const sidebarVisibleAtom = atom(true)
+export const contextPanelVisibleAtom = atom(true)
 
-// 搜索面板状态
-export interface SearchResult {
-  file: string
-  line: number
-  column: number
-  content: string
-}
-export const searchQueryAtom = atom('')
-export const searchResultsAtom = atom<SearchResult[]>([])
+// 侧边栏当前标签页
+export const sidebarTabAtom = atom<string>('conversations')
 
-// Agent 任务进度 (全局浮窗提示用)
-export const agentProgressAtom = atom<number | null>(null)
+// 上下文面板当前标签页
+export const contextPanelTabAtom = atom<string>('code')
+
+// 主题模式
+export const themeAtom = atomWithStorage<string>('theme', 'dark')

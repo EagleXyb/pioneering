@@ -10,7 +10,8 @@ import axios, {
 } from 'axios'
 import type { ApiResponse, AuthTokens } from '@shared/types'
 
-const DEFAULT_BASE_URL = 'http://localhost:9000'
+const DEFAULT_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:9000'
 
 class ApiClient {
   private instance: AxiosInstance
@@ -132,12 +133,59 @@ class ApiClient {
     return res.data
   }
 
-  // 获取底层 axios 实例（用于 SSE 流等特殊场景）
   getAxiosInstance(): AxiosInstance {
     return this.instance
   }
 
-  // ---- 基础配置 ----
+  async stream(
+    url: string,
+    body: unknown,
+    options: {
+      signal?: AbortSignal
+      headers?: Record<string, string>
+    } = {}
+  ): Promise<Response> {
+    const baseUrl = this.instance.defaults.baseURL ?? DEFAULT_BASE_URL
+    const fullUrl = `${baseUrl}${url.startsWith('/') ? url : '/' + url}`
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers ?? {})
+    }
+    if (this.accessToken) {
+      headers.Authorization = `Bearer ${this.accessToken}`
+    }
+
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...(body as Record<string, unknown>), stream: true }),
+      signal: options.signal
+    })
+
+    if (response.status === 401 && this.refreshToken) {
+      try {
+        const res = await this.instance.post<ApiResponse<AuthTokens>>(
+          '/auth/refresh',
+          { refresh_token: this.refreshToken }
+        )
+        const tokens = res.data.data
+        this.setTokens(tokens)
+        headers.Authorization = `Bearer ${tokens.token}`
+        return fetch(fullUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...(body as Record<string, unknown>), stream: true }),
+          signal: options.signal
+        })
+      } catch {
+        this.clearTokens()
+      }
+    }
+
+    return response
+  }
+
   setBaseURL(url: string): void {
     this.instance.defaults.baseURL = url
   }

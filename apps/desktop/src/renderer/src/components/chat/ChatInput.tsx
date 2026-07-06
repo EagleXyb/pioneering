@@ -12,7 +12,7 @@ interface ChatInputProps {
 
 const quickHints = ['分析代码', '生成文档', '修复 Bug', '写测试', '解释错误']
 
-export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputProps): JSX.Element {
+export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [value, setValue] = useState('')
   const [isFocused, setIsFocused] = useState(false)

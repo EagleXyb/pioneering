@@ -1,47 +1,58 @@
 import { useEffect, useCallback } from 'react'
-import { useAppStore, type SidebarTab } from '../stores/useAppStore'
-
-interface ShortcutMap {
-  key: string
-  ctrl?: boolean
-  meta?: boolean
-  action: () => void
-}
+import { useSetAtom } from 'jotai'
+import { sidebarTabAtom, contextPanelVisibleAtom, sidebarVisibleAtom } from '../stores/atoms'
 
 export function useKeyboardShortcuts() {
-  const {
-    toggleSidebar,
-    toggleChatPanel,
-    toggleBottomPanel,
-    setActiveSidebarTab
-  } = useAppStore()
-
-  const shortcuts: ShortcutMap[] = [
-    { key: 'b', meta: true, action: toggleChatPanel },
-    { key: 'j', meta: true, action: toggleBottomPanel },
-    { key: '1', meta: true, action: () => setActiveSidebarTab('files' as SidebarTab) },
-    { key: '2', meta: true, action: () => setActiveSidebarTab('search' as SidebarTab) },
-    { key: '3', meta: true, action: () => setActiveSidebarTab('git' as SidebarTab) },
-    { key: '4', meta: true, action: () => setActiveSidebarTab('tools' as SidebarTab) },
-    { key: '5', meta: true, action: () => setActiveSidebarTab('skills' as SidebarTab) },
-    { key: '6', meta: true, action: () => setActiveSidebarTab('history' as SidebarTab) }
-  ]
+  const setSidebarTab = useSetAtom(sidebarTabAtom)
+  const setContextPanelVisible = useSetAtom(contextPanelVisibleAtom)
+  const setSidebarVisible = useSetAtom(sidebarVisibleAtom)
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      for (const shortcut of shortcuts) {
-        const meta = shortcut.meta && (e.metaKey || e.ctrlKey)
-        const ctrl = shortcut.ctrl && e.ctrlKey
-        const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase()
+      const isModifier = e.metaKey || e.ctrlKey
+      if (!isModifier) return
 
-        if (keyMatch && (meta || ctrl || (!shortcut.meta && !shortcut.ctrl))) {
+      switch (e.key.toLowerCase()) {
+        case 'b':
           e.preventDefault()
-          shortcut.action()
-          return
-        }
+          setContextPanelVisible((prev) => !prev)
+          break
+        case 'j':
+          e.preventDefault()
+          // Toggle bottom panel removed in three-column layout
+          break
+        case 'k':
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('global-search'))
+          break
+        case '1':
+          e.preventDefault()
+          setSidebarTab('conversations')
+          setSidebarVisible(true)
+          break
+        case '2':
+          e.preventDefault()
+          setSidebarTab('files')
+          setSidebarVisible(true)
+          break
+        case '3':
+          e.preventDefault()
+          setSidebarTab('tools')
+          setSidebarVisible(true)
+          break
+        case '4':
+          e.preventDefault()
+          setSidebarTab('skills')
+          setSidebarVisible(true)
+          break
+        case '5':
+          e.preventDefault()
+          setSidebarTab('history')
+          setSidebarVisible(true)
+          break
       }
     },
-    [shortcuts]
+    [setSidebarTab, setContextPanelVisible, setSidebarVisible]
   )
 
   useEffect(() => {

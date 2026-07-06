@@ -3,20 +3,17 @@
 // ============================================================
 
 import { create } from 'zustand'
-import type { AgentStep, AgentExecution } from '../types/agent'
+import type { AgentStep, AgentExecution } from '@shared/types'
 
 interface AgentState {
-  // 执行列表
   executions: AgentExecution[]
   currentExecutionId: string | null
 
-  // 当前执行进度
   steps: AgentStep[]
   currentStepIndex: number
   status: 'idle' | 'running' | 'completed' | 'error'
   error: string | null
 
-  // Actions
   startExecution: (instruction: string) => void
   addStep: (step: AgentStep) => void
   updateStep: (stepId: string, updates: Partial<AgentStep>) => void
@@ -35,13 +32,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   error: null,
 
   startExecution: (instruction) => {
+    const now = Date.now()
     const execution: AgentExecution = {
       id: crypto.randomUUID(),
       instruction,
       steps: [],
       status: 'running',
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      createdAt: now,
+      updatedAt: now
     }
     set((s) => ({
       executions: [execution, ...s.executions],

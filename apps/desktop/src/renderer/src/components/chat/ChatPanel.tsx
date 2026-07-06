@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,11 +11,11 @@ import { Sparkles, ChevronDown, Plus, Settings2 } from 'lucide-react'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { AgentStatus } from './AgentStatus'
-import { useChatStore } from '../../store/chatStore'
+import { useChatStore } from '../../stores/chatStore'
 import { useAgentStore } from '../../stores/useAgentStore'
-import type { Message } from '@/types/chat'
+import type { Message } from '@shared/types'
 
-export function ChatPanel(): JSX.Element {
+export function ChatPanel() {
   const {
     sessions,
     currentSessionId,
@@ -27,14 +27,14 @@ export function ChatPanel(): JSX.Element {
     sendMessage,
     stopStreaming,
     clearError,
-    loadSessions
+    loadSessions,
+    createSession,
+    selectSession
   } = useChatStore()
 
   const { steps, currentStepIndex, status } = useAgentStore()
 
   const currentMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
-
-  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -42,20 +42,18 @@ export function ChatPanel(): JSX.Element {
     }
   }, [sessions.length, loadSessions])
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [currentMessages, streamingContent])
-
   const handleSend = (content: string) => {
     sendMessage(content)
+  }
+
+  const handleCreateSession = () => {
+    createSession()
   }
 
   const currentSession = sessions.find((s) => s.id === currentSessionId)
 
   return (
-    <div className="flex flex-col h-full bg-card border-l border-border">
+    <div className="flex flex-col h-full bg-card">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
@@ -69,7 +67,12 @@ export function ChatPanel(): JSX.Element {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
               {sessions.map((session) => (
-                <DropdownMenuItem key={session.id}>{session.title}</DropdownMenuItem>
+                <DropdownMenuItem
+                  key={session.id}
+                  onClick={() => selectSession(session.id)}
+                >
+                  {session.title}
+                </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -89,10 +92,10 @@ export function ChatPanel(): JSX.Element {
               <DropdownMenuItem>DeepSeek V3</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon" className="size-7">
+          <Button variant="ghost" size="icon" className="size-7" onClick={handleCreateSession} title="新建对话">
             <Plus className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="size-7">
+          <Button variant="ghost" size="icon" className="size-7" title="设置">
             <Settings2 className="size-4" />
           </Button>
         </div>
@@ -102,13 +105,13 @@ export function ChatPanel(): JSX.Element {
       <AgentStatus
         steps={steps}
         currentStepIndex={currentStepIndex}
-        isStreaming={isStreaming}
+        isStreaming={isStreaming || status === 'running'}
         error={error}
         onClearError={clearError}
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-hidden" ref={scrollRef}>
+      <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="px-3">
             <MessageList

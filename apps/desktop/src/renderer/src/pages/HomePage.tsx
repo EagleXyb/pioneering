@@ -8,7 +8,7 @@ import { MessageSquare, Bot, Settings, ArrowRight } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
 
-export function HomePage(): JSX.Element {
+export function HomePage() {
   const navigate = useNavigate()
 
   const features = [

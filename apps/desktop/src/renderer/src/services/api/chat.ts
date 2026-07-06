@@ -144,25 +144,11 @@ export const chatService = {
   ): AbortController {
     const controller = new AbortController()
 
-    const url = `${apiClient.getBaseURL()}/chat/completions`
-    const payload = { ...request, stream: true }
-
-    // 跟踪 AG-UI 事件状态
     let capturedMessageId = ''
     let capturedSessionId = ''
 
-    // 使用 fetch 实现 SSE（axios 对流式支持不佳）
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiClient.getAccessToken()
-          ? { Authorization: `Bearer ${apiClient.getAccessToken()}` }
-          : {})
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    })
+    apiClient
+      .stream('/chat/completions', request, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}))
@@ -198,24 +184,20 @@ export const chatService = {
               const event = JSON.parse(jsonStr)
 
               switch (event.type) {
-                // 流开始：记录 sessionId
                 case 'RUN_STARTED':
                   capturedSessionId = event.threadId || ''
                   break
 
-                // 文本消息开始：记录 messageId
                 case 'TEXT_MESSAGE_START':
                   capturedMessageId = event.messageId || ''
                   break
 
-                // 文本内容块：delta 是增量内容
                 case 'TEXT_MESSAGE_CONTENT':
                   if (event.delta) {
                     onChunk(event.delta)
                   }
                   break
 
-                // 流结束
                 case 'RUN_FINISHED':
                   onDone({
                     messageId: capturedMessageId,
@@ -225,12 +207,10 @@ export const chatService = {
                   })
                   break
 
-                // 错误
                 case 'RUN_ERROR':
                   onError(event.message || 'Unknown error')
                   break
 
-                // 深度思考/工具调用等事件——当前 UI 直接忽略
                 case 'THINKING_START':
                 case 'THINKING_TEXT_MESSAGE_START':
                 case 'THINKING_TEXT_MESSAGE_CONTENT':
@@ -240,7 +220,7 @@ export const chatService = {
                   break
               }
             } catch {
-              // 非 JSON 行，跳过
+              // ignore non-JSON lines
             }
           }
         }

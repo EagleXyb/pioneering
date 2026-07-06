@@ -3,7 +3,6 @@
 // 渲染进程中调用的 IPC 封装
 // ============================================================
 
-import { IpcChannel } from '@shared/ipc-channels'
 import type {
   FileDialogOptions,
   FileDialogResult,
@@ -13,69 +12,63 @@ import type {
   UserDataPath
 } from '@shared/ipc-channels'
 
-function invoke<T = void>(channel: IpcChannel, ...args: unknown[]): Promise<T> {
-  return window.electron.ipcRenderer.invoke(channel, ...args)
+function getApi() {
+  return window.api
 }
 
 // ---- 窗口控制 ----
 export const windowApi = {
-  minimize: () => invoke(IpcChannel.WINDOW_MINIMIZE),
-  maximize: () => invoke(IpcChannel.WINDOW_MAXIMIZE),
-  close: () => invoke(IpcChannel.WINDOW_CLOSE),
-  isMaximized: () => invoke<boolean>(IpcChannel.WINDOW_IS_MAXIMIZED),
-  toggleFullscreen: () => invoke(IpcChannel.WINDOW_TOGGLE_FULLSCREEN)
+  minimize: () => getApi()?.window.minimize(),
+  maximize: () => getApi()?.window.maximize(),
+  close: () => getApi()?.window.close(),
+  isMaximized: () => getApi()?.window.isMaximized() ?? Promise.resolve(false),
+  toggleFullscreen: () => getApi()?.window.toggleFullscreen()
 }
 
 // ---- 应用信息 ----
 export const appApi = {
-  getVersion: () => invoke<string>(IpcChannel.APP_GET_VERSION),
-  getPlatform: () => invoke<string>(IpcChannel.APP_GET_PLATFORM),
-  quit: () => invoke(IpcChannel.APP_QUIT)
+  getVersion: () => getApi()?.app.getVersion() ?? Promise.resolve('0.0.0'),
+  getPlatform: () => getApi()?.app.getPlatform() ?? Promise.resolve(process.platform),
+  quit: () => getApi()?.app.quit()
 }
 
 // ---- 文件系统 ----
 export const fileApi = {
   openDialog: (options: FileDialogOptions) =>
-    invoke<FileDialogResult>(IpcChannel.FILE_OPEN_DIALOG, options),
+    getApi()?.file.openDialog(options) ?? Promise.resolve({ canceled: true, filePaths: [] }),
   saveDialog: (options: FileDialogOptions) =>
-    invoke<FileDialogResult>(IpcChannel.FILE_SAVE_DIALOG, options),
+    getApi()?.file.saveDialog(options) ?? Promise.resolve({ canceled: true, filePaths: [] }),
   read: (filePath: string) =>
-    invoke<FileReadResult>(IpcChannel.FILE_READ, filePath),
+    getApi()?.file.read(filePath) ?? Promise.resolve({ success: false, error: 'IPC not available' }),
   write: (req: FileWriteRequest) =>
-    invoke<FileReadResult>(IpcChannel.FILE_WRITE, req),
-  getPath: (name: UserDataPath) =>
-    invoke<string>(IpcChannel.FILE_GET_PATH, name)
+    getApi()?.file.write(req) ?? Promise.resolve({ success: false, error: 'IPC not available' }),
+  getPath: (name: UserDataPath) => getApi()?.file.getPath(name) ?? Promise.resolve('')
 }
 
 // ---- 通知 ----
 export const notificationApi = {
-  show: (options: NotificationOptions) =>
-    invoke(IpcChannel.NOTIFICATION_SHOW, options)
+  show: (options: NotificationOptions) => getApi()?.notification.show(options)
 }
 
 // ---- 剪贴板 ----
 export const clipboardApi = {
-  write: (text: string) => invoke(IpcChannel.CLIPBOARD_WRITE, text),
-  read: () => invoke<string>(IpcChannel.CLIPBOARD_READ)
+  write: (text: string) => getApi()?.clipboard.write(text),
+  read: () => getApi()?.clipboard.read() ?? Promise.resolve('')
 }
 
 // ---- 外部链接 ----
 export const shellApi = {
-  openExternal: (url: string) =>
-    invoke(IpcChannel.SHELL_OPEN_EXTERNAL, url)
+  openExternal: (url: string) => getApi()?.shell.openExternal(url)
 }
 
 // ---- Store 持久化 ----
 export const storeApi = {
-  get: <T = unknown>(key: string) =>
-    invoke<T | undefined>(IpcChannel.STORE_GET, key),
-  set: (key: string, value: unknown) =>
-    invoke<boolean>(IpcChannel.STORE_SET, key, value),
-  delete: (key: string) =>
-    invoke<boolean>(IpcChannel.STORE_DELETE, key)
+  get: <T = unknown>(key: string) => getApi()?.store.get(key) as Promise<T | undefined> | undefined,
+  set: (key: string, value: unknown) => getApi()?.store.set(key, value) ?? Promise.resolve(false),
+  delete: (key: string) => getApi()?.store.delete(key) ?? Promise.resolve(false)
 }
 
 // ---- 健康检查 ----
 export const healthApi = {
-  ping: () => invoke<string>(IpcChannel.PING)
+  ping: () => getApi()?.health.ping() ?? Promise.resolve('pong')
 }

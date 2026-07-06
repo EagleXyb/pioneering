@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import type { AgentStep } from '@/types/agent'
+import type { AgentStep } from '@shared/types'
 
 interface AgentStatusProps {
   steps: AgentStep[]
@@ -16,7 +16,7 @@ export function AgentStatus({
   isStreaming,
   error,
   onClearError
-}: AgentStatusProps): JSX.Element | null {
+}: AgentStatusProps) {
   if (!isStreaming && !error) return null
 
   return (
@@ -37,7 +37,6 @@ export function AgentStatus({
           </div>
         )}
 
-        {/* Step progress */}
         {steps.length > 0 && (
           <div className="flex items-center gap-1 ml-2">
             {steps.map((step, i) => (

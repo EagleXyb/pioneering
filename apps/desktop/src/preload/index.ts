@@ -1,16 +1,61 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { IpcChannel } from '../shared/ipc-channels'
+
+const windowApi = {
+  minimize: () => ipcRenderer.invoke(IpcChannel.WINDOW_MINIMIZE),
+  maximize: () => ipcRenderer.invoke(IpcChannel.WINDOW_MAXIMIZE),
+  close: () => ipcRenderer.invoke(IpcChannel.WINDOW_CLOSE),
+  isMaximized: () => ipcRenderer.invoke(IpcChannel.WINDOW_IS_MAXIMIZED),
+  toggleFullscreen: () => ipcRenderer.invoke(IpcChannel.WINDOW_TOGGLE_FULLSCREEN)
+}
+
+const appApi = {
+  getVersion: () => ipcRenderer.invoke(IpcChannel.APP_GET_VERSION),
+  getPlatform: () => ipcRenderer.invoke(IpcChannel.APP_GET_PLATFORM),
+  quit: () => ipcRenderer.invoke(IpcChannel.APP_QUIT)
+}
+
+const fileApi = {
+  openDialog: (options: unknown) => ipcRenderer.invoke(IpcChannel.FILE_OPEN_DIALOG, options),
+  saveDialog: (options: unknown) => ipcRenderer.invoke(IpcChannel.FILE_SAVE_DIALOG, options),
+  read: (filePath: string) => ipcRenderer.invoke(IpcChannel.FILE_READ, filePath),
+  write: (req: unknown) => ipcRenderer.invoke(IpcChannel.FILE_WRITE, req),
+  getPath: (name: unknown) => ipcRenderer.invoke(IpcChannel.FILE_GET_PATH, name)
+}
+
+const notificationApi = {
+  show: (options: unknown) => ipcRenderer.invoke(IpcChannel.NOTIFICATION_SHOW, options)
+}
+
+const clipboardApi = {
+  write: (text: string) => ipcRenderer.invoke(IpcChannel.CLIPBOARD_WRITE, text),
+  read: () => ipcRenderer.invoke(IpcChannel.CLIPBOARD_READ)
+}
+
+const shellApi = {
+  openExternal: (url: string) => ipcRenderer.invoke(IpcChannel.SHELL_OPEN_EXTERNAL, url)
+}
+
+const storeApi = {
+  get: (key: string) => ipcRenderer.invoke(IpcChannel.STORE_GET, key),
+  set: (key: string, value: unknown) => ipcRenderer.invoke(IpcChannel.STORE_SET, key, value),
+  delete: (key: string) => ipcRenderer.invoke(IpcChannel.STORE_DELETE, key)
+}
+
+const healthApi = {
+  ping: () => ipcRenderer.invoke(IpcChannel.PING)
+}
 
 const api = {
-  ipcRenderer: {
-    invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
-    on: (channel: string, callback: (...args: unknown[]) => void) => {
-      ipcRenderer.on(channel, (_event, ...args) => callback(...args))
-    },
-    removeAllListeners: (channel: string) => {
-      ipcRenderer.removeAllListeners(channel)
-    }
-  }
+  window: windowApi,
+  app: appApi,
+  file: fileApi,
+  notification: notificationApi,
+  clipboard: clipboardApi,
+  shell: shellApi,
+  store: storeApi,
+  health: healthApi
 }
 
 if (process.contextIsolated) {

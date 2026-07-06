@@ -6,8 +6,9 @@ import { useState } from 'react'
 import { Bot, Play, Square, Terminal, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { useAgentStore } from '../stores/useAgentStore'
+import type { AgentStep } from '@shared/types'
 
-export function AgentPage(): JSX.Element {
+export function AgentPage() {
   const [instruction, setInstruction] = useState('')
   const { steps, currentStepIndex, status, error, startExecution, addStep, nextStep, completeExecution, failExecution, reset } = useAgentStore()
 
@@ -16,17 +17,16 @@ export function AgentPage(): JSX.Element {
     reset()
     startExecution(instruction)
 
-    // Simulate agent execution
-    const mockSteps = [
-      { id: '1', description: '分析任务需求', status: 'running' as const },
-      { id: '2', description: '搜索相关知识库', status: 'pending' as const, toolName: 'search' },
-      { id: '3', description: '生成解决方案', status: 'pending' as const, toolName: 'generate' },
-      { id: '4', description: '验证结果', status: 'pending' as const, toolName: 'validate' }
+    const mockSteps: AgentStep[] = [
+      { id: '1', description: '分析任务需求', status: 'running' },
+      { id: '2', description: '搜索相关知识库', status: 'pending', toolName: 'search' },
+      { id: '3', description: '生成解决方案', status: 'pending', toolName: 'generate' },
+      { id: '4', description: '验证结果', status: 'pending', toolName: 'validate' }
     ]
 
     for (let i = 0; i < mockSteps.length; i++) {
       await new Promise((r) => setTimeout(r, 800))
-      addStep(mockSteps[i] as any)
+      addStep(mockSteps[i]!)
       nextStep()
     }
 

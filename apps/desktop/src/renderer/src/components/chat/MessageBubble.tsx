@@ -2,11 +2,11 @@ import { useState, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Copy, RefreshCw, ThumbsUp, ThumbsDown, Bot, User, Check } from 'lucide-react'
+import { Copy, ThumbsUp, ThumbsDown, Bot, User, Check } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { Message } from '@/types/chat'
+import type { Message } from '@shared/types'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 
@@ -20,7 +20,7 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming,
   streamingContent
-}: MessageBubbleProps): JSX.Element {
+}: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [liked, setLiked] = useState<'none' | 'like' | 'dislike'>('none')
 

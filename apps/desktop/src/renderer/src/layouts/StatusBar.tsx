@@ -6,7 +6,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 const modeLabels = { work: 'Work', code: 'Code', design: 'Design' } as const
 const modeColors = { work: 'bg-blue-500', code: 'bg-green-500', design: 'bg-purple-500' } as const
 
-export function StatusBar(): JSX.Element {
+export function StatusBar() {
   const { activeMode } = useAppStore()
   const { status } = useAgentStore()
 

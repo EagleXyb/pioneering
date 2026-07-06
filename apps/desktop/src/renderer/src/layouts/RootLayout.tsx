@@ -1,15 +1,25 @@
+// ============================================================
+// RootLayout — 三栏 Resizable 根布局（Cursor 风格）
+//   左栏: Sidebar (会话历史 + 文件树)
+//   中栏: Chat Area / 页面内容 (通过 Outlet)
+//   右栏: Context Panel (Code / Diff / Terminal)
+// ============================================================
+
 import { Outlet } from 'react-router-dom'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { TitleBar } from './TitleBar'
 import { StatusBar } from './StatusBar'
-import { ActivityBar } from '@/components/sidebar/ActivityBar'
-import { SecondarySidebar } from '@/components/sidebar/SecondarySidebar'
-import { ChatPanel } from '@/components/chat/ChatPanel'
-import { useAppStore } from '@/stores/useAppStore'
+import { Sidebar } from '@/components/sidebar/Sidebar'
+import { ContextPanel } from '@/components/context-panel/ContextPanel'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useAtom } from 'jotai'
+import { sidebarVisibleAtom, contextPanelVisibleAtom, sidebarWidthAtom, contextPanelWidthAtom } from '@/stores/atoms'
 
-export function RootLayout(): JSX.Element {
-  const { sidebarVisible, chatPanelVisible, bottomPanelVisible } = useAppStore()
+export function RootLayout() {
+  const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
+  const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
+  const [sidebarWidth, setSidebarWidth] = useAtom(sidebarWidthAtom)
+  const [contextWidth, setContextWidth] = useAtom(contextPanelWidthAtom)
 
   useKeyboardShortcuts()
 
@@ -17,50 +27,55 @@ export function RootLayout(): JSX.Element {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
       <TitleBar />
 
-      <div className="flex flex-1 overflow-hidden">
-        <ActivityBar />
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* 左栏：Sidebar */}
+        {sidebarVisible && (
+          <>
+            <ResizablePanel
+              defaultSize={sidebarWidth}
+              minSize={10}
+              maxSize={25}
+              collapsible
+              collapsedSize={0}
+              onResize={(size) => setSidebarWidth(size)}
+            >
+              <Sidebar />
+            </ResizablePanel>
+            <ResizableHandle
+              withHandle
+              className="w-px bg-border hover:bg-primary/50 transition-colors"
+            />
+          </>
+        )}
 
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
-          {sidebarVisible && (
-            <>
-              <ResizablePanel defaultSize={18} minSize={12} maxSize={30} collapsible collapsedSize={0}>
-                <SecondarySidebar />
-              </ResizablePanel>
-              <ResizableHandle withHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
-            </>
-          )}
+        {/* 中栏：页面内容 */}
+        <ResizablePanel defaultSize={100 - sidebarWidth - (contextPanelVisible ? contextWidth : 0)} minSize={30}>
+          <Outlet />
+        </ResizablePanel>
 
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <ResizablePanelGroup direction="vertical">
-              <ResizablePanel defaultSize={75} minSize={40}>
-                <Outlet />
-              </ResizablePanel>
-
-              {bottomPanelVisible && (
-                <>
-                  <ResizableHandle withHandle className="h-1 bg-border hover:bg-primary/50 transition-colors" />
-                  <ResizablePanel defaultSize={25} minSize={10} maxSize={50} collapsible collapsedSize={0}>
-                    <div className="h-full bg-card flex items-center justify-center text-sm text-muted-foreground">
-                      底部面板 (Terminal / Output / Agent Logs)
-                    </div>
-                  </ResizablePanel>
-                </>
-              )}
-            </ResizablePanelGroup>
-          </ResizablePanel>
-
-          {chatPanelVisible && (
-            <>
-              <ResizableHandle withHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
-              <ResizablePanel defaultSize={32} minSize={20} maxSize={50} collapsible collapsedSize={0}>
-                <ChatPanel />
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
-      </div>
+        {/* 右栏：Context Panel */}
+        {contextPanelVisible && (
+          <>
+            <ResizableHandle
+              withHandle
+              className="w-px bg-border hover:bg-primary/50 transition-colors"
+            />
+            <ResizablePanel
+              defaultSize={contextWidth}
+              minSize={15}
+              maxSize={50}
+              collapsible
+              collapsedSize={0}
+              onResize={(size) => setContextWidth(size)}
+            >
+              <ContextPanel />
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
 
       <StatusBar />
     </div>
   )
 }
+

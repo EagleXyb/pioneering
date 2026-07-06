@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -42,21 +42,6 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
-
-  // Window control IPC
-  ipcMain.handle('window:control', (_, action: string) => {
-    switch (action) {
-      case 'minimize':
-        mainWindow?.minimize()
-        break
-      case 'maximize':
-        mainWindow?.isMaximized() ? mainWindow?.unmaximize() : mainWindow?.maximize()
-        break
-      case 'close':
-        mainWindow?.close()
-        break
-    }
-  })
 }
 
 app.whenReady().then(() => {

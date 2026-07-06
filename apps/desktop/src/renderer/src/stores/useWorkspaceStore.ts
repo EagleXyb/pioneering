@@ -3,7 +3,7 @@
 // ============================================================
 
 import { create } from 'zustand'
-import type { OpenFile } from '../types/workspace'
+import type { OpenFile } from '@shared/types'
 
 interface WorkspaceState {
   openFiles: OpenFile[]
@@ -42,7 +42,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       const newActive =
         s.activeFileId === fileId
           ? remaining.length > 0
-            ? remaining[remaining.length - 1].id
+            ? remaining[remaining.length - 1]!.id
             : null
           : s.activeFileId
       return { openFiles: remaining, activeFileId: newActive }

@@ -110,6 +110,64 @@ export interface AgentExecuteRequest {
   stream?: boolean
 }
 
+// ---- UI 扩展类型（Renderer 内部使用，但与 API 类型兼容）----
+export interface ThinkingBlock {
+  content: string
+  duration?: number
+}
+
+export interface ToolCall {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  result?: string
+  status: 'pending' | 'running' | 'completed' | 'error'
+  startTime?: number
+  endTime?: number
+}
+
+export interface TokenUsage {
+  prompt: number
+  completion: number
+  total: number
+}
+
+export interface Message extends ChatMessage {
+  thinking?: ThinkingBlock
+  toolCalls?: ToolCall[]
+  tokenUsage?: TokenUsage
+  timestamp: number
+}
+
+export interface AgentStep {
+  id: string
+  description: string
+  toolName?: string
+  status: 'pending' | 'running' | 'completed' | 'error'
+  result?: string
+  startTime?: number
+  endTime?: number
+}
+
+export interface AgentExecution {
+  id: string
+  instruction: string
+  steps: AgentStep[]
+  status: 'idle' | 'running' | 'completed' | 'error'
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface OpenFile {
+  id: string
+  name: string
+  path: string
+  language: string
+  content?: string
+  isDirty: boolean
+}
+
 // ---- 通用 API 响应 ----
 export interface ApiResponse<T = unknown> {
   code: number

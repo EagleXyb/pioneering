@@ -2,12 +2,14 @@
 // WorkspacePage — 主工作区页面
 // ============================================================
 
+import { X } from 'lucide-react'
 import { useAppStore } from '../stores/useAppStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { cn } from '../lib/utils'
 
-export function WorkspacePage(): JSX.Element {
+export function WorkspacePage() {
   const { activeMode } = useAppStore()
-  const { openFiles, activeFileId } = useWorkspaceStore()
+  const { openFiles, activeFileId, setActiveFile, closeFile } = useWorkspaceStore()
 
   if (openFiles.length === 0) {
     return (
@@ -22,30 +24,53 @@ export function WorkspacePage(): JSX.Element {
     )
   }
 
+  const activeFile = openFiles.find((f) => f.id === activeFileId)
+
   return (
     <div className="flex flex-col h-full">
-      {/* Tab Bar */}
       <div className="flex items-center h-9 bg-muted/30 border-b border-border shrink-0 overflow-x-auto">
         {openFiles.map((file) => (
           <div
             key={file.id}
-            className={`flex items-center gap-1.5 px-3 h-full text-xs border-r border-border cursor-pointer
-              ${file.id === activeFileId ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
+            onClick={() => setActiveFile(file.id)}
+            className={cn(
+              'group flex items-center gap-1.5 px-3 h-full text-xs border-r border-border cursor-pointer transition-colors',
+              file.id === activeFileId
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            )}
           >
-            <span>{file.name}</span>
+            <span className={cn(file.isDirty && 'italic')}>
+              {file.name}
+              {file.isDirty && ' •'}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                closeFile(file.id)
+              }}
+              className="opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 rounded p-0.5 transition-opacity"
+            >
+              <X className="size-3" />
+            </button>
           </div>
         ))}
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-hidden bg-background">
-        <div className="h-full flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">
-            {activeMode === 'code' && '代码编辑器'}
-            {activeMode === 'work' && '预览面板'}
-            {activeMode === 'design' && '设计画布'}
-          </p>
-        </div>
+      <div className="flex-1 overflow-auto bg-background">
+        {activeFile ? (
+          <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+            {activeFile.content || <span className="text-muted-foreground">（空文件）</span>}
+          </pre>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">
+              {activeMode === 'code' && '代码编辑器'}
+              {activeMode === 'work' && '预览面板'}
+              {activeMode === 'design' && '设计画布'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

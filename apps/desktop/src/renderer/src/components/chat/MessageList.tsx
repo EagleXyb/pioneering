@@ -1,8 +1,6 @@
-import { useRef, useEffect } from 'react'
 import { Bot } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { MessageBubble } from './MessageBubble'
-import type { Message } from '@/types/chat'
+import type { Message } from '@shared/types'
 
 interface MessageListProps {
   messages: Message[]
@@ -16,16 +14,10 @@ export function MessageList({
   streamingContent,
   streamingMessageId,
   isStreaming
-}: MessageListProps): JSX.Element {
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
-
+}: MessageListProps) {
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center py-12">
         <div className="text-center text-muted-foreground space-y-2">
           <Bot className="size-16 mx-auto opacity-20" />
           <p className="text-lg">开始新对话</p>
@@ -36,7 +28,7 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-4">
+    <div className="py-4">
       <div className="space-y-4">
         {messages.map((msg) => {
           const isStreamingMsg = isStreaming && msg.id === streamingMessageId
@@ -50,7 +42,6 @@ export function MessageList({
           )
         })}
       </div>
-      <div ref={bottomRef} />
     </div>
   )
 }

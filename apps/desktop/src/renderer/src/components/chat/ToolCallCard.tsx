@@ -1,12 +1,12 @@
 import { Wrench, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ToolCall } from '@/types/agent'
+import type { ToolCall } from '@shared/types'
 
 interface ToolCallCardProps {
   toolCall: ToolCall
 }
 
-export function ToolCallCard({ toolCall }: ToolCallCardProps): JSX.Element {
+export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const statusIcon = {
     pending: <Loader2 className="size-3.5 text-muted-foreground animate-spin" />,
     running: <Loader2 className="size-3.5 text-primary animate-spin" />,
