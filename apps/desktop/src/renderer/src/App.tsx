@@ -16,17 +16,18 @@ function App() {
   }, [initTheme])
 
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<RootLayout />}>
-          <Route index element={<HomePage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/agent" element={<AgentPage />} />
-          <Route path="/workspace" element={<WorkspacePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
-      </Routes>
-    </HashRouter>
+      <HashRouter>
+        <Routes>
+          <Route element={<RootLayout />}>
+            <Route index element={<ChatPage />} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/agent" element={<AgentPage />} />
+            <Route path="/workspace" element={<WorkspacePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+        </Routes>
+      </HashRouter>
   )
 }
 

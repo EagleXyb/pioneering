@@ -4,12 +4,11 @@
 
 import { useRef, useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { MessageBubble } from './MessageBubble'
+import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { AgentStatus } from './AgentStatus'
 import { useChatStore } from '../../stores/chatStore'
 import { useAgentStore } from '../../stores/useAgentStore'
-import { Bot } from 'lucide-react'
 import type { Message } from '@shared/types'
 
 export function ChatArea() {
@@ -60,45 +59,26 @@ export function ChatArea() {
       />
 
       {/* Messages */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
-        <div className="max-w-3xl mx-auto px-4 py-6">
-          {currentMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                <Bot className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">How can I help you today?</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Ask me to write code, debug issues, or automate your workflow.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {currentMessages.map((msg) => {
-                const isStreamingMsg = isStreaming && msg.id === streamingMessageId
-                return (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    isStreaming={isStreamingMsg}
-                    streamingContent={isStreamingMsg ? streamingContent : undefined}
-                  />
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full" ref={scrollRef}>
+          <div className="px-3">
+            <MessageList
+              messages={currentMessages}
+              streamingContent={streamingContent}
+              streamingMessageId={streamingMessageId}
+              isStreaming={isStreaming}
+            />
+          </div>
+        </ScrollArea>
+      </div>
 
       {/* Input */}
-      <div className="shrink-0 bg-background">
-        <ChatInput
-          onSend={handleSend}
-          onStop={stopStreaming}
-          isStreaming={isStreaming}
-          disabled={false}
-        />
-      </div>
+      <ChatInput
+        onSend={handleSend}
+        onStop={stopStreaming}
+        isStreaming={isStreaming}
+        disabled={false}
+      />
     </div>
   )
 }

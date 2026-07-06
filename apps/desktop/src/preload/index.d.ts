@@ -6,6 +6,10 @@ interface WindowApi {
   close: () => Promise<void>
   isMaximized: () => Promise<boolean>
   toggleFullscreen: () => Promise<void>
+  onMaximizedChange: (callback: (maximized: boolean) => void) => () => void
+  startDrag: (screenX: number, screenY: number) => void
+  moveDrag: (screenX: number, screenY: number) => void
+  endDrag: () => void
 }
 
 interface AppApi {

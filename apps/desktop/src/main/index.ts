@@ -13,15 +13,9 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     frame: false,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#09090b',
-      symbolColor: '#a1a1aa',
-      height: 40
-    },
     icon: appIcon,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -30,6 +24,15 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  // 监听窗口最大化/还原状态变化，推送到渲染进程
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window:stateChanged', true)
+  })
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window:stateChanged', false)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {

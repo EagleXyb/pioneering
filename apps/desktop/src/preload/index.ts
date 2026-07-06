@@ -7,7 +7,24 @@ const windowApi = {
   maximize: () => ipcRenderer.invoke(IpcChannel.WINDOW_MAXIMIZE),
   close: () => ipcRenderer.invoke(IpcChannel.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IpcChannel.WINDOW_IS_MAXIMIZED),
-  toggleFullscreen: () => ipcRenderer.invoke(IpcChannel.WINDOW_TOGGLE_FULLSCREEN)
+  toggleFullscreen: () => ipcRenderer.invoke(IpcChannel.WINDOW_TOGGLE_FULLSCREEN),
+  onMaximizedChange: (callback: (maximized: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: boolean) => callback(value)
+    ipcRenderer.on(IpcChannel.WINDOW_STATE_CHANGED, handler)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.WINDOW_STATE_CHANGED, handler)
+    }
+  },
+  // 纯 IPC 窗口拖拽（避免 -webkit-app-region 的点击事件 bug）
+  startDrag: (screenX: number, screenY: number) => {
+    ipcRenderer.send(IpcChannel.WINDOW_DRAG_START, { screenX, screenY })
+  },
+  moveDrag: (screenX: number, screenY: number) => {
+    ipcRenderer.send(IpcChannel.WINDOW_DRAG_MOVE, { screenX, screenY })
+  },
+  endDrag: () => {
+    ipcRenderer.send(IpcChannel.WINDOW_DRAG_END)
+  }
 }
 
 const appApi = {

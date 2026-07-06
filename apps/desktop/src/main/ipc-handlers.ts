@@ -181,4 +181,30 @@ export function registerIpcHandlers(): void {
 
   // ---- 健康检查 ----
   ipcMain.handle(IpcChannel.PING, () => 'pong')
+
+  // ---- 窗口拖拽 ----
+  // 使用 fire-and-forget send/on 模式，避免 invoke 的往返延迟
+  let dragState: { offsetX: number; offsetY: number } | null = null
+  let dragTarget: BrowserWindow | null = null
+
+  ipcMain.on(IpcChannel.WINDOW_DRAG_START, (event, data: { screenX: number; screenY: number }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    const [winX, winY] = win.getPosition()
+    dragTarget = win
+    dragState = { offsetX: data.screenX - winX, offsetY: data.screenY - winY }
+  })
+
+  ipcMain.on(IpcChannel.WINDOW_DRAG_MOVE, (event, data: { screenX: number; screenY: number }) => {
+    if (!dragTarget || !dragState) return
+    dragTarget.setPosition(
+      Math.round(data.screenX - dragState.offsetX),
+      Math.round(data.screenY - dragState.offsetY)
+    )
+  })
+
+  ipcMain.on(IpcChannel.WINDOW_DRAG_END, () => {
+    dragTarget = null
+    dragState = null
+  })
 }

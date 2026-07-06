@@ -1,13 +1,9 @@
 // ============================================================
 // usePlatform — 跨平台检测 Hook
+// 优先通过 IPC 从主进程获取真实平台，再 fallback 到 navigator 检测
 // ============================================================
 
 export function usePlatform() {
-  const platform = (window as Window).api?.app
-    ? 'win32' // fallback, actual platform from preload
-    : 'win32'
-
-  // We expose the platform via preload API
   const isMac =
     typeof navigator !== 'undefined' &&
     /mac|darwin|macintosh|mac os x/i.test(navigator.platform || navigator.userAgent)

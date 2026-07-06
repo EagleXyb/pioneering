@@ -11,6 +11,12 @@ export enum IpcChannel {
   WINDOW_CLOSE = 'window:close',
   WINDOW_IS_MAXIMIZED = 'window:isMaximized',
   WINDOW_TOGGLE_FULLSCREEN = 'window:toggleFullscreen',
+  WINDOW_STATE_CHANGED = 'window:stateChanged',
+
+  // 窗口拖拽（纯 IPC 方式，避免 -webkit-app-region 的 bug）
+  WINDOW_DRAG_START = 'window:drag-start',
+  WINDOW_DRAG_MOVE = 'window:drag-move',
+  WINDOW_DRAG_END = 'window:drag-end',
 
   // 应用信息
   APP_GET_VERSION = 'app:getVersion',
