@@ -51,14 +51,14 @@ export function Sidebar() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-sidebar border-r border-border">
+    <div className="conversation-sidebar flex flex-col h-full bg-sidebar border-r border-border">
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         <ConversationList />
       </div>
 
       {/* Bottom: 头像 + 用户名 组合，点击弹出菜单 */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-t border-border shrink-0">
+      <div className="conversation-list-footer flex items-center justify-between px-2 py-1.5 border-t border-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

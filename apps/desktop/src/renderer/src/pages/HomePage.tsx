@@ -36,8 +36,24 @@ export function HomePage() {
   ]
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className="main-content--welcome h-full overflow-y-auto p-8">
       <div className="max-w-4xl mx-auto space-y-12">
+        {/* Welcome Title Bar */}
+        <div className="flex items-center justify-between py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <span className="text-sm font-bold text-primary-foreground">P</span>
+            </div>
+            <div>
+              <h1 className="text-base font-semibold">Welcome</h1>
+              <p className="text-xs text-muted-foreground">Pioneering Desktop</p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="px-2 py-0.5 rounded bg-muted">v0.1.0</span>
+          </div>
+        </div>
+
         {/* Hero */}
         <div className="text-center space-y-4 py-12">
           <h1 className="text-5xl font-bold tracking-tight">

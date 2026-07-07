@@ -31,7 +31,7 @@ const CONTEXT_INIT = 30
 
 export function RootLayout() {
   const { platform } = usePlatform()
-  const { sidebarRef, contextRef, toggleSidebar, toggleContext, mode } = usePanelToggle()
+  const { sidebarRef, contextRef, toggleContext, mode } = usePanelToggle()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
 
@@ -39,7 +39,7 @@ export function RootLayout() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
-      <TitleBar onToggleSidebar={toggleSidebar} onToggleContext={toggleContext} />
+      <TitleBar onToggleContext={toggleContext} />
 
       {mode === 'three-column' ? (
         <ResizablePanelGroup

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
@@ -11,10 +10,18 @@ import {
   X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useAppStore, type WorkMode } from '@/stores/useAppStore'
 import { useAtom } from 'jotai'
-import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import { settingsOpenAtom, sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useChatStore } from '@/stores/chatStore'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
@@ -26,7 +33,6 @@ const modes: { id: WorkMode; label: string }[] = [
 ]
 
 interface TitleBarProps {
-  onToggleSidebar: () => void
   onToggleContext: () => void
 }
 
@@ -86,10 +92,11 @@ function WindowControls() {
   )
 }
 
-export function TitleBar({ onToggleSidebar, onToggleContext }: TitleBarProps) {
+export function TitleBar({ onToggleContext }: TitleBarProps) {
   const { activeMode, setActiveMode } = useAppStore()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
+  const [, setSettingsOpen] = useAtom(settingsOpenAtom)
   const { hasNativeWindowControls, platform } = usePlatform()
   const navigate = useNavigate()
   const { createSession } = useChatStore()
@@ -97,6 +104,39 @@ export function TitleBar({ onToggleSidebar, onToggleContext }: TitleBarProps) {
   const handleCreate = async () => {
     await createSession()
     navigate('/')
+  }
+
+  // ===== 应用菜单处理函数 =====
+  const handleAbout = () => {
+    // TODO: 关于弹窗
+    setSettingsOpen(true)
+  }
+  const handleCheckUpdate = () => {
+    void window.api?.app?.checkUpdate?.()
+  }
+  const handleQuit = () => {
+    void window.api?.app?.quit?.()
+  }
+  const handleCloseWindow = () => {
+    void window.api?.window?.close?.()
+  }
+  const handleOpenDocs = () => {
+    window.open('https://docs.pioneering.ai', '_blank')
+  }
+  const handleNetworkCheck = () => {
+    void window.api?.app?.networkCheck?.()
+  }
+  const handleOpenLogDir = () => {
+    void window.api?.app?.openLogDir?.()
+  }
+  const handleFeedback = () => {
+    window.open('https://github.com/pioneering/feedback', '_blank')
+  }
+  const handleDevTools = () => {
+    void window.api?.window?.toggleDevTools?.()
+  }
+  const execEdit = (cmd: string) => {
+    document.execCommand(cmd)
   }
   // Win/Linux 无原生窗口控件 → 显示自定义 min/max/close；
   // platform 尚未经 IPC 初始化（'unknown'）时不渲染任何控件，避免启动闪烁。
@@ -143,27 +183,133 @@ export function TitleBar({ onToggleSidebar, onToggleContext }: TitleBarProps) {
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* Left: sidebar toggle + 折叠态下的新建任务 */}
+      {/* App Menus: Pioneering / 编辑 / 窗口 / 帮助 */}
+      <div className="flex items-center shrink-0">
+        {/* Pioneering */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
+              Pioneering
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="start" className="w-48">
+            <DropdownMenuItem onSelect={handleAbout}>
+              关于 Pioneering
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleCheckUpdate}>
+              检查更新
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={handleQuit}>
+              退出 Pioneering
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* 编辑 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
+              编辑
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="start" className="w-44">
+            <DropdownMenuItem onSelect={() => execEdit('undo')}>
+              撤销
+              <DropdownMenuShortcut>⌘Z</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => execEdit('redo')}>
+              重做
+              <DropdownMenuShortcut>⇧⌘Z</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => execEdit('cut')}>
+              剪切
+              <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => execEdit('copy')}>
+              复制
+              <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => execEdit('paste')}>
+              粘贴
+              <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => execEdit('selectAll')}>
+              全选
+              <DropdownMenuShortcut>⌘A</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* 窗口 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
+              窗口
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="start" className="w-44">
+            <DropdownMenuItem onSelect={handleCloseWindow}>
+              关闭窗口
+              <DropdownMenuShortcut>⌘W</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* 帮助 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
+              帮助
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="start" className="w-44">
+            <DropdownMenuItem onSelect={handleOpenDocs}>
+              使用文档
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleNetworkCheck}>
+              网络检查
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleOpenLogDir}>
+              打开日志目录
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleFeedback}>
+              意见反馈
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={handleDevTools}>
+              开发者工具
+              <DropdownMenuShortcut>⌘⇧I</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Left: 侧边栏折叠态 — 展开按钮 + 新建任务 */}
       <div className="flex items-center gap-1 px-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onToggleSidebar}
-          title="Toggle Sidebar"
-        >
-          {sidebarVisible ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
-        </Button>
         {!sidebarVisible && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleCreate}
-            title="新建任务"
-          >
-            <Plus className="size-4" />
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setSidebarVisible(true)}
+              title="展开侧边栏"
+            >
+              <PanelLeftOpen className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleCreate}
+              title="新建任务"
+            >
+              <Plus className="size-4" />
+            </Button>
+          </>
         )}
       </div>
 
