@@ -28,6 +28,13 @@ import type {
 // 简单的内存 Store（可替换为 electron-store）
 const appStore = new Map<string, unknown>()
 
+// 基础路径安全检查：非空、长度受限、禁止空字节与 '..' 目录遍历
+function isValidFilePath(filePath: string): boolean {
+  if (typeof filePath !== 'string' || !filePath || filePath.length > 4096) return false
+  if (filePath.includes('\0')) return false
+  return !filePath.split(/[\\/]/).includes('..')
+}
+
 export function registerIpcHandlers(): void {
   // ---- 窗口控制 ----
   ipcMain.handle(IpcChannel.WINDOW_MINIMIZE, (event) => {
@@ -58,6 +65,10 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IpcChannel.WINDOW_TOGGLE_DEVTOOLS, (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.webContents.toggleDevTools()
+  })
+
   // ---- 应用信息 ----
   ipcMain.handle(IpcChannel.APP_GET_VERSION, () => {
     return app.getVersion()
@@ -69,6 +80,31 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannel.APP_QUIT, () => {
     app.quit()
+  })
+
+  // 检查更新：当前未接入自动更新器，仅回传版本号供 UI 提示
+  ipcMain.handle(IpcChannel.APP_CHECK_UPDATE, () => {
+    return app.getVersion()
+  })
+
+  // 网络检测：探测后端可达性（5s 超时）
+  ipcMain.handle(IpcChannel.APP_NETWORK_CHECK, async () => {
+    const base = process.env['VITE_API_BASE_URL'] ?? 'http://localhost:9000'
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    try {
+      const res = await fetch(`${base}/ping`, { signal: controller.signal })
+      return res.ok
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+
+  // 打开日志目录
+  ipcMain.handle(IpcChannel.APP_OPEN_LOG_DIR, () => {
+    return shell.openPath(app.getPath('logs'))
   })
 
   // ---- 文件系统 ----
@@ -110,6 +146,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     IpcChannel.FILE_READ,
     async (_event, filePath: string): Promise<FileReadResult> => {
+      if (!isValidFilePath(filePath)) {
+        return { success: false, error: 'Invalid file path' }
+      }
       try {
         const content = await readFile(filePath, 'utf-8')
         return { success: true, content }
@@ -122,6 +161,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     IpcChannel.FILE_WRITE,
     async (_event, req: FileWriteRequest): Promise<FileReadResult> => {
+      if (!isValidFilePath(req.filePath) || typeof req.content !== 'string') {
+        return { success: false, error: 'Invalid file path or content' }
+      }
       try {
         await writeFile(req.filePath, req.content, req.encoding ?? 'utf-8')
         return { success: true }
@@ -158,6 +200,8 @@ export function registerIpcHandlers(): void {
 
   // ---- 外部链接 ----
   ipcMain.handle(IpcChannel.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
+    // 仅允许 http/https，避免 file:// 等危险协议
+    if (!/^https?:\/\//i.test(url)) return
     return shell.openExternal(url)
   })
 

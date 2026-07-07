@@ -29,6 +29,8 @@ import {
   DropdownMenuRadioItem
 } from '@/components/ui/dropdown-menu'
 import { ConversationList } from './ConversationList'
+import { appApi, shellApi } from '@/services/ipc'
+import { authService } from '@/services/api/auth'
 
 export function Sidebar() {
   const [, setSettingsOpen] = useAtom(settingsOpenAtom)
@@ -38,16 +40,13 @@ export function Sidebar() {
   // ===== 各菜单项的处理接口（预留，后续接入真实逻辑） =====
   const handleSettings = () => setSettingsOpen(true)
   const handleHelp = () => {
-    // TODO: 打开帮助与反馈（文档/工单/社区）
-    window.open('https://docs.pioneering.ai', '_blank')
+    void shellApi.openExternal('https://docs.pioneering.ai')
   }
   const handleCheckUpdate = () => {
-    // TODO: 调用更新检查接口
-    void window.api?.app?.checkUpdate?.()
+    void appApi.checkUpdate()
   }
   const handleLogout = () => {
-    // TODO: 调用退出登录接口
-    void window.api?.auth?.logout?.()
+    authService.logout()
   }
 
   return (

@@ -14,9 +14,20 @@ export function useResponsiveLayout() {
   const [width, setWidth] = useState(() => window.innerWidth)
 
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth)
+    let rafId: number | null = null
+    const onResize = () => {
+      // 用 rAF 合并高频 resize 事件，避免拖拽窗口时整树频繁重渲染
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        setWidth(window.innerWidth)
+      })
+    }
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
   }, [])
 
   // 断点随平台微调

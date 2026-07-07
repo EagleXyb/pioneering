@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannel } from '../shared/ipc-channels'
+import type {
+  FileDialogOptions,
+  FileWriteRequest,
+  NotificationOptions,
+  UserDataPath
+} from '../shared/ipc-channels'
 
 const windowApi = {
   minimize: () => ipcRenderer.invoke(IpcChannel.WINDOW_MINIMIZE),
@@ -8,6 +14,7 @@ const windowApi = {
   close: () => ipcRenderer.invoke(IpcChannel.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IpcChannel.WINDOW_IS_MAXIMIZED),
   toggleFullscreen: () => ipcRenderer.invoke(IpcChannel.WINDOW_TOGGLE_FULLSCREEN),
+  toggleDevTools: () => ipcRenderer.invoke(IpcChannel.WINDOW_TOGGLE_DEVTOOLS),
   onMaximizedChange: (callback: (maximized: boolean) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, value: boolean) => callback(value)
     ipcRenderer.on(IpcChannel.WINDOW_STATE_CHANGED, handler)
@@ -37,19 +44,22 @@ const windowApi = {
 const appApi = {
   getVersion: () => ipcRenderer.invoke(IpcChannel.APP_GET_VERSION),
   getPlatform: () => ipcRenderer.invoke(IpcChannel.APP_GET_PLATFORM),
-  quit: () => ipcRenderer.invoke(IpcChannel.APP_QUIT)
+  quit: () => ipcRenderer.invoke(IpcChannel.APP_QUIT),
+  checkUpdate: () => ipcRenderer.invoke(IpcChannel.APP_CHECK_UPDATE),
+  networkCheck: () => ipcRenderer.invoke(IpcChannel.APP_NETWORK_CHECK),
+  openLogDir: () => ipcRenderer.invoke(IpcChannel.APP_OPEN_LOG_DIR)
 }
 
 const fileApi = {
-  openDialog: (options: unknown) => ipcRenderer.invoke(IpcChannel.FILE_OPEN_DIALOG, options),
-  saveDialog: (options: unknown) => ipcRenderer.invoke(IpcChannel.FILE_SAVE_DIALOG, options),
+  openDialog: (options: FileDialogOptions) => ipcRenderer.invoke(IpcChannel.FILE_OPEN_DIALOG, options),
+  saveDialog: (options: FileDialogOptions) => ipcRenderer.invoke(IpcChannel.FILE_SAVE_DIALOG, options),
   read: (filePath: string) => ipcRenderer.invoke(IpcChannel.FILE_READ, filePath),
-  write: (req: unknown) => ipcRenderer.invoke(IpcChannel.FILE_WRITE, req),
-  getPath: (name: unknown) => ipcRenderer.invoke(IpcChannel.FILE_GET_PATH, name)
+  write: (req: FileWriteRequest) => ipcRenderer.invoke(IpcChannel.FILE_WRITE, req),
+  getPath: (name: UserDataPath) => ipcRenderer.invoke(IpcChannel.FILE_GET_PATH, name)
 }
 
 const notificationApi = {
-  show: (options: unknown) => ipcRenderer.invoke(IpcChannel.NOTIFICATION_SHOW, options)
+  show: (options: NotificationOptions) => ipcRenderer.invoke(IpcChannel.NOTIFICATION_SHOW, options)
 }
 
 const clipboardApi = {

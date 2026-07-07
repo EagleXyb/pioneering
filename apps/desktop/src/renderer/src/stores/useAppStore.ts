@@ -5,6 +5,7 @@
 // ============================================================
 
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type WorkMode = 'work' | 'code' | 'design'
 
@@ -33,19 +34,28 @@ function applyTheme(theme: ThemeMode): void {
   root.setAttribute('data-theme', resolved)
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  activeMode: 'work',
-  theme: 'light',
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      activeMode: 'work',
+      theme: 'light',
 
-  setActiveMode: (mode) => set({ activeMode: mode }),
-  setTheme: (theme) => {
-    applyTheme(theme)
-    set({ theme })
-  },
-  initTheme: () => {
-    set((s) => {
-      applyTheme(s.theme)
-      return s
-    })
-  }
-}))
+      setActiveMode: (mode) => set({ activeMode: mode }),
+      setTheme: (theme) => {
+        applyTheme(theme)
+        set({ theme })
+      },
+      initTheme: () => {
+        set((s) => {
+          applyTheme(s.theme)
+          return s
+        })
+      }
+    }),
+    {
+      // 仅持久化主题；activeMode 等保持会话内状态
+      name: 'pioneering-app',
+      partialize: (state) => ({ theme: state.theme })
+    }
+  )
+)

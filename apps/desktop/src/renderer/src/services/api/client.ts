@@ -18,6 +18,7 @@ class ApiClient {
   private accessToken: string | null = null
   private refreshToken: string | null = null
   private onTokenChange?: (tokens: AuthTokens | null) => void
+  private refreshPromise: Promise<void> | null = null
 
   constructor(baseURL: string = DEFAULT_BASE_URL) {
     this.instance = axios.create({
@@ -45,27 +46,36 @@ class ApiClient {
         return response
       },
       async (error) => {
-        const originalRequest = error.config
+        const originalRequest = error.config as
+          | (InternalAxiosRequestConfig & { _retry?: boolean })
+          | undefined
 
-        // 401 自动刷新 Token
+        // 401 自动刷新 Token（single-flight：并发 401 共享同一次刷新，避免 refresh token 被多次轮换）
         if (
           error.response?.status === 401 &&
+          originalRequest &&
           !originalRequest._retry &&
           this.refreshToken
         ) {
           originalRequest._retry = true
           try {
-            const res = await this.instance.post<ApiResponse<AuthTokens>>(
-              '/auth/refresh',
-              { refresh_token: this.refreshToken }
-            )
-            const tokens = res.data.data
-            this.setTokens(tokens)
-            originalRequest.headers.Authorization = `Bearer ${tokens.token}`
+            if (!this.refreshPromise) {
+              this.refreshPromise = (async () => {
+                const res = await this.instance.post<ApiResponse<AuthTokens>>(
+                  '/auth/refresh',
+                  { refresh_token: this.refreshToken }
+                )
+                this.setTokens(res.data.data)
+              })()
+            }
+            await this.refreshPromise
+            originalRequest.headers.Authorization = `Bearer ${this.accessToken}`
             return this.instance(originalRequest)
           } catch {
             this.clearTokens()
             throw error
+          } finally {
+            this.refreshPromise = null
           }
         }
 

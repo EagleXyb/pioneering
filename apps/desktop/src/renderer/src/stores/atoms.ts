@@ -13,22 +13,15 @@ export const platformAtom = atom<Platform>('unknown')
 // 窗口全屏态（macOS 全屏 / Windows F11 等），由主进程经 IPC 推送
 export const isFullscreenAtom = atom(false)
 
-// 面板宽度 (持久化到 localStorage)
-export const sidebarWidthAtom = atomWithStorage('sidebar-width', 15)
-export const contextPanelWidthAtom = atomWithStorage('context-width', 30)
-
 // 面板显隐
 export const sidebarVisibleAtom = atom(true)
-export const contextPanelVisibleAtom = atom(true)
+export const contextPanelVisibleAtom = atom(false)
 
 // 侧边栏当前标签页
 export const sidebarTabAtom = atom<string>('conversations')
 
 // 上下文面板当前标签页
 export const contextPanelTabAtom = atom<string>('code')
-
-// 主题模式
-export const themeAtom = atomWithStorage<string>('theme', 'light')
 
 // 设置弹框开关
 export const settingsOpenAtom = atom(false)

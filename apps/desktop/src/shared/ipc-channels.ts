@@ -13,6 +13,7 @@ export enum IpcChannel {
   WINDOW_TOGGLE_FULLSCREEN = 'window:toggleFullscreen',
   WINDOW_STATE_CHANGED = 'window:stateChanged',
   WINDOW_FULLSCREEN_CHANGED = 'window:fullscreenChanged',
+  WINDOW_TOGGLE_DEVTOOLS = 'window:toggleDevTools',
 
   // 窗口拖拽（纯 IPC 方式，避免 -webkit-app-region 的 bug）
   WINDOW_DRAG_START = 'window:drag-start',
@@ -23,6 +24,9 @@ export enum IpcChannel {
   APP_GET_VERSION = 'app:getVersion',
   APP_GET_PLATFORM = 'app:getPlatform',
   APP_QUIT = 'app:quit',
+  APP_CHECK_UPDATE = 'app:checkUpdate',
+  APP_NETWORK_CHECK = 'app:networkCheck',
+  APP_OPEN_LOG_DIR = 'app:openLogDir',
 
   // 文件系统
   FILE_OPEN_DIALOG = 'file:openDialog',

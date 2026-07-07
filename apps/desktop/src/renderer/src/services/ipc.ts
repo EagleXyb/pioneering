@@ -23,6 +23,13 @@ export const windowApi = {
   close: () => getApi()?.window.close(),
   isMaximized: () => getApi()?.window.isMaximized() ?? Promise.resolve(false),
   toggleFullscreen: () => getApi()?.window.toggleFullscreen(),
+  toggleDevTools: () => getApi()?.window.toggleDevTools(),
+  // 纯 IPC 窗口拖拽（避免 -webkit-app-region 的点击事件 bug）
+  startDrag: (screenX: number, screenY: number) => getApi()?.window.startDrag(screenX, screenY),
+  moveDrag: (screenX: number, screenY: number) => getApi()?.window.moveDrag(screenX, screenY),
+  endDrag: () => getApi()?.window.endDrag(),
+  onMaximizedChange: (callback: (maximized: boolean) => void) =>
+    getApi()?.window.onMaximizedChange?.(callback),
   onFullscreenChange: (callback: (fullscreen: boolean) => void) =>
     getApi()?.window.onFullscreenChange?.(callback)
 }
@@ -31,7 +38,10 @@ export const windowApi = {
 export const appApi = {
   getVersion: () => getApi()?.app.getVersion() ?? Promise.resolve('0.0.0'),
   getPlatform: () => getApi()?.app.getPlatform() ?? Promise.resolve(process.platform),
-  quit: () => getApi()?.app.quit()
+  quit: () => getApi()?.app.quit(),
+  checkUpdate: () => getApi()?.app.checkUpdate() ?? Promise.resolve('0.0.0'),
+  networkCheck: () => getApi()?.app.networkCheck() ?? Promise.resolve(false),
+  openLogDir: () => getApi()?.app.openLogDir() ?? Promise.resolve('')
 }
 
 // ---- 文件系统 ----

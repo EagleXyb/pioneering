@@ -9,6 +9,12 @@ import { useAtom } from 'jotai'
 import { sidebarVisibleAtom } from '@/stores/atoms'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useChatStore } from '../../stores/chatStore'
@@ -50,39 +56,53 @@ export function ConversationList() {
     <div className="flex flex-col h-full">
       {/* Header — Logo + 侧边栏切换 + 新建任务等操作入口 */}
       <div className="conversation-list-header px-3 pb-4 flex flex-col gap-2 shrink-0">
-        {/* Top row: Logo + sidebar toggle */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded bg-sidebar-primary flex items-center justify-center">
-              <span className="text-[10px] font-bold text-sidebar-primary-foreground">P</span>
+        <TooltipProvider>
+          {/* Top row: Logo + sidebar toggle */}
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-5 rounded bg-sidebar-primary flex items-center justify-center">
+                <span className="text-[10px] font-bold text-sidebar-primary-foreground">P</span>
+              </div>
+              <span className="text-xs font-semibold text-foreground/90">Pioneering</span>
             </div>
-            <span className="text-xs font-semibold text-foreground/90">Pioneering</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setSidebarVisible(!sidebarVisible)}
+                >
+                  {sidebarVisible ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" className="text-xs">
+                {sidebarVisible ? '收起侧边栏' : '展开侧边栏'}
+              </TooltipContent>
+            </Tooltip>
           </div>
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setSidebarVisible(!sidebarVisible)}
-            title="收起侧边栏"
+            variant="secondary"
+            size="sm"
+            className="group/new-task w-full h-8 px-3 justify-between text-xs font-normal rounded-lg"
+            onClick={handleCreate}
           >
-            {sidebarVisible ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+            <span className="inline-flex items-center gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              新建任务
+            </span>
+            <kbd
+              className={cn(
+                'inline-flex items-center rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground',
+                'opacity-0 -translate-x-1 transition-all duration-150',
+                'group-hover/new-task:opacity-100 group-hover/new-task:translate-x-0',
+                'sm:inline-flex'
+              )}
+            >
+              {isMac ? '⌘ N' : 'Ctrl + N'}
+            </kbd>
           </Button>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-full h-8 px-3 justify-between text-xs font-normal rounded-lg"
-          onClick={handleCreate}
-          title="新建任务"
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            新建任务
-          </span>
-          <kbd className="hidden sm:inline-flex items-center rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {isMac ? '⌘ N' : 'Ctrl + N'}
-          </kbd>
-        </Button>
+        </TooltipProvider>
       </div>
 
       {/* Content — 会话列表 */}

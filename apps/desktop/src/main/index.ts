@@ -19,6 +19,12 @@ function createWindow(): void {
     ...getWindowOptions(process.platform),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
+      // 注意：sandbox 必须为 false。
+      // 当前 preload 使用 ESM（import/export）语法，而 Electron 沙箱模式下
+      // 的 preload 不支持 ES module 语法（会报 "Cannot use import statement
+      // outside a module" 导致 preload 加载失败、window.api 为 undefined、
+      // 渲染进程崩溃白屏）。contextIsolation:true + nodeIntegration:false
+      // 已提供足够的安全隔离，故保持 sandbox:false。
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false

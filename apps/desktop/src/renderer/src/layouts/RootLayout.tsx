@@ -7,12 +7,20 @@
 // 断点与窗口记忆按平台区分，保证各 OS 下的一致体验。
 // ============================================================
 
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle
 } from '@/components/ui/resizable'
+import { PanelLeftOpen, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider
+} from '@/components/ui/tooltip'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ContextPanel } from '@/components/context-panel/ContextPanel'
@@ -21,8 +29,10 @@ import { Drawer } from '@/components/layout/Drawer'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useAtom } from 'jotai'
 import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import type { Platform } from '@shared/types'
 import { usePlatform } from '@/hooks/usePlatform'
 import { usePanelToggle } from '@/platform/usePanelToggle'
+import { useChatStore } from '@/stores/chatStore'
 
 // 三栏初始比例（sidebar + center + context-panel = 100）
 const SIDEBAR_INIT = 15
@@ -34,6 +44,13 @@ export function RootLayout() {
   const { sidebarRef, contextRef, toggleContext, mode } = usePanelToggle()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
+  const navigate = useNavigate()
+  const { createSession } = useChatStore()
+
+  const handleCreate = async () => {
+    await createSession()
+    navigate('/')
+  }
 
   useKeyboardShortcuts()
 
@@ -57,6 +74,8 @@ export function RootLayout() {
             maxSize={25}
             collapsible
             collapsedSize={0}
+            onCollapse={() => setSidebarVisible(false)}
+            onExpand={() => setSidebarVisible(true)}
           >
             <Sidebar />
           </ResizablePanel>
@@ -65,7 +84,18 @@ export function RootLayout() {
 
           {/* 中栏：页面内容 */}
           <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-            <Outlet />
+            <div className="flex flex-col h-full">
+              {!sidebarVisible && (
+                <TopBarActions
+                  platform={platform}
+                  onExpandSidebar={() => setSidebarVisible(true)}
+                  onCreate={handleCreate}
+                />
+              )}
+              <div className="flex-1 min-h-0">
+                <Outlet />
+              </div>
+            </div>
           </ResizablePanel>
 
           <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
@@ -86,7 +116,18 @@ export function RootLayout() {
       ) : (
         // 覆盖模式：中栏全宽，侧栏/上下文转抽屉
         <div className="flex-1 relative overflow-hidden">
-          <Outlet />
+          <div className="flex flex-col h-full">
+            {!sidebarVisible && (
+              <TopBarActions
+                platform={platform}
+                onExpandSidebar={() => setSidebarVisible(true)}
+                onCreate={handleCreate}
+              />
+            )}
+            <div className="flex-1 min-h-0">
+              <Outlet />
+            </div>
+          </div>
           <Drawer open={sidebarVisible} side="left" onClose={() => setSidebarVisible(false)}>
             <Sidebar />
           </Drawer>
@@ -99,5 +140,46 @@ export function RootLayout() {
       {/* 全局设置弹框（两栏布局，与路由解耦） */}
       <SettingsDialog />
     </div>
+  )
+}
+
+// 侧栏隐藏时的顶部操作条（展开侧栏 + 新建任务），三栏/覆盖两种模式共用
+function TopBarActions({
+  platform,
+  onExpandSidebar,
+  onCreate
+}: {
+  platform: Platform
+  onExpandSidebar: () => void
+  onCreate: () => void | Promise<void>
+}) {
+  return (
+    <TooltipProvider>
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onExpandSidebar}>
+              <PanelLeftOpen className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" className="text-xs">
+            展开侧边栏
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onCreate}>
+              <Plus className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" className="text-xs gap-1.5 flex items-center">
+            <span>新建任务</span>
+            <kbd className="rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-mono">
+              {platform === 'mac' ? '⌘N' : 'Ctrl+N'}
+            </kbd>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   )
 }

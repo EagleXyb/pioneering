@@ -12,19 +12,18 @@ import { useAgentStore } from '../../stores/useAgentStore'
 import type { Message } from '@shared/types'
 
 export function ChatArea() {
-  const {
-    sessions,
-    currentSessionId,
-    messages,
-    streamingContent,
-    streamingMessageId,
-    isStreaming,
-    error,
-    sendMessage,
-    stopStreaming,
-    clearError,
-    loadSessions
-  } = useChatStore()
+  // 逐项选择器订阅，避免全量重渲染（流式期间仅 streamingContent 触发重渲染）
+  const sessionsLength = useChatStore((s) => s.sessions.length)
+  const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const messages = useChatStore((s) => s.messages)
+  const streamingContent = useChatStore((s) => s.streamingContent)
+  const streamingMessageId = useChatStore((s) => s.streamingMessageId)
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const error = useChatStore((s) => s.error)
+  const sendMessage = useChatStore((s) => s.sendMessage)
+  const stopStreaming = useChatStore((s) => s.stopStreaming)
+  const clearError = useChatStore((s) => s.clearError)
+  const loadSessions = useChatStore((s) => s.loadSessions)
 
   const { steps, currentStepIndex, status } = useAgentStore()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -32,10 +31,10 @@ export function ChatArea() {
   const currentMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
 
   useEffect(() => {
-    if (sessions.length === 0) {
+    if (sessionsLength === 0) {
       loadSessions()
     }
-  }, [sessions.length, loadSessions])
+  }, [sessionsLength, loadSessions])
 
   useEffect(() => {
     if (scrollRef.current) {

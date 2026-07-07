@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
-  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Plus,
   Minus,
   Square,
   X
@@ -21,10 +18,10 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppStore, type WorkMode } from '@/stores/useAppStore'
 import { useAtom } from 'jotai'
-import { settingsOpenAtom, sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import { settingsOpenAtom, contextPanelVisibleAtom } from '@/stores/atoms'
 import { usePlatform } from '@/hooks/usePlatform'
-import { useChatStore } from '@/stores/chatStore'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
+import { appApi, windowApi, shellApi } from '@/services/ipc'
 
 const modes: { id: WorkMode; label: string }[] = [
   { id: 'work', label: 'Work' },
@@ -41,28 +38,28 @@ function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
-    window.api?.window.isMaximized().then(setIsMaximized).catch(() => {})
+    windowApi.isMaximized().then(setIsMaximized).catch(() => {})
 
-    const cleanup = window.api?.window.onMaximizedChange?.((maximized) => {
+    const cleanup = windowApi.onMaximizedChange?.((maximized) => {
       setIsMaximized(maximized)
     })
     return () => cleanup?.()
   }, [])
 
   const handleMinimize = useCallback(() => {
-    window.api?.window.minimize().catch((err) => console.error('minimize failed', err))
+    windowApi.minimize().catch((err) => console.error('minimize failed', err))
   }, [])
   const handleMaximize = useCallback(async () => {
     try {
-      await window.api?.window.maximize()
-      const maximized = await window.api?.window.isMaximized()
+      await windowApi.maximize()
+      const maximized = await windowApi.isMaximized()
       setIsMaximized(maximized ?? false)
     } catch (err) {
       console.error('maximize failed', err)
     }
   }, [])
   const handleClose = useCallback(() => {
-    window.api?.window.close().catch((err) => console.error('close failed', err))
+    windowApi.close().catch((err) => console.error('close failed', err))
   }, [])
 
   return (
@@ -94,46 +91,37 @@ function WindowControls() {
 
 export function TitleBar({ onToggleContext }: TitleBarProps) {
   const { activeMode, setActiveMode } = useAppStore()
-  const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
   const [, setSettingsOpen] = useAtom(settingsOpenAtom)
   const { hasNativeWindowControls, platform } = usePlatform()
-  const navigate = useNavigate()
-  const { createSession } = useChatStore()
-
-  const handleCreate = async () => {
-    await createSession()
-    navigate('/')
-  }
 
   // ===== 应用菜单处理函数 =====
   const handleAbout = () => {
-    // TODO: 关于弹窗
     setSettingsOpen(true)
   }
   const handleCheckUpdate = () => {
-    void window.api?.app?.checkUpdate?.()
+    void appApi.checkUpdate()
   }
   const handleQuit = () => {
-    void window.api?.app?.quit?.()
+    void appApi.quit()
   }
   const handleCloseWindow = () => {
-    void window.api?.window?.close?.()
+    void windowApi.close()
   }
   const handleOpenDocs = () => {
-    window.open('https://docs.pioneering.ai', '_blank')
+    void shellApi.openExternal('https://docs.pioneering.ai')
   }
   const handleNetworkCheck = () => {
-    void window.api?.app?.networkCheck?.()
+    void appApi.networkCheck()
   }
   const handleOpenLogDir = () => {
-    void window.api?.app?.openLogDir?.()
+    void appApi.openLogDir()
   }
   const handleFeedback = () => {
-    window.open('https://github.com/pioneering/feedback', '_blank')
+    void shellApi.openExternal('https://github.com/pioneering/feedback')
   }
   const handleDevTools = () => {
-    void window.api?.window?.toggleDevTools?.()
+    void windowApi.toggleDevTools()
   }
   const execEdit = (cmd: string) => {
     document.execCommand(cmd)
@@ -149,18 +137,18 @@ export function TitleBar({ onToggleContext }: TitleBarProps) {
     const target = e.target as HTMLElement
     if (target.closest('button, a, [role="button"], input, textarea, select')) return
     isDragging.current = true
-    window.api?.window.startDrag(e.screenX, e.screenY)
+    windowApi.startDrag(e.screenX, e.screenY)
   }, [])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent): void => {
       if (!isDragging.current) return
-      window.api?.window.moveDrag(e.screenX, e.screenY)
+      windowApi.moveDrag(e.screenX, e.screenY)
     }
     const handleMouseUp = (): void => {
       if (!isDragging.current) return
       isDragging.current = false
-      window.api?.window.endDrag()
+      windowApi.endDrag()
     }
 
     document.addEventListener('mousemove', handleMouseMove)
@@ -285,32 +273,6 @@ export function TitleBar({ onToggleContext }: TitleBarProps) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-
-      {/* Left: 侧边栏折叠态 — 展开按钮 + 新建任务 */}
-      <div className="flex items-center gap-1 px-2">
-        {!sidebarVisible && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setSidebarVisible(true)}
-              title="展开侧边栏"
-            >
-              <PanelLeftOpen className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={handleCreate}
-              title="新建任务"
-            >
-              <Plus className="size-4" />
-            </Button>
-          </>
-        )}
       </div>
 
       {/* Center: mode switching（左右留白对称，flex-1 容器内真正居中） */}

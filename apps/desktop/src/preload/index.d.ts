@@ -6,6 +6,7 @@ interface WindowApi {
   close: () => Promise<void>
   isMaximized: () => Promise<boolean>
   toggleFullscreen: () => Promise<void>
+  toggleDevTools: () => Promise<void>
   onMaximizedChange: (callback: (maximized: boolean) => void) => () => void
   onFullscreenChange: (callback: (fullscreen: boolean) => void) => () => void
   startDrag: (screenX: number, screenY: number) => void
@@ -17,18 +18,21 @@ interface AppApi {
   getVersion: () => Promise<string>
   getPlatform: () => Promise<string>
   quit: () => Promise<void>
+  checkUpdate: () => Promise<string>
+  networkCheck: () => Promise<boolean>
+  openLogDir: () => Promise<string>
 }
 
 interface FileApi {
-  openDialog: (options: unknown) => Promise<{ canceled: boolean; filePaths: string[] }>
-  saveDialog: (options: unknown) => Promise<{ canceled: boolean; filePaths: string[] }>
+  openDialog: (options: FileDialogOptions) => Promise<{ canceled: boolean; filePaths: string[] }>
+  saveDialog: (options: FileDialogOptions) => Promise<{ canceled: boolean; filePaths: string[] }>
   read: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
-  write: (req: unknown) => Promise<{ success: boolean; error?: string }>
-  getPath: (name: unknown) => Promise<string>
+  write: (req: FileWriteRequest) => Promise<{ success: boolean; error?: string }>
+  getPath: (name: UserDataPath) => Promise<string>
 }
 
 interface NotificationApi {
-  show: (options: unknown) => Promise<void>
+  show: (options: NotificationOptions) => Promise<void>
 }
 
 interface ClipboardApi {

@@ -1,4 +1,4 @@
-import { useState, memo } from 'react'
+import { useState, memo, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -23,6 +23,13 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [liked, setLiked] = useState<'none' | 'like' | 'dislike'>('none')
+  const copyTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+    }
+  }, [])
 
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
@@ -31,7 +38,7 @@ export const MessageBubble = memo(function MessageBubble({
   const handleCopy = () => {
     navigator.clipboard.writeText(displayContent)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    copyTimer.current = window.setTimeout(() => setCopied(false), 2000)
   }
 
   return (
