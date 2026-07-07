@@ -2,11 +2,11 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
+import { getWindowOptions } from './window-config'
+import { IpcChannel } from '../shared/ipc-channels'
 import appIcon from '../../resources/icon.png?asset'
 
 function createWindow(): void {
-  const isMac = process.platform === 'darwin'
-
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -14,12 +14,9 @@ function createWindow(): void {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
-    // macOS：保留原生交通灯的可拖拽隐藏标题栏（frame + hidden），
-    //         渲染端用左侧 w-[70px] 占位避让红绿灯。
-    // Windows/Linux：完全自定义无边框，窗口控件由渲染端 WindowControls 提供。
-    frame: isMac ? true : false,
-    titleBarStyle: isMac ? 'hidden' : undefined,
     icon: appIcon,
+    // 按平台返回 frame / titleBarStyle，详见 window-config.ts
+    ...getWindowOptions(process.platform),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -34,11 +31,20 @@ function createWindow(): void {
 
   // 监听窗口最大化/还原状态变化，推送到渲染进程
   mainWindow.on('maximize', () => {
-    mainWindow.webContents.send('window:stateChanged', true)
+    mainWindow.webContents.send(IpcChannel.WINDOW_STATE_CHANGED, true)
   })
 
   mainWindow.on('unmaximize', () => {
-    mainWindow.webContents.send('window:stateChanged', false)
+    mainWindow.webContents.send(IpcChannel.WINDOW_STATE_CHANGED, false)
+  })
+
+  // 监听全屏态变化，推送到渲染进程（驱动标题栏/布局自适应）
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow.webContents.send(IpcChannel.WINDOW_FULLSCREEN_CHANGED, true)
+  })
+
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow.webContents.send(IpcChannel.WINDOW_FULLSCREEN_CHANGED, false)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {

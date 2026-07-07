@@ -15,6 +15,13 @@ const windowApi = {
       ipcRenderer.removeListener(IpcChannel.WINDOW_STATE_CHANGED, handler)
     }
   },
+  onFullscreenChange: (callback: (fullscreen: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: boolean) => callback(value)
+    ipcRenderer.on(IpcChannel.WINDOW_FULLSCREEN_CHANGED, handler)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.WINDOW_FULLSCREEN_CHANGED, handler)
+    }
+  },
   // 纯 IPC 窗口拖拽（避免 -webkit-app-region 的点击事件 bug）
   startDrag: (screenX: number, screenY: number) => {
     ipcRenderer.send(IpcChannel.WINDOW_DRAG_START, { screenX, screenY })

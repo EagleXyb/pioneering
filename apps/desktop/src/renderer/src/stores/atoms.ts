@@ -5,10 +5,13 @@
 import { atomWithStorage } from 'jotai/utils'
 import { atom } from 'jotai'
 
-// 当前运行平台（由主进程经 IPC 返回，渲染端统一读取，避免重复推断）
-// 'unknown' 仅作为初始值，App 挂载后即被真实平台覆盖
-export type Platform = 'mac' | 'windows' | 'linux' | 'unknown'
+// 平台类型与归一化函数统一从 shared 引入，主进程/渲染端共用，避免两处各写一份
+import type { Platform } from '@shared/types'
+export type { Platform }
 export const platformAtom = atom<Platform>('unknown')
+
+// 窗口全屏态（macOS 全屏 / Windows F11 等），由主进程经 IPC 推送
+export const isFullscreenAtom = atom(false)
 
 // 面板宽度 (持久化到 localStorage)
 export const sidebarWidthAtom = atomWithStorage('sidebar-width', 15)
@@ -25,10 +28,17 @@ export const sidebarTabAtom = atom<string>('conversations')
 export const contextPanelTabAtom = atom<string>('code')
 
 // 主题模式
-export const themeAtom = atomWithStorage<string>('theme', 'dark')
+export const themeAtom = atomWithStorage<string>('theme', 'light')
 
 // 设置弹框开关
 export const settingsOpenAtom = atom(false)
+
+// 当前用户信息（占位，后续可由 IPC/登录态填充）
+export const userAtom = atom<{ name: string; email: string; avatarUrl: string }>({
+  name: 'Demo User',
+  email: 'demo@pioneering.ai',
+  avatarUrl: ''
+})
 
 // 设置弹框当前分类（持久化）
 export const settingsCategoryAtom = atomWithStorage<string>('settings-category', 'api')

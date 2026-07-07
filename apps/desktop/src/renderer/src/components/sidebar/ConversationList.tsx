@@ -2,15 +2,18 @@
 // ConversationList — 会话历史列表（左栏）
 // ============================================================
 
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useChatStore } from '../../stores/chatStore'
 
 export function ConversationList() {
   const navigate = useNavigate()
+  const { isMac } = usePlatform()
   const { sessions, currentSessionId, selectSession, createSession, deleteSession } = useChatStore()
 
   const handleSelect = (sessionId: string) => {
@@ -28,21 +31,36 @@ export function ConversationList() {
     deleteSession(sessionId)
   }
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isModifier = isMac ? e.metaKey : e.ctrlKey
+      if (isModifier && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        void handleCreate()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isMac])
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          对话
-        </h3>
+      {/* New task button */}
+      <div className="px-2 py-2 border-b border-border shrink-0">
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
+          variant="secondary"
+          size="sm"
+          className="w-full h-8 px-3 justify-between text-xs font-normal rounded-lg"
           onClick={handleCreate}
-          title="新建对话"
+          title="新建任务"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            新建任务
+          </span>
+          <kbd className="hidden sm:inline-flex items-center rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {isMac ? '⌘ N' : 'Ctrl + N'}
+          </kbd>
         </Button>
       </div>
 

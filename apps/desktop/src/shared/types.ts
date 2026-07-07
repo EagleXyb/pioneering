@@ -181,3 +181,15 @@ export interface PaginatedData<T> {
   page: number
   pageSize: number
 }
+
+// ---- 平台 ----
+// 归一化平台标识，主进程 (process.platform) 与渲染端共用同一映射，
+// 避免 macOS/Windows/Linux 判断在多处各写一份。
+export type Platform = 'mac' | 'windows' | 'linux' | 'unknown'
+
+export function normalizePlatform(p: string): Platform {
+  if (p === 'darwin') return 'mac'
+  if (p === 'win32') return 'windows'
+  if (p === 'linux') return 'linux'
+  return 'unknown'
+}

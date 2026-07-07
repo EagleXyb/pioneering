@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Settings,
+  Plus,
   Minus,
   Square,
   X
@@ -13,8 +14,9 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useAppStore, type WorkMode } from '@/stores/useAppStore'
 import { useAtom } from 'jotai'
-import { sidebarVisibleAtom, contextPanelVisibleAtom, settingsOpenAtom } from '@/stores/atoms'
+import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useChatStore } from '@/stores/chatStore'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 
 const modes: { id: WorkMode; label: string }[] = [
@@ -24,11 +26,11 @@ const modes: { id: WorkMode; label: string }[] = [
 ]
 
 interface TitleBarProps {
-  sidebarRef?: React.RefObject<ImperativePanelHandle | null>
-  contextRef?: React.RefObject<ImperativePanelHandle | null>
+  onToggleSidebar: () => void
+  onToggleContext: () => void
 }
 
-/** Windows 窗口控制按钮组（最小化 / 最大化 / 关闭） */
+/** Windows/Linux 窗口控制按钮组（最小化 / 最大化 / 关闭） */
 function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false)
 
@@ -84,37 +86,22 @@ function WindowControls() {
   )
 }
 
-export function TitleBar({ sidebarRef, contextRef }: TitleBarProps) {
+export function TitleBar({ onToggleSidebar, onToggleContext }: TitleBarProps) {
   const { activeMode, setActiveMode } = useAppStore()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
-  const [, setSettingsOpen] = useAtom(settingsOpenAtom)
-  const { isMac, isWindows, isLinux, platform } = usePlatform()
-  // Windows/Linux 无原生窗口控件，使用自定义 min/max/close 按钮组；
-  // 在 platformAtom 尚未经 IPC 初始化（'unknown'）时也回退到自定义控件，
-  // 避免异常情况下用户无任何窗口操作入口
-  const showCustomControls = isWindows || isLinux || platform === 'unknown'
+  const { hasNativeWindowControls, platform } = usePlatform()
+  const navigate = useNavigate()
+  const { createSession } = useChatStore()
+
+  const handleCreate = async () => {
+    await createSession()
+    navigate('/')
+  }
+  // Win/Linux 无原生窗口控件 → 显示自定义 min/max/close；
+  // platform 尚未经 IPC 初始化（'unknown'）时不渲染任何控件，避免启动闪烁。
+  const showCustomControls = !hasNativeWindowControls && platform !== 'unknown'
   const isDragging = useRef(false)
-
-  const toggleSidebar = () => {
-    const p = sidebarRef?.current
-    if (sidebarVisible) {
-      p?.collapse()
-    } else {
-      p?.expand()
-    }
-    setSidebarVisible(!sidebarVisible)
-  }
-
-  const toggleContextPanel = () => {
-    const p = contextRef?.current
-    if (contextPanelVisible) {
-      p?.collapse()
-    } else {
-      p?.expand()
-    }
-    setContextPanelVisible(!contextPanelVisible)
-  }
 
   // ===== 纯 IPC 窗口拖拽（不用 -webkit-app-region，避免按钮点击被拦截） =====
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -146,26 +133,41 @@ export function TitleBar({ sidebarRef, contextRef }: TitleBarProps) {
 
   return (
     <header
-      className="flex items-center h-10 border-b border-border bg-background/95 backdrop-blur select-none shrink-0"
+      className="flex items-center border-b border-border bg-background/95 backdrop-blur select-none shrink-0"
+      // 平台差异全部经 CSS 变量下发：高度、左右留白由 data-platform 决定，
+      // 不再写 w-[70px] 之类的魔法数，左右对称保证 mode 切换真正居中。
+      style={{
+        height: 'var(--titlebar-h)',
+        paddingLeft: 'var(--titlebar-leading)',
+        paddingRight: 'var(--titlebar-trailing)'
+      }}
       onMouseDown={handleMouseDown}
     >
-      {/* Mac: left spacing for native traffic lights */}
-      {isMac && <div className="w-[70px] shrink-0" />}
-
-      {/* Left: sidebar toggle */}
+      {/* Left: sidebar toggle + 折叠态下的新建任务 */}
       <div className="flex items-center gap-1 px-2">
         <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={toggleSidebar}
+          onClick={onToggleSidebar}
           title="Toggle Sidebar"
         >
           {sidebarVisible ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
         </Button>
+        {!sidebarVisible && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={handleCreate}
+            title="新建任务"
+          >
+            <Plus className="size-4" />
+          </Button>
+        )}
       </div>
 
-      {/* Center: mode switching */}
+      {/* Center: mode switching（左右留白对称，flex-1 容器内真正居中） */}
       <div className="flex-1 flex items-center justify-center">
         <div className="bg-muted rounded-lg p-0.5 flex items-center">
           {modes.map((mode) => (
@@ -185,25 +187,16 @@ export function TitleBar({ sidebarRef, contextRef }: TitleBarProps) {
         </div>
       </div>
 
-      {/* Right: context panel toggle + settings */}
+      {/* Right: context panel toggle */}
       <div className="flex items-center gap-1 px-2">
         <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={toggleContextPanel}
+          onClick={onToggleContext}
           title="Toggle Context Panel"
         >
           {contextPanelVisible ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          title="Settings"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings className="size-4" />
         </Button>
       </div>
 

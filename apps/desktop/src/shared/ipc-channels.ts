@@ -12,6 +12,7 @@ export enum IpcChannel {
   WINDOW_IS_MAXIMIZED = 'window:isMaximized',
   WINDOW_TOGGLE_FULLSCREEN = 'window:toggleFullscreen',
   WINDOW_STATE_CHANGED = 'window:stateChanged',
+  WINDOW_FULLSCREEN_CHANGED = 'window:fullscreenChanged',
 
   // 窗口拖拽（纯 IPC 方式，避免 -webkit-app-region 的 bug）
   WINDOW_DRAG_START = 'window:drag-start',

@@ -1,0 +1,48 @@
+/* ============================================================
+   平台布局令牌 (Platform Layout Tokens)
+   由 <html data-platform="mac|windows|linux"> 驱动。
+   所有平台视觉/交互差异下沉到这里的 CSS 变量，
+   组件层只消费语义变量（如 var(--titlebar-h)），
+   不再出现 w-[70px] / isMac 之类的平台硬编码。
+   ============================================================ */
+
+/* 默认 / 未知平台回退 */
+:root {
+  --titlebar-h: 40px;
+  --titlebar-leading: 0px; /* 标题栏左端留白（避让原生控件） */
+  --titlebar-trailing: 0px; /* 标题栏右端留白 */
+  --radius-control: 8px; /* 控件圆角 */
+  --scrollbar-size: 10px; /* 滚动条粗细 */
+  --density: 1; /* 整体缩放密度因子 */
+}
+
+/* macOS：hiddenInset 已由系统处理红绿灯内边距，
+   这里只微调高度/圆角/滚动条以贴合 SF 原生观感 */
+:root[data-platform='mac'] {
+  --titlebar-h: 38px;
+  --titlebar-leading: 0px; /* hiddenInset 自动避让，渲染端无需占位 */
+  --titlebar-trailing: 0px;
+  --radius-control: 6px; /* mac 原生控件更紧 */
+  --scrollbar-size: 6px; /* 细覆盖条 */
+  --density: 0.96;
+}
+
+/* Windows 11：无边框自绘，控件占满右侧，无需右留白 */
+:root[data-platform='windows'] {
+  --titlebar-h: 40px;
+  --titlebar-leading: 8px;
+  --titlebar-trailing: 0px;
+  --radius-control: 8px; /* Win11 风格 */
+  --scrollbar-size: 12px;
+  --density: 1;
+}
+
+/* Linux：无边框自绘，略偏紧凑 */
+:root[data-platform='linux'] {
+  --titlebar-h: 40px;
+  --titlebar-leading: 4px;
+  --titlebar-trailing: 0px;
+  --radius-control: 6px;
+  --scrollbar-size: 12px;
+  --density: 1;
+}

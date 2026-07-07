@@ -35,7 +35,7 @@ function applyTheme(theme: ThemeMode): void {
 
 export const useAppStore = create<AppState>((set) => ({
   activeMode: 'work',
-  theme: 'dark',
+  theme: 'light',
 
   setActiveMode: (mode) => set({ activeMode: mode }),
   setTheme: (theme) => {

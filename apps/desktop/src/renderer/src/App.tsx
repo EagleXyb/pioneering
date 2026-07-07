@@ -7,27 +7,33 @@ import { AgentPage } from './pages/AgentPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { useAppStore } from './stores/useAppStore'
 import { useSetAtom } from 'jotai'
-import { platformAtom, type Platform } from './stores/atoms'
+import { platformAtom, isFullscreenAtom } from './stores/atoms'
+import { normalizePlatform } from '@shared/types'
 import { appApi } from './services/ipc'
-
-// 主进程 process.platform → 渲染端归一化平台标识
-function normalizePlatform(p: string): Platform {
-  if (p === 'darwin') return 'mac'
-  if (p === 'win32') return 'windows'
-  if (p === 'linux') return 'linux'
-  return 'unknown'
-}
 
 function App() {
   const initTheme = useAppStore((s) => s.initTheme)
   const setPlatform = useSetAtom(platformAtom)
+  const setIsFullscreen = useSetAtom(isFullscreenAtom)
 
   useEffect(() => {
     initTheme()
   }, [initTheme])
 
-  // 经 IPC 获取真实平台，写入 platformAtom 并同步到 <html data-platform>
+  // 获取平台信息，写入 platformAtom 并同步到 <html data-platform>
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const override = params.get('platform')
+
+    // 开发期预览：?platform=mac|windows|linux 优先于 IPC，
+    // 在 IDE 浏览器预览中使用，无需 Electron 上下文也可生效。
+    if (override === 'mac' || override === 'windows' || override === 'linux') {
+      setPlatform(override)
+      document.documentElement.dataset.platform = override
+      return
+    }
+
+    // 无覆盖时经 IPC 获取真实平台（仅在 Electron 环境有效）
     appApi
       .getPlatform()
       .then((p) => {
@@ -40,18 +46,24 @@ function App() {
       .catch(() => {})
   }, [setPlatform])
 
+  // 订阅全屏态变化（macOS 全屏 / Windows F11 等）
+  useEffect(() => {
+    const cleanup = window.api?.window.onFullscreenChange?.((fs) => setIsFullscreen(fs))
+    return () => cleanup?.()
+  }, [setIsFullscreen])
+
   return (
-      <HashRouter>
-        <Routes>
-          <Route element={<RootLayout />}>
-            <Route index element={<ChatPage />} />
-            <Route path="/home" element={<HomePage />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/agent" element={<AgentPage />} />
-            <Route path="/workspace" element={<WorkspacePage />} />
-          </Route>
-        </Routes>
-      </HashRouter>
+    <HashRouter>
+      <Routes>
+        <Route element={<RootLayout />}>
+          <Route index element={<ChatPage />} />
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/agent" element={<AgentPage />} />
+          <Route path="/workspace" element={<WorkspacePage />} />
+        </Route>
+      </Routes>
+    </HashRouter>
   )
 }
 

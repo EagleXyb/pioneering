@@ -22,7 +22,9 @@ export const windowApi = {
   maximize: () => getApi()?.window.maximize(),
   close: () => getApi()?.window.close(),
   isMaximized: () => getApi()?.window.isMaximized() ?? Promise.resolve(false),
-  toggleFullscreen: () => getApi()?.window.toggleFullscreen()
+  toggleFullscreen: () => getApi()?.window.toggleFullscreen(),
+  onFullscreenChange: (callback: (fullscreen: boolean) => void) =>
+    getApi()?.window.onFullscreenChange?.(callback)
 }
 
 // ---- 应用信息 ----

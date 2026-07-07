@@ -5,14 +5,17 @@
 // ============================================================
 
 import { useAtomValue } from 'jotai'
-import { platformAtom } from '@/stores/atoms'
+import { platformAtom, isFullscreenAtom } from '@/stores/atoms'
 
 export function usePlatform() {
   const platform = useAtomValue(platformAtom)
+  const isFullscreen = useAtomValue(isFullscreenAtom)
 
   const isMac = platform === 'mac'
   const isWindows = platform === 'windows'
   const isLinux = platform === 'linux'
+  // 唯一的结构性差异：macOS 使用原生红绿灯，Win/Linux 由渲染端自绘控件
+  const hasNativeWindowControls = platform === 'mac'
 
-  return { isMac, isWindows, isLinux, platform }
+  return { isMac, isWindows, isLinux, isFullscreen, hasNativeWindowControls, platform }
 }

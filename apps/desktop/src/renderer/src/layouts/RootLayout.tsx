@@ -1,34 +1,28 @@
 // ============================================================
-// RootLayout — 三栏 Resizable 根布局（Cursor 风格）
-//   左栏: Sidebar (会话历史 + 文件树)
-//   中栏: Chat Area / 页面内容 (通过 Outlet)
-//   右栏: Context Panel (Code / Diff / Terminal)
-//
-// 注意：所有 3 个 Panel 始终渲染、永不条件移除，
-// 通过 ImperativePanelHandle 的 collapse()/expand() 控制显隐。
-// 条件渲染会导致 ResizablePanelGroup 子元素数量变化→拖拽 Bug。
+// RootLayout — 自适应根布局
+//   三栏模式 (>= 断点)：左 Sidebar + 中内容 + 右 ContextPanel，
+//                      使用 ResizablePanelGroup（始终渲染 3 个 Panel，
+//                      通过 collapse/expand 控显隐，避免拖拽 Bug）。
+//   覆盖模式 (< 断点)：中栏全宽，Sidebar / ContextPanel 转 Drawer 抽屉。
+// 断点与窗口记忆按平台区分，保证各 OS 下的一致体验。
 // ============================================================
 
-import { useEffect, useRef } from 'react'
 import { Outlet } from 'react-router-dom'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle
 } from '@/components/ui/resizable'
-import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { TitleBar } from './TitleBar'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ContextPanel } from '@/components/context-panel/ContextPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { Drawer } from '@/components/layout/Drawer'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useAtom } from 'jotai'
-import {
-  sidebarVisibleAtom,
-  contextPanelVisibleAtom,
-  sidebarWidthAtom,
-  contextPanelWidthAtom
-} from '@/stores/atoms'
+import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import { usePlatform } from '@/hooks/usePlatform'
+import { usePanelToggle } from '@/platform/usePanelToggle'
 
 // 三栏初始比例（sidebar + center + context-panel = 100）
 const SIDEBAR_INIT = 15
@@ -36,89 +30,74 @@ const CENTER_INIT = 55
 const CONTEXT_INIT = 30
 
 export function RootLayout() {
-  const sidebarRef = useRef<ImperativePanelHandle>(null)
-  const contextRef = useRef<ImperativePanelHandle>(null)
-
-  const [sidebarVisible] = useAtom(sidebarVisibleAtom)
-  const [contextPanelVisible] = useAtom(contextPanelVisibleAtom)
-  const [, setSidebarWidth] = useAtom(sidebarWidthAtom)
-  const [, setContextWidth] = useAtom(contextPanelWidthAtom)
+  const { platform } = usePlatform()
+  const { sidebarRef, contextRef, toggleSidebar, toggleContext, mode } = usePanelToggle()
+  const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
+  const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
 
   useKeyboardShortcuts()
 
-  // 同步侧边栏显隐 → 调用 collapse/expand
-  useEffect(() => {
-    const p = sidebarRef.current
-    if (sidebarVisible) {
-      p?.expand()
-    } else {
-      p?.collapse()
-    }
-  }, [sidebarVisible])
-
-  // 同步上下文面板显隐 → 调用 collapse/expand
-  useEffect(() => {
-    const p = contextRef.current
-    if (contextPanelVisible) {
-      p?.expand()
-    } else {
-      p?.collapse()
-    }
-  }, [contextPanelVisible])
-
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
-      <TitleBar
-        sidebarRef={sidebarRef}
-        contextRef={contextRef}
-      />
+      <TitleBar onToggleSidebar={toggleSidebar} onToggleContext={toggleContext} />
 
-      <ResizablePanelGroup
-        autoSaveId="pioneering-main-layout"
-        direction="horizontal"
-        className="flex-1"
-      >
-        {/* 左栏：Sidebar */}
-        <ResizablePanel
-          id="sidebar"
-          ref={sidebarRef}
-          defaultSize={SIDEBAR_INIT}
-          minSize={10}
-          maxSize={25}
-          collapsible
-          collapsedSize={0}
-          onResize={(size) => size > 0 && setSidebarWidth(size)}
+      {mode === 'three-column' ? (
+        <ResizablePanelGroup
+          // 按平台区分 autoSaveId，各 OS 记忆各自布局
+          autoSaveId={`pioneering-main-layout-${platform}`}
+          direction="horizontal"
+          className="flex-1"
         >
-          <Sidebar />
-        </ResizablePanel>
+          {/* 左栏：Sidebar */}
+          <ResizablePanel
+            id="sidebar"
+            ref={sidebarRef}
+            defaultSize={SIDEBAR_INIT}
+            minSize={10}
+            maxSize={25}
+            collapsible
+            collapsedSize={0}
+          >
+            <Sidebar />
+          </ResizablePanel>
 
-        <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
+          <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
 
-        {/* 中栏：页面内容 */}
-        <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
+          {/* 中栏：页面内容 */}
+          <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
+            <Outlet />
+          </ResizablePanel>
+
+          <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
+
+          {/* 右栏：Context Panel */}
+          <ResizablePanel
+            id="context-panel"
+            ref={contextRef}
+            defaultSize={CONTEXT_INIT}
+            minSize={15}
+            maxSize={50}
+            collapsible
+            collapsedSize={0}
+          >
+            <ContextPanel />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        // 覆盖模式：中栏全宽，侧栏/上下文转抽屉
+        <div className="flex-1 relative overflow-hidden">
           <Outlet />
-        </ResizablePanel>
-
-        <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
-
-        {/* 右栏：Context Panel */}
-        <ResizablePanel
-          id="context-panel"
-          ref={contextRef}
-          defaultSize={CONTEXT_INIT}
-          minSize={15}
-          maxSize={50}
-          collapsible
-          collapsedSize={0}
-          onResize={(size) => size > 0 && setContextWidth(size)}
-        >
-          <ContextPanel />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          <Drawer open={sidebarVisible} side="left" onClose={() => setSidebarVisible(false)}>
+            <Sidebar />
+          </Drawer>
+          <Drawer open={contextPanelVisible} side="right" onClose={() => setContextPanelVisible(false)}>
+            <ContextPanel />
+          </Drawer>
+        </div>
+      )}
 
       {/* 全局设置弹框（两栏布局，与路由解耦） */}
       <SettingsDialog />
     </div>
   )
 }
-
