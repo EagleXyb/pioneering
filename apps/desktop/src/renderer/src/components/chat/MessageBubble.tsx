@@ -73,6 +73,22 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
+        {message.images && message.images.length > 0 && (
+          <div className={cn('flex flex-wrap gap-2', isUser && 'justify-end')}>
+            {message.images.map((img) => (
+              <a
+                key={img.id}
+                href={img.dataUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block size-20 overflow-hidden rounded-lg border bg-muted"
+              >
+                <img src={img.dataUrl} alt="" className="size-full object-cover" />
+              </a>
+            ))}
+          </div>
+        )}
+
         {message.content && (
           <div
             className={cn(

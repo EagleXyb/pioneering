@@ -5,10 +5,11 @@
 import { useRef, useEffect } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageList } from './MessageList'
-import { ChatInput } from './ChatInput'
+import { InputArea, type InputAreaSendOptions } from './input/InputArea'
 import { AgentStatus } from './AgentStatus'
 import { useChatStore } from '../../stores/chatStore'
 import type { Message } from '@shared/types'
+import type { ImageAttachment } from '@/lib/input/image-attachments'
 
 export function ChatArea() {
   // 逐项选择器订阅，避免全量重渲染（流式期间仅 streaming* 触发重渲染）
@@ -44,8 +45,16 @@ export function ChatArea() {
     }
   }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming])
 
-  const handleSend = (content: string) => {
-    sendMessage(content)
+  const handleSend = (
+    content: string,
+    images?: ImageAttachment[],
+    options?: InputAreaSendOptions
+  ) => {
+    void sendMessage(content, {
+      images: images ?? [],
+      selectedFiles: options?.selectedFiles,
+      skill: options?.skill
+    })
   }
 
   return (
@@ -76,7 +85,8 @@ export function ChatArea() {
       </div>
 
       {/* Input */}
-      <ChatInput
+      <InputArea
+        sessionId={currentSessionId}
         onSend={handleSend}
         onStop={stopStreaming}
         isStreaming={isStreaming}

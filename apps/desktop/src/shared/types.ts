@@ -185,6 +185,15 @@ export interface Message extends ChatMessage {
   toolCalls?: ToolCall[]
   tokenUsage?: TokenUsage
   timestamp: number
+  /** 用户消息附带图片（base64 dataUrl） */
+  images?: AttachedImage[]
+}
+
+/** 用户消息的附件图片（与渲染端 ImageAttachment 结构兼容） */
+export interface AttachedImage {
+  id: string
+  dataUrl: string
+  mediaType: string
 }
 
 export interface AgentStep {

@@ -11,10 +11,12 @@ import type {
   Message,
   ThinkingBlock,
   ToolCall,
-  ContentBlock
+  ContentBlock,
+  AttachedImage
 } from '@shared/types'
 import { chatService } from '../services/api/chat'
 import { agentService } from '../services/api/agent'
+import type { ImageAttachment } from '../lib/input/image-attachments'
 
 interface ChatState {
   sessions: ChatSession[]
@@ -39,7 +41,10 @@ interface ChatState {
   createSession: (title?: string) => Promise<ChatSession>
   selectSession: (sessionId: string) => void
   loadMessages: (sessionId: string) => Promise<void>
-  sendMessage: (content: string) => Promise<void>
+  sendMessage: (
+    content: string,
+    extra?: { images?: ImageAttachment[]; selectedFiles?: string[]; skill?: string | null }
+  ) => Promise<void>
   stopStreaming: () => void
   setAgentMode: (mode: boolean) => void
   deleteSession: (sessionId: string) => Promise<void>
@@ -170,8 +175,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, extra) => {
     const { currentSessionId, abortController, agentMode } = get()
+    const images = (extra?.images ?? []) as AttachedImage[]
 
     if (abortController) {
       abortController.abort()
@@ -199,7 +205,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       role: 'user',
       content,
       createdAt: new Date(now).toISOString(),
-      timestamp: now
+      timestamp: now,
+      images: images.length ? images : undefined
     }
 
     const assistantMsgId = `assistant-${now}`
