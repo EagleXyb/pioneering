@@ -1,7 +1,7 @@
 // ============================================================
 // InputArea — 输入区域核心组件（对应文档 §2）
 // 整合 FileAwareEditor / SkillsMenu / Slash·File 弹出层 / 图片附件 /
-// 草稿持久化 / Token 状态栏 / 上下文压缩环，统一处理发送、键盘、
+// 草稿持久化 / Token 状态栏，统一处理发送、键盘、
 // 拖拽与粘贴，并对外暴露与 ChatInput 兼容的 props。
 // ============================================================
 
@@ -15,7 +15,14 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent
 } from 'react'
-import { Send, Square, Paperclip, AtSign, Zap, ImageIcon } from 'lucide-react'
+import { Square, ImageIcon, Mic, ChevronDown, Check } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { fileApi } from '@/services/ipc'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
@@ -43,7 +50,6 @@ import {
 } from './SlashCommandPopover'
 import { FileSearchPopover } from './FileSearchPopover'
 import { ImagePreview } from './ImagePreview'
-import { ContextRing } from './ContextRing'
 import { ComposerRuntimeStatus } from './ComposerRuntimeStatus'
 
 export interface InputAreaSendOptions {
@@ -97,6 +103,8 @@ export function InputArea({
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
+  const [currentModel, setCurrentModel] = useState('DeepSeek-V4-Flash')
+  const [modelOpen, setModelOpen] = useState(false)
 
   // ---- 弹出层状态 ----
   const [slashOpen, setSlashOpen] = useState(false)
@@ -384,12 +392,12 @@ export function InputArea({
 
   return (
     <div
-      className="shrink-0 border-t border-border/60 bg-gradient-to-t from-background via-background to-transparent pt-2 pb-3 px-4"
+      className="shrink-0 border-t border-border/50 bg-background px-4 pb-4 pt-3"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="relative max-w-full mx-auto">
+      <div className="relative max-w-[780px] mx-auto">
         {/* Slash 命令弹出层 */}
         <SlashCommandPopover
           open={slashOpen}
@@ -409,29 +417,22 @@ export function InputArea({
           onBrowse={handleAttachFile}
         />
 
-        {/* 图片附件预览 */}
-        {attachedImages.length > 0 && (
-          <ImagePreview images={attachedImages} onRemove={removeImage} className="pb-2" />
-        )}
-
-        {/* 输入容器 */}
+        {/* 输入卡片容器 — 参考原型 chat-input-box */}
         <div
           className={cn(
-            'relative flex items-end gap-2 rounded-2xl border bg-card px-3 py-2.5 transition-all duration-200',
+            'rounded-xl border bg-card shadow-sm transition-all duration-200 px-5 pt-4 pb-3.5',
             focused
-              ? 'border-primary/40 shadow-[0_0_0_1px_rgba(0,0,0,0.02)]'
-              : 'border-input hover:border-muted-foreground/30',
-            isDragging && 'border-primary/60 bg-primary/5'
+              ? 'border-primary/30 shadow-[0_0_0_1px_rgba(79,70,229,0.08)]'
+              : 'border-border/80 hover:border-muted-foreground/25',
+            isDragging && 'border-primary/50 bg-primary/5'
           )}
         >
-          <SkillsMenu
-            onAttachFile={handleAttachFile}
-            onToggleAgent={() => onToggleAgent?.()}
-            onInsertCommand={(cmd) => editorRef.current?.insertText(cmd + ' ')}
-            agentMode={agentMode}
-            disabled={isStreaming}
-          />
+          {/* 图片附件（卡片内部） */}
+          {attachedImages.length > 0 && (
+            <ImagePreview images={attachedImages} onRemove={removeImage} className="-mx-5 px-5 pb-3 -mt-1" />
+          )}
 
+          {/* 文本编辑区域 — 原型：textarea 占满宽度 */}
           <FileAwareEditor
             ref={editorRef}
             value={text}
@@ -442,97 +443,119 @@ export function InputArea({
             onPaste={handlePaste}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="描述你的需求，输入 / 触发命令、@ 引用文件…"
+            placeholder="帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。"
             disabled={disabled}
-            className="flex-1 min-w-0"
+            className="flex-1 w-full min-w-0"
             maxHeight={240}
           />
 
-          {/* 右侧控制区 */}
-          <div className="flex items-center gap-1">
-            <ContextRing status="idle" disabled />
-            <button
-              type="button"
+          {/* 底部操作栏 — 参考原型 bottom-bar */}
+          <div className="flex items-center justify-between gap-2 mt-3 min-w-0">
+            {/* 左侧：工具菜单 — 原型 menu-dropdown */}
+            <SkillsMenu
+              onAttachFile={handleAttachFile}
+              onToggleAgent={() => onToggleAgent?.()}
+              onInsertCommand={(cmd) => editorRef.current?.insertText(cmd + ' ')}
+              agentMode={agentMode}
               disabled={isStreaming}
-              onClick={handleAttachFile}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:text-muted-foreground hover:bg-accent/50 disabled:opacity-30"
-              title="附加文件 / 图片"
-            >
-              <Paperclip className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={isStreaming}
-              onClick={() => editorRef.current?.insertText('@')}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:text-muted-foreground hover:bg-accent/50 disabled:opacity-30"
-              title="@ 引用文件"
-            >
-              <AtSign className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={isStreaming}
-              onClick={() => onToggleAgent?.()}
-              className={cn(
-                'flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-30',
-                agentMode
-                  ? 'bg-primary/15 text-primary hover:bg-primary/25'
-                  : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent/50'
-              )}
-              title={agentMode ? 'Agent 模式（已开启）' : 'Agent 模式（点击开启）'}
-            >
-              <Zap className="size-4" />
-            </button>
+            />
 
-            {charCount > 0 && (
+            {/* 右侧：模型选择 + 语音 + 发送 — 原型 right-controls */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* 模型选择器 — 原型 model-select */}
+              <DropdownMenu open={modelOpen} onOpenChange={setModelOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    title="选择模型"
+                  >
+                    <span>{currentModel}</span>
+                    <ChevronDown className={cn(modelOpen && 'rotate-180')} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" className="min-w-[180px]">
+                  <DropdownMenuItem onSelect={() => setCurrentModel('DeepSeek-V4-Flash')}>
+                    <span>内置模型 · DeepSeek-V4-Flash</span>
+                    {currentModel === 'DeepSeek-V4-Flash' && (
+                      <Check className="size-3.5 ml-auto text-primary" />
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setCurrentModel('自定义')}>
+                    <span>自定义</span>
+                    {currentModel === '自定义' && (
+                      <Check className="size-3.5 ml-auto text-primary" />
+                    )}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* 语音输入按钮 — 原型 voice-btn */}
+              <Button
+                type="button"
+                disabled={isStreaming}
+                variant="ghost"
+                size="icon-sm"
+                title="语音输入"
+              >
+                <Mic />
+              </Button>
+
+              {/* 发送/停止按钮 — 原型 send-btn */}
+              {isStreaming ? (
+                <Button
+                  onClick={onStop}
+                  variant="destructive"
+                  size="icon-sm"
+                  title="停止生成"
+                >
+                  <Square />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSend}
+                  disabled={!canSend || disabled}
+                  variant="default"
+                  size="icon-sm"
+                  title="发送 (Enter)"
+                >
+                  <svg
+                    viewBox="340 308 368 418"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M505.6 320c-4.27 2.13-6.4 2.13-12.8 8.53l-153.6 153.6c-12.8 12.8-12.8 32 0 44.8 12.8 12.8 32 12.8 44.8 0l96-96V682.67c0 17.07 14.93 32 32 32s32-14.93 32-32V430.93l96 96c12.8 12.8 32 12.8 44.8 0s12.8-32 0-44.8l-153.6-153.6c-6.4-6.4-8.53-8.53-12.8-8.53s-8.53-2.13-12.8 0z" />
+                  </svg>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* 字符超限提示（仅接近/超过上限时） */}
+          {(isNearLimit || isOverLimit) && charCount > 0 && (
+            <div className="flex justify-end mt-1.5">
               <span
                 className={cn(
                   'text-[11px] tabular-nums transition-colors',
                   isOverLimit
                     ? 'text-destructive font-medium'
-                    : isNearLimit
-                      ? 'text-amber-500'
-                      : 'text-muted-foreground/40'
+                    : 'text-amber-500'
                 )}
               >
-                {charCount}
+                {charCount}/{CHAR_LIMIT}
               </span>
-            )}
-
-            {isStreaming ? (
-              <button
-                onClick={onStop}
-                className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-destructive text-destructive-foreground shadow-sm transition-all hover:bg-destructive/90 active:scale-95"
-                title="停止生成"
-              >
-                <Square className="size-3.5" />
-              </button>
-            ) : (
-              <button
-                onClick={handleSend}
-                disabled={!canSend || disabled}
-                className={cn(
-                  'flex size-8 shrink-0 items-center justify-center rounded-xl shadow-sm transition-all active:scale-95',
-                  canSend && !disabled
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-muted text-muted-foreground/50 cursor-not-allowed'
-                )}
-                title="发送 (Enter)"
-              >
-                <Send className="size-3.5" />
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* 底部状态栏 */}
+        {/* 底部状态 — 极简信息 */}
         <div className="flex items-center justify-between px-1 pt-1.5">
           <ComposerRuntimeStatus
             tokens={tokens}
             imageCount={attachedImages.length}
             agentMode={agentMode}
             charCount={charCount}
-            charLimit={CHAR_LIMIT}
           />
           {selectedSkill && (
             <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-500">

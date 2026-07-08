@@ -3,12 +3,10 @@
 // ============================================================
 
 import { X } from 'lucide-react'
-import { useAppStore } from '../stores/useAppStore'
 import { useWorkspaceStore, useActiveFile } from '../stores/useWorkspaceStore'
 import { cn } from '../lib/utils'
 
 export function WorkspacePage() {
-  const { activeMode } = useAppStore()
   const { openFiles, setActiveFile, closeFile } = useWorkspaceStore()
   const activeFile = useActiveFile()
 
@@ -63,11 +61,7 @@ export function WorkspacePage() {
           </pre>
         ) : (
           <div className="h-full flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">
-              {activeMode === 'code' && '代码编辑器'}
-              {activeMode === 'work' && '预览面板'}
-              {activeMode === 'design' && '设计画布'}
-            </p>
+            <p className="text-sm text-muted-foreground">选择文件以开始编辑</p>
           </div>
         )}
       </div>

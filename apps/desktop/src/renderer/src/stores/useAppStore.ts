@@ -7,17 +7,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type WorkMode = 'work' | 'code' | 'design'
-
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 interface AppState {
-  /** 当前工作模式 */
-  activeMode: WorkMode
   /** 主题模式 */
   theme: ThemeMode
 
-  setActiveMode: (mode: WorkMode) => void
   setTheme: (theme: ThemeMode) => void
   initTheme: () => void
 }
@@ -37,10 +32,8 @@ function applyTheme(theme: ThemeMode): void {
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      activeMode: 'work',
       theme: 'light',
 
-      setActiveMode: (mode) => set({ activeMode: mode }),
       setTheme: (theme) => {
         applyTheme(theme)
         set({ theme })
@@ -53,7 +46,6 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      // 仅持久化主题；activeMode 等保持会话内状态
       name: 'pioneering-app',
       partialize: (state) => ({ theme: state.theme })
     }

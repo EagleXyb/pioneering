@@ -13,7 +13,7 @@ import {
   ResizablePanel,
   ResizableHandle
 } from '@/components/ui/resizable'
-import { PanelLeftOpen, Plus } from 'lucide-react'
+import { PanelLeftOpen, Plus, PanelRightOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -42,7 +42,7 @@ const CONTEXT_INIT = 30
 
 export function RootLayout() {
   const { platform } = usePlatform()
-  const { sidebarRef, contextRef, toggleContext, mode } = usePanelToggle()
+  const { sidebarRef, contextRef, mode } = usePanelToggle()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
   const navigate = useNavigate()
@@ -57,7 +57,7 @@ export function RootLayout() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
-      <TitleBar onToggleContext={toggleContext} />
+      <TitleBar />
 
       {mode === 'three-column' ? (
         <ResizablePanelGroup
@@ -144,7 +144,7 @@ export function RootLayout() {
   )
 }
 
-// 侧栏隐藏时的顶部操作条（展开侧栏 + 新建任务），三栏/覆盖两种模式共用
+// 侧栏隐藏时的顶部操作条（展开侧栏 + 新建任务 + 展开右侧面板），三栏/覆盖两种模式共用
 function TopBarActions({
   platform,
   onExpandSidebar,
@@ -154,6 +154,8 @@ function TopBarActions({
   onExpandSidebar: () => void
   onCreate: () => void | Promise<void>
 }) {
+  const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
+
   return (
     <TooltipProvider>
       <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border shrink-0">
@@ -180,6 +182,26 @@ function TopBarActions({
             </kbd>
           </TooltipContent>
         </Tooltip>
+
+        <div className="flex-1" />
+
+        {!contextPanelVisible && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setContextPanelVisible(true)}
+              >
+                <PanelRightOpen className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="end" className="text-xs">
+              展开右侧面板
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </TooltipProvider>
   )

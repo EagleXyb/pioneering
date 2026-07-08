@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState } from 'react'
-import { Paperclip, Zap, Terminal, Eraser, HelpCircle, Plus, FilePlus2 } from 'lucide-react'
+import { Paperclip, Zap, Terminal, Eraser, HelpCircle, LayoutGrid, ChevronDown } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export interface SkillsMenuProps {
@@ -36,45 +37,43 @@ export function SkillsMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <button
+        <Button
           type="button"
           disabled={disabled}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/60 transition-colors hover:bg-accent/50 hover:text-muted-foreground disabled:opacity-30"
-          title="更多功能"
+          variant="ghost"
+          size="icon-sm"
+          title="工具"
         >
-          <Plus className="size-4" />
-        </button>
+          <LayoutGrid />
+          <ChevronDown className={cn(open && 'rotate-180')} />
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-56">
-        <DropdownMenuLabel>附件与模式</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => onAttachFile()}>
           <Paperclip className="size-4" />
-          附加文件
+          <span>附件</span>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onToggleAgent()}>
           <Zap className={cn('size-4', agentMode && 'text-primary')} />
-          Agent 模式
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {agentMode ? '已开启' : '已关闭'}
-          </span>
+          <span>模式{agentMode ? ' · Agent' : ''}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onInsertCommand('/agent')}>
+          <Terminal className="size-4" />
+          <span>技能</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onAttachFile()}>
+          <HelpCircle className="size-4" />
+          <span>连接</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>快捷命令</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => onInsertCommand('/clear')}>
           <Eraser className="size-4" />
-          清空对话
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onInsertCommand('/plan')}>
-          <FilePlus2 className="size-4" />
-          计划模式
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onInsertCommand('/agent')}>
-          <Terminal className="size-4" />
-          切换 Agent
+          <span>清空对话</span>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onInsertCommand('/help')}>
           <HelpCircle className="size-4" />
-          帮助
+          <span>帮助</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

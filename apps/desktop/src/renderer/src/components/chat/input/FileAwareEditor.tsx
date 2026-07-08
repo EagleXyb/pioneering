@@ -57,7 +57,7 @@ export interface FileAwareEditorProps {
 }
 
 const EDITOR_TEXT_CLASS =
-  'text-sm leading-relaxed font-sans whitespace-pre-wrap break-words'
+  'text-[15px] leading-relaxed font-sans whitespace-pre-wrap break-words'
 
 export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditorProps>(
   function FileAwareEditor(

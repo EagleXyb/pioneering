@@ -1,30 +1,12 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
-import {
-  PanelRightClose,
-  PanelRightOpen,
-  Minus,
-  Square,
-  X
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { useAppStore, type WorkMode } from '@/stores/useAppStore'
-import { useAtom } from 'jotai'
-import { contextPanelVisibleAtom } from '@/stores/atoms'
-import { usePlatform } from '@/hooks/usePlatform'
-import type { ImperativePanelHandle } from 'react-resizable-panels'
+import { Minus, Square, X } from 'lucide-react'
 import { windowApi } from '@/services/ipc'
+import { usePlatform } from '@/hooks/usePlatform'
 import { menuTemplate } from '@shared/menu-template'
 import { MenuDropdown } from '@/menu/MenuDropdown'
 
-const modes: { id: WorkMode; label: string }[] = [
-  { id: 'work', label: 'Work' },
-  { id: 'code', label: 'Code' },
-  { id: 'design', label: 'Design' }
-]
-
 interface TitleBarProps {
-  onToggleContext: () => void
+  // 无外部 props（菜单/窗口控件自包含）
 }
 
 /** Windows/Linux 窗口控制按钮组（最小化 / 最大化 / 关闭） */
@@ -83,11 +65,7 @@ const WindowControls = memo(function WindowControls() {
   )
 })
 
-export const TitleBar = memo(function TitleBar({ onToggleContext }: TitleBarProps) {
-  // 订阅粒度细化：仅订阅所需字段，避免 useAppStore() 全量订阅导致的无关重渲染（P2-3）
-  const activeMode = useAppStore((s) => s.activeMode)
-  const setActiveMode = useAppStore((s) => s.setActiveMode)
-  const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
+export const TitleBar = memo(function TitleBar(_props: TitleBarProps) {
   const { hasNativeWindowControls, platform, showInWindowMenu } = usePlatform()
 
   // 菜单处理函数已收敛到 shared/menu-template + renderer/src/menu/menuActions（数据驱动）
@@ -145,38 +123,8 @@ export const TitleBar = memo(function TitleBar({ onToggleContext }: TitleBarProp
         </div>
       )}
 
-      {/* Center: mode switching（左右留白对称，flex-1 容器内真正居中） */}
-      <div className="flex-1 flex items-center justify-center">
-        <div className="bg-muted rounded-lg p-0.5 flex items-center">
-          {modes.map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => setActiveMode(mode.id)}
-              className={cn(
-                'px-3 py-1 text-xs font-medium rounded-md transition-all',
-                activeMode === mode.id
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Right: context panel toggle */}
-      <div className="flex items-center gap-1 px-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onToggleContext}
-          title="Toggle Context Panel"
-        >
-          {contextPanelVisible ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
-        </Button>
-      </div>
+      {/* Spacer: push window controls to the far right */}
+      <div className="flex-1" />
 
       {/* Windows/Linux: custom window controls (min/max/close) */}
       {showCustomControls && <WindowControls />}

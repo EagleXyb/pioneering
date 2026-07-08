@@ -6,13 +6,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CodePreview } from './CodePreview'
 import { TerminalView } from './TerminalView'
 import { DiffViewer } from './DiffViewer'
-import { FileCode, Terminal, GitCompare } from 'lucide-react'
+import { FileCode, Terminal, GitCompare, PanelRightClose } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider
+} from '@/components/ui/tooltip'
+import { useAtom } from 'jotai'
+import { contextPanelVisibleAtom } from '@/stores/atoms'
 
 export function ContextPanel() {
+  const setContextPanelVisible = useAtom(contextPanelVisibleAtom)[1]
+
   return (
     <div className="flex flex-col h-full bg-muted/20 border-l border-border">
       <Tabs defaultValue="code" className="flex flex-col h-full">
-        <div className="px-2 py-1.5 border-b border-border bg-background shrink-0">
+        <div className="px-2 py-1.5 border-b border-border bg-background shrink-0 flex items-center gap-1">
           <TabsList className="h-7 bg-muted/50">
             <TabsTrigger value="code" className="text-[11px] gap-1 h-5 px-2 data-[state=active]:bg-background">
               <FileCode className="h-3 w-3" />
@@ -27,6 +38,26 @@ export function ContextPanel() {
               Terminal
             </TabsTrigger>
           </TabsList>
+
+          <div className="flex-1" />
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => setContextPanelVisible(false)}
+                >
+                  <PanelRightClose className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="end" className="text-xs">
+                收起右侧面板
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <TabsContent value="code" className="flex-1 overflow-hidden mt-0 data-[state=inactive]:hidden">
