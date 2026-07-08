@@ -8,11 +8,20 @@ interface ChatInputProps {
   onStop: () => void
   isStreaming: boolean
   disabled: boolean
+  agentMode: boolean
+  onToggleAgent: () => void
 }
 
 const quickHints = ['分析代码', '生成文档', '修复 Bug', '写测试', '解释错误']
 
-export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  onStop,
+  isStreaming,
+  disabled,
+  agentMode,
+  onToggleAgent
+}: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [value, setValue] = useState('')
   const [isFocused, setIsFocused] = useState(false)
@@ -100,8 +109,14 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputPr
             <button
               type="button"
               disabled={isStreaming}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:text-muted-foreground hover:bg-accent/50 disabled:opacity-30"
-              title="Agent 模式"
+              onClick={onToggleAgent}
+              className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-30',
+                agentMode
+                  ? 'bg-primary/15 text-primary hover:bg-primary/25'
+                  : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent/50'
+              )}
+              title={agentMode ? 'Agent 模式（已开启，将调用后端智能体）' : 'Agent 模式（点击开启）'}
             >
               <Zap className="size-4" />
             </button>

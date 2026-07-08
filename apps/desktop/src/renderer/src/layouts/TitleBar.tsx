@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import {
   PanelRightClose,
   PanelRightOpen,
@@ -7,21 +7,15 @@ import {
   X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut
-} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useAppStore, type WorkMode } from '@/stores/useAppStore'
 import { useAtom } from 'jotai'
-import { settingsOpenAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import { contextPanelVisibleAtom } from '@/stores/atoms'
 import { usePlatform } from '@/hooks/usePlatform'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
-import { appApi, windowApi, shellApi } from '@/services/ipc'
+import { windowApi } from '@/services/ipc'
+import { menuTemplate } from '@shared/menu-template'
+import { MenuDropdown } from '@/menu/MenuDropdown'
 
 const modes: { id: WorkMode; label: string }[] = [
   { id: 'work', label: 'Work' },
@@ -34,7 +28,7 @@ interface TitleBarProps {
 }
 
 /** Windows/Linux 窗口控制按钮组（最小化 / 最大化 / 关闭） */
-function WindowControls() {
+const WindowControls = memo(function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
@@ -87,45 +81,16 @@ function WindowControls() {
       </button>
     </div>
   )
-}
+})
 
-export function TitleBar({ onToggleContext }: TitleBarProps) {
-  const { activeMode, setActiveMode } = useAppStore()
+export const TitleBar = memo(function TitleBar({ onToggleContext }: TitleBarProps) {
+  // 订阅粒度细化：仅订阅所需字段，避免 useAppStore() 全量订阅导致的无关重渲染（P2-3）
+  const activeMode = useAppStore((s) => s.activeMode)
+  const setActiveMode = useAppStore((s) => s.setActiveMode)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
-  const [, setSettingsOpen] = useAtom(settingsOpenAtom)
-  const { hasNativeWindowControls, platform } = usePlatform()
+  const { hasNativeWindowControls, platform, showInWindowMenu } = usePlatform()
 
-  // ===== 应用菜单处理函数 =====
-  const handleAbout = () => {
-    setSettingsOpen(true)
-  }
-  const handleCheckUpdate = () => {
-    void appApi.checkUpdate()
-  }
-  const handleQuit = () => {
-    void appApi.quit()
-  }
-  const handleCloseWindow = () => {
-    void windowApi.close()
-  }
-  const handleOpenDocs = () => {
-    void shellApi.openExternal('https://docs.pioneering.ai')
-  }
-  const handleNetworkCheck = () => {
-    void appApi.networkCheck()
-  }
-  const handleOpenLogDir = () => {
-    void appApi.openLogDir()
-  }
-  const handleFeedback = () => {
-    void shellApi.openExternal('https://github.com/pioneering/feedback')
-  }
-  const handleDevTools = () => {
-    void windowApi.toggleDevTools()
-  }
-  const execEdit = (cmd: string) => {
-    document.execCommand(cmd)
-  }
+  // 菜单处理函数已收敛到 shared/menu-template + renderer/src/menu/menuActions（数据驱动）
   // Win/Linux 无原生窗口控件 → 显示自定义 min/max/close；
   // platform 尚未经 IPC 初始化（'unknown'）时不渲染任何控件，避免启动闪烁。
   const showCustomControls = !hasNativeWindowControls && platform !== 'unknown'
@@ -162,8 +127,6 @@ export function TitleBar({ onToggleContext }: TitleBarProps) {
   return (
     <header
       className="flex items-center border-b border-border bg-background/95 backdrop-blur select-none shrink-0"
-      // 平台差异全部经 CSS 变量下发：高度、左右留白由 data-platform 决定，
-      // 不再写 w-[70px] 之类的魔法数，左右对称保证 mode 切换真正居中。
       style={{
         height: 'var(--titlebar-h)',
         paddingLeft: 'var(--titlebar-leading)',
@@ -171,109 +134,16 @@ export function TitleBar({ onToggleContext }: TitleBarProps) {
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* App Menus: Pioneering / 编辑 / 窗口 / 帮助 */}
-      <div className="flex items-center shrink-0">
-        {/* Pioneering */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
-              Pioneering
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="start" className="w-48">
-            <DropdownMenuItem onSelect={handleAbout}>
-              关于 Pioneering
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleCheckUpdate}>
-              检查更新
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={handleQuit}>
-              退出 Pioneering
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* 编辑 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
-              编辑
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="start" className="w-44">
-            <DropdownMenuItem onSelect={() => execEdit('undo')}>
-              撤销
-              <DropdownMenuShortcut>⌘Z</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => execEdit('redo')}>
-              重做
-              <DropdownMenuShortcut>⇧⌘Z</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => execEdit('cut')}>
-              剪切
-              <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => execEdit('copy')}>
-              复制
-              <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => execEdit('paste')}>
-              粘贴
-              <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => execEdit('selectAll')}>
-              全选
-              <DropdownMenuShortcut>⌘A</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* 窗口 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
-              窗口
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="start" className="w-44">
-            <DropdownMenuItem onSelect={handleCloseWindow}>
-              关闭窗口
-              <DropdownMenuShortcut>⌘W</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* 帮助 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors outline-none">
-              帮助
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="start" className="w-44">
-            <DropdownMenuItem onSelect={handleOpenDocs}>
-              使用文档
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleNetworkCheck}>
-              网络检查
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleOpenLogDir}>
-              打开日志目录
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleFeedback}>
-              意见反馈
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={handleDevTools}>
-              开发者工具
-              <DropdownMenuShortcut>⌘⇧I</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {/* 平台差异全部经 CSS 变量下发：高度、左右留白由 data-platform 决定，
+          不再写 w-[70px] 之类的魔法数，左右对称保证 mode 切换真正居中。 */}
+      {/* App Menus: 数据驱动渲染（macOS 走全局栏，故窗口内仅 Win/Linux 渲染） */}
+      {showInWindowMenu && (
+        <div className="flex items-center shrink-0">
+          {menuTemplate.map((menu) => (
+            <MenuDropdown key={menu.label} item={menu} platform={platform} />
+          ))}
+        </div>
+      )}
 
       {/* Center: mode switching（左右留白对称，flex-1 容器内真正居中） */}
       <div className="flex-1 flex items-center justify-center">
@@ -312,4 +182,4 @@ export function TitleBar({ onToggleContext }: TitleBarProps) {
       {showCustomControls && <WindowControls />}
     </header>
   )
-}
+})

@@ -1,3 +1,5 @@
 export { apiClient } from './client'
 export { authService } from './auth'
 export { chatService } from './chat'
+export { agentService } from './agent'
+export { streamAgui } from './agui'

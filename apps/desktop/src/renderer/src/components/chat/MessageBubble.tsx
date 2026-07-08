@@ -6,7 +6,7 @@ import { Copy, ThumbsUp, ThumbsDown, Bot, User, Check } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { Message } from '@shared/types'
+import type { Message, ToolCall } from '@shared/types'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 
@@ -14,12 +14,16 @@ interface MessageBubbleProps {
   message: Message
   isStreaming?: boolean
   streamingContent?: string
+  streamingThinking?: string
+  streamingToolCalls?: ToolCall[]
 }
 
 export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming,
-  streamingContent
+  streamingContent,
+  streamingThinking,
+  streamingToolCalls
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [liked, setLiked] = useState<'none' | 'like' | 'dislike'>('none')
@@ -34,6 +38,10 @@ export const MessageBubble = memo(function MessageBubble({
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const displayContent = isStreaming && streamingContent !== undefined ? streamingContent : message.content
+
+  // 流式期间优先显示实时推理/工具轨迹，结束回退到落库数据
+  const thinking = isStreaming ? streamingThinking : message.thinking?.content
+  const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
 
   const handleCopy = () => {
     navigator.clipboard.writeText(displayContent)
@@ -55,13 +63,11 @@ export const MessageBubble = memo(function MessageBubble({
       </Avatar>
 
       <div className={cn('flex flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
-        {isAssistant && message.thinking && (
-          <ThinkingBlock content={message.thinking.content} />
-        )}
+        {isAssistant && thinking && <ThinkingBlock content={thinking} />}
 
-        {isAssistant && message.toolCalls && message.toolCalls.length > 0 && (
+        {isAssistant && toolCalls && toolCalls.length > 0 && (
           <div className="space-y-2">
-            {message.toolCalls.map((tc) => (
+            {toolCalls.map((tc) => (
               <ToolCallCard key={tc.id} toolCall={tc} />
             ))}
           </div>

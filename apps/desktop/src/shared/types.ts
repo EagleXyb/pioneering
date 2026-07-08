@@ -39,6 +39,8 @@ export interface ChatSession {
   createdAt: string
   updatedAt: string
   messageCount?: number
+  /** 会话模式：普通对话为空，Agent 会话为 react_agent / rag_agent */
+  agentMode?: string
 }
 
 export interface CreateSessionRequest {
@@ -66,6 +68,25 @@ export interface ChatMessage {
   tokenCount?: number
   feedback?: 'like' | 'dislike' | 'none'
   createdAt: string
+  /** 后端落库的 Agent 执行轨迹（thinking/tool_call/tool_result/text_stream） */
+  contentBlocks?: ContentBlock[]
+}
+
+/**
+ * 后端 Agent 消息执行轨迹块（对应 app/schemas/agent.AgentContentBlock）。
+ * 历史消息回填时由 contentBlocks 转换为 Message.thinking / Message.toolCalls。
+ */
+export interface ContentBlock {
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'text_stream'
+  status?: string
+  /** thinking / tool_call 摘要 */
+  summary?: string
+  /** tool_call 工具名 */
+  toolName?: string
+  /** 关联的工具执行明细 ID（与 ToolCall.id 对应） */
+  executionId?: string
+  /** text_stream 文本片段 */
+  text?: string
 }
 
 export interface SendMessageRequest {
@@ -96,11 +117,22 @@ export interface SSEChunk {
 // ---- Agent ----
 export interface AgentSession {
   id: string
-  title: string
-  agentType?: string
-  status: 'idle' | 'running' | 'completed' | 'error'
-  createdAt: string
-  updatedAt: string
+  title?: string
+  agentMode?: string
+  model?: string
+  modelConfig?: Record<string, unknown>
+  systemPrompt?: string
+  messageCount?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CreateAgentSessionRequest {
+  title?: string
+  agentMode?: string
+  model?: string
+  systemPrompt?: string
+  tools?: string[]
 }
 
 export interface AgentExecuteRequest {
@@ -108,6 +140,22 @@ export interface AgentExecuteRequest {
   instruction: string
   agentType?: string
   stream?: boolean
+}
+
+/** 后端工具执行明细（对应 app/schemas/agent.ToolExecutionDetail） */
+export interface AgentToolExecution {
+  id: string
+  messageId?: string
+  toolName: string
+  toolCallId?: string
+  inputParams?: Record<string, unknown>
+  outputSummary?: string
+  outputResult?: string
+  status: string
+  errorMessage?: string
+  durationMs?: number
+  startTime?: string
+  endTime?: string
 }
 
 // ---- UI 扩展类型（Renderer 内部使用，但与 API 类型兼容）----

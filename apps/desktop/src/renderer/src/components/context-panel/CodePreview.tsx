@@ -3,11 +3,10 @@
 // ============================================================
 
 import { FileCode } from 'lucide-react'
-import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { useActiveFile } from '../../stores/useWorkspaceStore'
 
 export function CodePreview() {
-  const { openFiles, activeFileId } = useWorkspaceStore()
-  const activeFile = openFiles.find((f) => f.id === activeFileId)
+  const activeFile = useActiveFile()
 
   if (!activeFile) {
     return (

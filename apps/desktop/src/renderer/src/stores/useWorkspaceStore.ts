@@ -4,6 +4,7 @@
 
 import { create } from 'zustand'
 import type { OpenFile } from '@shared/types'
+import { RECENT_PROJECTS_LIMIT } from '@/lib/constants'
 
 interface WorkspaceState {
   openFiles: OpenFile[]
@@ -69,7 +70,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   addRecentProject: (path) => {
     set((s) => ({
-      recentProjects: [path, ...s.recentProjects.filter((p) => p !== path)].slice(0, 10)
+      recentProjects: [path, ...s.recentProjects.filter((p) => p !== path)].slice(0, RECENT_PROJECTS_LIMIT)
     }))
   }
 }))
+
+// 派生：当前激活文件。集中替换各处 `openFiles.find(f => f.id === activeFileId)`，
+// 避免重复线性查找与逻辑漂移（R3）。
+export function useActiveFile(): OpenFile | undefined {
+  return useWorkspaceStore((s) => s.openFiles.find((f) => f.id === s.activeFileId))
+}

@@ -9,7 +9,9 @@ import { useAppStore } from './stores/useAppStore'
 import { useSetAtom } from 'jotai'
 import { platformAtom, isFullscreenAtom } from './stores/atoms'
 import { normalizePlatform } from '@shared/types'
+import type { MenuActionId } from '@shared/menu-template'
 import { appApi } from './services/ipc'
+import { runMenuAction } from './menu/menuActions'
 
 function App() {
   const initTheme = useAppStore((s) => s.initTheme)
@@ -52,13 +54,18 @@ function App() {
     return () => cleanup?.()
   }, [setIsFullscreen])
 
+  // 主进程原生菜单（macOS 全局栏）转发到渲染端的动作（如打开设置弹框）
+  useEffect(() => {
+    const cleanup = appApi.onMenuAction?.((id) => runMenuAction(id as MenuActionId))
+    return () => cleanup?.()
+  }, [])
+
   return (
     <HashRouter>
       <Routes>
         <Route element={<RootLayout />}>
           <Route index element={<ChatPage />} />
           <Route path="/home" element={<HomePage />} />
-          <Route path="/chat" element={<ChatPage />} />
           <Route path="/agent" element={<AgentPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
         </Route>

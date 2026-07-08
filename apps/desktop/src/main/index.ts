@@ -1,19 +1,19 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
 import { getWindowOptions } from './window-config'
+import { buildAppMenu } from './menu'
 import { IpcChannel } from '../shared/ipc-channels'
 import appIcon from '../../resources/icon.png?asset'
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    autoHideMenuBar: true,
     icon: appIcon,
     // 按平台返回 frame / titleBarStyle，详见 window-config.ts
     ...getWindowOptions(process.platform),
@@ -63,6 +63,8 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
 app.whenReady().then(() => {
@@ -74,7 +76,12 @@ app.whenReady().then(() => {
 
   registerIpcHandlers()
 
-  createWindow()
+  const mainWindow = createWindow()
+
+  // macOS：菜单挂到屏幕顶部全局栏（窗口外），仅一行平台分支
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(buildAppMenu(mainWindow))
+  }
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

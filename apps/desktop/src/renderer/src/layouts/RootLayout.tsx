@@ -30,6 +30,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useAtom } from 'jotai'
 import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
 import type { Platform } from '@shared/types'
+import { formatAccelerator } from '@/menu/formatAccelerator'
 import { usePlatform } from '@/hooks/usePlatform'
 import { usePanelToggle } from '@/platform/usePanelToggle'
 import { useChatStore } from '@/stores/chatStore'
@@ -52,7 +53,7 @@ export function RootLayout() {
     navigate('/')
   }
 
-  useKeyboardShortcuts()
+  useKeyboardShortcuts(handleCreate)
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -175,7 +176,7 @@ function TopBarActions({
           <TooltipContent side="bottom" align="center" className="text-xs gap-1.5 flex items-center">
             <span>新建任务</span>
             <kbd className="rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-mono">
-              {platform === 'mac' ? '⌘N' : 'Ctrl+N'}
+              {formatAccelerator('CmdOrCtrl+N', platform)}
             </kbd>
           </TooltipContent>
         </Tooltip>

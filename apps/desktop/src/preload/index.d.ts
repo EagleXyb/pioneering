@@ -21,6 +21,7 @@ interface AppApi {
   checkUpdate: () => Promise<string>
   networkCheck: () => Promise<boolean>
   openLogDir: () => Promise<string>
+  onMenuAction: (callback: (id: string) => void) => () => void
 }
 
 interface FileApi {

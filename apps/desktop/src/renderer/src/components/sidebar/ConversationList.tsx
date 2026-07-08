@@ -2,12 +2,13 @@
 // ConversationList — 会话历史列表（左栏）
 // ============================================================
 
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PanelLeftClose, PanelLeftOpen, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { useAtom } from 'jotai'
 import { sidebarVisibleAtom } from '@/stores/atoms'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -17,13 +18,25 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/usePlatform'
+import { formatAccelerator } from '@/menu/formatAccelerator'
 import { useChatStore } from '../../stores/chatStore'
+import { CONVERSATION_ROW_HEIGHT, CONVERSATION_LIST_OVERSCAN } from '@/lib/constants'
 
 export function ConversationList() {
   const navigate = useNavigate()
-  const { isMac } = usePlatform()
+  const { platform } = usePlatform()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const { sessions, currentSessionId, selectSession, createSession, deleteSession } = useChatStore()
+
+  // 长列表虚拟化：仅渲染视口内行，避免大量会话时 DOM 膨胀（固定行高）
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: sessions.length,
+    getScrollElement: () =>
+      scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null,
+    estimateSize: () => CONVERSATION_ROW_HEIGHT,
+    overscan: CONVERSATION_LIST_OVERSCAN
+  })
 
   const handleSelect = (sessionId: string) => {
     selectSession(sessionId)
@@ -39,18 +52,6 @@ export function ConversationList() {
     e.stopPropagation()
     deleteSession(sessionId)
   }
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const isModifier = isMac ? e.metaKey : e.ctrlKey
-      if (isModifier && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        void handleCreate()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isMac])
 
   return (
     <div className="flex flex-col h-full">
@@ -99,49 +100,65 @@ export function ConversationList() {
                 'sm:inline-flex'
               )}
             >
-              {isMac ? '⌘ N' : 'Ctrl + N'}
+              {formatAccelerator('CmdOrCtrl+N', platform)}
             </kbd>
           </Button>
         </TooltipProvider>
       </div>
 
-      {/* Content — 会话列表 */}
+      {/* Content — 会话列表（长列表虚拟化） */}
       <div className="conversation-list-content flex-1 min-h-0">
-        <ScrollArea className="h-full">
-          <div className="p-1.5 space-y-0.5">
-            {sessions.length === 0 ? (
-              <div className="px-3 py-6 text-center">
-                <p className="text-xs text-muted-foreground">暂无对话</p>
-                <p className="text-[11px] text-muted-foreground/60 mt-1">
-                  新建对话开始交流
-                </p>
-              </div>
-            ) : (
-              sessions.map((session) => (
-                <div
-                  key={session.id}
-                  onClick={() => handleSelect(session.id)}
-                  className={cn(
-                    'group flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors',
-                    currentSessionId === session.id
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-                  )}
-                >
-                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-xs truncate flex-1">{session.title || '新对话'}</span>
-                  <button
-                    onClick={(e) => handleDelete(e, session.id)}
-                    className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all p-0.5"
-                    title="删除"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              ))
-            )}
+        {sessions.length === 0 ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-xs text-muted-foreground">暂无对话</p>
+            <p className="text-[11px] text-muted-foreground/60 mt-1">
+              新建对话开始交流
+            </p>
           </div>
-        </ScrollArea>
+        ) : (
+          <ScrollArea ref={scrollRef} className="h-full">
+            <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+              {virtualizer.getVirtualItems().map((row) => {
+                const session = sessions[row.index]
+                if (!session) return null
+                return (
+                  <div
+                    key={session.id}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${row.size}px`,
+                      transform: `translateY(${row.start}px)`
+                    }}
+                    className="px-1.5"
+                  >
+                    <div
+                      onClick={() => handleSelect(session.id)}
+                      className={cn(
+                        'group flex items-center gap-2 h-[32px] px-2.5 rounded-md cursor-pointer transition-colors',
+                        currentSessionId === session.id
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+                      )}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-xs truncate flex-1">{session.title || '新对话'}</span>
+                      <button
+                        onClick={(e) => handleDelete(e, session.id)}
+                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all p-0.5"
+                        title="删除"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        )}
       </div>
     </div>
   )

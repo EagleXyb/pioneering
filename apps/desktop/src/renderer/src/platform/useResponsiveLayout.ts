@@ -6,11 +6,12 @@
 
 import { useState, useEffect } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
+import { LAYOUT_BREAKPOINT_MAC, LAYOUT_BREAKPOINT_DEFAULT } from '@/lib/constants'
 
 export type LayoutMode = 'three-column' | 'overlay'
 
 export function useResponsiveLayout() {
-  const { platform } = usePlatform()
+  const { isMac } = usePlatform()
   const [width, setWidth] = useState(() => window.innerWidth)
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export function useResponsiveLayout() {
   }, [])
 
   // 断点随平台微调
-  const breakpoint = platform === 'mac' ? 980 : 1080
+  const breakpoint = isMac ? LAYOUT_BREAKPOINT_MAC : LAYOUT_BREAKPOINT_DEFAULT
   const mode: LayoutMode = width < breakpoint ? 'overlay' : 'three-column'
 
   return { mode, width }

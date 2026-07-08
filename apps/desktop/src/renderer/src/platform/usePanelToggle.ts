@@ -5,7 +5,7 @@
 // 键盘快捷键等外部修改 atom 时，三栏模式会自动同步折叠态。
 // ============================================================
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useAtom } from 'jotai'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
@@ -32,8 +32,13 @@ export function usePanelToggle() {
     }
   }, [contextPanelVisible, mode])
 
-  const toggleSidebar = () => setSidebarVisible(!sidebarVisible)
-  const toggleContext = () => setContextPanelVisible(!contextPanelVisible)
+  // useCallback 稳定引用：作为 TitleBar 的 onToggleContext 等 props，
+  // 使其 React.memo 在父级无关重渲染时真正生效（P2-3）
+  const toggleSidebar = useCallback(() => setSidebarVisible(!sidebarVisible), [sidebarVisible])
+  const toggleContext = useCallback(
+    () => setContextPanelVisible(!contextPanelVisible),
+    [contextPanelVisible]
+  )
 
   return { sidebarRef, contextRef, toggleSidebar, toggleContext, mode }
 }

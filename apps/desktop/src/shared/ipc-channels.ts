@@ -28,6 +28,9 @@ export enum IpcChannel {
   APP_NETWORK_CHECK = 'app:networkCheck',
   APP_OPEN_LOG_DIR = 'app:openLogDir',
 
+  // 主进程(原生菜单) -> 渲染端 的动作转发（如打开设置弹框）
+  MENU_ACTION = 'menu:action',
+
   // 文件系统
   FILE_OPEN_DIALOG = 'file:openDialog',
   FILE_SAVE_DIALOG = 'file:saveDialog',

@@ -1,10 +1,12 @@
 import { Bot } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
-import type { Message } from '@shared/types'
+import type { Message, ToolCall } from '@shared/types'
 
 interface MessageListProps {
   messages: Message[]
   streamingContent?: string
+  streamingThinking?: string
+  streamingToolCalls?: ToolCall[]
   streamingMessageId?: string | null
   isStreaming?: boolean
 }
@@ -12,6 +14,8 @@ interface MessageListProps {
 export function MessageList({
   messages,
   streamingContent,
+  streamingThinking,
+  streamingToolCalls,
   streamingMessageId,
   isStreaming
 }: MessageListProps) {
@@ -38,6 +42,8 @@ export function MessageList({
               message={msg}
               isStreaming={isStreamingMsg}
               streamingContent={isStreamingMsg ? streamingContent : undefined}
+              streamingThinking={isStreamingMsg ? streamingThinking : undefined}
+              streamingToolCalls={isStreamingMsg ? streamingToolCalls : undefined}
             />
           )
         })}

@@ -3,6 +3,7 @@
 // ============================================================
 
 import apiClient from './client'
+import { streamAgui, type AguiStreamCallbacks } from './agui'
 import type {
   ChatSession,
   ChatMessage,
@@ -121,116 +122,13 @@ export const chatService = {
 
   /**
    * 发送消息并获取流式响应（SSE）
-   * 适配后端 AG-UI 协议事件格式
-   *
-   * 后端事件流：
-   *   RUN_STARTED → [THINKING_START → THINKING_TEXT_MESSAGE_CONTENT* → THINKING_END*] →
-   *   TEXT_MESSAGE_START → TEXT_MESSAGE_CONTENT* → TEXT_MESSAGE_END →
-   *   RUN_FINISHED
-   *
-   * 异常时：
-    *   RUN_ERROR
+   * 适配后端 AG-UI 协议事件格式（复用共享解析器 agui.ts，
+   * 兼容普通 LLM 流式与 Agent 流式，支持思考过程与工具调用透传）。
    */
   sendMessageStream(
     request: SendMessageRequest,
-    onChunk: (content: string) => void,
-    onDone: (meta: {
-      messageId: string
-      sessionId: string
-      model?: string
-      tokenCount?: number
-    }) => void,
-    onError: (error: string) => void
+    cb: AguiStreamCallbacks
   ): AbortController {
-    const controller = new AbortController()
-
-    let capturedMessageId = ''
-    let capturedSessionId = ''
-
-    apiClient
-      .stream('/chat/completions', request, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}))
-          onError(errData.message || `HTTP ${response.status}`)
-          return
-        }
-
-        const reader = response.body?.getReader()
-        if (!reader) {
-          onError('Response body is not readable')
-          return
-        }
-
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            const trimmed = line.trim()
-            if (!trimmed || !trimmed.startsWith('data:')) continue
-
-            const jsonStr = trimmed.slice(5).trim()
-            if (jsonStr === '[DONE]') continue
-
-            try {
-              const event = JSON.parse(jsonStr)
-
-              switch (event.type) {
-                case 'RUN_STARTED':
-                  capturedSessionId = event.threadId || ''
-                  break
-
-                case 'TEXT_MESSAGE_START':
-                  capturedMessageId = event.messageId || ''
-                  break
-
-                case 'TEXT_MESSAGE_CONTENT':
-                  if (event.delta) {
-                    onChunk(event.delta)
-                  }
-                  break
-
-                case 'RUN_FINISHED':
-                  onDone({
-                    messageId: capturedMessageId,
-                    sessionId: capturedSessionId || (request.sessionId ?? ''),
-                    model: event.model,
-                    tokenCount: event.tokenCount
-                  })
-                  break
-
-                case 'RUN_ERROR':
-                  onError(event.message || 'Unknown error')
-                  break
-
-                case 'THINKING_START':
-                case 'THINKING_TEXT_MESSAGE_START':
-                case 'THINKING_TEXT_MESSAGE_CONTENT':
-                case 'THINKING_TEXT_MESSAGE_END':
-                case 'THINKING_END':
-                case 'TEXT_MESSAGE_END':
-                  break
-              }
-            } catch {
-              // ignore non-JSON lines
-            }
-          }
-        }
-      })
-      .catch((err) => {
-        if (err.name !== 'AbortError') {
-          onError(err.message || 'Network error')
-        }
-      })
-
-    return controller
+    return streamAgui('/chat/completions', request, cb)
   }
 }

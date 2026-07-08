@@ -3,12 +3,11 @@
 // ============================================================
 
 import { GitCompare } from 'lucide-react'
-import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { useActiveFile } from '../../stores/useWorkspaceStore'
 import { cn } from '@/lib/utils'
 
 export function DiffViewer() {
-  const { openFiles, activeFileId } = useWorkspaceStore()
-  const activeFile = openFiles.find((f) => f.id === activeFileId)
+  const activeFile = useActiveFile()
 
   if (!activeFile) {
     return (

@@ -19,7 +19,7 @@ export function HomePage() {
       icon: <MessageSquare className="size-10 text-primary" />,
       title: 'AI Chat',
       desc: '对话式 AI 助手，支持流式输出、多模型切换、会话管理',
-      path: '/chat'
+      path: '/'
     },
     {
       icon: <Bot className="size-10 text-primary" />,
@@ -63,7 +63,7 @@ export function HomePage() {
             AI Agent 桌面应用 — 基于 Electron 42 + React 19 + LangGraph
           </p>
           <div className="flex gap-3 justify-center pt-4">
-            <Button size="lg" onClick={() => navigate('/chat')}>
+            <Button size="lg" onClick={() => navigate('/')}>
               <MessageSquare className="size-5 mr-2" />
               Start Chat
             </Button>

@@ -47,7 +47,14 @@ const appApi = {
   quit: () => ipcRenderer.invoke(IpcChannel.APP_QUIT),
   checkUpdate: () => ipcRenderer.invoke(IpcChannel.APP_CHECK_UPDATE),
   networkCheck: () => ipcRenderer.invoke(IpcChannel.APP_NETWORK_CHECK),
-  openLogDir: () => ipcRenderer.invoke(IpcChannel.APP_OPEN_LOG_DIR)
+  openLogDir: () => ipcRenderer.invoke(IpcChannel.APP_OPEN_LOG_DIR),
+  onMenuAction: (callback: (id: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, id: string) => callback(id)
+    ipcRenderer.on(IpcChannel.MENU_ACTION, handler)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.MENU_ACTION, handler)
+    }
+  }
 }
 
 const fileApi = {

@@ -8,24 +8,26 @@ import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { AgentStatus } from './AgentStatus'
 import { useChatStore } from '../../stores/chatStore'
-import { useAgentStore } from '../../stores/useAgentStore'
 import type { Message } from '@shared/types'
 
 export function ChatArea() {
-  // 逐项选择器订阅，避免全量重渲染（流式期间仅 streamingContent 触发重渲染）
+  // 逐项选择器订阅，避免全量重渲染（流式期间仅 streaming* 触发重渲染）
   const sessionsLength = useChatStore((s) => s.sessions.length)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
   const messages = useChatStore((s) => s.messages)
   const streamingContent = useChatStore((s) => s.streamingContent)
+  const streamingThinking = useChatStore((s) => s.streamingThinking)
+  const streamingToolCalls = useChatStore((s) => s.streamingToolCalls)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
   const isStreaming = useChatStore((s) => s.isStreaming)
+  const agentMode = useChatStore((s) => s.agentMode)
+  const setAgentMode = useChatStore((s) => s.setAgentMode)
   const error = useChatStore((s) => s.error)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearError = useChatStore((s) => s.clearError)
   const loadSessions = useChatStore((s) => s.loadSessions)
 
-  const { steps, currentStepIndex, status } = useAgentStore()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const currentMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
@@ -40,7 +42,7 @@ export function ChatArea() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [currentMessages, streamingContent, isStreaming])
+  }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming])
 
   const handleSend = (content: string) => {
     sendMessage(content)
@@ -48,11 +50,11 @@ export function ChatArea() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Agent Status */}
+      {/* Agent Status（实时推理/工具轨迹） */}
       <AgentStatus
-        steps={steps}
-        currentStepIndex={currentStepIndex}
-        isStreaming={isStreaming || status === 'running'}
+        isStreaming={isStreaming}
+        thinking={streamingThinking}
+        toolCalls={streamingToolCalls}
         error={error}
         onClearError={clearError}
       />
@@ -64,6 +66,8 @@ export function ChatArea() {
             <MessageList
               messages={currentMessages}
               streamingContent={streamingContent}
+              streamingThinking={streamingThinking}
+              streamingToolCalls={streamingToolCalls}
               streamingMessageId={streamingMessageId}
               isStreaming={isStreaming}
             />
@@ -77,6 +81,8 @@ export function ChatArea() {
         onStop={stopStreaming}
         isStreaming={isStreaming}
         disabled={false}
+        agentMode={agentMode}
+        onToggleAgent={() => setAgentMode(!agentMode)}
       />
     </div>
   )

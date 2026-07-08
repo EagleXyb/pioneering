@@ -17,12 +17,6 @@ export const isFullscreenAtom = atom(false)
 export const sidebarVisibleAtom = atom(true)
 export const contextPanelVisibleAtom = atom(false)
 
-// 侧边栏当前标签页
-export const sidebarTabAtom = atom<string>('conversations')
-
-// 上下文面板当前标签页
-export const contextPanelTabAtom = atom<string>('code')
-
 // 设置弹框开关
 export const settingsOpenAtom = atom(false)
 

@@ -2,9 +2,11 @@
 // Sidebar — 左栏（会话历史）
 // ============================================================
 
+import { memo } from 'react'
 import { useAtom } from 'jotai'
-import { settingsOpenAtom, userAtom } from '@/stores/atoms'
+import { userAtom } from '@/stores/atoms'
 import { useAppStore, type ThemeMode } from '@/stores/useAppStore'
+import { runMenuAction } from '@/menu/menuActions'
 import {
   Settings,
   Sun,
@@ -29,22 +31,15 @@ import {
   DropdownMenuRadioItem
 } from '@/components/ui/dropdown-menu'
 import { ConversationList } from './ConversationList'
-import { appApi, shellApi } from '@/services/ipc'
 import { authService } from '@/services/api/auth'
 
-export function Sidebar() {
-  const [, setSettingsOpen] = useAtom(settingsOpenAtom)
+export const Sidebar = memo(function Sidebar() {
   const [user] = useAtom(userAtom)
-  const { theme, setTheme } = useAppStore()
+  // 订阅粒度细化：仅订阅 theme / setTheme（P2-3）
+  const theme = useAppStore((s) => s.theme)
+  const setTheme = useAppStore((s) => s.setTheme)
 
-  // ===== 各菜单项的处理接口（预留，后续接入真实逻辑） =====
-  const handleSettings = () => setSettingsOpen(true)
-  const handleHelp = () => {
-    void shellApi.openExternal('https://docs.pioneering.ai')
-  }
-  const handleCheckUpdate = () => {
-    void appApi.checkUpdate()
-  }
+  // 设置/帮助/检查更新 复用统一菜单动作（runMenuAction），避免与全局菜单逻辑重复
   const handleLogout = () => {
     authService.logout()
   }
@@ -87,7 +82,7 @@ export function Sidebar() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem onSelect={handleSettings}>
+            <DropdownMenuItem onSelect={() => runMenuAction('about')}>
               <Settings />
               设置
             </DropdownMenuItem>
@@ -118,11 +113,11 @@ export function Sidebar() {
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
-            <DropdownMenuItem onSelect={handleHelp}>
+            <DropdownMenuItem onSelect={() => runMenuAction('openDocs')}>
               <HelpCircle />
               帮助与反馈
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleCheckUpdate}>
+            <DropdownMenuItem onSelect={() => runMenuAction('checkUpdate')}>
               <RefreshCw />
               检查更新
             </DropdownMenuItem>
@@ -142,4 +137,4 @@ export function Sidebar() {
       </div>
     </div>
   )
-}
+})

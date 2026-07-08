@@ -4,12 +4,13 @@
 
 import { X } from 'lucide-react'
 import { useAppStore } from '../stores/useAppStore'
-import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { useWorkspaceStore, useActiveFile } from '../stores/useWorkspaceStore'
 import { cn } from '../lib/utils'
 
 export function WorkspacePage() {
   const { activeMode } = useAppStore()
-  const { openFiles, activeFileId, setActiveFile, closeFile } = useWorkspaceStore()
+  const { openFiles, setActiveFile, closeFile } = useWorkspaceStore()
+  const activeFile = useActiveFile()
 
   if (openFiles.length === 0) {
     return (
@@ -24,8 +25,6 @@ export function WorkspacePage() {
     )
   }
 
-  const activeFile = openFiles.find((f) => f.id === activeFileId)
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center h-9 bg-muted/30 border-b border-border shrink-0 overflow-x-auto">
@@ -35,7 +34,7 @@ export function WorkspacePage() {
             onClick={() => setActiveFile(file.id)}
             className={cn(
               'group flex items-center gap-1.5 px-3 h-full text-xs border-r border-border cursor-pointer transition-colors',
-              file.id === activeFileId
+              file.id === activeFile?.id
                 ? 'bg-background text-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             )}

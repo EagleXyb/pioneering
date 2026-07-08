@@ -1,10 +1,20 @@
 // ============================================================
 // Chat Store — 聊天会话状态管理 (Zustand)
+// 同时支撑普通对话与后端 Agent 流式：累积思考过程(thenking)
+// 与工具调用轨迹(toolCalls)，并在历史消息中回填 contentBlocks。
 // ============================================================
 
 import { create } from 'zustand'
-import type { ChatSession, ChatMessage, Message } from '@shared/types'
+import type {
+  ChatSession,
+  ChatMessage,
+  Message,
+  ThinkingBlock,
+  ToolCall,
+  ContentBlock
+} from '@shared/types'
 import { chatService } from '../services/api/chat'
+import { agentService } from '../services/api/agent'
 
 interface ChatState {
   sessions: ChatSession[]
@@ -15,10 +25,14 @@ interface ChatState {
   messagesLoading: boolean
 
   streamingContent: string
+  streamingThinking: string
+  streamingToolCalls: ToolCall[]
   streamingMessageId: string | null
   isStreaming: boolean
   abortController: AbortController | null
 
+  /** 当前发送是否走 Agent 端点（/agent/completions） */
+  agentMode: boolean
   error: string | null
 
   loadSessions: () => Promise<void>
@@ -27,16 +41,59 @@ interface ChatState {
   loadMessages: (sessionId: string) => Promise<void>
   sendMessage: (content: string) => Promise<void>
   stopStreaming: () => void
+  setAgentMode: (mode: boolean) => void
   deleteSession: (sessionId: string) => Promise<void>
   clearError: () => void
 }
 
+/** 将后端 contentBlocks 转换为前端 thinking + toolCalls */
+function mapContentBlocks(
+  blocks?: ContentBlock[]
+): { thinking?: ThinkingBlock; toolCalls?: ToolCall[] } {
+  if (!blocks || blocks.length === 0) return {}
+  let thinkingContent = ''
+  const toolCalls: ToolCall[] = []
+  const toolIndexById = new Map<string, number>()
+
+  const mapStatus = (s?: string): ToolCall['status'] =>
+    s === 'success' ? 'completed' : ((s as ToolCall['status']) ?? 'pending')
+
+  for (const b of blocks) {
+    if (b.type === 'thinking') {
+      thinkingContent += b.summary ?? ''
+    } else if ((b as { reasoningContent?: string }).reasoningContent) {
+      // 普通对话历史落库格式：content_blocks = [{ reasoningContent: "..." }]（无 type 字段）
+      thinkingContent += (b as { reasoningContent?: string }).reasoningContent ?? ''
+    } else if (b.type === 'tool_call') {
+      const id = b.executionId || `tool_${toolCalls.length}`
+      toolIndexById.set(id, toolCalls.length)
+      toolCalls.push({
+        id,
+        name: b.toolName || 'tool',
+        status: mapStatus(b.status),
+        arguments: {}
+      })
+    } else if (b.type === 'tool_result') {
+      const idx = b.executionId ? toolIndexById.get(b.executionId) : undefined
+      if (idx !== undefined && toolCalls[idx]) {
+        toolCalls[idx] = { ...toolCalls[idx]!, status: 'completed', result: b.summary }
+      }
+    }
+  }
+
+  return {
+    thinking: thinkingContent ? { content: thinkingContent } : undefined,
+    toolCalls: toolCalls.length ? toolCalls : undefined
+  }
+}
+
 function chatMessageToMessage(msg: ChatMessage): Message {
+  const { thinking, toolCalls } = mapContentBlocks(msg.contentBlocks)
   return {
     ...msg,
     timestamp: new Date(msg.createdAt).getTime(),
-    thinking: undefined,
-    toolCalls: undefined,
+    thinking,
+    toolCalls,
     tokenUsage: msg.tokenCount ? { prompt: 0, completion: msg.tokenCount, total: msg.tokenCount } : undefined
   }
 }
@@ -48,9 +105,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: {},
   messagesLoading: false,
   streamingContent: '',
+  streamingThinking: '',
+  streamingToolCalls: [],
   streamingMessageId: null,
   isStreaming: false,
   abortController: null,
+  agentMode: false,
   error: null,
 
   loadSessions: async () => {
@@ -111,7 +171,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (content) => {
-    const { currentSessionId, abortController } = get()
+    const { currentSessionId, abortController, agentMode } = get()
 
     if (abortController) {
       abortController.abort()
@@ -162,113 +222,175 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ]
       },
       streamingContent: '',
+      streamingThinking: '',
+      streamingToolCalls: [],
       streamingMessageId: assistantMsgId,
       isStreaming: true,
       error: null
     }))
 
     let pendingContent = ''
+    let pendingThinking = ''
+    const liveToolCalls: ToolCall[] = []
+    const toolIndexById = new Map<string, number>()
     let rafId: number | null = null
 
     const scheduleUpdate = () => {
       if (rafId !== null) return
       rafId = requestAnimationFrame(() => {
         const content = pendingContent
+        const thinking = pendingThinking
         pendingContent = ''
+        pendingThinking = ''
         rafId = null
-        set({ streamingContent: content })
+        set({
+          streamingContent: content,
+          streamingThinking: thinking,
+          streamingToolCalls: liveToolCalls.slice()
+        })
       })
     }
 
-    const controller = chatService.sendMessageStream(
+    const controller = (agentMode ? agentService : chatService).sendMessageStream(
       {
         sessionId: _sessionId,
         message: content,
         stream: true
       },
-      (chunk) => {
-        pendingContent += chunk
-        scheduleUpdate()
-      },
-      (meta) => {
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId)
-          rafId = null
-        }
-        const finalMsgId = meta.messageId || assistantMsgId
-        const finalSid = meta.sessionId || _sessionId
-        set((state) => {
-          const finalContent = pendingContent || state.streamingContent
+      {
+        onChunk: (delta) => {
+          pendingContent += delta
+          scheduleUpdate()
+        },
+        onThinking: (delta) => {
+          pendingThinking += delta
+          scheduleUpdate()
+        },
+        onToolCallStart: ({ id, name }) => {
+          const idx = liveToolCalls.length
+          toolIndexById.set(id, idx)
+          liveToolCalls.push({
+            id,
+            name,
+            status: 'running',
+            arguments: {},
+            startTime: Date.now()
+          })
+          scheduleUpdate()
+        },
+        onToolCallResult: ({ id, name, result }) => {
+          const idx = toolIndexById.get(id)
+          if (idx !== undefined && liveToolCalls[idx]) {
+            liveToolCalls[idx] = {
+              ...liveToolCalls[idx]!,
+              name: liveToolCalls[idx]!.name || name,
+              status: 'completed',
+              result,
+              endTime: Date.now()
+            }
+          } else {
+            liveToolCalls.push({ id, name, status: 'completed', arguments: {}, result, endTime: Date.now() })
+          }
+          scheduleUpdate()
+        },
+        onDone: (meta) => {
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId)
+            rafId = null
+          }
+          const finalMsgId = meta.messageId || assistantMsgId
+          const finalThinking = pendingThinking || get().streamingThinking
+          const finalToolCalls = liveToolCalls.slice()
+          pendingThinking = ''
           pendingContent = ''
-          const msgs = state.messages[_sessionId] || []
-          const idx = msgs.findIndex((m) => m.id === assistantMsgId)
-          if (idx !== -1) {
-            const prevMsg = msgs[idx]!
-            const updated = [...msgs]
-            updated[idx] = {
-              ...prevMsg,
-              id: finalMsgId,
-              sessionId: finalSid,
-              content: finalContent,
-              model: meta.model,
-              tokenCount: meta.tokenCount,
-              tokenUsage: meta.tokenCount
-                ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
-                : undefined,
-              timestamp: Date.now()
+          set((state) => {
+            const finalContent = pendingContent || state.streamingContent
+            const msgs = state.messages[_sessionId] || []
+            const idx = msgs.findIndex((m) => m.id === assistantMsgId)
+            if (idx !== -1) {
+              const prevMsg = msgs[idx]!
+              const updated = [...msgs]
+              updated[idx] = {
+                ...prevMsg,
+                id: finalMsgId,
+                sessionId: _sessionId,
+                content: finalContent,
+                thinking: finalThinking ? { content: finalThinking } : undefined,
+                toolCalls: finalToolCalls.length ? finalToolCalls : undefined,
+                model: meta.model,
+                tokenCount: meta.tokenCount,
+                tokenUsage: meta.tokenCount
+                  ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
+                  : undefined,
+                timestamp: Date.now()
+              }
+              return {
+                messages: { ...state.messages, [_sessionId]: updated },
+                isStreaming: false,
+                streamingContent: '',
+                streamingThinking: '',
+                streamingToolCalls: [],
+                streamingMessageId: null,
+                abortController: null
+              }
             }
             return {
-              messages: { ...state.messages, [_sessionId]: updated },
               isStreaming: false,
               streamingContent: '',
+              streamingThinking: '',
+              streamingToolCalls: [],
               streamingMessageId: null,
-              abortController: null,
-              currentSessionId: finalSid
+              abortController: null
             }
+          })
+        },
+        onError: (error) => {
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId)
+            rafId = null
           }
-          return {
-            isStreaming: false,
-            streamingContent: '',
-            streamingMessageId: null,
-            abortController: null,
-            currentSessionId: finalSid
-          }
-        })
-      },
-      (error) => {
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId)
-          rafId = null
-        }
-        pendingContent = ''
-        set((state) => {
-          const msgs = state.messages[_sessionId] || []
-          const idx = msgs.findIndex((m) => m.id === assistantMsgId)
-          if (idx !== -1) {
-            const prevMsg = msgs[idx]!
-            const updated = [...msgs]
-            updated[idx] = {
-              ...prevMsg,
-              content: `[Error] ${error}`,
-              timestamp: Date.now()
+          const finalContent = pendingContent || get().streamingContent
+          const finalThinking = pendingThinking || get().streamingThinking
+          const finalToolCalls = liveToolCalls.slice()
+          pendingContent = ''
+          pendingThinking = ''
+          set((state) => {
+            const msgs = state.messages[_sessionId] || []
+            const idx = msgs.findIndex((m) => m.id === assistantMsgId)
+            if (idx !== -1) {
+              const prevMsg = msgs[idx]!
+              const updated = [...msgs]
+              updated[idx] = {
+                ...prevMsg,
+                id: assistantMsgId,
+                sessionId: _sessionId,
+                content: finalContent ? `${finalContent}\n\n[Error] ${error}` : `[Error] ${error}`,
+                thinking: finalThinking ? { content: finalThinking } : prevMsg.thinking,
+                toolCalls: finalToolCalls.length ? finalToolCalls : prevMsg.toolCalls,
+                timestamp: Date.now()
+              }
+              return {
+                messages: { ...state.messages, [_sessionId]: updated },
+                isStreaming: false,
+                streamingContent: '',
+                streamingThinking: '',
+                streamingToolCalls: [],
+                streamingMessageId: null,
+                abortController: null,
+                error
+              }
             }
             return {
-              messages: { ...state.messages, [_sessionId]: updated },
               isStreaming: false,
               streamingContent: '',
+              streamingThinking: '',
+              streamingToolCalls: [],
               streamingMessageId: null,
               abortController: null,
               error
             }
-          }
-          return {
-            isStreaming: false,
-            streamingContent: '',
-            streamingMessageId: null,
-            abortController: null,
-            error
-          }
-        })
+          })
+        }
       }
     )
 
@@ -282,11 +404,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         isStreaming: false,
         streamingContent: '',
+        streamingThinking: '',
+        streamingToolCalls: [],
         streamingMessageId: null,
         abortController: null
       })
     }
   },
+
+  setAgentMode: (mode) => set({ agentMode: mode }),
 
   deleteSession: async (sessionId) => {
     set({ error: null })
@@ -298,9 +424,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           sessions: state.sessions.filter((s) => s.id !== sessionId),
           messages: restMessages,
           currentSessionId:
-            state.currentSessionId === sessionId
-              ? null
-              : state.currentSessionId
+            state.currentSessionId === sessionId ? null : state.currentSessionId
         }
       })
     } catch (err) {
