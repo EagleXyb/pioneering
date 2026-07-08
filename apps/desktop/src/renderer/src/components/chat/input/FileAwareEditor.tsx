@@ -14,6 +14,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type ClipboardEvent as ReactClipboardEvent
 } from 'react'
@@ -56,8 +57,30 @@ export interface FileAwareEditorProps {
   className?: string
 }
 
-const EDITOR_TEXT_CLASS =
-  'text-[15px] leading-relaxed font-sans whitespace-pre-wrap break-words'
+// 仅保留字体族（依赖 Tailwind 主题）；其余排版属性改用下方共享 inline style，
+// 两层（textarea + 遮罩）完全一致、且用固定像素 line-height，消除 textarea/div
+// 在跨浏览器下基线漂移导致的「文字与光标」垂直错位。
+const EDITOR_TEXT_CLASS = 'font-sans'
+
+// 两层共享的、像素级一致的排版样式（textarea 负责光标，遮罩负责可见文字，
+// 两者必须逐属性完全相同，光标才会精确落在可见文字的基线上）。
+const EDITOR_TEXT_STYLE: CSSProperties = {
+  fontSize: '15px',
+  // 固定像素 line-height（而非 unitless），跨浏览器稳定，避免 WebKit 对 textarea 的基线漂移
+  lineHeight: '24px',
+  letterSpacing: 'normal',
+  wordSpacing: 'normal',
+  textIndent: '0',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  overflowWrap: 'break-word',
+  // 与 Tailwind px-1/py-1 等价（4px），用 inline 锁定避免 class 歧义
+  padding: '4px',
+  border: '0',
+  margin: '0',
+  boxSizing: 'border-box',
+  verticalAlign: 'top'
+}
 
 export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditorProps>(
   function FileAwareEditor(
@@ -108,6 +131,15 @@ export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditor
         textareaRef.current.focus()
       }
     }, [autoFocus])
+
+    // ---- 自适应高度（对应规范 §4.1）：随内容增长，封顶 maxHeight ----
+    // 背景遮罩层为 absolute inset-0，会随 textarea 高度（即容器高度）自动同步。
+    useLayoutEffect(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.style.height = 'auto'
+      ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`
+    }, [value, maxHeight])
 
     // ---- 滚动同步（遮罩跟随 textarea）----
     const syncScroll = useCallback(() => {
@@ -195,8 +227,9 @@ export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditor
         <div
           ref={backdropRef}
           aria-hidden
+          style={EDITOR_TEXT_STYLE}
           className={cn(
-            'pointer-events-none absolute inset-0 overflow-hidden px-1 py-1',
+            'pointer-events-none absolute inset-0 overflow-hidden',
             EDITOR_TEXT_CLASS,
             'text-foreground'
           )}
@@ -226,10 +259,6 @@ export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditor
             }
             return <span key={i}>{seg.content}</span>
           })}
-          {/* 占位符 */}
-          {value.length === 0 && (
-            <span className="text-muted-foreground/40">{placeholder}</span>
-          )}
           {/* Prompt 推荐（灰色幽灵文本） */}
           {suggestionText && value.length > 0 && (
             <span className="text-muted-foreground/40">{suggestionText}</span>
@@ -242,6 +271,7 @@ export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditor
         <textarea
           ref={textareaRef}
           value={value}
+          placeholder={placeholder}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
@@ -257,16 +287,15 @@ export const FileAwareEditor = forwardRef<FileAwareEditorHandle, FileAwareEditor
             setFocused(false)
             onBlur?.()
           }}
-          placeholder={value.length === 0 ? placeholder : undefined}
           spellCheck={false}
           rows={1}
           className={cn(
-            'relative block w-full resize-none bg-transparent px-1 py-1 outline-none',
+            'relative block w-full resize-none bg-transparent outline-none',
             'text-transparent caret-foreground placeholder:text-muted-foreground/40',
             'scrollbar-thin disabled:opacity-50',
             EDITOR_TEXT_CLASS
           )}
-          style={{ maxHeight }}
+          style={{ ...EDITOR_TEXT_STYLE, maxHeight }}
         />
         {/* 暴露聚焦态给父组件（用于草稿保存判断等） */}
         <span data-focused={focused} className="hidden" />

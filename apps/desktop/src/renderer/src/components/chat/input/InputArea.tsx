@@ -1,8 +1,17 @@
 // ============================================================
-// InputArea — 输入区域核心组件（对应文档 §2）
-// 整合 FileAwareEditor / SkillsMenu / Slash·File 弹出层 / 图片附件 /
-// 草稿持久化 / Token 状态栏，统一处理发送、键盘、
-// 拖拽与粘贴，并对外暴露与 ChatInput 兼容的 props。
+// InputArea — 输入区域核心组件（对应设计规范 §2 整体布局）
+//
+// DOM 结构（自上而下，严格对齐规范 §2）：
+//   <Composer>                        居中卡片：max-w-3xl / rounded-2xl / border / focus-within ring
+//     ├─ Attachments (条件渲染)       图片缩略图行
+//     ├─ Textarea                     FileAwareEditor：多行、自适应高度、resize-none
+//     └─ Toolbar (flex justify-between)
+//          ├─ Left：附件(Popover) + 模型选择 + 工具
+//          └─ Right：快捷键提示 + 发送/停止按钮
+//
+// 组合能力：SlashCommandPopover（/ 命令）/ FileSearchPopover（@ 文件）/
+// ImagePreview（图片附件）/ ComposerRuntimeStatus（状态栏）。
+// 统一处理：发送、键盘导航、拖拽、粘贴、草稿持久化与 Token 估算。
 // ============================================================
 
 import {
@@ -15,11 +24,16 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent
 } from 'react'
-import { Square, ImageIcon, Mic, ChevronDown, Check } from 'lucide-react'
+import { ArrowUp, Square, Paperclip, Plus, ChevronDown, Check, ImageIcon, Zap, Terminal, Eraser, HelpCircle } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
@@ -41,7 +55,6 @@ import { getSessionInputDraftKey } from '@/lib/input/input-drafts'
 import { useEstimatedTokens } from '@/hooks/use-estimated-tokens'
 import { useInputDraftPersistence } from '@/hooks/use-input-draft-persistence'
 import { FileAwareEditor, type FileAwareEditorHandle } from './FileAwareEditor'
-import { SkillsMenu } from './SkillsMenu'
 import {
   SlashCommandPopover,
   BUILTIN_SLASH_COMMANDS,
@@ -77,7 +90,7 @@ export interface InputAreaProps {
 
 const CHAR_LIMIT = 10000
 
-/** 计算 `/` 触发的 Slash 命令查询（对应文档 §10.1） */
+/** 计算 `/` 触发的 Slash 命令查询（对应规范 §10.1） */
 function getSlashQuery(
   text: string,
   cursor: number
@@ -89,6 +102,188 @@ function getSlashQuery(
   return { start, end: cursor, query: m[1]! }
 }
 
+// ============================================================
+// 底部工具栏 — 对应规范 §2 Toolbar
+// 左：附件/工具（合并单一下拉）+ 模型选择；右：发送/停止
+// 以受控 props 接收状态与回调，保持 InputArea 主组件精简可维护。
+// ============================================================
+interface ComposerToolbarProps {
+  canSend: boolean
+  disabled: boolean
+  isStreaming: boolean
+  onSend: () => void
+  onStop?: () => void
+  // 左侧：附件
+  onAttachFile: () => void
+  // 左侧：工具
+  agentMode: boolean
+  onToggleAgent: () => void
+  onInsertCommand: (command: string) => void
+}
+
+function ComposerToolbar({
+  canSend,
+  disabled,
+  isStreaming,
+  onSend,
+  onStop,
+  onAttachFile,
+  agentMode,
+  onToggleAgent,
+  onInsertCommand
+}: ComposerToolbarProps) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-1">
+      {/* 左：附件(Popover) + 工具（对应原型：左侧仅附件图标） */}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {/* 附件 / 工具：将「添加附件」与「技能菜单」合并为单一下拉（对应规范 §4.3 / §8） */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="muted"
+              size="icon-sm"
+              title="添加附件 / 工具"
+              disabled={isStreaming}
+              className="rounded-full"
+            >
+              <Plus />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-56">
+            {/* 添加附件子菜单（上传文件 / 上传图片） */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Paperclip className="size-4" />
+                <span>添加附件</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-40">
+                <DropdownMenuItem onSelect={() => onAttachFile()}>
+                  <Paperclip className="size-4" />
+                  <span>上传文件</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onAttachFile()}>
+                  <ImageIcon className="size-4" />
+                  <span>上传图片</span>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            {/* 工具项（原 SkillsMenu 内容） */}
+            <DropdownMenuItem onSelect={() => onAttachFile()}>
+              <Paperclip className="size-4" />
+              <span>附件</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onToggleAgent()}>
+              <Zap className={cn('size-4', agentMode && 'text-primary')} />
+              <span>模式{agentMode ? ' · Agent' : ''}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onInsertCommand('/agent')}>
+              <Terminal className="size-4" />
+              <span>技能</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAttachFile()}>
+              <HelpCircle className="size-4" />
+              <span>连接</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>快捷命令</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => onInsertCommand('/clear')}>
+              <Eraser className="size-4" />
+              <span>清空对话</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onInsertCommand('/help')}>
+              <HelpCircle className="size-4" />
+              <span>帮助</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* 右：快捷键提示 + 模型选择 + 发送/停止（对齐原型：模型在右、紧邻发送） */}
+      <div className="flex shrink-0 items-center gap-3">
+        {/* 模型选择（对齐原型 .model-btn，置于右侧发送之前） */}
+        <ModelSelect disabled={isStreaming} />
+        {isStreaming ? (
+          // 停止按钮：原型 --stop-bg/--stop-fg 反相（Light 深底白图标 / Dark 白底深图标）
+          <button
+            type="button"
+            onClick={onStop}
+            title="停止生成"
+            aria-label="停止生成"
+            className={cn(
+              'inline-flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-colors',
+              'bg-[#18181B] text-[#FFFFFF] hover:bg-[#27272A] active:scale-[.94]',
+              'dark:bg-[#FAFAFA] dark:text-[#18181B] dark:hover:bg-[#E4E4E7]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18181B]/40 dark:focus-visible:ring-[#FAFAFA]/40'
+            )}
+          >
+            <Square className="size-4 fill-current" />
+          </button>
+        ) : (
+          // 发送按钮：原型 Agent 紫（Light #6D28D9 / Dark #8B5CF6），空内容置灰
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={!canSend || disabled}
+            title="发送 (Enter)"
+            aria-label="发送"
+            className={cn(
+              'inline-flex h-9 w-9 items-center justify-center rounded-full shadow-sm',
+              'bg-[#6D28D9] text-white transition-[background-color,transform]',
+              'hover:bg-[#5B21B6] active:bg-[#4C1D95] active:scale-[.94]',
+              'dark:bg-[#8B5CF6] dark:hover:bg-[#7C3AED] dark:active:bg-[#6D28D9]',
+              'disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6D28D9]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+              'dark:focus-visible:ring-[#8B5CF6]/50'
+            )}
+          >
+            <ArrowUp className="size-[18px]" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// 模型选择器 — 独立管理展开态，避免主组件状态膨胀
+// ============================================================
+const MODEL_OPTIONS = ['DeepSeek-V4-Flash', '自定义'] as const
+
+function ModelSelect({ disabled }: { disabled?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [current, setCurrent] = useState<string>(MODEL_OPTIONS[0])
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="muted"
+          size="sm"
+          title="选择模型"
+          disabled={disabled}
+          className="rounded-full gap-1"
+        >
+          <span>{current}</span>
+          <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="min-w-[180px]">
+        {MODEL_OPTIONS.map((model) => (
+          <DropdownMenuItem key={model} onSelect={() => setCurrent(model)}>
+            <span>内置模型 · {model}</span>
+            {current === model && <Check className="ml-auto size-3.5 text-primary" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+// ============================================================
+// InputArea 主组件
+// ============================================================
 export function InputArea({
   sessionId,
   onSend,
@@ -103,8 +298,7 @@ export function InputArea({
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
-  const [currentModel, setCurrentModel] = useState('DeepSeek-V4-Flash')
-  const [modelOpen, setModelOpen] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   // ---- 弹出层状态 ----
   const [slashOpen, setSlashOpen] = useState(false)
@@ -113,7 +307,6 @@ export function InputArea({
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionTrigger, setMentionTrigger] = useState<{ start: number; end: number; query: string } | null>(null)
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
 
   // ---- 派生：已附加文件（从文本解析，保持单一数据源）----
   const selectedFiles = useMemo<SelectedFileItem[]>(() => deserializeEditorState(text).files, [text])
@@ -183,7 +376,7 @@ export function InputArea({
     setAttachedImages((prev) => prev.filter((i) => i.id !== id))
   }, [])
 
-  // ---- 文件插入helper（在光标处插入 @{path} 序列）----
+  // ---- 文件插入 helper（在光标处插入 @{path} 序列）----
   const insertFileTokens = useCallback((paths: string[]) => {
     if (paths.length === 0) return
     const tokens = paths.map((p) => `@{${p}}`).join(' ')
@@ -353,7 +546,7 @@ export function InputArea({
         }
       }
 
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault()
         handleSend()
       }
@@ -391,14 +584,9 @@ export function InputArea({
   const canSend = (text.trim().length > 0 || attachedImages.length > 0) && !isOverLimit
 
   return (
-    <div
-      className="shrink-0 border-t border-border/50 bg-background px-4 pb-4 pt-3"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      <div className="relative max-w-[780px] mx-auto">
-        {/* Slash 命令弹出层 */}
+    <div className="shrink-0 px-4 pb-6 pt-3">
+      <div className="relative mx-auto w-full max-w-3xl">
+        {/* Slash 命令弹出层（对应规范 §10.1） */}
         <SlashCommandPopover
           open={slashOpen}
           commands={slashCommands}
@@ -407,7 +595,7 @@ export function InputArea({
           onSelect={applySlash}
         />
 
-        {/* @ 文件搜索弹出层 */}
+        {/* @ 文件搜索弹出层（对应规范 §10.2） */}
         <FileSearchPopover
           open={mentionOpen}
           files={mentionFiles}
@@ -417,22 +605,25 @@ export function InputArea({
           onBrowse={handleAttachFile}
         />
 
-        {/* 输入卡片容器 — 参考原型 chat-input-box */}
+        {/* 输入卡片容器 — 对应规范 §2 / §3.3 / §3.5；主色采用原型 Agent 紫（局部，不改动全局主题） */}
         <div
           className={cn(
-            'rounded-xl border bg-card shadow-sm transition-all duration-200 px-5 pt-4 pb-3.5',
-            focused
-              ? 'border-primary/30 shadow-[0_0_0_1px_rgba(79,70,229,0.08)]'
-              : 'border-border/80 hover:border-muted-foreground/25',
-            isDragging && 'border-primary/50 bg-primary/5'
+            'rounded-2xl border bg-card shadow-sm transition-colors',
+            'focus-within:border-[#6D28D9]/50 focus-within:ring-2 focus-within:ring-[#6D28D9]/20',
+            'dark:focus-within:border-[#8B5CF6]/50 dark:focus-within:ring-[#8B5CF6]/30',
+            isDragging &&
+              'border-[#6D28D9] bg-[#6D28D9]/5 dark:border-[#8B5CF6] dark:bg-[#8B5CF6]/5'
           )}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
-          {/* 图片附件（卡片内部） */}
+          {/* 附件区（图片缩略图）— 对应规范 §2 Attachments */}
           {attachedImages.length > 0 && (
-            <ImagePreview images={attachedImages} onRemove={removeImage} className="-mx-5 px-5 pb-3 -mt-1" />
+            <ImagePreview images={attachedImages} onRemove={removeImage} className="px-3 pt-3" />
           )}
 
-          {/* 文本编辑区域 — 原型：textarea 占满宽度 */}
+          {/* 文本编辑区 — 对应规范 §2 Textarea / §4.1 */}
           <FileAwareEditor
             ref={editorRef}
             value={text}
@@ -443,114 +634,42 @@ export function InputArea({
             onPaste={handlePaste}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。"
+            placeholder="你想知道什么？@引用对话文件，/调用技能与指令"
             disabled={disabled}
-            className="flex-1 w-full min-w-0"
-            maxHeight={240}
+            className="px-3 py-2"
+            maxHeight={200}
           />
 
-          {/* 底部操作栏 — 参考原型 bottom-bar */}
-          <div className="flex items-center justify-between gap-2 mt-3 min-w-0">
-            {/* 左侧：工具菜单 — 原型 menu-dropdown */}
-            <SkillsMenu
-              onAttachFile={handleAttachFile}
-              onToggleAgent={() => onToggleAgent?.()}
-              onInsertCommand={(cmd) => editorRef.current?.insertText(cmd + ' ')}
-              agentMode={agentMode}
-              disabled={isStreaming}
-            />
-
-            {/* 右侧：模型选择 + 语音 + 发送 — 原型 right-controls */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* 模型选择器 — 原型 model-select */}
-              <DropdownMenu open={modelOpen} onOpenChange={setModelOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    title="选择模型"
-                  >
-                    <span>{currentModel}</span>
-                    <ChevronDown className={cn(modelOpen && 'rotate-180')} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top" className="min-w-[180px]">
-                  <DropdownMenuItem onSelect={() => setCurrentModel('DeepSeek-V4-Flash')}>
-                    <span>内置模型 · DeepSeek-V4-Flash</span>
-                    {currentModel === 'DeepSeek-V4-Flash' && (
-                      <Check className="size-3.5 ml-auto text-primary" />
-                    )}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setCurrentModel('自定义')}>
-                    <span>自定义</span>
-                    {currentModel === '自定义' && (
-                      <Check className="size-3.5 ml-auto text-primary" />
-                    )}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* 语音输入按钮 — 原型 voice-btn */}
-              <Button
-                type="button"
-                disabled={isStreaming}
-                variant="ghost"
-                size="icon-sm"
-                title="语音输入"
-              >
-                <Mic />
-              </Button>
-
-              {/* 发送/停止按钮 — 原型 send-btn */}
-              {isStreaming ? (
-                <Button
-                  onClick={onStop}
-                  variant="destructive"
-                  size="icon-sm"
-                  title="停止生成"
-                >
-                  <Square />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleSend}
-                  disabled={!canSend || disabled}
-                  variant="default"
-                  size="icon-sm"
-                  title="发送 (Enter)"
-                >
-                  <svg
-                    viewBox="340 308 368 418"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M505.6 320c-4.27 2.13-6.4 2.13-12.8 8.53l-153.6 153.6c-12.8 12.8-12.8 32 0 44.8 12.8 12.8 32 12.8 44.8 0l96-96V682.67c0 17.07 14.93 32 32 32s32-14.93 32-32V430.93l96 96c12.8 12.8 32 12.8 44.8 0s12.8-32 0-44.8l-153.6-153.6c-6.4-6.4-8.53-8.53-12.8-8.53s-8.53-2.13-12.8 0z" />
-                  </svg>
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* 字符超限提示（仅接近/超过上限时） */}
-          {(isNearLimit || isOverLimit) && charCount > 0 && (
-            <div className="flex justify-end mt-1.5">
-              <span
-                className={cn(
-                  'text-[11px] tabular-nums transition-colors',
-                  isOverLimit
-                    ? 'text-destructive font-medium'
-                    : 'text-amber-500'
-                )}
-              >
-                {charCount}/{CHAR_LIMIT}
-              </span>
-            </div>
-          )}
+          {/* 底部操作栏 — 对应规范 §2 Toolbar */}
+          <ComposerToolbar
+            canSend={canSend}
+            disabled={disabled}
+            isStreaming={isStreaming}
+            onSend={handleSend}
+            onStop={onStop}
+            onAttachFile={handleAttachFile}
+            agentMode={agentMode}
+            onToggleAgent={() => onToggleAgent?.()}
+            onInsertCommand={(cmd) => editorRef.current?.insertText(cmd + ' ')}
+          />
         </div>
 
+        {/* 字符超限提示（仅接近/超过上限时） */}
+        {(isNearLimit || isOverLimit) && charCount > 0 && (
+          <div className="flex justify-end px-1 pt-1.5">
+            <span
+              className={cn(
+                'text-[11px] tabular-nums transition-colors',
+                isOverLimit ? 'font-medium text-destructive' : 'text-amber-500'
+              )}
+            >
+              {charCount}/{CHAR_LIMIT}
+            </span>
+          </div>
+        )}
+
         {/* 底部状态 — 极简信息 */}
-        <div className="flex items-center justify-between px-1 pt-1.5">
+        <div className="flex items-center justify-between px-1 pt-2">
           <ComposerRuntimeStatus
             tokens={tokens}
             imageCount={attachedImages.length}
