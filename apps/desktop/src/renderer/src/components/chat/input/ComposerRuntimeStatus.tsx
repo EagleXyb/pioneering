@@ -1,24 +1,20 @@
 // ============================================================
 // ComposerRuntimeStatus — 底部状态栏（对应文档 §13.2）
-// 展示 Token 估算、图片数量、Agent 模式标识与字符上限提示。
+// 展示图片数量与 Agent 模式标识。
 // ============================================================
 
 import { Zap, ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface ComposerRuntimeStatusProps {
-  tokens: number
   imageCount: number
   agentMode: boolean
-  charCount: number
   className?: string
 }
 
 export function ComposerRuntimeStatus({
-  tokens,
   imageCount,
   agentMode,
-  charCount,
   className
 }: ComposerRuntimeStatusProps) {
   return (
@@ -33,11 +29,6 @@ export function ComposerRuntimeStatus({
         <span className="inline-flex items-center gap-1">
           <ImageIcon className="size-2.5" />
           <span className="tabular-nums">{imageCount}</span>
-        </span>
-      )}
-      {charCount > 0 && (
-        <span className="tabular-nums">
-          {tokens} tokens
         </span>
       )}
     </div>

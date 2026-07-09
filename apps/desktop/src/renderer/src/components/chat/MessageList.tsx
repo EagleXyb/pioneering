@@ -21,7 +21,7 @@ export function MessageList({
 }: MessageListProps) {
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center py-12">
+      <div className="flex h-full items-center justify-center py-12">
         <div className="text-center text-muted-foreground space-y-2">
           <Bot className="size-16 mx-auto opacity-20" />
           <p className="text-lg">开始新对话</p>

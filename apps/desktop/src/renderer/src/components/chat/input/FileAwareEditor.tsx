@@ -74,8 +74,12 @@ const EDITOR_TEXT_STYLE: CSSProperties = {
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
   overflowWrap: 'break-word',
-  // 与 Tailwind px-1/py-1 等价（4px），用 inline 锁定避免 class 歧义
-  padding: '4px',
+  // 编辑器整体内边距（上下 12px / 左右 16px）：同时覆盖「卡片留白 + 文本与边框间距」。
+  // 两层（textarea + 遮罩 div）都 spread 此对象，因此共用完全相同的盒模型，
+  // 文字与光标才能像素级对齐。注意：此 padding 必须同时作用于两层，
+  // 不能只靠外层容器的 Tailwind padding——容器的内边距只影响正常流的 textarea，
+  // 而 absolute inset-0 的遮罩层会无视它，从而导致两层文字错位。
+  padding: '12px 16px',
   border: '0',
   margin: '0',
   boxSizing: 'border-box',

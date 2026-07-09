@@ -125,8 +125,8 @@ class LlmService:
                 async with client.stream("POST", url, json=payload, headers=headers) as response:
                     if response.status_code != 200:
                         error_body = await response.aread()
-                        error_text = error_body.decode()[:500]
-                        yield f'data: {json.dumps({"type": "RUN_ERROR", "message": f"LLM API error: {response.status_code}", "code": "LLM_ERROR"}, ensure_ascii=False)}\n\n'
+                        error_text = error_body.decode(errors="replace")[:500]
+                        yield f'data: {json.dumps({"type": "RUN_ERROR", "message": f"LLM API error: {response.status_code} - {error_text}", "code": "LLM_ERROR"}, ensure_ascii=False)}\n\n'
                         return
 
                     async for line in response.aiter_lines():

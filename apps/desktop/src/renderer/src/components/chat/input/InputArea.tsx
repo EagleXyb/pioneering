@@ -52,7 +52,7 @@ import {
 import { getSelectFileMentionQuery } from '@/lib/input/select-file-tags'
 import { getDroppedLocalPaths } from '@/lib/input/drag-folder'
 import { getSessionInputDraftKey } from '@/lib/input/input-drafts'
-import { useEstimatedTokens } from '@/hooks/use-estimated-tokens'
+
 import { useInputDraftPersistence } from '@/hooks/use-input-draft-persistence'
 import { FileAwareEditor, type FileAwareEditorHandle } from './FileAwareEditor'
 import {
@@ -254,7 +254,14 @@ function ComposerToolbar({
 // ============================================================
 // 模型选择器 — 独立管理展开态，避免主组件状态膨胀
 // ============================================================
-const MODEL_OPTIONS = ['DeepSeek-V4-Flash', '自定义'] as const
+// 默认模型 ID 必须可被 LLM 提供方识别，否则会触发 400（model not found）。
+const DEFAULT_MODEL = 'deepseek-chat'
+// 选项 value 必须为后端（及 LLM 提供方）实际可识别的模型 ID，
+// 否则会触发 400（model not found）。label 仅用于界面展示。
+const MODEL_OPTIONS: { label: string; value: string }[] = [
+  { label: 'DeepSeek Chat', value: DEFAULT_MODEL },
+  { label: '自定义', value: '自定义' },
+]
 
 function ModelSelect({
   value,
@@ -288,10 +295,10 @@ function ModelSelect({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="min-w-[200px]">
-        {MODEL_OPTIONS.map((model) => (
-          <DropdownMenuItem key={model} onSelect={() => onChange(model)}>
-            <span>{model === '自定义' ? '自定义模型' : `内置模型 · ${model}`}</span>
-            {value === model && <Check className="ml-auto size-3.5 text-primary" />}
+        {MODEL_OPTIONS.map((opt) => (
+          <DropdownMenuItem key={opt.value} onSelect={() => onChange(opt.value)}>
+            <span>{opt.label === '自定义' ? '自定义模型' : `内置模型 · ${opt.label}`}</span>
+            {value === opt.value && <Check className="ml-auto size-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
         {isCustomMode && (
@@ -333,7 +340,7 @@ export function InputArea({
   const [text, setText] = useState('')
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
-  const [model, setModel] = useState<string>(MODEL_OPTIONS[0])
+  const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [focused, setFocused] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -367,8 +374,7 @@ export function InputArea({
     )
   }, [mentionTrigger, selectedFiles])
 
-  // ---- Token 估算 / 字符计数 ----
-  const tokens = useEstimatedTokens(text, attachedImages.length)
+  // ---- 字符计数 ----
   const charCount = text.length
   const isNearLimit = charCount > CHAR_LIMIT * 0.9
   const isOverLimit = charCount > CHAR_LIMIT
@@ -694,7 +700,6 @@ export function InputArea({
             onBlur={() => setFocused(false)}
             placeholder="你想知道什么？@引用对话文件，/调用技能与指令"
             disabled={disabled}
-            className="px-3 py-2"
             maxHeight={200}
           />
 
@@ -731,10 +736,8 @@ export function InputArea({
         {/* 底部状态 — 极简信息 */}
         <div className="flex items-center justify-between px-1 pt-2">
           <ComposerRuntimeStatus
-            tokens={tokens}
             imageCount={attachedImages.length}
             agentMode={agentMode}
-            charCount={charCount}
           />
           {selectedSkill && (
             <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-500">

@@ -40,9 +40,13 @@ export function ChatArea() {
   }, [sessionsLength, loadSessions])
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    const root = scrollRef.current
+    if (!root) return
+    // ScrollArea 的滚动发生在内部 Viewport（Root 自身 overflow-hidden），
+    // 必须定位 Viewport 元素再设置 scrollTop，否则流式输出期间消息不会跟随到底部。
+    const viewport = root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+    const target = viewport ?? root
+    target.scrollTop = target.scrollHeight
   }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming])
 
   const handleSend = (
@@ -72,7 +76,7 @@ export function ChatArea() {
       {/* Messages */}
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full" ref={scrollRef}>
-          <div className="px-3">
+          <div className="min-h-full px-3">
             <MessageList
               messages={currentMessages}
               streamingContent={streamingContent}

@@ -122,7 +122,7 @@ export const MessageBubble = memo(function MessageBubble({
         </AvatarFallback>
       </Avatar>
 
-      <div className={cn('flex flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
+      <div className={cn('flex min-w-0 flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
         {isAssistant && thinking && <ThinkingBlock content={thinking} />}
 
         {isAssistant && toolCalls && toolCalls.length > 0 && (
@@ -168,17 +168,17 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {message.content && (
+        {(displayContent || message.content || isStreaming) && (
           <div
             className={cn(
-              'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+              'min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
               isUser
                 ? 'bg-blue-600 text-white'
                 : 'bg-muted/60 text-foreground'
             )}
           >
             {isAssistant || message.role === 'system' || message.role === 'tool' ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+              <div className="chat-markdown max-w-none break-words">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}

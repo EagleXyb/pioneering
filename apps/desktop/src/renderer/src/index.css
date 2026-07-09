@@ -1,6 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import './platform/layout-tokens.css';
-@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
@@ -146,6 +146,128 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+}
+
+/* =============================================
+   对话区 Markdown 排版（.chat-markdown）
+   原代码使用 `prose`（@tailwindcss/typography）但项目并未安装该插件，
+   导致 assistant 消息的 markdown 完全无样式（标题/列表/代码块/引用等
+   失去层级与间距）。这里改用项目自带的语义化工具类，统一对话区的
+   字体族 / 字号 / 行高 / 字重，并自动跟随明/暗主题（仅消费主题 token），
+   不引入新的第三方依赖，避免新增 UI 缺陷。
+   ============================================= */
+@layer components {
+  .chat-markdown {
+    @apply font-sans text-sm leading-relaxed text-foreground;
+  }
+
+  /* 容器首尾子元素去掉多余外边距，避免气泡内出现额外留白 */
+  .chat-markdown > :first-child {
+    margin-top: 0;
+  }
+  .chat-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .chat-markdown p {
+    @apply my-2 leading-relaxed;
+  }
+
+  /* 字体层级：与正文 14px 拉开梯度，字重统一为 semibold */
+  .chat-markdown h1 {
+    @apply mt-4 mb-2 text-lg font-semibold leading-snug;
+  }
+  .chat-markdown h2 {
+    @apply mt-4 mb-2 text-base font-semibold leading-snug;
+  }
+  .chat-markdown h3,
+  .chat-markdown h4 {
+    @apply mt-3 mb-1.5 text-sm font-semibold leading-snug;
+  }
+
+  .chat-markdown ul {
+    @apply my-2 list-disc space-y-1 pl-5;
+  }
+  .chat-markdown ol {
+    @apply my-2 list-decimal space-y-1 pl-5;
+  }
+  .chat-markdown li {
+    @apply leading-relaxed;
+  }
+  .chat-markdown li > ul,
+  .chat-markdown li > ol {
+    @apply my-1;
+  }
+
+  .chat-markdown a {
+    @apply break-words text-primary underline underline-offset-2 hover:opacity-80;
+  }
+
+  .chat-markdown strong,
+  .chat-markdown b {
+    @apply font-semibold;
+  }
+  .chat-markdown em,
+  .chat-markdown i {
+    @apply italic;
+  }
+
+  .chat-markdown blockquote {
+    @apply my-2 border-l-2 border-border pl-3 text-muted-foreground;
+  }
+
+  /* 行内代码：与代码块区分，使用 muted 底 */
+  .chat-markdown code {
+    @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
+  }
+
+  /* 代码块：横向溢出滚动，避免长行撑破气泡布局 */
+  .chat-markdown pre {
+    @apply my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[0.85em] leading-relaxed;
+  }
+  .chat-markdown pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .chat-markdown table {
+    @apply my-2 w-full border-collapse text-sm;
+  }
+  .chat-markdown th,
+  .chat-markdown td {
+    @apply border border-border px-2 py-1 text-left;
+  }
+  .chat-markdown th {
+    @apply font-semibold;
+  }
+
+  .chat-markdown hr {
+    @apply my-3 border-border;
+  }
+
+  /* 轻量语法高亮：rehype-highlight 产出 hljs-* 类，但项目未引入高亮主题，
+     这里用语义化主题色补全，避免代码纯黑/纯白、层级缺失。 */
+  .chat-markdown .hljs-comment,
+  .chat-markdown .hljs-quote {
+    @apply text-muted-foreground italic;
+  }
+  .chat-markdown .hljs-keyword,
+  .chat-markdown .hljs-selector-tag,
+  .chat-markdown .hljs-built_in,
+  .chat-markdown .hljs-literal,
+  .chat-markdown .hljs-type {
+    @apply text-primary;
+  }
+  .chat-markdown .hljs-string,
+  .chat-markdown .hljs-attr,
+  .chat-markdown .hljs-template-tag,
+  .chat-markdown .hljs-addition {
+    @apply text-foreground;
+  }
+  .chat-markdown .hljs-number,
+  .chat-markdown .hljs-symbol,
+  .chat-markdown .hljs-meta {
+    @apply text-foreground/80;
   }
 }
 

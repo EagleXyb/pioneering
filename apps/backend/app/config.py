@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     llm_api_key: str = ""
     llm_base_url: str = "https://api.deepseek.com/v1"
-    llm_default_model: str = "deepseek-v4-flash"
+    llm_default_model: str = "deepseek-chat"
 
     host: str = "0.0.0.0"
     port: int = 9000
