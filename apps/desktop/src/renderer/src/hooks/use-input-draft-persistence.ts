@@ -97,10 +97,19 @@ export function useInputDraftPersistence({
     }, delay)
   }, [draftKey, delay])
 
-  // 卸载 / 键变化：冲刷 + 清理
+  // 卸载 / 键变化：冲刷去抖窗口内尚未保存的草稿 + 清理
   useEffect(() => {
     return () => {
-      if (timer.current) clearTimeout(timer.current)
+      if (timer.current) {
+        clearTimeout(timer.current)
+        timer.current = null
+        // E4: 卸载（或切换 draftKey）时若去抖窗口内还有未保存的草稿，立即冲刷一次，
+        // 否则这段时间内的输入会静默丢失。仅在聚焦态才保存（与 scheduleSave 一致）。
+        const value = getValueRef.current()
+        if (!isDraftEmpty(value) && (!focusedRef.current || focusedRef.current())) {
+          void saveInputDraft(draftKey, value)
+        }
+      }
     }
   }, [draftKey])
 

@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Menu } from 'electron'
+import { app, shell, BrowserWindow, Menu, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -6,6 +6,37 @@ import { getWindowOptions } from './window-config'
 import { buildAppMenu } from './menu'
 import { IpcChannel } from '../shared/ipc-channels'
 import appIcon from '../../resources/icon.png?asset'
+
+// H4: 注入 Content-Security-Policy（CSP），收缩渲染进程可加载/执行的资源来源，
+// 即使存在 XSS 也禁止其通过 window.electron.ipcRenderer（已移除）或在内联脚本中
+// 调用任意通道。connect-src 放行本地后端（localhost:9000）与开发期 HMR 的 ws。
+//
+// 开发期放宽 script-src：Vite 的 @react-refresh 会在 HTML 内联一段 preamble 脚本，
+// 若不加 'unsafe-inline' 会被 CSP 拦截，导致开发环境直接白屏。生产（loadFile）无任何
+// 内联脚本，保持严格 'self' 即可。这样在不破坏开发体验的前提下仍满足 H4 的安全目标。
+const RENDERER_CSP = [
+  "default-src 'self'",
+  `script-src 'self'${is.dev ? " 'unsafe-inline'" : ''}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' http://localhost:9000 ws://localhost:* wss:",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'"
+].join('; ')
+
+function installContentSecurityPolicy(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [RENDERER_CSP]
+      }
+    })
+  })
+}
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -18,14 +49,12 @@ function createWindow(): BrowserWindow {
     // 按平台返回 frame / titleBarStyle，详见 window-config.ts
     ...getWindowOptions(process.platform),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
-      // 注意：sandbox 必须为 false。
-      // 当前 preload 使用 ESM（import/export）语法，而 Electron 沙箱模式下
-      // 的 preload 不支持 ES module 语法（会报 "Cannot use import statement
-      // outside a module" 导致 preload 加载失败、window.api 为 undefined、
-      // 渲染进程崩溃白屏）。contextIsolation:true + nodeIntegration:false
-      // 已提供足够的安全隔离，故保持 sandbox:false。
-      sandbox: false,
+      // H1: preload 已改为 CommonJS（见 electron.vite.config.ts），
+      // 故可重开 sandbox:true。沙箱下 preload 仅能访问 contextBridge /
+      // ipcRenderer / webUtils 等受限 API，即使渲染进程被 XSS 攻破，
+      // 攻击面也远小于 sandbox:false（完整 Node 权限）。
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -68,6 +97,9 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // H4: 必须在任何加载/请求前安装 CSP
+  installContentSecurityPolicy()
+
   electronApp.setAppUserModelId('com.pioneering.desktop')
 
   app.on('browser-window-created', (_, window) => {

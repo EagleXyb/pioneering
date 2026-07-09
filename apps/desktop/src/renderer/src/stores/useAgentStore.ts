@@ -4,6 +4,7 @@
 
 import { create } from 'zustand'
 import type { AgentStep, AgentExecution } from '@shared/types'
+import { genId } from '@/lib/genId'
 
 interface AgentState {
   executions: AgentExecution[]
@@ -34,7 +35,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   startExecution: (instruction) => {
     const now = Date.now()
     const execution: AgentExecution = {
-      id: crypto.randomUUID(),
+      id: genId(),
       instruction,
       steps: [],
       status: 'running',

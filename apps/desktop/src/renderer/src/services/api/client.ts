@@ -59,23 +59,14 @@ class ApiClient {
         ) {
           originalRequest._retry = true
           try {
-            if (!this.refreshPromise) {
-              this.refreshPromise = (async () => {
-                const res = await this.instance.post<ApiResponse<AuthTokens>>(
-                  '/auth/refresh',
-                  { refresh_token: this.refreshToken }
-                )
-                this.setTokens(res.data.data)
-              })()
-            }
-            await this.refreshPromise
+            // M4: 复用统一的 single-flight 刷新（与 fetch 流共享同一 refreshPromise），
+            // 避免多路并发 401 各自刷新导致 refresh token 被并发轮换、相互失效。
+            await this.performTokenRefresh()
             originalRequest.headers.Authorization = `Bearer ${this.accessToken}`
             return this.instance(originalRequest)
           } catch {
             this.clearTokens()
             throw error
-          } finally {
-            this.refreshPromise = null
           }
         }
 
@@ -98,6 +89,25 @@ class ApiClient {
 
   clearTokens(): void {
     this.setTokens(null)
+  }
+
+  // M4: 统一的 Token 刷新（single-flight）。fetch 流式与 axios 拦截器共用，
+  // 并发 401 只真正刷新一次，避免 refresh token 被并发轮换而相互失效。
+  private async performTokenRefresh(): Promise<void> {
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        const res = await this.instance.post<ApiResponse<AuthTokens>>(
+          '/auth/refresh',
+          { refresh_token: this.refreshToken }
+        )
+        this.setTokens(res.data.data)
+      })()
+    }
+    try {
+      await this.refreshPromise
+    } finally {
+      this.refreshPromise = null
+    }
   }
 
   getAccessToken(): string | null {
@@ -173,15 +183,12 @@ class ApiClient {
       signal: options.signal
     })
 
+    // M4: fetch 流 401 时复用统一的 single-flight 刷新（与 axios 拦截器一致），
+    // 刷新成功后对「原请求」重试一次；刷新失败才 clearTokens（不再静默丢失这条流）。
     if (response.status === 401 && this.refreshToken) {
       try {
-        const res = await this.instance.post<ApiResponse<AuthTokens>>(
-          '/auth/refresh',
-          { refresh_token: this.refreshToken }
-        )
-        const tokens = res.data.data
-        this.setTokens(tokens)
-        headers.Authorization = `Bearer ${tokens.token}`
+        await this.performTokenRefresh()
+        headers.Authorization = `Bearer ${this.accessToken}`
         return fetch(fullUrl, {
           method: 'POST',
           headers,

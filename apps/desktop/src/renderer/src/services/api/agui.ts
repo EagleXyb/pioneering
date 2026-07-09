@@ -111,7 +111,12 @@ export function streamAgui(
                 break
 
               case 'THINKING_TEXT_MESSAGE_CONTENT':
-                if (event.delta) cb.onThinking?.(event.delta)
+                // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
+                // 否则按 delta 全部丢弃，造成思考过程整段丢失。
+                {
+                  const thinking = event.delta ?? event.content
+                  if (thinking) cb.onThinking?.(thinking)
+                }
                 break
 
               case 'THINKING_TEXT_MESSAGE_END':
@@ -123,7 +128,12 @@ export function streamAgui(
                 break
 
               case 'TEXT_MESSAGE_CONTENT':
-                if (event.delta) cb.onChunk(event.delta)
+                // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
+                // 否则按 delta 全部丢弃，造成正文整段丢失。
+                {
+                  const text = event.delta ?? event.content
+                  if (text) cb.onChunk(text)
+                }
                 break
 
               case 'TEXT_MESSAGE_END':
@@ -163,7 +173,9 @@ export function streamAgui(
                 break
             }
           } catch {
-            // 忽略非 JSON 行
+            // M3: 解析失败不再静默吞掉。至少告警并打印原始行，
+            // 便于发现后端契约变更（如字段名/格式调整）导致的数据丢失。
+            console.warn('[agui] 跳过无法解析的 SSE 行:', jsonStr)
           }
         }
       }

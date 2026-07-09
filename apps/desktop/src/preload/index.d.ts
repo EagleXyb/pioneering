@@ -1,4 +1,10 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+// H5: 仅声明渲染端实际依赖的最小 electron 子集（webUtils.getPathForFile）。
+// 不再暴露整包 @electron-toolkit/preload 的 ElectronAPI（含 ipcRenderer）。
+interface MinimalElectronAPI {
+  webUtils: {
+    getPathForFile: (file: File) => string | null
+  }
+}
 
 interface WindowApi {
   minimize: () => Promise<void>
@@ -68,7 +74,7 @@ interface PioneeringApi {
 
 declare global {
   interface Window {
-    electron: ElectronAPI
+    electron: MinimalElectronAPI
     api: PioneeringApi
   }
 }

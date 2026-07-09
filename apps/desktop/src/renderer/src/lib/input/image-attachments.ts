@@ -4,12 +4,7 @@
 // 后端暂未实现视觉通道，但附件在 UI 层完整可用（缩略图/预览/拖拽/粘贴）。
 // ============================================================
 
-function genId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
-}
+import { genId } from '@/lib/genId'
 
 export interface ImageAttachment {
   /** 唯一标识 */
@@ -31,6 +26,14 @@ export const QUEUED_IMAGE_ONLY_TEXT = '[User attached images without additional 
 
 /** 将 File 对象读取为 base64 ImageAttachment（异步）。 */
 export async function fileToImageAttachment(file: File): Promise<ImageAttachment> {
+  // P4: 入口校验大小（MAX_IMAGE_SIZE 此前已定义却未使用）。
+  // 超大图 base64 后内存翻倍并随草稿持久化，可能 OOM / IPC 大对象。
+  // 超限直接拒绝，由调用方捕获并向用户提示后丢弃。
+  if (typeof file.size === 'number' && file.size > MAX_IMAGE_SIZE) {
+    throw new Error(
+      `图片「${file.name || '未命名'}」大小超过 ${Math.round(MAX_IMAGE_SIZE / 1024 / 1024)}MB 上限，已忽略`
+    )
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -57,7 +60,9 @@ export function getPastedImageFiles(clipboardData: DataTransfer | null): File[] 
   for (const item of Array.from(clipboardData.items)) {
     if (item.kind === 'file' && item.type.startsWith('image/') && ACCEPTED_IMAGE_TYPES.includes(item.type)) {
       const file = item.getAsFile()
-      if (file) files.push(file)
+      // P4: 粘贴阶段即跳过超大文件，避免对超大图发起无谓的 FileReader（拖拽/选择入口
+      // 由 fileToImageAttachment 统一拒绝并提示），保持“提示并丢弃”的一致性。
+      if (file && file.size <= MAX_IMAGE_SIZE) files.push(file)
     }
   }
   return files

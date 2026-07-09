@@ -17,6 +17,7 @@ import type {
 import { chatService } from '../services/api/chat'
 import { agentService } from '../services/api/agent'
 import type { ImageAttachment } from '../lib/input/image-attachments'
+import { buildSendText } from '../lib/input/select-file-editor'
 
 interface ChatState {
   sessions: ChatSession[]
@@ -43,7 +44,7 @@ interface ChatState {
   loadMessages: (sessionId: string) => Promise<void>
   sendMessage: (
     content: string,
-    extra?: { images?: ImageAttachment[]; selectedFiles?: string[]; skill?: string | null }
+    extra?: { images?: ImageAttachment[]; selectedFiles?: string[]; skill?: string | null; model?: string }
   ) => Promise<void>
   stopStreaming: () => void
   setAgentMode: (mode: boolean) => void
@@ -102,6 +103,12 @@ function chatMessageToMessage(msg: ChatMessage): Message {
     tokenUsage: msg.tokenCount ? { prompt: 0, completion: msg.tokenCount, total: msg.tokenCount } : undefined
   }
 }
+
+// M1: 单调递增的流序号。每次 sendMessage 自增；旧流的回调里若发现自己
+// 的序号已不是“当前最新序号”则立即丢弃，避免快速连发时旧流闭包
+// （pendingContent / liveToolCalls）与新流交错写入，造成工具调用列表
+// 错乱或误伤新消息。
+let streamSeq = 0
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
@@ -178,6 +185,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendMessage: async (content, extra) => {
     const { currentSessionId, abortController, agentMode } = get()
     const images = (extra?.images ?? []) as AttachedImage[]
+    const model = extra?.model?.trim()
 
     if (abortController) {
       abortController.abort()
@@ -199,6 +207,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const _sessionId = sessionId
     const now = Date.now()
 
+    // M1: 本次发送的单调递增序号，用于在回调中识别“是否仍是最新流”。
+    const mySeq = ++streamSeq
+
     const userMessage: Message = {
       id: `user-${now}`,
       sessionId: _sessionId,
@@ -209,7 +220,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       images: images.length ? images : undefined
     }
 
-    const assistantMsgId = `assistant-${now}`
+    // M1: 将序号并入 id，避免同一毫秒内两次 sendMessage 生成相同的
+    // `assistant-${now}` 导致 findIndex 命中错乱（旧/新消息互相覆盖）。
+    const assistantMsgId = `assistant-${now}-${mySeq}`
     const assistantPlaceholder: Message = {
       id: assistantMsgId,
       sessionId: _sessionId,
@@ -261,19 +274,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const controller = (agentMode ? agentService : chatService).sendMessageStream(
       {
         sessionId: _sessionId,
-        message: content,
-        stream: true
+        // 将 @{path} 文件引用转为后台约定的 <select-file> 标准线格式；
+        // 用户气泡仍保留原始 @{} 文本，仅请求体做转换。
+        message: buildSendText(content),
+        stream: true,
+        model: model && model !== '自定义' ? model : undefined
       },
       {
+        // M1: 旧流回调守卫 —— 若已有更新的 sendMessage 自增 streamSeq，
+        // 本次（旧流）回调立即放弃，避免 pendingContent/liveToolCalls 被旧流继续累加。
         onChunk: (delta) => {
+          if (mySeq !== streamSeq) return
           pendingContent += delta
           scheduleUpdate()
         },
         onThinking: (delta) => {
+          if (mySeq !== streamSeq) return
           pendingThinking += delta
           scheduleUpdate()
         },
         onToolCallStart: ({ id, name }) => {
+          if (mySeq !== streamSeq) return
           const idx = liveToolCalls.length
           toolIndexById.set(id, idx)
           liveToolCalls.push({
@@ -286,6 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           scheduleUpdate()
         },
         onToolCallResult: ({ id, name, result }) => {
+          if (mySeq !== streamSeq) return
           const idx = toolIndexById.get(id)
           if (idx !== undefined && liveToolCalls[idx]) {
             liveToolCalls[idx] = {
@@ -300,18 +322,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
           scheduleUpdate()
         },
+        // M1: 旧流（已被新的发送覆盖，或已 stopStreaming 退出）的 onDone 不应落库，
+        // 防止误改新消息或残留的占位消息。
         onDone: (meta) => {
+          if (mySeq !== streamSeq) return
+          if (get().streamingMessageId !== assistantMsgId) return
+
           if (rafId !== null) {
             cancelAnimationFrame(rafId)
             rafId = null
           }
+          // M2: 先 cancel rAF，再立即把尚未 flush 的 pendingContent/pendingThinking
+          // 合并进最终值。注意 streamingContent/streamingThinking 是“上一次 rAF flush
+          // 时的累计值”，pending 是 flush 之后的新增增量，二者拼接为完整正文/思考，
+          // 不能只取一个（否则丢尾帧或丢已 flush 的内容）。
           const finalMsgId = meta.messageId || assistantMsgId
-          const finalThinking = pendingThinking || get().streamingThinking
+          const finalContent = get().streamingContent + pendingContent || ''
+          const finalThinking = get().streamingThinking + pendingThinking || undefined
           const finalToolCalls = liveToolCalls.slice()
-          pendingThinking = ''
           pendingContent = ''
+          pendingThinking = ''
           set((state) => {
-            const finalContent = pendingContent || state.streamingContent
             const msgs = state.messages[_sessionId] || []
             const idx = msgs.findIndex((m) => m.id === assistantMsgId)
             if (idx !== -1) {
@@ -351,13 +382,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
           })
         },
+        // M1: 同 onDone，旧流 onError 不落库。
         onError: (error) => {
+          if (mySeq !== streamSeq) return
+          if (get().streamingMessageId !== assistantMsgId) return
+
           if (rafId !== null) {
             cancelAnimationFrame(rafId)
             rafId = null
           }
-          const finalContent = pendingContent || get().streamingContent
-          const finalThinking = pendingThinking || get().streamingThinking
+          // M2: 同样先合并 pending 再清空，避免丢失尾部增量。
+          const finalContent = get().streamingContent + pendingContent || ''
+          const finalThinking = get().streamingThinking + pendingThinking || undefined
           const finalToolCalls = liveToolCalls.slice()
           pendingContent = ''
           pendingThinking = ''
@@ -405,18 +441,53 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   stopStreaming: () => {
-    const { abortController } = get()
-    if (abortController) {
-      abortController.abort()
-      set({
+    const {
+      abortController,
+      streamingMessageId,
+      streamingContent,
+      streamingThinking,
+      streamingToolCalls,
+      currentSessionId
+    } = get()
+    if (abortController) abortController.abort()
+
+    const sid = currentSessionId
+    const id = streamingMessageId
+
+    // 合并已生成的增量，避免停止后留下空气泡 / 丢失已流式输出的内容。
+    set((state) => {
+      if (sid && id) {
+        const list = state.messages[sid] || []
+        const idx = list.findIndex((m) => m.id === id)
+        if (idx !== -1) {
+          const prev = list[idx]!
+          const merged = [...list]
+          merged[idx] = {
+            ...prev,
+            content: streamingContent || prev.content,
+            thinking: streamingThinking ? { content: streamingThinking } : prev.thinking,
+            toolCalls: streamingToolCalls.length ? streamingToolCalls : prev.toolCalls
+          }
+          return {
+            messages: { ...state.messages, [sid]: merged },
+            isStreaming: false,
+            streamingContent: '',
+            streamingThinking: '',
+            streamingToolCalls: [],
+            streamingMessageId: null,
+            abortController: null
+          }
+        }
+      }
+      return {
         isStreaming: false,
         streamingContent: '',
         streamingThinking: '',
         streamingToolCalls: [],
         streamingMessageId: null,
         abortController: null
-      })
-    }
+      }
+    })
   },
 
   setAgentMode: (mode) => set({ agentMode: mode }),

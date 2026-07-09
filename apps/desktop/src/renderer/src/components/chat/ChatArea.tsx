@@ -53,7 +53,8 @@ export function ChatArea() {
     void sendMessage(content, {
       images: images ?? [],
       selectedFiles: options?.selectedFiles,
-      skill: options?.skill
+      skill: options?.skill,
+      model: options?.model
     })
   }
 

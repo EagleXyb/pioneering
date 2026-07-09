@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { fileApi } from '@/services/ipc'
+import { fileApi, notificationApi } from '@/services/ipc'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
 import {
   fileToImageAttachment,
@@ -69,6 +69,7 @@ export interface InputAreaSendOptions {
   images?: ImageAttachment[]
   selectedFiles?: string[]
   skill?: string | null
+  model?: string
 }
 
 export interface InputAreaProps {
@@ -119,6 +120,9 @@ interface ComposerToolbarProps {
   agentMode: boolean
   onToggleAgent: () => void
   onInsertCommand: (command: string) => void
+  // 模型选择（受控，状态上提到 InputArea 主组件）
+  model: string
+  onModelChange: (model: string) => void
 }
 
 function ComposerToolbar({
@@ -130,7 +134,9 @@ function ComposerToolbar({
   onAttachFile,
   agentMode,
   onToggleAgent,
-  onInsertCommand
+  onInsertCommand,
+  model,
+  onModelChange
 }: ComposerToolbarProps) {
   return (
     <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-1">
@@ -202,7 +208,7 @@ function ComposerToolbar({
       {/* 右：快捷键提示 + 模型选择 + 发送/停止（对齐原型：模型在右、紧邻发送） */}
       <div className="flex shrink-0 items-center gap-3">
         {/* 模型选择（对齐原型 .model-btn，置于右侧发送之前） */}
-        <ModelSelect disabled={isStreaming} />
+        <ModelSelect value={model} onChange={onModelChange} disabled={isStreaming} />
         {isStreaming ? (
           // 停止按钮：原型 --stop-bg/--stop-fg 反相（Light 深底白图标 / Dark 白底深图标）
           <button
@@ -250,9 +256,21 @@ function ComposerToolbar({
 // ============================================================
 const MODEL_OPTIONS = ['DeepSeek-V4-Flash', '自定义'] as const
 
-function ModelSelect({ disabled }: { disabled?: boolean }) {
+function ModelSelect({
+  value,
+  onChange,
+  disabled
+}: {
+  /** 当前选中的模型（内置名或自定义名） */
+  value: string
+  /** 选中变化（内置名，或自定义输入框内容） */
+  onChange: (model: string) => void
+  disabled?: boolean
+}) {
   const [open, setOpen] = useState(false)
-  const [current, setCurrent] = useState<string>(MODEL_OPTIONS[0])
+  const [custom, setCustom] = useState('')
+  // 处于自定义模式：选了“自定义”且尚未输入具体名称，或已输入名称
+  const isCustomMode = value === '自定义' || (custom.length > 0 && value === custom)
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -265,17 +283,35 @@ function ModelSelect({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           className="rounded-full gap-1"
         >
-          <span>{current}</span>
+          <span>{isCustomMode && custom ? custom : value === '自定义' ? '自定义模型' : value}</span>
           <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="min-w-[180px]">
+      <DropdownMenuContent align="start" side="top" className="min-w-[200px]">
         {MODEL_OPTIONS.map((model) => (
-          <DropdownMenuItem key={model} onSelect={() => setCurrent(model)}>
-            <span>内置模型 · {model}</span>
-            {current === model && <Check className="ml-auto size-3.5 text-primary" />}
+          <DropdownMenuItem key={model} onSelect={() => onChange(model)}>
+            <span>{model === '自定义' ? '自定义模型' : `内置模型 · ${model}`}</span>
+            {value === model && <Check className="ml-auto size-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
+        {isCustomMode && (
+          // onPointerDown 阻止冒泡，避免点击输入框导致下拉意外关闭
+          <div
+            className="flex items-center gap-2 border-t px-2 py-2"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <input
+              autoFocus
+              value={custom}
+              onChange={(e) => {
+                setCustom(e.target.value)
+                onChange(e.target.value)
+              }}
+              placeholder="输入模型名称"
+              className="h-7 w-full rounded-md border bg-background px-2 text-xs outline-none focus:border-primary"
+            />
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -297,6 +333,7 @@ export function InputArea({
   const [text, setText] = useState('')
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
+  const [model, setModel] = useState<string>(MODEL_OPTIONS[0])
   const [focused, setFocused] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -365,11 +402,25 @@ export function InputArea({
 
   // ---- 图片附件 ----
   const addImages = useCallback(async (files: File[]) => {
-    const attachments = await Promise.all(
-      files.map((f) => fileToImageAttachment(f).catch(() => null))
+    const results = await Promise.all(
+      files.map((f) => fileToImageAttachment(f).then(
+        (a): { ok: true; value: ImageAttachment } | { ok: false; error: unknown } => ({ ok: true, value: a }),
+        (error): { ok: false; error: unknown } => ({ ok: false, error })
+      ))
     )
-    const valid = attachments.filter((a): a is ImageAttachment => !!a)
+    const valid: ImageAttachment[] = []
+    let sizeErrorMsg: string | null = null
+    for (const r of results) {
+      if (r.ok) {
+        valid.push(r.value)
+      } else {
+        // P4: 仅当超限（消息含“上限”）时收集文案并提示用户，其余错误静默忽略。
+        const msg = r.error instanceof Error ? r.error.message : String(r.error)
+        if (msg.includes('上限')) sizeErrorMsg = msg
+      }
+    }
     if (valid.length) setAttachedImages((prev) => [...prev, ...valid])
+    if (sizeErrorMsg) notificationApi.show({ title: '图片过大', body: sizeErrorMsg })
   }, [])
 
   const removeImage = useCallback((id: string) => {
@@ -482,7 +533,8 @@ export function InputArea({
       attachedImages.length ? attachedImages : undefined,
       {
         selectedFiles: selectedFiles.map((f) => f.path),
-        skill: selectedSkill
+        skill: selectedSkill,
+        model
       }
     )
 
@@ -495,7 +547,7 @@ export function InputArea({
     setMentionTrigger(null)
     clearDraftRef.current?.()
     editorRef.current?.focus()
-  }, [text, attachedImages, selectedSkill, selectedFiles, onSend])
+  }, [text, attachedImages, selectedSkill, selectedFiles, model, onSend])
 
   // ---- 键盘导航 ----
   const handleKeyDown = useCallback(
@@ -556,7 +608,7 @@ export function InputArea({
 
   // ---- 草稿持久化 ----
   const draftKey = useMemo(() => getSessionInputDraftKey(sessionId ?? 'home'), [sessionId])
-  const { clearDraft } = useInputDraftPersistence({
+  const { clearDraft, scheduleSave } = useInputDraftPersistence({
     draftKey,
     enabled: !isStreaming,
     isFocused: () => focused,
@@ -575,6 +627,12 @@ export function InputArea({
   })
   const clearDraftRef = useRef(clearDraft)
   clearDraftRef.current = clearDraft
+
+  // 内容（文本 / 图片 / 技能 / 模型）变化时去抖保存草稿，刷新或切换会话后恢复。
+  // scheduleSave 内部已做 hydrated / 聚焦态 / 空草稿 守卫，无需在此重复判断。
+  useEffect(() => {
+    scheduleSave()
+  }, [text, attachedImages, selectedSkill, model, scheduleSave])
 
   useEffect(() => {
     computeTriggers()
@@ -651,6 +709,8 @@ export function InputArea({
             agentMode={agentMode}
             onToggleAgent={() => onToggleAgent?.()}
             onInsertCommand={(cmd) => editorRef.current?.insertText(cmd + ' ')}
+            model={model}
+            onModelChange={setModel}
           />
         </div>
 

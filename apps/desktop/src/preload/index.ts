@@ -1,5 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IpcChannel } from '../shared/ipc-channels'
 import type {
   FileDialogOptions,
@@ -99,16 +98,24 @@ const api = {
   health: healthApi
 }
 
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
+// H5: 不再暴露整包 @electron-toolkit/preload 的 electronAPI（内含 ipcRenderer，
+// 会使上面的 window.api 参数封装形同虚设，攻击者可 invoke 任意通道）。
+// 仅暴露渲染端真正需要的、且只读的安全子集 webUtils.getPathForFile
+// （用于从 DataTransfer 还原本地文件路径，见 drag-folder.ts）。
+const minimalElectron = {
+  webUtils: {
+    getPathForFile: (file: File): string | null => webUtils.getPathForFile(file)
   }
+}
+
+if (process.contextIsolated) {
+  // 隔离上下文（预期路径）：通过 contextBridge 暴露受限 API。
+  contextBridge.exposeInMainWorld('api', api)
+  contextBridge.exposeInMainWorld('electron', minimalElectron)
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
+  // H1: 非隔离降级分支必须抛错，禁止把受限 API 直接挂到 window 上，
+  // 否则等于在完全无隔离环境下暴露 ipcRenderer，严重扩大攻击面。
+  throw new Error(
+    '[preload] contextIsolation 未启用，拒绝将受限 API 暴露到全局 window，进程已终止。'
+  )
 }
