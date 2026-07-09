@@ -23,9 +23,13 @@ dev = [
     "ruff>=0.5.0",
     "mypy>=1.10",
 ]
+mcp = [
+    # MCP 集成可选依赖（SSE 传输需要 httpx，已在核心依赖中）
+    # stdio 传输无额外依赖
+]
 
 [tool.setuptools.packages.find]
-include = ["core*", "components*", "config*", "orchestration*", "feedback*", "evolution*", "modu_graph*"]
+include = ["core*", "components*", "config*", "orchestration*", "feedback*", "evolution*", "modu_graph*", "mcp*"]
 
 [tool.ruff]
 target-version = "py311"

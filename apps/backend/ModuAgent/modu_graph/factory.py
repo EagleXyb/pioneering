@@ -151,6 +151,59 @@ def _build_judge_llm(
         return None
 
 
+def _discover_and_register_mcp_tools(runtime_config: RuntimeConfig) -> None:
+    """从已连接的 MCP Server 发现工具并注册到 ComponentRegistry。
+
+    在 ``create_agent()`` 构建 LangChain 工具列表之前调用。
+    MCP 工具通过 ``MCPToolAdapter`` 适配为 ``BaseTool`` 子类，
+    注册后与内置工具在同一注册表中，``build_langchain_tools()`` 自动取出。
+
+    注册是幂等的——已注册的工具跳过。
+    MCPClient 必须已通过 ``start()`` 连接 Server
+    （通常在应用 lifespan 中完成）。
+
+    Args:
+        runtime_config: 运行时配置
+    """
+    import asyncio
+
+    from core.registry import get_registry
+    from mcp.client import get_mcp_client
+    from modu_graph.adapters.mcp_tool_adapter import MCPToolAdapter
+
+    mcp_client = get_mcp_client()
+    if not mcp_client.started:
+        logger.debug("MCPClient not started, skipping MCP tool discovery")
+        return
+
+    registry = get_registry()
+
+    # 发现所有已连接 Server 的工具
+    loop = asyncio.new_event_loop()
+    try:
+        mcp_tools = loop.run_until_complete(mcp_client.list_all_tools())
+    finally:
+        loop.close()
+
+    registered_count = 0
+    for tool_info in mcp_tools:
+        adapter = MCPToolAdapter(tool_info)
+        tool_name = adapter.name()
+        # 幂等：已注册则跳过
+        if registry.get_tool(tool_name) is not None:
+            logger.debug("MCP tool '%s' already registered, skip", tool_name)
+            continue
+        try:
+            registry.register_tool(adapter)
+            registered_count += 1
+        except Exception as e:  # noqa: BLE001
+            logger.error("Failed to register MCP tool '%s': %s", tool_name, e)
+
+    if registered_count > 0:
+        logger.info("MCP tools registered: %d new, %d total discovered",
+                    registered_count, len(mcp_tools))
+
+
 def create_agent(
     config: Optional[RunnableConfig] = None,
     runtime_config: Optional[RuntimeConfig] = None,
@@ -224,6 +277,14 @@ def create_agent(
     )
 
     # 工具（支持运行时覆盖工具集；P2-8: 传入 config 启用工具重试）
+    # MCP 工具发现：从已连接的 MCP Server 发现远程工具并注册到 ComponentRegistry
+    # gated by mcp.enabled（默认关闭，零侵入）；失败不影响 Agent 启动
+    if runtime_config.get("mcp.enabled", False):
+        try:
+            _discover_and_register_mcp_tools(runtime_config)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("MCP tool discovery failed, continuing without MCP tools: %s", e)
+
     tool_names = configurable.get("tools")
     tools = build_langchain_tools(tool_names=tool_names, config=runtime_config)
 
