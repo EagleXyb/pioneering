@@ -47,5 +47,10 @@ export const agentService = {
       `/agent/executions/${executionId}/result`
     )
     return res.data.outputResult
+  },
+
+  /** 停止 Agent 流式生成（best-effort；后端若未实现该端点由调用方 catch 忽略） */
+  async stopGeneration(sessionId: string): Promise<void> {
+    await apiClient.post('/agent/completions/stop', { session_id: sessionId })
   }
 }

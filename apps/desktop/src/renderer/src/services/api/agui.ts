@@ -20,10 +20,19 @@ export interface AguiStreamCallbacks {
   onChunk: (delta: string) => void
   /** 思考过程增量（reasoning） */
   onThinking?: (delta: string) => void
-  /** 工具调用开始 */
-  onToolCallStart?: (tool: { id: string; name: string }) => void
+  /** 工具调用开始（参数可能随后通过 onToolCallArgs 补全） */
+  onToolCallStart?: (tool: { id: string; name: string; arguments?: Record<string, unknown> }) => void
+  /** 工具调用参数增量（TOOL_CALL_ARGS 事件，delta 为 JSON 字符串片段） */
+  onToolCallArgs?: (tool: { id: string; arguments: Record<string, unknown> }) => void
   /** 工具调用结果（结束） */
-  onToolCallResult?: (tool: { id: string; name: string; result: string }) => void
+  onToolCallResult?: (tool: {
+    id: string
+    name: string
+    result: string
+    status?: 'completed' | 'error'
+    errorMessage?: string
+    arguments?: Record<string, unknown>
+  }) => void
   /** 流结束元信息 */
   onDone: (meta: {
     messageId?: string
@@ -33,6 +42,24 @@ export interface AguiStreamCallbacks {
   }) => void
   /** 错误 */
   onError: (error: string) => void
+}
+
+/** 尝试把工具参数 JSON 字符串解析为对象（流式分片可能未完整，解析失败返回 undefined） */
+function tryParseToolArgs(s: string): Record<string, unknown> | undefined {
+  if (!s) return undefined
+  try {
+    const v = JSON.parse(s)
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 把后端工具状态归一为前端 ToolCall.status（未提供时返回 undefined，由 store 默认 completed） */
+function normalizeToolStatus(s?: string): 'completed' | 'error' | undefined {
+  if (s === 'error' || s === 'failed') return 'error'
+  if (s === 'success' || s === 'completed') return 'completed'
+  return undefined
 }
 
 /**
@@ -51,6 +78,8 @@ export function streamAgui(
 
   // 工具调用按 id 追踪，便于在 RESULT 事件中回填
   const toolCalls = new Map<string, { id: string; name: string }>()
+  // 工具参数 JSON 字符串缓冲（TOOL_CALL_ARGS 可能分片到达）
+  const toolArgsBuffer = new Map<string, string>()
 
   apiClient
     .stream(url, body, { signal: controller.signal })
@@ -94,6 +123,8 @@ export function streamAgui(
               delta?: string
               toolCallName?: string
               toolCallId?: string
+              toolCallStatus?: string
+              errorMessage?: string
               content?: string
               model?: string
               tokenCount?: number
@@ -143,19 +174,42 @@ export function streamAgui(
                 if (event.toolCallId) {
                   const tool = { id: event.toolCallId, name: event.toolCallName || 'tool' }
                   toolCalls.set(tool.id, tool)
+                  // 初始化参数缓冲，等待 TOOL_CALL_ARGS 补全
+                  toolArgsBuffer.set(tool.id, '')
                   cb.onToolCallStart?.(tool)
                 }
                 break
 
+              // P3: 工具参数增量事件（AG-UI 标准），累积并解析后回填
+              case 'TOOL_CALL_ARGS':
+                if (event.toolCallId) {
+                  const prev = toolArgsBuffer.get(event.toolCallId) || ''
+                  const next = prev + (event.delta ?? '')
+                  toolArgsBuffer.set(event.toolCallId, next)
+                  const parsed = tryParseToolArgs(next)
+                  if (parsed) cb.onToolCallArgs?.({ id: event.toolCallId, arguments: parsed })
+                }
+                break
+
+              // P4: 解析工具执行状态与错误信息，区分成功/失败
               case 'TOOL_CALL_RESULT':
                 if (event.toolCallId) {
                   const known = toolCalls.get(event.toolCallId)
-                  const tool = {
+                  // 兜底：若此前未收到 TOOL_CALL_ARGS，这里用缓冲再做一次解析
+                  let args: Record<string, unknown> | undefined
+                  const buf = toolArgsBuffer.get(event.toolCallId)
+                  if (buf) {
+                    const parsed = tryParseToolArgs(buf)
+                    if (parsed) args = parsed
+                  }
+                  cb.onToolCallResult?.({
                     id: event.toolCallId,
                     name: event.toolCallName || known?.name || 'tool',
-                    result: event.content || ''
-                  }
-                  cb.onToolCallResult?.(tool)
+                    result: event.content || '',
+                    status: normalizeToolStatus(event.toolCallStatus),
+                    errorMessage: event.errorMessage,
+                    arguments: args
+                  })
                 }
                 break
 

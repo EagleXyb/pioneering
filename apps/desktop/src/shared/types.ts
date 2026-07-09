@@ -170,6 +170,8 @@ export interface ToolCall {
   arguments: Record<string, unknown>
   result?: string
   status: 'pending' | 'running' | 'completed' | 'error'
+  /** 工具执行失败时的错误信息（对应后端 AgentToolExecution.errorMessage） */
+  errorMessage?: string
   startTime?: number
   endTime?: number
 }

@@ -123,7 +123,7 @@ export const MessageBubble = memo(function MessageBubble({
       </Avatar>
 
       <div className={cn('flex min-w-0 flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
-        {isAssistant && thinking && <ThinkingBlock content={thinking} />}
+        {isAssistant && thinking && <ThinkingBlock content={thinking} isStreaming={isStreaming} />}
 
         {isAssistant && toolCalls && toolCalls.length > 0 && (
           <div className="space-y-2">

@@ -252,6 +252,8 @@ class ToolCallResultEvent:
     tool_call_name: str = ""
     content: str = ""
     role: str = "tool"
+    # P4: 透传工具执行状态，使前端能区分成功/失败（默认空串，旧消费者忽略即可）
+    status: str = ""
 
     def to_sse(self) -> str:
         return AGUIEncoder.to_sse(
@@ -261,6 +263,7 @@ class ToolCallResultEvent:
                 "toolCallId": self.tool_call_id,
                 "toolCallName": self.tool_call_name,
                 "content": self.content,
+                "status": self.status,
                 "role": self.role,
             },
         )
@@ -273,6 +276,7 @@ class ToolCallResultEvent:
                 "toolCallId": self.tool_call_id,
                 "toolCallName": self.tool_call_name,
                 "content": self.content,
+                "status": self.status,
                 "role": self.role,
             },
         )
@@ -522,6 +526,7 @@ class AGUIStateMachine:
                 "toolCallId": tool_id,
                 "toolCallName": tool_name,
                 "content": result_str,
+                "status": status,
             },
         ))
         return events

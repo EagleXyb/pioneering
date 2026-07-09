@@ -82,7 +82,15 @@ function mapContentBlocks(
     } else if (b.type === 'tool_result') {
       const idx = b.executionId ? toolIndexById.get(b.executionId) : undefined
       if (idx !== undefined && toolCalls[idx]) {
-        toolCalls[idx] = { ...toolCalls[idx]!, status: 'completed', result: b.summary }
+        // P5: 尊重后端返回的工具状态，失败的工具不应被误标为 completed
+        const st = b.status
+        const mapped: ToolCall['status'] =
+          st === 'error' || st === 'failed'
+            ? 'error'
+            : st === 'pending'
+              ? 'pending'
+              : 'completed'
+        toolCalls[idx] = { ...toolCalls[idx]!, status: mapped, result: b.summary }
       }
     }
   }
@@ -255,21 +263,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const toolIndexById = new Map<string, number>()
     let rafId: number | null = null
 
-    const scheduleUpdate = () => {
-      if (rafId !== null) return
-      rafId = requestAnimationFrame(() => {
-        const content = pendingContent
-        const thinking = pendingThinking
-        pendingContent = ''
-        pendingThinking = ''
-        rafId = null
-        set({
-          streamingContent: content,
-          streamingThinking: thinking,
-          streamingToolCalls: liveToolCalls.slice()
-        })
-      })
-    }
+  const scheduleUpdate = () => {
+    if (rafId !== null) return
+    rafId = requestAnimationFrame(() => {
+      const content = pendingContent
+      const thinking = pendingThinking
+      pendingContent = ''
+      pendingThinking = ''
+      rafId = null
+      // P1: 累积式写入——streamingContent/streamingThinking 应为“上次 flush 后的累计值 + 本轮增量”，
+      // 否则每帧覆盖会导致实时文本/思考只显示尾部碎片、且 onDone 落库内容被截断。
+      set((state) => ({
+        streamingContent: state.streamingContent + content,
+        streamingThinking: state.streamingThinking + thinking,
+        streamingToolCalls: liveToolCalls.slice()
+      }))
+    })
+  }
 
     const controller = (agentMode ? agentService : chatService).sendMessageStream(
       {
@@ -306,19 +316,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
           })
           scheduleUpdate()
         },
-        onToolCallResult: ({ id, name, result }) => {
+        // P3: 工具参数增量（来自 TOOL_CALL_ARGS 事件），回填到对应工具调用
+        onToolCallArgs: ({ id, arguments: args }) => {
           if (mySeq !== streamSeq) return
           const idx = toolIndexById.get(id)
           if (idx !== undefined && liveToolCalls[idx]) {
             liveToolCalls[idx] = {
               ...liveToolCalls[idx]!,
-              name: liveToolCalls[idx]!.name || name,
-              status: 'completed',
+              arguments: { ...liveToolCalls[idx]!.arguments, ...args }
+            }
+            scheduleUpdate()
+          }
+        },
+        // P4: 依据后端状态设置 completed / error（缺省按 completed，保持兼容）
+        onToolCallResult: ({ id, name, result, status, errorMessage, arguments: toolArgs }) => {
+          if (mySeq !== streamSeq) return
+          const finalStatus: ToolCall['status'] = status === 'error' ? 'error' : 'completed'
+          const idx = toolIndexById.get(id)
+          if (idx !== undefined && liveToolCalls[idx]) {
+            const prev = liveToolCalls[idx]!
+            liveToolCalls[idx] = {
+              ...prev,
+              name: prev.name || name,
+              status: finalStatus,
               result,
-              endTime: Date.now()
+              errorMessage,
+              endTime: Date.now(),
+              // 若此前未通过 onToolCallArgs 拿到参数，用 RESULT 携带的参数兜底
+              arguments:
+                Object.keys(prev.arguments).length === 0 && toolArgs ? toolArgs : prev.arguments
             }
           } else {
-            liveToolCalls.push({ id, name, status: 'completed', arguments: {}, result, endTime: Date.now() })
+            liveToolCalls.push({
+              id,
+              name,
+              status: finalStatus,
+              arguments: toolArgs ?? {},
+              result,
+              errorMessage,
+              endTime: Date.now()
+            })
           }
           scheduleUpdate()
         },
@@ -450,6 +487,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentSessionId
     } = get()
     if (abortController) abortController.abort()
+
+    // E3: 通知后端停止生成（best-effort；Agent 与普通对话端点不同，失败不影响前端中断）
+    const { agentMode } = get()
+    if (currentSessionId) {
+      const stopper = agentMode ? agentService : chatService
+      void stopper.stopGeneration?.(currentSessionId).catch(() => {})
+    }
 
     const sid = currentSessionId
     const id = streamingMessageId
