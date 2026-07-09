@@ -51,3 +51,10 @@ test_*.txt
 *.swp
 *.swo
 *~
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# 误落到仓库根的临时文件（例如 curl 响应被重定向到以 - 开头的文件）
+/-w
+

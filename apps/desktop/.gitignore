@@ -13,3 +13,5 @@ release
 *.njsproj
 *.sln
 *.sw?
+# TypeScript incremental build cache
+*.tsbuildinfo
