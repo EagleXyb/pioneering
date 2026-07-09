@@ -73,6 +73,14 @@ def register_components() -> None:
     # 行动执行器
     registry.register_action_executor("sync", SyncActionExecutor())
 
+    # P1: Skills 动态加载（默认关闭，gated by skills.enabled；与 factory 集成点幂等）
+    if get_config().get("skills.enabled", False):
+        try:
+            from skills.loader import SkillLoader
+            SkillLoader(registry, get_config()).load_from_config()
+        except Exception as e:
+            logger.warning("Skill loading failed: %s", e)
+
     logger.info("All components registered: %s", json.dumps(registry.list_all(), indent=2))
 
 

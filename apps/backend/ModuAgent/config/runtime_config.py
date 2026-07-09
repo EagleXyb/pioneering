@@ -69,6 +69,12 @@ _DEFAULT_CONFIG = {
             ],
         },
     },
+    "skills": {
+        # P1: Skills 能力（默认关闭，零风险；开启后由 SkillLoader 动态发现并注册）
+        "enabled": False,                       # 总开关：False 时所有 Skill 路径不可达
+        "auto_discover_dirs": [],               # 扫描目录列表（绝对或相对 ModuAgent 根）
+        "active": [],                            # 激活的 Skill 名白名单（仅加载 listed）
+    },
     "streaming": {
         "chunk_size": 4,
     },

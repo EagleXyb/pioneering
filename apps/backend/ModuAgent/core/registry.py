@@ -9,6 +9,7 @@ from core.interfaces.feedback import BaseEvolutionSignal, BaseFeedbackLoop
 from core.interfaces.memory import BaseMemory, BaseStorageAdapter
 from core.interfaces.perception import BasePerception, BaseSensor
 from core.interfaces.reasoning import BaseReasoningEngine, BaseReasoningStrategy
+from core.interfaces.skill import BaseSkill
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ class ComponentRegistry:
         self._sensors: Dict[str, BaseSensor] = {}
         self._feedback_loops: Dict[str, BaseFeedbackLoop] = {}
         self._evolution_signals: Dict[str, BaseEvolutionSignal] = {}
+        # P1: Skills 扩展（可插拔单元，内部工具注册进 _tools）
+        self._skills: Dict[str, BaseSkill] = {}
 
     def register_reasoning_engine(self, name: str, engine: BaseReasoningEngine) -> None:
         if not isinstance(engine, BaseReasoningEngine):
@@ -160,6 +163,68 @@ class ComponentRegistry:
     def get_evolution_signal(self, name: str) -> Optional[BaseEvolutionSignal]:
         return self._evolution_signals.get(name)
 
+    # ------------------------------------------------------------------
+    # P1: Skills 管理
+    # ------------------------------------------------------------------
+
+    def register_skill(self, skill: BaseSkill) -> None:
+        """注册 Skill（可插拔核心）。
+
+        注册时自动把 Skill 内含工具也注册进 ``_tools``，
+        使 Skill 工具经统一 ``build_langchain_tools`` 通路进入图。
+
+        Args:
+            skill: 实现 BaseSkill 的实例
+
+        Raises:
+            TypeError: 当 skill 未实现 BaseSkill 时
+        """
+        if not isinstance(skill, BaseSkill):
+            raise TypeError(f"skill must implement BaseSkill, got {type(skill)}")
+        if not skill.is_available():
+            logger.warning("Skill '%s' unavailable (is_available=False), skipped", skill.name())
+            return
+        self._skills[skill.name()] = skill
+        # 自动注册 Skill 内含工具（可插拔关键：Skill 注册即工具就位）
+        # 工具经 SkillToolWrapper 包装，落实执行隔离（P5 降级机制）
+        for tool in skill.tools():
+            if tool.name() in self._tools:
+                logger.warning(
+                    "Skill '%s' tool '%s' name conflicts with existing tool, skipping tool",
+                    skill.name(), tool.name(),
+                )
+                continue
+            try:
+                from skills.adapter import SkillToolWrapper
+                self.register_tool(SkillToolWrapper(tool, skill_name=skill.name()))
+            except Exception:  # noqa: BLE001 - 包装失败则退回原始工具
+                self.register_tool(tool)
+        logger.info(
+            "Registered skill: %s (tools=%d)", skill.name(), len(skill.tools())
+        )
+
+    def get_skill(self, name: str) -> Optional[BaseSkill]:
+        return self._skills.get(name)
+
+    def list_skills(self) -> Dict[str, Dict[str, Any]]:
+        return {
+            name: {
+                "name": s.name(),
+                "description": s.description(),
+                "version": s.version(),
+                "tags": s.tags(),
+                "tool_count": len(s.tools()),
+            }
+            for name, s in self._skills.items()
+        }
+
+    def unregister_skill(self, name: str) -> bool:
+        if name in self._skills:
+            del self._skills[name]
+            logger.info("Unregistered skill: %s", name)
+            return True
+        return False
+
     def swap_component(self, category: str, name: str, component: Any) -> bool:
         registries = {
             "reasoning_engine": self._reasoning_engines,
@@ -172,6 +237,7 @@ class ComponentRegistry:
             "sensor": self._sensors,
             "feedback_loop": self._feedback_loops,
             "evolution_signal": self._evolution_signals,
+            "skill": self._skills,
         }
         registry = registries.get(category)
         if registry is None:
@@ -193,6 +259,7 @@ class ComponentRegistry:
             "sensors": list(self._sensors.keys()),
             "feedback_loops": list(self._feedback_loops.keys()),
             "evolution_signals": list(self._evolution_signals.keys()),
+            "skills": list(self._skills.keys()),
         }
 
 

@@ -200,6 +200,15 @@ def create_agent(
     if config and "configurable" in config:
         configurable = config["configurable"]
 
+    # P1: Skills 动态加载（默认关闭，gated by skills.enabled，零风险）
+    # 单一集成点：在构建工具/图之前按配置发现并注册 Skill 及其内含工具。
+    if runtime_config.get("skills.enabled", False):
+        try:
+            from skills.loader import SkillLoader
+            SkillLoader(get_registry(), runtime_config).load_from_config()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Skill loading failed, continuing without skills: %s", e)
+
     # LLM provider（支持运行时覆盖）
     provider = configurable.get("llm_provider")
     temperature = configurable.get("temperature")
@@ -240,6 +249,16 @@ def create_agent(
 
     # 系统提示词
     effective_system_prompt = configurable.get("system_prompt", system_prompt)
+
+    # P1: 聚合已注册 Skill 的提示片段（gated by skills.enabled；无 Skill 时返回原提示）
+    if runtime_config.get("skills.enabled", False):
+        try:
+            from skills.prompt_aggregator import SkillPromptAggregator
+            effective_system_prompt = SkillPromptAggregator.aggregate(
+                effective_system_prompt, get_registry()
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Skill prompt aggregation failed, using base prompt: %s", e)
 
     # P0-1: 创建进化编排器（接通 feedback/evolution 闭环）
     # P2-7: 若启用 LLM-as-Judge，构造独立的 judge LLM 并传入 orchestrator
