@@ -8,7 +8,7 @@ import type {
   ChatCompletionResponse,
 } from './types';
 
-const BASE_URL = 'http://localhost:9000';
+const BASE_URL = '/api';
 
 /** 流式回调接口 */
 export interface StreamCallbacks {

@@ -3,7 +3,7 @@
  * 统一处理请求头、Token 注入、错误拦截
  */
 
-const BASE_URL = 'http://localhost:9000';
+const BASE_URL = '/api';
 
 /** 从 localStorage 获取 Token */
 export function getToken(): string | null {

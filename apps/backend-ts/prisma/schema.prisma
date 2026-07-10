@@ -1,0 +1,226 @@
+// Prisma schema —— 与 Python 版 SQLAlchemy 模型（app/models/user.py）精确对齐
+//
+// 重要约束：表结构由 Python 版 init_db() 创建并维护。
+// TS 版只用 `prisma generate` 生成 Client，**绝不执行 `prisma migrate` 或 `db push`**，
+// 以保证数据库表结构不被任何改动。
+//
+// 对照基准：apps/backend/app/models/user.py
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== 枚举（对应 Python MessageRole / Feedback） =====
+
+enum MessageRole {
+  system
+  user
+  assistant
+  tool
+}
+
+enum Feedback {
+  none
+  like
+  dislike
+}
+
+// ===== 1. users =====
+// 对应 Python: class User(Base)
+
+model User {
+  id            String   @id @db.VarChar(64)
+  username      String   @unique @db.VarChar(100)
+  nickname      String?  @db.VarChar(100)
+  avatar        String?  @db.VarChar(500)
+  email         String?  @db.VarChar(200)
+  phone         String?  @db.VarChar(20)
+  passwordHash  String?  @map("password_hash") @db.VarChar(255)
+  wechatOpenid  String?  @map("wechat_openid") @db.VarChar(100)
+  wechatUnionid String?  @map("wechat_unionid") @db.VarChar(100)
+  status        Int      @default(1) @db.SmallInt
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  chatSessions    ChatSession[]
+  chatMessages    ChatMessage[]
+  files           File[]
+  tokenUsages     TokenUsage[]
+  refreshTokens   RefreshToken[]
+  userQuota       UserQuota?
+
+  @@map("users")
+}
+
+// ===== 2. refresh_tokens =====
+// 对应 Python: class RefreshToken(Base)
+
+model RefreshToken {
+  id         String   @id @db.VarChar(64)
+  userId     String   @map("user_id") @db.VarChar(64)
+  token      String   @unique @db.VarChar(500)
+  deviceInfo String?  @map("device_info") @db.VarChar(200)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ===== 3. chat_sessions =====
+// 对应 Python: class ChatSession(Base)
+
+model ChatSession {
+  id            String    @id @db.VarChar(64)
+  userId        String    @map("user_id") @db.VarChar(64)
+  title         String    @default("新对话") @db.VarChar(200)
+  model         String    @default("gpt-4o-mini") @db.VarChar(100)
+  modelConfig   Json?     @map("model_config")
+  systemPrompt  String?   @map("system_prompt") @db.Text
+  messageCount  Int       @default(0) @map("message_count")
+  lastMessageId String?   @map("last_message_id") @db.VarChar(64)
+  isArchived    Boolean   @default(false) @map("is_archived")
+  agentMode     String?   @map("agent_mode") @db.VarChar(50)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+// ===== 4. chat_messages =====
+// 对应 Python: class ChatMessage(Base)
+
+model ChatMessage {
+  id               String       @id @db.VarChar(64)
+  sessionId        String       @map("session_id") @db.VarChar(64)
+  userId           String       @map("user_id") @db.VarChar(64)
+  parentMessageId  String?      @map("parent_message_id") @db.VarChar(64)
+  role             MessageRole
+  content          String       @db.Text
+  contentBlocks    Json?        @map("content_blocks")
+  tokenCount       Int?         @map("token_count")
+  feedback         Feedback     @default(none)
+  extraMetadata    Json?        @map("metadata")
+  promptTokens     Int?         @map("prompt_tokens")
+  completionTokens Int?         @map("completion_tokens")
+  latencyMs        Int?         @map("latency_ms")
+  userRating       Int?         @map("user_rating") @db.SmallInt
+  userFeedback     String?      @map("user_feedback") @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  session        ChatSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentMessage  ChatMessage?   @relation("MessageParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  childMessages  ChatMessage[]  @relation("MessageParent")
+
+  @@map("chat_messages")
+}
+
+// ===== 5. files =====
+// 对应 Python: class File(Base)
+
+model File {
+  id           String   @id @db.VarChar(64)
+  userId       String   @map("user_id") @db.VarChar(64)
+  originalName String   @map("original_name") @db.VarChar(500)
+  fileType     String?  @map("file_type") @db.VarChar(50)
+  fileSize     BigInt?   @map("file_size")
+  filePath     String?  @map("file_path") @db.VarChar(1000)
+  url          String?  @db.VarChar(1000)
+  status       Int      @default(1) @db.SmallInt
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("files")
+}
+
+// ===== 6. token_usage =====
+// 对应 Python: class TokenUsage(Base)
+
+model TokenUsage {
+  id                BigInt    @id @default(autoincrement())
+  userId            String    @map("user_id") @db.VarChar(64)
+  sessionId         String?   @map("session_id") @db.VarChar(64)
+  messageId         String?   @map("message_id") @db.VarChar(64)
+  model             String?   @db.VarChar(100)
+  promptTokens      Int?      @map("prompt_tokens")
+  completionTokens  Int?      @map("completion_tokens")
+  totalTokens       Int?      @map("total_tokens")
+  cost              Decimal?  @db.Decimal(10, 6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("token_usage")
+}
+
+// ===== 7. user_quotas =====
+// 对应 Python: class UserQuota(Base)
+
+model UserQuota {
+  userId      String   @id @map("user_id") @db.VarChar(64)
+  totalTokens BigInt   @default(1000000) @map("total_tokens")
+  usedTokens  BigInt   @default(0) @map("used_tokens")
+  dailyLimit  BigInt   @default(100000) @map("daily_limit")
+  dailyUsed   BigInt   @default(0) @map("daily_used")
+  resetAt     DateTime? @map("reset_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_quotas")
+}
+
+// ===== 8. ai_configs =====
+// 对应 Python: class AiConfig(Base)
+
+model AiConfig {
+  id             BigInt    @id @default(autoincrement())
+  provider       String    @default("deepseek") @db.VarChar(50)
+  model          String    @default("deepseek-v4-flash") @db.VarChar(100)
+  apiKey         String    @map("api_key") @db.VarChar(500)
+  prompt         String?   @db.Text
+  lastTestInput  String?   @map("last_test_input") @db.VarChar(500)
+  lastTestResult String?   @map("last_test_result") @db.Text
+  lastTestTime   DateTime? @map("last_test_time") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("ai_configs")
+}
+
+// ===== 9. agent_tool_executions =====
+// 对应 Python: class AgentToolExecution(Base)
+
+model AgentToolExecution {
+  id             String    @id @db.VarChar(64)
+  messageId      String    @map("message_id") @db.VarChar(64)
+  sessionId      String    @map("session_id") @db.VarChar(64)
+  userId         String    @map("user_id") @db.VarChar(64)
+  toolName       String    @map("tool_name") @db.VarChar(100)
+  toolCallId     String?   @map("tool_call_id") @db.VarChar(100)
+  inputParams    Json?     @map("input_params")
+  outputResult   String?   @map("output_result") @db.Text
+  outputSummary  String?   @map("output_summary") @db.Text
+  status         String    @default("pending") @db.VarChar(20)
+  errorMessage   String?   @map("error_message") @db.Text
+  startTime      DateTime? @map("start_time") @db.Timestamptz
+  endTime        DateTime? @map("end_time") @db.Timestamptz
+  durationMs     Int?      @map("duration_ms")
+  metadata       Json?     @map("metadata")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("agent_tool_executions")
+}

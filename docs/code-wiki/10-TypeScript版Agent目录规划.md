@@ -1243,3 +1243,122 @@ reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
    - 11.5~11.6 ↔ P5（其余子系统）
    - 11.7 ↔ P6（接入 + 弃用）
    - 12~14 节 ↔ 后端 API 基础结构与多端适配（贯穿阶段一~七）
+
+---
+
+## 16. `packages/modu-agent` 与 `apps/backend/ModuAgent` 深度对比分析
+
+### 16.1 总体结论
+
+**`packages/modu-agent`（TypeScript）完整重写了 `apps/backend/ModuAgent`（Python）的全部核心代码逻辑。** 两个版本在目录结构、模块划分、类/接口/函数定义上呈 **1:1 对应**关系。所有 10 个模块组（core/config、perception、reasoning/memory、action/tools/skills、evolution、feedback、mcp、modu_graph、observability、orchestration）均无核心逻辑缺失。TS 版本甚至在部分模块上做了增强（更多导出、更健壮的类型检查、gRPC→HTTP 降级链等）。
+
+存在少量因语言特性差异导致的实现细节不同，以及极个别功能弱化点，详见下文。
+
+### 16.2 模块逐一评估
+
+#### 已完整实现的功能点（按模块）
+
+| 模块 | 文件数 | 完整度 | 关键实现 |
+|------|--------|--------|----------|
+| **core + config** | 11→11 | ✅ 100% | ComponentRegistry 全部 11 类组件注册/获取/swap/listAll；6 个 interfaces (action/feedback/memory/perception/reasoning/skill)；runtime_config 配置读取链；schemas 验证 |
+| **perception** | 11→11 | ✅ 100% | 多模态融合（weighted_average/max_confidence/voting 三策略）；管线串行+异步并行执行；ASR/安全守卫/LLM解析/规则解析/摄像头/图像处理；buildPerceptionEventMetadata 18 字段 |
+| **reasoning + memory** | 11→11 | ✅ 100% | BaseLLMReasoner (reason/areason/stream/astream + SSE解析)；4 个 LLM 适配器 (deepseek/glm/gpt/qwen)；rule_engine（Python 空文件，TS 也为空）；短期记忆 LRU；Chroma 向量存储 |
+| **action/tools + skills** | 14→14 | ✅ 100% | 7 个工具 (calculator/code_executor/datetime/file_ops/http_request/search/sql_query)；同步执行器；math_skill；SkillToolWrapper 适配器；skill loader；prompt aggregator |
+| **evolution** | 6→6 | ✅ 100% | EvolutionOrchestrator 闭环 (evaluate→should_evolve→parameter_tune)；RollbackMechanism (质量记录+稳定版本查找+热替换)；VersionedComponentStore；ComponentSwapStrategy；ParameterTuneStrategy |
+| **feedback** | 6→6 | ✅ 100% | FeedbackLoop (评估+累积+进化触发, 含 P1-6/P2-7 修复)；QualityMonitor (rule/llm/hybrid 三模式 + LLM Judge)；EvolutionSignalCollector；AccuracyMetrics；EfficiencyMetrics |
+| **mcp** | 6→6 | ✅ 100% | MCPClient/MCPSession (多连接管理+全局单例)；ToolDiscovery；StdioTransport/SSETransport/StreamableHttpTransport；ServerLifecycleManager；5 个错误类 |
+| **modu_graph** | 17→17 | ✅ 100% | ModuGraph + Proxy 委托；完整图结构 (START→perception→memory_query→agent→tools→response→feedback→END)；HITL 路径；多 Agent 路径 (supervisor/subagent_run/consensus)；6 个 adapters；3 个 subgraph 组件 |
+| **observability** | 6→6 | ✅ 100% | OtelSpanManager + tracer；MetricsRegistry；结构化日志 (JsonFormatter)；trace_context 注入/提取；OTLP/Prometheus exporter 配置 |
+| **orchestration** | 9→9 | ✅ 100% | EventBus + 全局单例；protocol DTO/枚举；AGUI 适配器 (20 种事件 + 状态机 + 6 个 transform)；SSE 编码器；StreamPublisher；SensorManager；ConsensusPattern (3 策略)；DelegationPattern |
+
+### 16.3 未实现或存在差异的具体细节
+
+#### 1. `core/registry.ts` — 类型检查弱化
+
+```python
+# Python: 每个注册方法都有严格的 isinstance 类型检查
+if not isinstance(engine, BaseReasoningEngine):
+    raise TypeError(...)
+```
+
+TS 版仅在 `registerReasoningEngine` 中做了 `engine instanceof Object` 检查，**其余 10 个注册方法（registerReasoningStrategy、registerActionExecutor、registerTool、registerMemory 等）完全省略了类型守卫**，直接 `.set()`。这意味着 TS 版不会拒绝不符合接口的对象。
+
+#### 2. `core/registry.ts` — `overrideRegistry` 自动恢复差异
+
+Python 版使用 `@contextmanager` + `try/finally`，确保异常时**自动恢复**注册表。TS 版返回 `{restore: () => void}` 对象，需要调用方**手动调用** `restore()`，异常时不会自动恢复。
+
+#### 3. `tools/code-executor.ts` — AST 白名单缺失
+
+Python 版使用 `ast.NodeVisitor` 遍历 AST 节点，定义了约 30 种 `_ALLOWED_NODES` 白名单，能精确检测非法语法节点类型，并先 `ast.parse()` 捕获语法错误。TS 版**完全没有 AST 节点类型白名单，不做语法检查**，改用正则表达式做等价检测（`/^\s*import\s+/m` 等），存在误报和漏报风险。
+
+#### 4. `tools/code-executor.ts` — 子进程调用差异
+
+Python 使用 `sys.executable`（当前解释器路径），TS 硬编码 `python3`。若系统 `python3` 不在 PATH 中，TS 版会失败。
+
+#### 5. `mcp/client.ts` — 缺少 `asyncio.Lock` 并发保护
+
+Python 版的 `MCPSession.connect()`、`disconnect()`、`list_tools()` 方法内部均使用 `async with self._lock:` 保护，防止并发调用导致状态不一致。TS 版**完全没有实现锁机制**。若 `listTools` 在缓存未命中时被并发调用，两个请求会同时穿透到 transport 层发起两次 `tools/list` 请求。
+
+#### 6. `observability/exporters.ts` — 锁机制降级
+
+Python 使用 `threading.Lock()` 真正的互斥锁；TS 版使用简单布尔标志 `_otlp_lock` / `_prometheus_lock`，自承是"简单的忙等待降级"，在真正的并发场景下**不是真正的锁**，存在竞态条件。
+
+#### 7. `observability/exporters.ts` — `insecure=True` 参数缺失
+
+Python 版创建 `OTLPSpanExporter` 时传入 `insecure=True`（gRPC 明文传输），TS 版只传 `{ url: endpoint }`，可能导致 TLS 连接尝试。
+
+#### 8. `reasoning/llm/base-llm.ts` — 缺少 `__del__` 析构
+
+Python 版定义了 `__del__` 在对象销毁时自动调用 `close()` 释放连接池。TS 版明确注释"JS 无析构函数"，需用户显式调用 `close()`，存在连接泄漏风险。
+
+#### 9. `reasoning/llm/base-llm.ts` — 同步方法变为异步
+
+Python 版 `reason()` / `stream()` 是同步方法（使用 `httpx.Client`），`areason()` / `astream()` 是异步。TS 版 `reason()` 本身就是 `async`（Node.js `fetch` 无同步 API），无法在非 async 上下文中调用。
+
+#### 10. `feedback/metrics/accuracy.ts` — success 判断严格性差异
+
+```python
+# Python: 接受任何 truthy 值
+result.get("success", False)  # 1, "yes", True 均判定为成功
+```
+```typescript
+// TS: 仅接受严格布尔 true
+result.success === true  // 1, "yes" 不会被判定为成功
+```
+
+#### 11. `tools/calculator.ts` — 求值引擎差异
+
+Python 使用 `compile()` + `eval()` 且清空 `__builtins__`；TS 使用手写递归下降解析器。功能等价，但 Python 对整数运算返回 float（`1+1`→`2.0`），TS 返回 number（`1+1`→`2`）。
+
+#### 12. `factory.ts` — `create_agent` 异步化
+
+Python 版 `create_agent` 是同步函数（内部通过 `asyncio.new_event_loop()` 同步执行 MCP 工具发现）；TS 版为 `async` 函数，调用方需 `await`。
+
+### 16.4 TS 版本的增强点（非缺失，而是改进）
+
+| 增强项 | 说明 |
+|--------|------|
+| **更多导出** | core/index.ts 额外导出 `resetRegistry`/`overrideRegistry`/`setSkillToolWrapperFactory`；observability 导出 `resetMetricsRegistry` 等 |
+| **gRPC→HTTP 降级链** | exporters.ts 新增先尝试 gRPC exporter、失败后降级到 HTTP exporter 的逻辑 |
+| **动态 import 可选依赖** | LangChain 用 `await import('@langchain/core/messages')`，更优雅处理可选依赖 |
+| **更健壮的返回值检查** | quality-monitor.ts 中 `areason` 返回值额外检查 `Array.isArray(result)` |
+| **更严谨的类型检查** | `_check_tool_success` 中额外排除数组（`!Array.isArray(toolResult)`）|
+| **AbortController** | sensor-manager.ts 使用现代 AbortController 替代 asyncio.Task.cancel() |
+| **Proxy 委托** | graph.ts 使用 ES6 Proxy 替代 Python `__getattr__` 魔术方法 |
+
+### 16.5 最终分析结论
+
+**`packages/modu-agent` 是对 `apps/backend/ModuAgent` 的完整、忠实的 TypeScript 重写。**
+
+1. **结构完整性**：两个版本的目录结构、模块划分、文件命名呈 1:1 对应（Python `snake_case` → TS `camelCase`/`kebab-case`），所有 99 个 `.ts` 文件均有对应的 `.py` 源文件。
+
+2. **逻辑完整性**：全部 10 个模块组的核心业务逻辑（组件注册、多模态感知、LLM 推理、工具执行、技能加载、进化闭环、反馈循环、MCP 协议、图编排、可观测性、编排通信）均已完整实现，**无任何功能模块缺失**。
+
+3. **存在差异但非缺失的点**：共识别出 12 处实现差异，其中：
+   - **5 处为语言特性不可逾越的差异**（同步→异步、`__del__` 析构、`httpx`→`fetch` 等）
+   - **4 处为安全/健壮性弱化**（registry 类型检查省略、code_executor AST 白名单缺失、MCP 锁缺失、exporters 锁降级）
+   - **3 处为行为细节差异**（success 严格判断、calculator 返回类型、insecure 参数）
+
+4. **TS 版有 7 处增强**，包括更多导出、gRPC 降级链、动态 import、AbortController 等。
+
+**建议关注的风险点**：`code-executor.ts` 的 AST 白名单缺失（安全降级）、`registry.ts` 的类型检查省略（运行时容错降低）、`mcp/client.ts` 的锁缺失（并发场景），这三处在生产环境中需要额外关注。
