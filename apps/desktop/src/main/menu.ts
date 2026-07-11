@@ -20,8 +20,14 @@ const EDIT_ROLES: Partial<Record<MenuActionId, MenuItemConstructorOptions['role'
 }
 
 function runAction(id: MenuActionId, win: BrowserWindow | null): void {
-  // 窗口可能已被重建（mac 从 dock 重新打开），动态取当前聚焦窗口
-  const target = win ?? BrowserWindow.getFocusedWindow() ?? null
+  // B4 修复：原实现 `win ?? BrowserWindow.getFocusedWindow()` 在 win 非 null 时
+  // 直接使用 win，但 mac 从 dock 重新激活会重建窗口，闭包持有的 win 已销毁，
+  // `target.webContents.send` 在已销毁 webContents 上抛错。
+  // 改为先检查 win 是否已销毁，已销毁则回退到当前聚焦窗口。
+  const target =
+    win && !win.isDestroyed()
+      ? win
+      : (BrowserWindow.getFocusedWindow() ?? null)
   switch (id) {
     case 'about':
       // 需要渲染端配合打开设置弹框，经 MENU_ACTION 通知

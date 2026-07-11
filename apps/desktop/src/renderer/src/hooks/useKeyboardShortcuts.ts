@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from 'react'
 import { useSetAtom } from 'jotai'
 import { contextPanelVisibleAtom } from '../stores/atoms'
 
-// 统一的键盘快捷键监听器：合并原分散在 RootLayout（⌘B/⌘K）与
+// 统一的键盘快捷键监听器：合并原分散在 RootLayout（⌘B）与
 // ConversationList（⌘N）的多个 window keydown 监听，集中管理。
 // 输入框/可编辑区聚焦时不拦截，避免吞掉正常输入（如聊天框里的 j/k）。
 export function useKeyboardShortcuts(onNewTask?: () => void | Promise<void>) {
@@ -24,10 +24,6 @@ export function useKeyboardShortcuts(onNewTask?: () => void | Promise<void>) {
         case 'b':
           e.preventDefault()
           setContextPanelVisible((prev) => !prev)
-          break
-        case 'k':
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('global-search'))
           break
         case 'n':
           e.preventDefault()

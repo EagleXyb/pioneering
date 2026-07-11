@@ -50,6 +50,8 @@ export function ConversationList() {
 
   const handleDelete = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation()
+    // B9 修复：原实现点击删除图标直接删除，误触风险高。增加确认弹窗。
+    if (!window.confirm('确定删除该对话？删除后不可恢复。')) return
     deleteSession(sessionId)
   }
 

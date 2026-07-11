@@ -195,8 +195,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const images = (extra?.images ?? []) as AttachedImage[]
     const model = extra?.model?.trim()
 
+    // B1 修复：abort 旧流时清理上一个未完成的空 assistant 占位消息。
+    // streamAgui 对 AbortError 静默忽略，不触发 onDone/onError，旧占位（空 content）
+    // 会留在消息列表中形成孤儿空气泡。这里在 abort 后主动移除空占位。
     if (abortController) {
       abortController.abort()
+      const sid = currentSessionId
+      if (sid) {
+        set((state) => {
+          const list = state.messages[sid]
+          if (!list || list.length === 0) return state
+          const last = list[list.length - 1]
+          // 仅移除空的 assistant 占位（无正文、无思考、无工具调用）
+          if (
+            last &&
+            last.role === 'assistant' &&
+            !last.content &&
+            !last.thinking &&
+            (!last.toolCalls || last.toolCalls.length === 0)
+          ) {
+            return {
+              messages: { ...state.messages, [sid]: list.slice(0, -1) }
+            }
+          }
+          return state
+        })
+      }
     }
 
     let sessionId = currentSessionId
@@ -538,6 +562,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   deleteSession: async (sessionId) => {
     set({ error: null })
+    // B2 修复：删除正在流式的会话前先中止流，避免后台流继续运行浪费资源、
+    // 后端持续生成。仅当删除的是当前会话且正在流式时才需要 stopStreaming。
+    const state = get()
+    if (state.isStreaming && state.currentSessionId === sessionId) {
+      get().stopStreaming()
+    }
     try {
       await chatService.deleteSession(sessionId, true)
       set((state) => {

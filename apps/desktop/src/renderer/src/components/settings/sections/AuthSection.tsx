@@ -28,8 +28,8 @@ export function AuthSection() {
     }
   }
 
-  const handleLogout = () => {
-    authService.logout()
+  const handleLogout = async () => {
+    await authService.logout()
     setIsAuthenticated(false)
   }
 

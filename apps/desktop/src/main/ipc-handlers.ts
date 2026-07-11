@@ -60,22 +60,33 @@ function isValidFilePath(filePath: string): boolean {
 
 // H2: 校验 IPC 调用方是否为可信任的渲染上下文。
 // 仅允许来自本地 file://（生产 loadFile）、app://（自定义协议）或
-// localhost 开发服务器的 frame 发起的调用；其余（如被注入的远程 frame）一律拒绝。
+// 本地回环地址（localhost / 127.0.0.1 / [::1]）开发服务器的 frame 发起的调用；
+// 其余（如被注入的远程 frame）一律拒绝。
+//
+// S1/S6 修复：原正则 /^https?:\/\/localhost(:\d+)?\b/i 中的 \b 对
+// "localhost.evil.com" 命中（. 是非单词字符），导致攻击者注册该域名即可绕过。
+// 改为严格匹配主机名后紧跟端口、路径分隔或字符串结尾，并补充 127.0.0.1 / [::1]。
+const TRUSTED_HOST_PATTERN =
+  /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i
+
 function isTrustedSender(
   event: { senderFrame?: Electron.WebFrameMain | null }
 ): boolean {
   const frame = event.senderFrame
   if (!frame) return false
   const url = frame.url
-  return (
-    /^file:\/\//i.test(url) ||
-    /^app:\/\//i.test(url) ||
-    /^https?:\/\/localhost(:\d+)?\b/i.test(url)
-  )
+  return /^file:\/\//i.test(url) || /^app:\/\//i.test(url) || TRUSTED_HOST_PATTERN.test(url)
 }
 
 // H3: 路径白名单校验。先 path.resolve 归一化，再用 realpathSync 解析符号链接
 // （防止通过软链逃逸白名单），最后判断是否落在允许根目录内或命中用户选定路径。
+//
+// S4 修复：原实现在 realpathSync 失败（文件尚不存在，写操作场景）时直接回退到
+// 未解析路径做前缀校验。若用户在白名单目录下放置指向敏感目录的符号链接，
+// 写入 ~/Documents/evil/payload 时 realpathSync 解析到 evil 级失败，回退前缀校验
+// 仍认为落在 documents 内，实际写入 /etc/payload。
+// 修复策略：realpathSync 失败时，逐级向上对已存在的父目录做 realpathSync，
+// 找到最近的可解析祖先真实路径，再拼接剩余子路径，对最终路径做白名单校验。
 function isPathAllowed(filePath: string, allowedRoots: string[]): boolean {
   let resolved: string
   try {
@@ -86,7 +97,8 @@ function isPathAllowed(filePath: string, allowedRoots: string[]): boolean {
   try {
     resolved = realpathSync(resolved)
   } catch {
-    // 文件尚不存在（写操作）或无法解析时，回退到未解析路径做前缀校验
+    // 文件尚不存在（写操作）或无法解析：逐级向上解析父目录的真实路径
+    resolved = resolveWithParentRealpath(resolved)
   }
   const rawResolved = path.resolve(filePath)
   if (userAllowedPaths.has(resolved) || userAllowedPaths.has(rawResolved)) return true
@@ -94,6 +106,30 @@ function isPathAllowed(filePath: string, allowedRoots: string[]): boolean {
     const r = path.resolve(root)
     return resolved === r || resolved.startsWith(r + path.sep)
   })
+}
+
+// S4 辅助：当目标路径本身无法 realpathSync（尚不存在）时，逐级向上找到最近
+// 可解析的祖先目录的真实路径，再拼接剩余子路径段，得到尽可能真实的最终路径。
+function resolveWithParentRealpath(targetPath: string): string {
+  const segments: string[] = []
+  let current = targetPath
+  // 向上逐级尝试，最多 40 层防止异常循环
+  for (let i = 0; i < 40; i++) {
+    try {
+      const real = realpathSync(current)
+      // 找到可解析祖先，拼接之前累积的子路径段
+      return segments.length > 0 ? path.join(real, ...segments.reverse()) : real
+    } catch {
+      segments.push(path.basename(current))
+      const parent = path.dirname(current)
+      if (parent === current) {
+        // 到达根目录仍无法解析，返回原始 resolve 结果
+        return targetPath
+      }
+      current = parent
+    }
+  }
+  return targetPath
 }
 
 // H6: 通过 JSON 往返重建纯对象，剥离 __proto__ / constructor 等原型链污染载体。
@@ -299,8 +335,10 @@ export function registerIpcHandlers(): void {
       ) {
         return { success: false, error: 'Invalid file path or content' }
       }
-      // H3/P1: 内容大小上限
-      if (req.content.length > MAX_FILE_BYTES) {
+      // H3/P1: 内容大小上限（B5 修复：原用 req.content.length 是 UTF-16 代码单元数，
+      // 与 MAX_FILE_BYTES 字节数单位不一致，多字节字符实际字节数可达 length*4 突破上限。
+      // 改用 Buffer.byteLength 按 UTF-8 编码计算真实字节数，与 FILE_READ 的 stat().size 单位一致）
+      if (Buffer.byteLength(req.content, 'utf-8') > MAX_FILE_BYTES) {
         return { success: false, error: 'Content exceeds maximum allowed size' }
       }
       try {
@@ -361,7 +399,15 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannel.STORE_SET, (event, key: string, value: unknown) => {
     if (!isTrustedSender(event)) return false
-    appStore.set(key, sanitizeValue(value))
+    // B6 修复：原实现 sanitizeValue 失败返回 undefined，但仍 appStore.set(key, undefined)
+    // 并返回 true，渲染端误以为写入成功。改为校验净化结果，失败时拒绝写入并返回 false。
+    // 注意：合法的 null/undefined 值需要放行（用户可能显式存储 null）。
+    if (value === undefined) return false
+    const sanitized = sanitizeValue(value)
+    if (sanitized === undefined && value !== null) {
+      return false
+    }
+    appStore.set(key, sanitized)
     return true
   })
 
@@ -416,5 +462,18 @@ export function registerIpcHandlers(): void {
     const id = event.sender.id
     dragTargets.delete(id)
     dragStates.delete(id)
+  })
+
+  // B13 修复：原实现仅在 WINDOW_DRAG_END 时清理 dragStates/dragTargets，
+  // 若用户在拖拽中关闭窗口，对应 entry 永不释放，造成内存泄漏。
+  // 监听每个新建窗口的 closed 事件，清理对应的拖拽状态。
+  app.on('browser-window-created', (_event, win) => {
+    win.on('closed', () => {
+      const id = win.webContents?.id
+      if (id !== undefined) {
+        dragTargets.delete(id)
+        dragStates.delete(id)
+      }
+    })
   })
 }

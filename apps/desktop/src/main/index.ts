@@ -14,17 +14,22 @@ import appIcon from '../../resources/icon.png?asset'
 // 开发期放宽 script-src：Vite 的 @react-refresh 会在 HTML 内联一段 preamble 脚本，
 // 若不加 'unsafe-inline' 会被 CSP 拦截，导致开发环境直接白屏。生产（loadFile）无任何
 // 内联脚本，保持严格 'self' 即可。这样在不破坏开发体验的前提下仍满足 H4 的安全目标。
+//
+// S2 修复：原 connect-src 含 "wss:"（无主机限定），一旦渲染端被 XSS 攻破，攻击者
+// 可通过 wss://attacker.com 外泄数据。当前后端未使用 secure WebSocket，直接移除；
+// 若未来需要，应限定为具体主机，如 wss://api.example.com。
 const RENDERER_CSP = [
   "default-src 'self'",
   `script-src 'self'${is.dev ? " 'unsafe-inline'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' http://localhost:9000 ws://localhost:* wss:",
+  "connect-src 'self' http://localhost:9000 ws://localhost:*",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'none'",
-  "form-action 'none'"
+  "form-action 'none'",
+  "frame-ancestors 'none'"
 ].join('; ')
 
 function installContentSecurityPolicy(): void {
@@ -83,7 +88,12 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // S3 修复：原实现未校验 URL 协议，file:// / javascript: / data: 等危险协议
+    // 都会传给 shell.openExternal，可能触发宿主系统的意外行为。
+    // 与 SHELL_OPEN_EXTERNAL 处理器一致，仅允许 http(s) 协议。
+    if (/^https?:\/\//i.test(details.url)) {
+      shell.openExternal(details.url)
+    }
     return { action: 'deny' }
   })
 

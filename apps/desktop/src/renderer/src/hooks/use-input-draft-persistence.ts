@@ -92,7 +92,9 @@ export function useInputDraftPersistence({
         void removeInputDraft(draftKey)
         return
       }
-      if (focusedRef.current && !focusedRef.current()) return
+      // B10 修复：原实现 `if (focusedRef.current && !focusedRef.current()) return`
+      // 在 blur 后（isFocused 返回 false）跳过保存，导致用户切走时草稿丢失。
+      // 草稿持久化的目的就是"即使用户离开也能恢复"，blur 时仍应保存。
       void saveInputDraft(draftKey, value)
     }, delay)
   }, [draftKey, delay])

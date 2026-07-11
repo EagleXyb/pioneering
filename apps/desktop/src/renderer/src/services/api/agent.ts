@@ -50,7 +50,9 @@ export const agentService = {
   },
 
   /** 停止 Agent 流式生成（best-effort；后端若未实现该端点由调用方 catch 忽略） */
+  // B11 修复：原用 { session_id }（snake_case）与 chat.ts 的 { sessionId }（camelCase）不一致，
+  // 统一为 camelCase，与项目整体约定及 chat 服务保持一致。
   async stopGeneration(sessionId: string): Promise<void> {
-    await apiClient.post('/agent/completions/stop', { session_id: sessionId })
+    await apiClient.post('/agent/completions/stop', { sessionId })
   }
 }

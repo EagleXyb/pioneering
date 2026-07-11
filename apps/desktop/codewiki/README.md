@@ -1,0 +1,21 @@
+# Pioneering Desktop Code Wiki
+
+本目录为 Pioneering Desktop 桌面端的代码 Wiki 文档，覆盖业务逻辑分析、问题诊断、改进建议，以及面向后端 Agent 对接的架构与功能评估。
+
+## 文档索引
+
+| 文档 | 内容 |
+|------|------|
+| [01-business-logic.md](./01-business-logic.md) | 业务逻辑概述：主要功能模块、数据流向、核心处理流程 |
+| [02-issues-diagnosis.md](./02-issues-diagnosis.md) | 问题诊断：代码规范、潜在 Bug、性能瓶颈、安全隐患、可维护性 |
+| [03-improvement-suggestions.md](./03-improvement-suggestions.md) | 改进建议：针对已发现问题的可操作优化方向 |
+| [04-agent-capability-assessment.md](./04-agent-capability-assessment.md) | Agent 能力现状评估：对标成熟 AI Agent 应用的缺失分析 |
+| [05-agent-refactor-plan.md](./05-agent-refactor-plan.md) | Agent 架构重构与功能扩展方案 |
+| [06-file-index.md](./06-file-index.md) | 关键文件索引与阅读地图 |
+
+## 代码版本
+
+- 项目：`pioneering-desktop@0.1.0`
+- 技术栈：Electron 42 + React 19 + TypeScript + Tailwind v4 + electron-vite
+- 状态管理：Zustand（业务域）+ Jotai（UI 原子态）
+- 审查范围：`apps/desktop/src` 全量代码

@@ -102,9 +102,19 @@ const api = {
 // 会使上面的 window.api 参数封装形同虚设，攻击者可 invoke 任意通道）。
 // 仅暴露渲染端真正需要的、且只读的安全子集 webUtils.getPathForFile
 // （用于从 DataTransfer 还原本地文件路径，见 drag-folder.ts）。
+//
+// S8 修复：原实现未 try/catch，若 file 不合法或底层抛错，异常会冒泡到渲染端。
+// index.d.ts 声明返回 string | null，但实现并不会返回 null，类型与行为不一致。
+// 包装 try/catch，失败时返回 null，与类型声明对齐。
 const minimalElectron = {
   webUtils: {
-    getPathForFile: (file: File): string | null => webUtils.getPathForFile(file)
+    getPathForFile: (file: File): string | null => {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        return null
+      }
+    }
   }
 }
 

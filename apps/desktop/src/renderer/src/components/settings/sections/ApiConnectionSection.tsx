@@ -15,10 +15,19 @@ export function ApiConnectionSection() {
 
   const checkApiHealth = async () => {
     setApiStatus('loading')
-    apiClient.setBaseURL(apiBaseUrl)
+    // B3 修复：原实现测试前就 setBaseURL，即使测试失败 apiClient.baseURL 已被污染，
+    // 后续所有 API 全部失败。改为先用临时 URL 发起健康检查，成功后再 setBaseURL。
+    const testBaseURL = apiBaseUrl.replace(/\/$/, '') + '/api/v1'
     try {
-      const res = await apiClient.get<{ status: string }>('/health')
-      setApiStatus(res.data.status === 'healthy' ? 'ok' : 'error')
+      const res = await apiClient.get<{ status: string }>('/health', {
+        baseURL: testBaseURL
+      })
+      if (res.data.status === 'healthy') {
+        apiClient.setBaseURL(testBaseURL)
+        setApiStatus('ok')
+      } else {
+        setApiStatus('error')
+      }
     } catch {
       setApiStatus('error')
     }

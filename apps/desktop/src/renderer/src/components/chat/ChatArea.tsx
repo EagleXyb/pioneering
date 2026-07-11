@@ -30,6 +30,9 @@ export function ChatArea() {
   const loadSessions = useChatStore((s) => s.loadSessions)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  // B8: 记录用户是否在底部附近，用于判断流式输出时是否自动滚动。
+  // 仅当用户在底部附近才自动滚动，避免用户向上回看历史时被强制拉回底部。
+  const isNearBottomRef = useRef(true)
 
   const currentMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
 
@@ -39,6 +42,21 @@ export function ChatArea() {
     }
   }, [sessionsLength, loadSessions])
 
+  // B8: 监听滚动位置，更新 isNearBottomRef
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    const viewport = root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+    const target = viewport ?? root
+    const handleScroll = () => {
+      const threshold = 80 // 距底部 80px 内视为"在底部附近"
+      isNearBottomRef.current =
+        target.scrollHeight - target.scrollTop - target.clientHeight < threshold
+    }
+    target.addEventListener('scroll', handleScroll, { passive: true })
+    return () => target.removeEventListener('scroll', handleScroll)
+  }, [])
+
   useEffect(() => {
     const root = scrollRef.current
     if (!root) return
@@ -46,7 +64,10 @@ export function ChatArea() {
     // 必须定位 Viewport 元素再设置 scrollTop，否则流式输出期间消息不会跟随到底部。
     const viewport = root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
     const target = viewport ?? root
-    target.scrollTop = target.scrollHeight
+    // B8: 仅当用户在底部附近时才自动滚动，避免破坏向上回看历史的体验
+    if (isNearBottomRef.current) {
+      target.scrollTop = target.scrollHeight
+    }
   }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming])
 
   const handleSend = (

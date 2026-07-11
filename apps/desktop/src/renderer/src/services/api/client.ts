@@ -118,6 +118,24 @@ class ApiClient {
     this.onTokenChange = callback
   }
 
+  // S5 修复：Token 原仅内存存储，刷新页面即登出。
+  // 提供 restoreTokens 方法，应用启动时从主进程 storeApi 恢复已持久化的 token，
+  // 避免刷新即登出。注意 storeApi 当前为内存存储（主进程 Map），应用完全重启仍会丢失；
+  // 若需跨重启持久化，需在主进程接入 electron-store（见 codewiki M3）。
+  async restoreTokens(getStoredTokens: () => Promise<AuthTokens | null | undefined>): Promise<boolean> {
+    try {
+      const tokens = await getStoredTokens()
+      if (tokens && tokens.token && tokens.refreshToken) {
+        this.accessToken = tokens.token
+        this.refreshToken = tokens.refreshToken
+        return true
+      }
+    } catch {
+      // 恢复失败静默处理，保持未登录态
+    }
+    return false
+  }
+
   // ---- 请求方法 ----
   async get<T = unknown>(
     url: string,

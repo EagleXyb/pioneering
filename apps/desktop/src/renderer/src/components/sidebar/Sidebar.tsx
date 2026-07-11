@@ -41,7 +41,8 @@ export const Sidebar = memo(function Sidebar() {
 
   // 设置/帮助/检查更新 复用统一菜单动作（runMenuAction），避免与全局菜单逻辑重复
   const handleLogout = () => {
-    authService.logout()
+    // logout 改为 async（S7），此处不阻塞 UI，best-effort 撤销后端 token
+    void authService.logout()
   }
 
   return (
