@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import * as sessionApi from '../api/session';
 import type { Session } from '../api/types';
 import type { AppMode } from '../types';
+import { getDefaultModel } from '../config/models';
 
 export interface Conversation {
   id: string;
@@ -142,7 +143,7 @@ export const useConversationStore = create<ConversationStore>()(
           try {
             const session = await sessionApi.createSession({
               title: '新会话',
-              model: 'deepseek-v4-flash',
+              model: getDefaultModel(mode),
             });
             const conversation = sessionToConversation(session, { [session.id]: mode });
 

@@ -5,6 +5,7 @@ import { TaskMessageList } from './components/TaskMessageList';
 import { TaskInput } from './components/TaskInput';
 import { TaskPipeline } from './components/TaskPipeline';
 import { getAuthHeader } from '../../api/client';
+import { getDefaultModel } from '../../config/models';
 import './task.css';
 
 export default function TaskMode() {
@@ -26,7 +27,7 @@ export default function TaskMode() {
         body: JSON.stringify({
           sessionId: activeId,
           message: params.prompt,
-          model: 'deepseek-v4-flash',
+          model: getDefaultModel('task'),
           stream: true,
         }),
       }),

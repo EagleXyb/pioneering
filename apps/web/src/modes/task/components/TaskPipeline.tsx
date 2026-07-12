@@ -5,7 +5,7 @@ export function TaskPipeline() {
     <div className="task-pipeline">
       <div className="task-pipeline-header">
         <h3 className="task-pipeline-title">任务流水线</h3>
-        <span className="task-pipeline-badge">待开发</span>
+        <span className="task-pipeline-badge">开发中</span>
       </div>
       <div className="task-pipeline-body">
         <div className="task-pipeline-empty">

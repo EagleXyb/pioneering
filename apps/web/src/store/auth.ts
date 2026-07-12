@@ -11,8 +11,10 @@ interface AuthStore {
   user: UserProfile | null;
   error: string | null;
 
-  /** 认证成功 — 保存用户与 Token */
-  authenticate: (user: UserProfile, token: string, refreshToken?: string) => void;
+  /** 认证成功 — 保存用户与 Token
+   * @param rememberMe true 存 localStorage（跨会话保留），false 存 sessionStorage（关闭浏览器清除）
+   */
+  authenticate: (user: UserProfile, token: string, refreshToken?: string, rememberMe?: boolean) => void;
   /** 登出 — 清除状态 */
   logout: () => void;
   /** 更新状态 */
@@ -30,8 +32,8 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       error: null,
 
-      authenticate: (user, token, refreshToken) => {
-        setToken(token, refreshToken);
+      authenticate: (user, token, refreshToken, rememberMe = true) => {
+        setToken(token, refreshToken, rememberMe);
         set({ status: 'authenticated', user, error: null });
       },
 

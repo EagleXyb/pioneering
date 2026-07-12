@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { getAuthHeader } from '../../../api/client';
+import type { ChatMessagesData } from '../../../types/tdesign';
 
 // ========== 类型定义 ==========
 
@@ -11,20 +12,15 @@ export interface AgentStep {
   status: 'running' | 'done' | 'pending';
 }
 
-/** 兼容 ChatMessagesData 的消息结构 */
-export interface AgentMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: { type: string; data: string }[];
-  status?: string;
-}
+/** Agent 消息 — 直接复用 TDesign ChatMessagesData，避免类型不兼容 */
+export type AgentMessage = ChatMessagesData;
 
 /** Agent chat 状态 - 与 ChatStatus 兼容 */
 export type AgentChatStatus = 'idle' | 'pending' | 'streaming' | 'complete' | 'error';
 
 /** 返回值 */
 export interface UseAgentChatReturn {
-  messages: AgentMessage[];
+  messages: ChatMessagesData[];
   status: AgentChatStatus;
   stateMap: Record<string, AgentStep>;
   currentStateKey: string | null;
@@ -66,7 +62,7 @@ interface AGUIEvent {
  * 构建 messages 供 AnalysisMessageList 展示对话内容。
  */
 export function useAgentChat(activeId: string | null, _deepThinking: boolean): UseAgentChatReturn {
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessagesData[]>([]);
   const [stateMap, setStateMap] = useState<Record<string, AgentStep>>({});
   const [currentStateKey, setCurrentStateKey] = useState<string | null>(null);
   const [status, setStatus] = useState<AgentChatStatus>('idle');
@@ -93,10 +89,10 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
       const assistantMsgId = `a_${Date.now()}`;
 
       // 1) 添加用户消息
-      const userMsg: AgentMessage = {
+      const userMsg: ChatMessagesData = {
         id: userMsgId,
-        role: 'user',
-        content: [{ type: 'text', data: params.prompt }],
+        role: 'user' as const,
+        content: [{ type: 'text' as const, data: params.prompt }],
       };
 
       // 重置状态
@@ -144,11 +140,11 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
           let currentToolCallKey: string | null = null;
 
           // 2) 添加占位 assistant 消息
-          const assistantMsg: AgentMessage = {
+          const assistantMsg: ChatMessagesData = {
             id: assistantMsgId,
-            role: 'assistant',
-            content: [{ type: 'markdown', data: '' }],
-            status: 'streaming',
+            role: 'assistant' as const,
+            content: [{ type: 'markdown' as const, data: '' }],
+            status: 'streaming' as const,
           };
           setMessages((prev) => [...prev, assistantMsg]);
 
@@ -230,14 +226,15 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
                 // ---- THINKING_END: 思考结束 ----
                 case 'THINKING_END': {
                   if (currentThinkingKey) {
+                    const key = currentThinkingKey; // 捕获值，避免闭包引用被后续置 null 的变量
                     setStateMap((prev) => {
                       const updated = { ...prev };
-                      if (updated[currentThinkingKey!]) {
-                        updated[currentThinkingKey!] = {
-                          ...updated[currentThinkingKey!],
+                      if (updated[key]) {
+                        updated[key] = {
+                          ...updated[key],
                           status: 'done',
-                          content: thinkingContent || updated[currentThinkingKey!].content,
-                          label: updated[currentThinkingKey!].label || '推理分析',
+                          content: thinkingContent || updated[key].content,
+                          label: updated[key].label || '推理分析',
                         };
                       }
                       return updated;
@@ -297,11 +294,12 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
 
                   // 标记之前的 tool_call 为 done
                   if (currentToolCallKey) {
+                    const toolKey = currentToolCallKey; // 捕获值，避免闭包引用被后续置 null 的变量
                     setStateMap((prev) => {
                       const updated = { ...prev };
-                      if (updated[currentToolCallKey!]) {
-                        updated[currentToolCallKey!] = {
-                          ...updated[currentToolCallKey!],
+                      if (updated[toolKey]) {
+                        updated[toolKey] = {
+                          ...updated[toolKey],
                           status: 'done',
                         };
                       }
@@ -342,7 +340,7 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
                     if (last && last.role === 'assistant') {
                       updated[updated.length - 1] = {
                         ...last,
-                        content: [{ type: 'markdown', data: accumulatedText }],
+                        content: [{ type: 'markdown' as const, data: accumulatedText }],
                       };
                     }
                     return updated;
@@ -384,7 +382,7 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
                       updated[updated.length - 1] = {
                         ...last,
                         content: [
-                          { type: 'text', data: `Agent 错误: ${event.message || '未知错误'}` },
+                          { type: 'text' as const, data: `Agent 错误: ${event.message || '未知错误'}` },
                         ],
                       };
                     }
@@ -406,8 +404,8 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
             if (last && last.role === 'assistant') {
               updated[updated.length - 1] = {
                 ...last,
-                content: [{ type: 'markdown', data: accumulatedText }],
-                status: 'complete',
+                content: [{ type: 'markdown' as const, data: accumulatedText }],
+                status: 'complete' as const,
               };
             }
             return updated;
@@ -436,7 +434,7 @@ export function useAgentChat(activeId: string | null, _deepThinking: boolean): U
               if (last && last.role === 'assistant') {
                 updated[updated.length - 1] = {
                   ...last,
-                  content: [{ type: 'text', data: `请求失败: ${err.message}` }],
+                  content: [{ type: 'text' as const, data: `请求失败: ${err.message}` }],
                 };
               }
               return updated;

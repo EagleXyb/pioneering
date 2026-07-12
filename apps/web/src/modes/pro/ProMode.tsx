@@ -5,7 +5,6 @@ import { AnalysisLayout, ProMainHeader } from './components/AnalysisLayout';
 import { AnalysisMessageList } from './components/AnalysisMessageList';
 import { AnalysisInput } from './components/AnalysisInput';
 import { ProcessPanel } from './components/ProcessPanel';
-import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
 import './pro.css';
 
 export default function ProMode() {
@@ -15,7 +14,7 @@ export default function ProMode() {
   const { messages, status, stateMap, currentStateKey, sendMessage, abort } =
     useAgentChat(activeId, false);
 
-  useChatSync(activeId, messages as unknown as ChatMessagesData[]);
+  useChatSync(activeId, messages);
 
   if (!activeId) {
     return (
@@ -34,7 +33,7 @@ export default function ProMode() {
     <AnalysisLayout>
       <AnalysisLayout.Main>
         <ProMainHeader status={status} stateMap={stateMap} />
-        <AnalysisMessageList messages={messages as unknown as ChatMessagesData[]} status={status} />
+        <AnalysisMessageList messages={messages} status={status} />
         <AnalysisInput
           status={status}
           onSend={(text) => sendMessage({ prompt: text })}

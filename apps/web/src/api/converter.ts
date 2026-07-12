@@ -3,7 +3,7 @@
  * 将后端 Message 格式转换为 @tdesign-react/chat 的 ChatMessagesData 格式
  */
 import type { Message, FeedbackType } from '../api/types';
-import type { ChatMessagesData } from 'tdesign-web-components/lib/chat-engine';
+import type { ChatMessagesData } from '../types/tdesign';
 
 /**
  * 扩展的聊天消息类型，添加前端需要的反馈字段。

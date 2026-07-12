@@ -1,7 +1,7 @@
 import { ChatSender } from '@tdesign-react/chat';
 import { Button, Space } from 'tdesign-react';
 import { InternetIcon } from 'tdesign-icons-react';
-import type { ChatStatus } from 'tdesign-web-components/lib/chat-engine';
+import type { ChatStatus } from '../../../types/tdesign';
 
 interface Props {
   status: ChatStatus;

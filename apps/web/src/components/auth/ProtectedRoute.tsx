@@ -3,7 +3,7 @@
  */
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router';
-import { useAuthStore } from '../../stores/auth';
+import { useAuthStore } from '../../store/auth';
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { status, init } = useAuthStore();

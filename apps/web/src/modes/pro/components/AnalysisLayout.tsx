@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ChatStatus } from 'tdesign-web-components/lib/chat-engine';
+import type { ChatStatus } from '../../../types/tdesign';
 
 export function ProMainHeader({ status, stateMap }: { status: ChatStatus; stateMap: Record<string, any> }) {
   const stepCount = Object.keys(stateMap).length;

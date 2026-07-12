@@ -5,18 +5,25 @@
 
 const BASE_URL = '/api';
 
-/** 从 localStorage 获取 Token */
+/** 从 localStorage 或 sessionStorage 获取 Token */
 export function getToken(): string | null {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   return token && token.trim() ? token : null;
 }
 
-/** 存储 Token */
-export function setToken(token: string, refreshToken?: string): void {
-  localStorage.setItem('token', token);
+/** 存储 Token
+ * @param persistent true（默认）存 localStorage，浏览器关闭后仍保留；false 存 sessionStorage，关闭后清除
+ */
+export function setToken(token: string, refreshToken?: string, persistent = true): void {
+  const storage = persistent ? localStorage : sessionStorage;
+  const other = persistent ? sessionStorage : localStorage;
+  storage.setItem('token', token);
   if (refreshToken) {
-    localStorage.setItem('refreshToken', refreshToken);
+    storage.setItem('refreshToken', refreshToken);
   }
+  // 清除另一侧存储，避免两处同时存在造成混淆
+  other.removeItem('token');
+  other.removeItem('refreshToken');
 }
 
 /** 获取 Authorization 请求头（Token 为空时返回空对象） */
@@ -27,6 +34,8 @@ export function getAuthHeader(): Record<string, string> {
 export function clearToken(): void {
   localStorage.removeItem('token');
   localStorage.removeItem('refreshToken');
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('refreshToken');
 }
 
 /** 通用错误响应 */

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ChatMessage, ChatActionBar } from '@tdesign-react/chat';
-import type { ChatComment } from 'tdesign-web-components/lib/chat-engine';
-import type { TdChatActionsName } from 'tdesign-web-components/lib/chat-action';
+import type { ChatComment, TdChatActionsName } from '../../../types/tdesign';
 import type { ChatMessageData } from '../../../api/converter';
 import { feedbackMessage } from '../../../api/message';
 

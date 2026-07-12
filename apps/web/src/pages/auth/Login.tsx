@@ -4,7 +4,7 @@
  * 后端: POST /auth/login (username + password)
  */
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, NavLink } from 'react-router';
 import { Form, Input, Button, Checkbox, MessagePlugin } from 'tdesign-react';
 import type { SubmitContext } from 'tdesign-react/es/form/type';
 import AuthLayout from './AuthLayout';
@@ -23,7 +23,7 @@ export default function LoginPage() {
       if (ctx.validateResult !== true) return;
       clearError();
       const { username, password } = ctx.fields as Record<string, string>;
-      login({ username, password })
+      login({ username, password }, rememberMe)
         .then(() => {
           MessagePlugin.success('登录成功');
         })
@@ -48,10 +48,12 @@ export default function LoginPage() {
     <AuthLayout welcomeTitle="欢迎回来" welcomeSubtitle="请登录您的账号以继续">
       {/* Tab 切换（登录/注册） */}
       <div className={styles.tabSwitch}>
-        <button className={styles.tabBtnActive}>登录</button>
-        <button className={styles.tabBtn} onClick={() => navigate('/auth/register')}>
+        <NavLink to="/auth/login" className={({ isActive }) => isActive ? styles.tabBtnActive : styles.tabBtn}>
+          登录
+        </NavLink>
+        <NavLink to="/auth/register" className={({ isActive }) => isActive ? styles.tabBtnActive : styles.tabBtn}>
           注册
-        </button>
+        </NavLink>
       </div>
 
       {/* 登录表单 */}

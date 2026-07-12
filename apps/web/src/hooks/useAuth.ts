@@ -4,7 +4,7 @@
  */
 import { useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { useAuthStore } from '../stores/auth';
+import { useAuthStore } from '../store/auth';
 import { loginApi } from '../api/auth-api';
 import type { LoginRequest } from '../types/auth';
 
@@ -13,14 +13,16 @@ export function useAuth() {
   const location = useLocation();
   const { user, status, error, authenticate, logout: storeLogout, setStatus, setError } = useAuthStore();
 
-  /** 登录 — 后端 POST /auth/login，字段为 username + password */
+  /** 登录 — 后端 POST /auth/login，字段为 username + password
+   * @param rememberMe true 存 localStorage（跨会话保留），false 存 sessionStorage（关闭浏览器清除）
+   */
   const login = useCallback(
-    async (data: LoginRequest) => {
+    async (data: LoginRequest, rememberMe = true) => {
       setStatus('loading');
       setError(null);
       try {
         const res = await loginApi(data);
-        authenticate(res.user, res.token, res.refreshToken);
+        authenticate(res.user, res.token, res.refreshToken, rememberMe);
         // 跳回原始目标路径，或默认 /chat
         const from = (location.state as any)?.from || '/chat';
         navigate(from, { replace: true });

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import type { ChatStatus } from 'tdesign-web-components/lib/chat-engine';
+import type { ChatStatus } from '../../../types/tdesign';
 
 interface Props {
   status: ChatStatus;

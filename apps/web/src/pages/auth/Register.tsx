@@ -4,12 +4,12 @@
  * 后端: POST /auth/register（待实现，当前为预留接口）
  */
 import { useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, NavLink } from 'react-router';
 import { Form, Input, Button, MessagePlugin } from 'tdesign-react';
 import type { SubmitContext } from 'tdesign-react/es/form/type';
 import AuthLayout from './AuthLayout';
 import { registerApi } from '../../api/auth-api';
-import { useAuthStore } from '../../stores/auth';
+import { useAuthStore } from '../../store/auth';
 import styles from './auth.module.css';
 
 const { FormItem } = Form;
@@ -94,10 +94,12 @@ export default function RegisterPage() {
     <AuthLayout welcomeTitle="创建账号" welcomeSubtitle="注册后即可体验所有功能">
       {/* Tab 切换（登录/注册） */}
       <div className={styles.tabSwitch}>
-        <button className={styles.tabBtn} onClick={() => navigate('/auth/login')}>
+        <NavLink to="/auth/login" className={({ isActive }) => isActive ? styles.tabBtnActive : styles.tabBtn}>
           登录
-        </button>
-        <button className={styles.tabBtnActive}>注册</button>
+        </NavLink>
+        <NavLink to="/auth/register" className={({ isActive }) => isActive ? styles.tabBtnActive : styles.tabBtn}>
+          注册
+        </NavLink>
       </div>
 
       {/* 注册表单 */}

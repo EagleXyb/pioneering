@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import type { ChatMessagesData, ChatStatus } from 'tdesign-web-components/lib/chat-engine';
+import type { ChatMessagesData, ChatStatus } from '../../../types/tdesign';
 
 interface Props {
   messages: ChatMessagesData[];

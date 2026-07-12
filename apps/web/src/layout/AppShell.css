@@ -70,3 +70,87 @@
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(-10px); }
 }
+
+/* ===== Error Boundary ===== */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 40px;
+  text-align: center;
+  background: var(--bg-primary);
+}
+
+.error-boundary-icon {
+  color: var(--accent-red);
+  opacity: 0.7;
+}
+
+.error-boundary-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.error-boundary-desc {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  max-width: 480px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.error-boundary-btn {
+  margin-top: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  color: var(--accent-blue);
+  background: var(--accent-blue-light);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.error-boundary-btn:hover {
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+/* ===== 404 Not Found ===== */
+.not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100dvh;
+  background: var(--bg-primary);
+}
+
+.not-found-code {
+  font-size: 72px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+
+.not-found-text {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.not-found-btn {
+  margin-top: 12px;
+  padding: 10px 24px;
+  font-size: 14px;
+  color: #fff;
+  background: var(--accent-blue);
+  border-radius: var(--radius-sm);
+  transition: opacity var(--transition-fast);
+}
+
+.not-found-btn:hover {
+  opacity: 0.9;
+}

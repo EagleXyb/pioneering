@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/appStore';
 import { useConversationStore, type Conversation } from '../../store/conversationStore';
 import { useTheme } from '../../store/themeContext';
 import { useToast } from '../../store/toastContext';
+import { useMode } from '../../hooks/useMode';
 import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
 import './sidebar.css';
@@ -21,6 +22,7 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
   const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -72,19 +74,19 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
   const handleArchive = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
-    // TODO: 归档功能
+    showToast('归档功能开发中');
   };
 
   const handlePin = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
-    // TODO: 置顶功能
+    showToast('置顶功能开发中');
   };
 
   const handleAnalyze = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
-    // TODO: 分析功能
+    showToast('分享功能开发中');
   };
 
   return (
@@ -299,7 +301,8 @@ function AccountPopover() {
 }
 
 export function Sidebar() {
-  const { mode, setMode, sidebarOpen, toggleSidebar } = useAppStore();
+  const { sidebarOpen, toggleSidebar } = useAppStore();
+  const mode = useMode();
   const {
     conversations, activeId, activate, create, remove, updateTitle,
     fetchSessions, fetchMoreSessions, loading, error, total,
@@ -335,11 +338,10 @@ export function Sidebar() {
   }, [hasMore, loading, fetchMoreSessions]);
 
   const handleSwitchMode = useCallback((m: AppMode) => {
-    setMode(m);
     navigate(`/${m}`);
     // 移动端选择模式后自动关闭侧边栏（覆盖层模式），桌面端保持不变
     if (window.innerWidth <= 768 && sidebarOpen) toggleSidebar();
-  }, [setMode, navigate, sidebarOpen, toggleSidebar]);
+  }, [navigate, sidebarOpen, toggleSidebar]);
 
   const handleNewConversation = useCallback(async () => {
     try {
@@ -353,9 +355,8 @@ export function Sidebar() {
 
   const handleSelectConversation = useCallback((conv: Conversation) => {
     activate(conv.id);
-    setMode(conv.mode);
     navigate(`/${conv.mode}`);
-  }, [activate, setMode, navigate]);
+  }, [activate, navigate]);
 
   /** 点击删除按钮：打开确认弹框 */
   const handleDelete = useCallback((id: string) => {
@@ -375,7 +376,6 @@ export function Sidebar() {
         if (remaining.length > 0) {
           const first = remaining[0];
           activate(first.id);
-          setMode(first.mode);
           navigate(`/${first.mode}`);
         }
       }
@@ -385,7 +385,7 @@ export function Sidebar() {
       setDeleting(false);
       setDeleteTargetId(null);
     }
-  }, [deleteTargetId, activeId, remove, activate, setMode, navigate, showToast]);
+  }, [deleteTargetId, activeId, remove, activate, navigate, showToast]);
 
   /** 取消删除：关闭弹框 */
   const cancelDelete = useCallback(() => {
