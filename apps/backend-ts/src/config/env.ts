@@ -17,7 +17,7 @@ const EnvSchema = z.object({
   LLM_DEFAULT_MODEL: z.string().default('deepseek-chat'),
 
   HOST: z.string().default('0.0.0.0'),
-  PORT: z.coerce.number().int().default(9001),
+  PORT: z.coerce.number().int().default(6000),
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000'),
 
   UPLOAD_DIR: z.string().default('./uploads'),
