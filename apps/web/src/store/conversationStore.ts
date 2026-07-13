@@ -176,6 +176,15 @@ export const useConversationStore = create<ConversationStore>()(
         const existing = get().createPromise;
         if (existing) return existing;
 
+        // 创建前清理本地残留的空壳"新会话"（标题为"新会话"且无预览/无消息），
+        // 防止用户反复点击"新建会话"却不发消息导致列表中堆积空会话
+        const staleEmpty = get().conversations.filter(
+          (c) => c.title === '新会话' && !c.preview && c.id !== get().activeId && !c.id.startsWith('temp_'),
+        );
+        for (const stale of staleEmpty) {
+          sessionApi.deleteSession(stale.id, false).catch(() => {});
+        }
+
         // 乐观更新：立即生成本地临时会话并插入列表顶部、激活
         const tempId = `temp_${Date.now()}`;
         const now = new Date().toISOString();
@@ -191,10 +200,13 @@ export const useConversationStore = create<ConversationStore>()(
         };
         const prevActiveId = get().activeId;
         set({
-          conversations: [tempConversation, ...get().conversations],
+          conversations: [
+            tempConversation,
+            ...get().conversations.filter((c) => !staleEmpty.some((s) => s.id === c.id)),
+          ],
           activeId: tempId,
           sessionModes: { ...get().sessionModes, [tempId]: mode },
-          total: get().total + 1,
+          total: get().total + 1 - staleEmpty.length,
           creating: true,
           error: null,
         });
