@@ -1,9 +1,9 @@
 // System 路由 —— 对应 Python app/api/v1/system.py
 import { FastifyPluginAsync } from 'fastify'
 
-const SCHEMA_MODELS = { tags: ['system'], summary: '获取支持的模型列表', security: [] }
-const SCHEMA_CONFIG = { tags: ['system'], summary: '获取系统配置', security: [] }
-const SCHEMA_HEALTH = { tags: ['system'], summary: '健康检查', security: [] }
+const SCHEMA_MODELS = { tags: ['system'], summary: '获取支持的模型列表', security: [], response: { '2xx': { type: 'array', items: { type: 'object' } } } }
+const SCHEMA_CONFIG = { tags: ['system'], summary: '获取系统配置', security: [], response: { '2xx': { type: 'object' } } }
+const SCHEMA_HEALTH = { tags: ['system'], summary: '健康检查', security: [], response: { '2xx': { type: 'object' } } }
 
 // 对应 Python: SUPPORTED_MODELS
 const SUPPORTED_MODELS = [
