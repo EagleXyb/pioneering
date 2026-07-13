@@ -46,39 +46,103 @@ export interface ApiError {
   requestId?: string;
 }
 
-/** 统一请求方法 */
+/** 获取 refreshToken */
+function getRefreshToken(): string | null {
+  return localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
+}
+
+/** token 刷新状态：防止并发请求同时触发多次刷新 */
+let refreshPromise: Promise<boolean> | null = null;
+
+/** 尝试用 refreshToken 刷新 accessToken
+ * @returns true 刷新成功，false 刷新失败（需重新登录）
+ */
+async function tryRefreshToken(): Promise<boolean> {
+  // 防止并发刷新：多个 401 请求共享同一个刷新 Promise
+  if (refreshPromise) return refreshPromise;
+
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  refreshPromise = (async () => {
+    try {
+      const resp = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!resp.ok) return false;
+      const data = await resp.json().catch(() => null);
+      // 解包 { code, data, message } 格式
+      const authData = data?.data ?? data;
+      if (!authData?.token) return false;
+      // 存新 token（保持原有存储位置）
+      const wasPersistent = !!localStorage.getItem('token');
+      setToken(authData.token, authData.refreshToken, wasPersistent);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+/** 统一请求方法
+ * 401 时先尝试 token 刷新，刷新成功则重试原请求，刷新失败再清除 token
+ */
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
-  const token = getToken();
+  const doRequest = async (): Promise<Response> => {
+    const url = `${BASE_URL}${path}`;
+    const token = getToken();
 
-  const hasBody = options.method && options.method !== 'GET' && options.method !== 'DELETE' && options.body != null
+    const hasBody = options.method && options.method !== 'GET' && options.method !== 'DELETE' && options.body != null
 
-  const headers: Record<string, string> = {
-    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-    ...((options.headers as Record<string, string>) || {}),
+    const headers: Record<string, string> = {
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      ...((options.headers as Record<string, string>) || {}),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return fetch(url, { ...options, headers });
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response = await doRequest();
 
   // 204 无内容（删除/归档操作）
   if (response.status === 204) {
     return undefined as T;
   }
 
-  // 401 未授权 — 后续补全认证模块时在此刷新 Token
+  // 401 未授权 — 先尝试刷新 token，刷新成功则重试原请求
   if (response.status === 401) {
-    clearToken();
-    throw { code: 401, message: '未认证或 Token 已过期' } as ApiError;
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      // 刷新成功，用新 token 重试原请求
+      response = await doRequest();
+      if (response.status === 204) {
+        return undefined as T;
+      }
+      if (response.status !== 401) {
+        // 重试成功（非 401），继续正常解析
+      } else {
+        // 重试仍然 401，说明新 token 也无效，清除并抛错
+        clearToken();
+        throw { code: 401, message: '未认证或 Token 已过期，请重新登录' } as ApiError;
+      }
+    } else {
+      // 刷新失败，清除 token 并抛错
+      clearToken();
+      throw { code: 401, message: '未认证或 Token 已过期，请重新登录' } as ApiError;
+    }
   }
 
   // 解析响应体

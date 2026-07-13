@@ -16,6 +16,8 @@ export const UpdateSessionRequestSchema = z.object({
   title: z.string().nullable().optional(),
   model: z.string().nullable().optional(),
   modelConfig: z.record(z.unknown()).nullable().optional(),
+  /** 归档状态：true 归档，false 恢复，undefined 不变 */
+  isArchived: z.boolean().optional(),
 })
 export type UpdateSessionRequest = z.infer<typeof UpdateSessionRequestSchema>
 

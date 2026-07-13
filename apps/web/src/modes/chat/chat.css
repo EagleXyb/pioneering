@@ -71,6 +71,26 @@
   box-sizing: border-box;
 }
 
+/* 顶部加载更多历史消息哨兵 */
+.chat-load-more-top {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 0;
+  min-height: 32px;
+}
+
+.chat-load-more-text {
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.chat-load-more-hint {
+  font-size: 11px;
+  color: var(--text-tertiary, #bbb);
+  opacity: 0.6;
+}
+
 /* Input Area - TDesign ChatSender */
 .chat-input-area {
   position: relative;

@@ -56,6 +56,14 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user }),
+      // hydration 时根据 token 恢复 status，避免页面刷新后 status='idle' 导致闪到登录页
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const token = getToken();
+        if (token && state.status === 'idle') {
+          state.status = 'authenticated';
+        }
+      },
     },
   ),
 );

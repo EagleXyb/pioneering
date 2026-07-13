@@ -10,13 +10,14 @@ import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
 import './sidebar.css';
 
-function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename }: {
+function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename, onRestore }: {
   conv: Conversation;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onArchive: () => void;
   onRename: (title: string) => void;
+  onRestore?: () => void;
 }) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(conv.title);
@@ -88,6 +89,12 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename }
     e.stopPropagation();
     setMenuOpen(false);
     showToast('分享功能开发中');
+  };
+
+  const handleRestoreClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    onRestore?.();
   };
 
   return (
@@ -168,13 +175,23 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename }
               </svg>
               置顶
             </button>
-            <button className="sidebar-item-dropdown-item" onClick={handleArchive}>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="1" y="1.5" width="10" height="2.5" rx=".5"/>
-                <path d="M2.5 4v6a1 1 0 001 1h5a1 1 0 001-1V4"/>
-              </svg>
-              归档
-            </button>
+            {onRestore ? (
+              <button className="sidebar-item-dropdown-item" onClick={handleRestoreClick}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                恢复
+              </button>
+            ) : (
+              <button className="sidebar-item-dropdown-item" onClick={handleArchive}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="1" y="1.5" width="10" height="2.5" rx=".5"/>
+                  <path d="M2.5 4v6a1 1 0 001 1h5a1 1 0 001-1V4"/>
+                </svg>
+                归档
+              </button>
+            )}
             <button className="sidebar-item-dropdown-item" onClick={handleAnalyze}>
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 1024 1024">
                 <path fill="currentColor" d="M512 119.168c0-49.024 59.264-73.6 93.952-38.976l360.32 360.384a55.04 55.04 0 0 1 0 77.888l-360.32 360.32C571.264 913.536 512 888.96 512 839.936v-167.04c-126.08 8.96-220.096 70.592-284.544 133.568a595.5 595.5 0 0 0-96.96 124.544c-2.048 3.648-3.52 6.4-4.48 8.32l-1.088 1.92-.192.448-2.88 4.672A32 32 0 0 1 64 927.552c0-190.08 40.768-349.568 122.048-462.336C262.464 359.168 373.12 296.768 512 288.576V119.104zm64 200.32a32 32 0 0 1-32 32c-134.08 0-236.288 54.336-306.048 151.168-55.424 76.864-91.328 182.208-104.384 311.744 14.08-17.216 30.4-35.456 49.088-53.76C260.224 684.864 379.776 607.552 544 607.552a32 32 0 0 1 32 32v178.752l338.752-338.752L576 140.8v178.752z"/>
@@ -306,7 +323,8 @@ export function Sidebar() {
   const mode = useMode();
   const {
     conversations, activeId, activate, create, remove, updateTitle,
-    fetchSessions, fetchMoreSessions, loading, error, total,
+    fetchSessions, fetchMoreSessions, loading, error, total, hasMore,
+    archivedView, setArchivedView, restoreFromArchive,
   } = useConversationStore();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -322,7 +340,6 @@ export function Sidebar() {
 
   // 无限滚动：列表底部出现时加载下一页
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const hasMore = conversations.length < total;
 
   useEffect(() => {
     if (!hasMore || loading) return;
@@ -337,6 +354,21 @@ export function Sidebar() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [hasMore, loading, fetchMoreSessions]);
+
+  /** 切换归档视图 */
+  const handleToggleArchived = useCallback(() => {
+    setArchivedView(!archivedView);
+  }, [archivedView, setArchivedView]);
+
+  /** 恢复归档会话（将 isArchived 置 false） */
+  const handleRestore = useCallback(async (id: string) => {
+    try {
+      await restoreFromArchive(id);
+      MessagePlugin.success('已恢复到活跃会话');
+    } catch (e: any) {
+      MessagePlugin.error(`恢复失败: ${e?.message || '未知错误'}`);
+    }
+  }, [restoreFromArchive]);
 
   const handleSwitchMode = useCallback((m: AppMode) => {
     navigate(`/${m}`);
@@ -491,6 +523,20 @@ export function Sidebar() {
             </svg>
             新建会话
           </button>
+          {/* 归档视图切换：在活跃/归档会话列表之间切换 */}
+          <button
+            className={`btn-archive-toggle${archivedView ? ' active' : ''}`}
+            onClick={handleToggleArchived}
+            title={archivedView ? '返回活跃会话' : '查看归档会话'}
+            aria-pressed={archivedView}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="1" y="1.5" width="14" height="3" rx="0.5"/>
+              <path d="M2.5 5v8.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5"/>
+              <path d="M6 8h4"/>
+            </svg>
+            {archivedView ? '返回活跃会话' : '归档会话'}
+          </button>
         </div>
 
         <div className="sidebar-list">
@@ -506,11 +552,17 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* 首次加载失败 */}
+          {/* 首次加载失败
+            - 401 错误（token 已被清除）：引导用户重新登录
+            - 其他错误：重试加载 */}
           {!loading && error && conversations.length === 0 && (
             <div className="sidebar-list-status sidebar-list-error">
               <p className="sidebar-status-text">{error}</p>
-              <button className="sidebar-retry-btn" onClick={fetchSessions}>重试</button>
+              {error.includes('未认证') || error.includes('Token') ? (
+                <button className="sidebar-retry-btn" onClick={() => navigate('/auth/login')}>去登录</button>
+              ) : (
+                <button className="sidebar-retry-btn" onClick={() => fetchSessions()}>重试</button>
+              )}
             </div>
           )}
 
@@ -539,6 +591,7 @@ export function Sidebar() {
                       onDelete={() => handleDelete(item.id)}
                       onArchive={() => handleArchiveSession(item.id)}
                       onRename={(title) => { updateTitle(item.id, title).catch(() => showToast('重命名失败')); }}
+                      onRestore={archivedView ? () => handleRestore(item.id) : undefined}
                     />
                   ))}
                 </React.Fragment>

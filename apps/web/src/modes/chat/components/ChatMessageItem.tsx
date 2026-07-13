@@ -66,13 +66,13 @@ export function ChatMessageItem({ message, onReplay }: Props) {
           thinking: {
             collapsed: false,
             layout: 'border',
-            animation: 'circle',
+            animation: 'circle' as const,
             maxHeight: 300,
           },
           reasoning: {
             collapsed: false,
-            layout: 'border',
-            animation: 'circle',
+            layout: 'border' as const,
+            animation: 'circle' as const,
             maxHeight: 300,
           },
         }}

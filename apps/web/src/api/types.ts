@@ -59,13 +59,18 @@ export interface UpdateSessionRequest {
   title?: string;
   model?: string;
   modelConfig?: ModelConfig;
+  /** 归档状态：true 归档，false 恢复，undefined 不变 */
+  isArchived?: boolean;
 }
 
 export interface SessionListResponse {
   sessions: Session[];
   total: number;
-  page: number;
-  pageSize: number;
+  /** 游标分页：下一页游标（null 表示无更多数据） */
+  nextCursor: string | null;
+  hasMore: boolean;
+  /** 本页返回的条数上限（兼容旧字段） */
+  limit: number;
 }
 
 // ========== 消息相关 ==========

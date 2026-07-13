@@ -52,6 +52,13 @@ export class ForbiddenError extends HttpError {
   }
 }
 
+// P0-5 修复：配额超限/限流错误（429）
+export class TooManyRequestsError extends HttpError {
+  constructor(message: string) {
+    super(429, message)
+  }
+}
+
 export const errorHandlerPlugin = fp(async (fastify) => {
   fastify.setErrorHandler((error: any, req, reply) => {
     const requestId = (reply.getHeader('x-request-id') as string) ?? randomUUID()

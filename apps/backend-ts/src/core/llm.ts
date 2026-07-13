@@ -49,12 +49,16 @@ function toSse(data: Record<string, unknown>): string {
 }
 
 // 对应 Python: LlmService.stream_agui（流式 AG-UI 事件生成器）
+// P0-1 修复：增加 signal 参数，支持外部中止上游 LLM 请求
+// P1-6 修复：增加 usageRef 参数，捕获上游流式末块的 usage（OpenAI/DeepSeek 末块带 usage）
 export async function* streamAgui(
   messages: Message[],
   assistantMsgId: string,
   model?: string,
   temperature?: number,
   maxTokens?: number,
+  signal?: AbortSignal,
+  usageRef?: { current: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined },
 ): AsyncGenerator<string, void, unknown> {
   const url = `${env.LLM_BASE_URL}/chat/completions`
   const payload: Record<string, unknown> = {
@@ -117,6 +121,12 @@ export async function* streamAgui(
   }
 
   try {
+    // P0-1 修复：合并超时 signal 与外部 signal（停止生成时联动中止上游 LLM）
+    const timeoutSignal = AbortSignal.timeout(120_000)
+    const signals: AbortSignal[] = [timeoutSignal]
+    if (signal) signals.push(signal)
+    const combinedSignal = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -124,7 +134,7 @@ export async function* streamAgui(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(120_000),
+      signal: combinedSignal,
     })
 
     if (response.status !== 200) {
@@ -176,6 +186,16 @@ export async function* streamAgui(
         const reasoningContent = delta.reasoning_content || ''
         const content = delta.content || ''
 
+        // P1-6 修复：捕获上游流式末块的 usage（OpenAI/DeepSeek 末块带 usage 字段）
+        // 流结束时由调用方读取 usageRef.current 拿到真实用量
+        if (usageRef && chunk.usage) {
+          usageRef.current = {
+            promptTokens: chunk.usage.prompt_tokens,
+            completionTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens,
+          }
+        }
+
         if (reasoningContent) {
           yield ensureThinkStart()
           yield toSse({ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: reasoningContent, reasoning_content: reasoningContent })
@@ -195,8 +215,13 @@ export async function* streamAgui(
 
     // 流结束
     yield flushEnd()
-  } catch (e) {
+  } catch (e: any) {
+    // P0-1 修复：外部 abort（停止生成）时不再向已断开的连接写入 RUN_ERROR
+    // 仅刷新已开始的文本事件边界后直接返回
     yield flushEnd()
+    if (e?.name === 'AbortError' || signal?.aborted) {
+      return
+    }
     yield toSse({ type: 'RUN_ERROR', message: String(e), code: 'STREAM_ERROR' })
   }
 }

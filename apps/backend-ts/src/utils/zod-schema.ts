@@ -33,10 +33,14 @@ export function buildSchema(parts: {
   // @fastify/swagger 在无 response 时尝试从 handler 返回值推断类型，
   // reply.hijack() 路由会返回 undefined 导致 OpenAPI JSON 生成报错。
   // 此处兜底注入最低响应 schema 避免崩溃。
+  // 注意：必须使用空 schema {}，不能用 { type: 'object' }。
+  // 因为 fast-json-stringify 对 { type: 'object' }（无 properties）会过滤掉所有字段，
+  // 导致 handler 返回的对象被序列化为空对象 {}（如登录接口丢失 token 字段）。
+  // 空 schema {} 表示"无约束"，fast-json-stringify 会保留所有字段。
   if (parts.response) {
     schema.response = { '200': inlineZodRef(zodToJsonSchema(parts.response, 'response')) }
   } else {
-    schema.response = { '2xx': { type: 'object', description: '默认响应' } }
+    schema.response = { '2xx': {} }
   }
 
   return { schema, attachValidation: true }

@@ -1,6 +1,5 @@
 import { ChatSender } from '@tdesign-react/chat';
 import { Button, Space } from 'tdesign-react';
-import { InternetIcon } from 'tdesign-icons-react';
 import type { ChatStatus } from '../../../types/tdesign';
 
 interface Props {
@@ -11,11 +10,11 @@ interface Props {
   onStop: () => void;
   r1Active: boolean;
   onR1Change: (v: boolean) => void;
-  searchActive: boolean;
-  onSearchChange: (v: boolean) => void;
 }
 
-export function ChatInput({ status, value, onChange, onSend, onStop, r1Active, onR1Change, searchActive, onSearchChange }: Props) {
+// P1-3 修复：联网查询后端未实现（netSearch 为空壳参数），移除按钮避免误导用户
+// 保留 ChatCompletionRequest.netSearch 与后端 Schema 字段，便于未来接入搜索 API 时恢复
+export function ChatInput({ status, value, onChange, onSend, onStop, r1Active, onR1Change }: Props) {
 
   // 输入变化处理
   const handleChange = (e: CustomEvent<string>) => {
@@ -57,16 +56,6 @@ export function ChatInput({ status, value, onChange, onSend, onStop, r1Active, o
             onClick={() => onR1Change(!r1Active)}
           >
             R1.深度思考
-          </Button>
-          <Button
-            variant="outline"
-            theme={searchActive ? 'primary' : 'default'}
-            icon={<InternetIcon />}
-            size="small"
-            shape="round"
-            onClick={() => onSearchChange(!searchActive)}
-          >
-            联网查询
           </Button>
         </Space>
       </div>

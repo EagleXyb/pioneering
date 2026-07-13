@@ -10,13 +10,17 @@ import type {
   UpdateSessionRequest,
 } from './types';
 
-/** 获取会话列表 */
+/** 获取会话列表（游标分页）
+ * @param cursor 上一页返回的 nextCursor，首次加载传 undefined
+ * @param limit 每页条数，默认 50
+ * @param archived 是否只取已归档；undefined 表示全部
+ */
 export function getSessions(
-  page = 1,
-  pageSize = 20,
-  archived = false,
+  cursor?: string,
+  limit = 50,
+  archived?: boolean,
 ): Promise<SessionListResponse> {
-  return get<SessionListResponse>('/chat/sessions', { page, pageSize, archived });
+  return get<SessionListResponse>('/chat/sessions', { cursor, limit, archived });
 }
 
 /** 创建新会话 */

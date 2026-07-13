@@ -8,15 +8,27 @@ interface Props {
   messages: ChatMessageData[];
   status: ChatStatus;
   onReplay?: (messageId: string) => void;
+  /** 是否还有更早的历史消息可加载 */
+  hasMoreHistory?: boolean;
+  /** 是否正在加载更早的历史消息 */
+  loadingMoreHistory?: boolean;
+  /** 加载更早历史消息的回调 */
+  onLoadMoreHistory?: () => void;
 }
 
-export function ChatMessageList({ messages, status, onReplay }: Props) {
+export function ChatMessageList({
+  messages,
+  status,
+  onReplay,
+  hasMoreHistory,
+  loadingMoreHistory,
+  onLoadMoreHistory,
+}: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
 
-  // 使用 IntersectionObserver 监听底部哨兵元素是否可见，
-  // 从而判断用户是否在滚动容器底部附近。用户向上翻阅时哨兵离开视口，
-  // isNearBottomRef 变为 false，阻止自动滚动干扰用户阅读。
+  // 底部哨兵：判断用户是否在底部附近，用于自动滚动
   useEffect(() => {
     const el = bottomRef.current;
     if (!el) return;
@@ -27,6 +39,23 @@ export function ChatMessageList({ messages, status, onReplay }: Props) {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // 顶部哨兵：当用户滚动到顶部时加载更早的历史消息
+  useEffect(() => {
+    if (!hasMoreHistory || loadingMoreHistory || !onLoadMoreHistory) return;
+    const el = topSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onLoadMoreHistory();
+        }
+      },
+      { threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreHistory, loadingMoreHistory, onLoadMoreHistory]);
 
   // 计算最后一条消息的文本总长度，作为流式内容增长的依赖项。
   // 仅依赖 messages.length 无法捕获流式增量；依赖 messages 引用则过于频繁。
@@ -49,6 +78,16 @@ export function ChatMessageList({ messages, status, onReplay }: Props) {
 
   return (
     <div className="chat-messages">
+      {/* 顶部加载更多哨兵：用户滚动到顶部时触发加载更早消息 */}
+      {hasMoreHistory && (
+        <div ref={topSentinelRef} className="chat-load-more-top">
+          {loadingMoreHistory ? (
+            <span className="chat-load-more-text">加载历史消息...</span>
+          ) : (
+            <span className="chat-load-more-hint">滚动到顶部加载更多</span>
+          )}
+        </div>
+      )}
       {messages.map((msg) => (
         <ChatMessageItem key={msg.id} message={msg} onReplay={onReplay} />
       ))}
