@@ -20,7 +20,8 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { buildSchema } from '../utils/zod-schema.js'
 
-type Message = { role: string; content: string }
+// P2-8 修复：Message 增加 id 字段，供 doRegenerate 按 ID 定位父消息
+type Message = { role: string; content: string; id?: string }
 
 // P0-1 修复：运行中的生成任务注册表
 // key: runId, value: { abortController, sessionId, userId }
@@ -48,12 +49,18 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       app.addHook('preHandler', authGuard)
 
       // 对应 Python: _verify_session_owner
+      // P2-7 修复：区分"不存在"(404) 和"无权访问"(403)
+      // 原实现用 findFirst({ where: { id, userId } }) 合并查询，
+      // 无法区分会话不存在与会话不属于当前用户
       async function verifySessionOwner(sessionId: string, userId: string) {
-        const session = await fastify.prisma.chatSession.findFirst({
-          where: { id: sessionId, userId },
+        const session = await fastify.prisma.chatSession.findUnique({
+          where: { id: sessionId },
         })
         if (!session) {
           throw new NotFoundError('会话不存在')
+        }
+        if (session.userId !== userId) {
+          throw new ForbiddenError('无权访问该会话')
         }
         return session
       }
@@ -310,6 +317,58 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           ])
           return { message: '会话已删除' }
         }
+      })
+
+      // P2-1 修复：AI 摘要生成会话标题
+      // 首轮对话后根据消息内容调用 LLM 生成简洁标题，替换截断逻辑
+      app.post('/sessions/:sessionId/generate-title', buildSchema({
+        params: z.object({ sessionId: z.string() }),
+        tags: ['chat'],
+        summary: 'AI 生成会话标题',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const { sessionId } = req.params as { sessionId: string }
+        await verifySessionOwner(sessionId, req.user.id)
+
+        // 读取最近 4 条消息作为摘要上下文
+        const recentMessages = await fastify.prisma.chatMessage.findMany({
+          where: { sessionId, role: { not: 'system' } },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 4,
+        })
+        recentMessages.reverse()
+
+        if (recentMessages.length === 0) {
+          return { title: '新对话' }
+        }
+
+        // 构建摘要请求
+        const contextMessages: Message[] = [
+          { role: 'system', content: '请根据以下对话内容生成一个简洁的中文标题（不超过20个字，不要加引号、不要加句号、不要换行）。直接输出标题文本，不要有任何额外解释。' },
+          ...recentMessages.map((m) => ({ role: m.role, content: m.content.slice(0, 500) })),
+        ]
+
+        let title = ''
+        try {
+          const result = await llmService.chatCompletion(contextMessages, undefined, 0.3, 100)
+          const choices = (result as any).choices || [{}]
+          title = (choices[0]?.message?.content || '').trim().replace(/["""''。]/g, '').slice(0, 30)
+        } catch {
+          // LLM 调用失败，回退到截断
+        }
+
+        // 回退：使用首条用户消息截断
+        if (!title) {
+          const firstUser = recentMessages.find((m) => m.role === 'user')
+          title = firstUser ? firstUser.content.slice(0, 30) : '新对话'
+        }
+
+        await fastify.prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { title },
+        })
+
+        return { title }
       })
 
       // ========== 消息 ==========
@@ -859,7 +918,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         })
         history.reverse()
         for (const m of history) {
-          messages.push({ role: m.role, content: m.content })
+          messages.push({ role: m.role, content: m.content, id: m.id })
         }
 
         return messages
@@ -889,16 +948,12 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           // 若重生的是 assistant，定位其父 user 消息；若直接是 user 消息则用其本身
           const targetUserId = parentMsg.role === 'assistant' ? parentMsg.parentMessageId : parentMsg.id
           if (targetUserId) {
-            const targetUserMsg = await fastify.prisma.chatMessage.findUnique({
-              where: { id: targetUserId },
-            })
-            if (targetUserMsg) {
-              const parentIdx = messages.findIndex(
-                (m) => m.role === 'user' && m.content === targetUserMsg.content,
-              )
-              if (parentIdx >= 0) {
-                messages = messages.slice(0, parentIdx + 1)
-              }
+            // P2-8 修复：按 ID 匹配而非按 content 匹配
+            // 原实现用 m.content === targetUserMsg.content 匹配，
+            // 相同内容多轮对话会命中首条，导致上下文截取错误
+            const parentIdx = messages.findIndex((m) => m.id === targetUserId)
+            if (parentIdx >= 0) {
+              messages = messages.slice(0, parentIdx + 1)
             }
           }
         }

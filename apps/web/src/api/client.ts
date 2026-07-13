@@ -47,7 +47,7 @@ export interface ApiError {
 }
 
 /** 获取 refreshToken */
-function getRefreshToken(): string | null {
+export function getRefreshToken(): string | null {
   return localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
 }
 

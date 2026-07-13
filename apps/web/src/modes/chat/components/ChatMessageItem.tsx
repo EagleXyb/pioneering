@@ -3,6 +3,7 @@ import { ChatMessage, ChatActionBar } from '@tdesign-react/chat';
 import type { ChatComment, TdChatActionsName } from '../../../types/tdesign';
 import type { ChatMessageData } from '../../../api/converter';
 import { feedbackMessage } from '../../../api/message';
+import { useToast } from '../../../store/toastContext';
 
 interface Props {
   message: ChatMessageData;
@@ -19,10 +20,27 @@ export function ChatMessageItem({ message, onReplay }: Props) {
   const [comment, setComment] = useState<ChatComment>(
     feedbackToComment[message.feedback ?? 'none'] || '',
   );
+  const { showToast } = useToast();
 
   const handleAction = (name: TdChatActionsName) => {
     if (name === 'replay') {
       onReplay?.(message.id);
+      return;
+    }
+
+    // P2-5 修复：分享按钮 — 复制消息内容到剪贴板
+    if (name === 'share') {
+      const text = message.content
+        ?.filter((c) => c.type === 'text' || c.type === 'markdown')
+        .map((c) => (c as { data: string }).data)
+        .join('\n') || '';
+      if (text) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('已复制消息内容，可粘贴分享');
+        }).catch(() => {
+          showToast('复制失败，请手动选择文本');
+        });
+      }
       return;
     }
 

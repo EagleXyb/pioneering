@@ -5,7 +5,8 @@
 import { useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useAuthStore } from '../store/auth';
-import { loginApi } from '../api/auth-api';
+import { loginApi, logoutApi } from '../api/auth-api';
+import { getRefreshToken } from '../api/client';
 import type { LoginRequest } from '../types/auth';
 
 export function useAuth() {
@@ -36,8 +37,14 @@ export function useAuth() {
     [navigate, location, authenticate, setStatus, setError],
   );
 
-  /** 登出 — 清除本地状态并跳转登录页 */
+  /** 登出 — 通知后端撤销 refresh token（best-effort），再清除本地状态并跳转登录页 */
   const logout = useCallback(async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      await logoutApi(refreshToken ?? undefined);
+    } catch {
+      // 后端不可用或已失效时忽略，仍清除本地状态，避免用户无法登出
+    }
     storeLogout();
     navigate('/auth/login', { replace: true });
   }, [navigate, storeLogout]);

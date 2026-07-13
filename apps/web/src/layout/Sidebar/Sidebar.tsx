@@ -6,6 +6,7 @@ import { useConversationStore, type Conversation } from '../../store/conversatio
 import { useTheme } from '../../store/themeContext';
 import { useToast } from '../../store/toastContext';
 import { useMode } from '../../hooks/useMode';
+import { useAuth } from '../../hooks/useAuth';
 import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
 import './sidebar.css';
@@ -220,7 +221,9 @@ function AccountPopover() {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const { showToast } = useToast();
+  const { logout } = useAuth();
   const ref = useRef<HTMLDivElement>(null);
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -233,6 +236,17 @@ function AccountPopover() {
       return () => document.removeEventListener('click', handler);
     }
   }, [open]);
+
+  /** 确认退出登录：调后端撤销 token + 清本地 + 跳登录页，并用 TDesign 消息提示反馈 */
+  const handleLogout = useCallback(async () => {
+    setLogoutOpen(false);
+    try {
+      await logout();
+      MessagePlugin.success('已登出');
+    } catch {
+      MessagePlugin.error('退出失败，请重试');
+    }
+  }, [logout]);
 
   return (
     <div className="sidebar-account" ref={ref}>
@@ -306,7 +320,7 @@ function AccountPopover() {
 
           <div className="account-popover-divider" />
 
-          <button className="account-popover-item account-popover-logout" onClick={() => { setOpen(false); showToast('已登出'); }}>
+          <button className="account-popover-item account-popover-logout" onClick={() => { setOpen(false); setLogoutOpen(true); }}>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M6 14H3a1 1 0 01-1-1V3a1 1 0 011-1h3M11 10l3-3-3-3M14 7H6"/>
             </svg>
@@ -314,6 +328,18 @@ function AccountPopover() {
           </button>
         </div>
       )}
+
+      <Dialog
+        visible={logoutOpen}
+        header="退出登录"
+        body="确认退出当前账号吗？"
+        confirmBtn="确认退出"
+        cancelBtn="取消"
+        onConfirm={() => void handleLogout()}
+        onCancel={() => setLogoutOpen(false)}
+        onClose={() => setLogoutOpen(false)}
+        destroyOnClose
+      />
     </div>
   );
 }
@@ -402,20 +428,18 @@ export function Sidebar() {
     try {
       await remove(id, true);
       if (wasActive) {
-        const remaining = useConversationStore.getState().conversations.filter(
-          (c) => c.id !== id,
-        );
-        if (remaining.length > 0) {
-          const first = remaining[0];
-          activate(first.id);
-          navigate(`/${first.mode}`);
+        // P2-2 修复：store 的 remove 已自动切换到相邻会话，这里只需导航到对应模式
+        const state = useConversationStore.getState();
+        if (state.activeId) {
+          const conv = state.conversations.find((c) => c.id === state.activeId);
+          if (conv) navigate(`/${conv.mode}`);
         }
       }
       MessagePlugin.success('已归档');
     } catch {
       MessagePlugin.error('归档失败');
     }
-  }, [activeId, remove, activate, navigate, showToast]);
+  }, [activeId, remove, navigate]);
 
   /** 确认删除：从数据库物理删除 */
   const confirmDelete = useCallback(async () => {
@@ -426,11 +450,11 @@ export function Sidebar() {
     try {
       await remove(id, false);
       if (wasActive) {
-        const remaining = useConversationStore.getState().conversations;
-        if (remaining.length > 0) {
-          const first = remaining[0];
-          activate(first.id);
-          navigate(`/${first.mode}`);
+        // P2-2 修复：store 的 remove 已自动切换到相邻会话，这里只需导航到对应模式
+        const state = useConversationStore.getState();
+        if (state.activeId) {
+          const conv = state.conversations.find((c) => c.id === state.activeId);
+          if (conv) navigate(`/${conv.mode}`);
         }
       }
       MessagePlugin.success('已删除');
@@ -440,7 +464,7 @@ export function Sidebar() {
       setDeleting(false);
       setDeleteTargetId(null);
     }
-  }, [deleteTargetId, activeId, remove, activate, navigate, showToast]);
+  }, [deleteTargetId, activeId, remove, navigate]);
 
   /** 取消删除：关闭弹框 */
   const cancelDelete = useCallback(() => {

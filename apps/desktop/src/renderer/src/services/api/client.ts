@@ -114,6 +114,10 @@ class ApiClient {
     return this.accessToken
   }
 
+  getRefreshToken(): string | null {
+    return this.refreshToken
+  }
+
   onTokensChange(callback: (tokens: AuthTokens | null) => void): void {
     this.onTokenChange = callback
   }

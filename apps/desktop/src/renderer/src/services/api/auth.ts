@@ -55,7 +55,8 @@ export const authService = {
   // 无论后端是否成功都清除本地 token（避免后端不可用时用户无法登出）。
   async logout(): Promise<void> {
     try {
-      await apiClient.post('/auth/logout')
+      const refreshToken = apiClient.getRefreshToken()
+      await apiClient.post('/auth/logout', refreshToken ? { refresh_token: refreshToken } : undefined)
     } catch {
       // 后端不可用或已失效时忽略，仍继续清除本地 token
     } finally {

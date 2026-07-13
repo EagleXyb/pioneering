@@ -242,6 +242,34 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         return generateAuthResponse(user)
       })
 
+      // 退出登录 —— 撤销服务端 refresh token，使会话真正失效
+      // 需认证（authGuard）：仅登录用户可调用，从 req.user.id 确保只能撤销自己的 token
+      app.post('/logout', {
+        preHandler: authGuard,
+        ...buildSchema({
+          body: z.object({ refresh_token: z.string().optional() }),
+          tags: ['auth'],
+          summary: '退出登录',
+          security: [{ BearerAuth: [] }],
+        }),
+      }, async (req) => {
+        const body = (req.body as { refresh_token?: string } | null) ?? {}
+        if (body.refresh_token) {
+          // 撤销当前设备传入的 refresh token（带 userId 校验，防止越权撤销他人 token）
+          await fastify.prisma.refreshToken.updateMany({
+            where: { token: body.refresh_token, userId: req.user.id, revoked: false },
+            data: { revoked: true },
+          })
+        } else {
+          // 未提供 refresh_token：撤销该用户所有未过期 token（登出全部设备）
+          await fastify.prisma.refreshToken.updateMany({
+            where: { userId: req.user.id, revoked: false, expiresAt: { gt: new Date() } },
+            data: { revoked: true },
+          })
+        }
+        return { success: true }
+      })
+
     },
     { prefix: '/auth' },
   )

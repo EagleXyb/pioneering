@@ -39,8 +39,12 @@ export const responseWrapperPlugin = fp(async (fastify) => {
     }
 
     // 跳过已包装的响应（避免双重包装）
+    // P2-6 修复：error-handler 已发送 { code, message, details, requestId }，
+    // 但缺少 data 字段，导致此处 dedup 检查未命中，错误响应被二次重包，
+    // 原始 requestId 被覆盖、details 被塌缩为 message。
+    // 修复：同时识别成功响应（code + data）和错误响应（code + requestId）
     const parsed = safeJsonParse(payload)
-    if (parsed && typeof parsed === 'object' && 'code' in (parsed as object) && 'data' in (parsed as object)) {
+    if (parsed && typeof parsed === 'object' && 'code' in (parsed as object) && ('data' in (parsed as object) || 'requestId' in (parsed as object))) {
       return payload
     }
 

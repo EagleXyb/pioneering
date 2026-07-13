@@ -55,6 +55,8 @@ interface ConversationStore {
   updatePreview: (id: string, preview: string) => void;
   /** 更新标题（调用后端 API） */
   updateTitle: (id: string, title: string) => Promise<void>;
+  /** P2-1 修复：仅更新本地标题（后端已通过 generateTitle 更新，无需再调 API） */
+  setTitle: (id: string, title: string) => void;
   /** 恢复归档会话为活跃（调用后端 API 更新 isArchived=false） */
   restoreFromArchive: (id: string) => Promise<void>;
 }
@@ -272,9 +274,19 @@ export const useConversationStore = create<ConversationStore>()(
         set((s) => {
           const filtered = s.conversations.filter((c) => c.id !== id);
           const { [id]: _, ...restModes } = s.sessionModes;
+          // P2-2 修复：删除当前活跃会话时自动切换到相邻会话
+          // 找到被删除项在原列表中的位置，优先选下一个，没有则选上一个
+          let newActiveId = s.activeId;
+          if (s.activeId === id) {
+            const oldIdx = s.conversations.findIndex((c) => c.id === id);
+            // filtered[oldIdx] 是原列表中 oldIdx+1 位置的项（下一个）
+            // filtered[oldIdx-1] 是原列表中 oldIdx-1 位置的项（上一个）
+            const adjacent = filtered[oldIdx] || filtered[oldIdx - 1] || null;
+            newActiveId = adjacent ? adjacent.id : null;
+          }
           return {
             conversations: filtered,
-            activeId: s.activeId === id ? null : s.activeId,
+            activeId: newActiveId,
             sessionModes: restModes,
             total: Math.max(0, s.total - 1),
           };
@@ -296,6 +308,13 @@ export const useConversationStore = create<ConversationStore>()(
           ),
         }));
       },
+
+      setTitle: (id, title) =>
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === id ? { ...c, title } : c
+          ),
+        })),
 
       restoreFromArchive: async (id) => {
         await sessionApi.updateSession(id, { isArchived: false });

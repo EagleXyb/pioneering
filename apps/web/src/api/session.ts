@@ -45,3 +45,8 @@ export function updateSession(
 export function deleteSession(sessionId: string, archive = true): Promise<void> {
   return del<void>(`/chat/sessions/${sessionId}`, { archive });
 }
+
+/** P2-1 修复：AI 生成会话标题 */
+export function generateTitle(sessionId: string): Promise<{ title: string }> {
+  return post<{ title: string }>(`/chat/sessions/${sessionId}/generate-title`);
+}

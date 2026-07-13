@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { ChatMessagesData } from '../../../types/tdesign';
 import { useConversationStore } from '../../../store/conversationStore';
+import { generateTitle } from '../../../api/session';
 
 export function useChatSync(conversationId: string | null, messages: ChatMessagesData[]) {
   const updatePreview = useConversationStore((s) => s.updatePreview);
   const updateTitle = useConversationStore((s) => s.updateTitle);
+  const setTitle = useConversationStore((s) => s.setTitle);
   const doneRef = useRef(false);
+  /** 临时截断标题是否已设置（防止重复调用 updateTitle） */
+  const tempTitleRef = useRef(false);
   /** 上一次处理的 conversationId，用于检测会话切换 */
   const prevConvIdRef = useRef<string | null>(conversationId);
   /**
@@ -22,6 +26,7 @@ export function useChatSync(conversationId: string | null, messages: ChatMessage
       staleMessagesRef.current = messages;
       prevConvIdRef.current = conversationId;
       doneRef.current = false;
+      tempTitleRef.current = false;
     }
 
     if (!conversationId || messages.length === 0) return;
@@ -39,18 +44,33 @@ export function useChatSync(conversationId: string | null, messages: ChatMessage
 
     if (!doneRef.current) {
       const firstUser = messages.find((m) => m.role === 'user');
+      // P2-1 修复：检测助手是否已回复实际内容
+      const hasAssistantContent = messages.some(
+        (m) => m.role === 'assistant' && m.content?.some((c: any) => {
+          const data = (c as any).data;
+          return typeof data === 'string' && data.length > 0;
+        }),
+      );
+
       if (firstUser) {
         const userText = firstUser.content?.find((c: any) => c.type === 'text' || c.type === 'markdown');
         const rawTitle = typeof userText?.data === 'string' ? userText.data.trim() : '';
-        if (rawTitle) {
+
+        if (hasAssistantContent && !conversationId.startsWith('temp_')) {
+          // P2-1 修复：完整对话后用 AI 生成标题，替换截断逻辑
+          const fallbackTitle = rawTitle
+            ? (rawTitle.length > 30 ? rawTitle.slice(0, 30) + '...' : rawTitle)
+            : '新对话';
+          generateTitle(conversationId)
+            .then((resp) => setTitle(conversationId, resp.title || fallbackTitle))
+            .catch(() => setTitle(conversationId, fallbackTitle));
+          doneRef.current = true;
+        } else if (rawTitle && !conversationId.startsWith('temp_') && !tempTitleRef.current) {
+          // 仅有用户消息时，先用截断做临时标题（不标记 doneRef，等助手回复后生成 AI 标题）
           const title = rawTitle.length > 30 ? rawTitle.slice(0, 30) + '...' : rawTitle;
-          // 临时会话尚未有真实 ID，跳过 updateTitle 避免后端 404；
-          // 待后端创建完成、conversationId 变为真实 ID 后 doneRef 会重置，届时再更新
-          if (!conversationId.startsWith('temp_')) {
-            updateTitle(conversationId, title).catch(() => {});
-            doneRef.current = true;
-          }
-        } else {
+          updateTitle(conversationId, title).catch(() => {});
+          tempTitleRef.current = true;
+        } else if (!rawTitle) {
           // 无有效标题文本，标记完成避免反复尝试
           doneRef.current = true;
         }
