@@ -6,14 +6,31 @@ export function useChatSync(conversationId: string | null, messages: ChatMessage
   const updatePreview = useConversationStore((s) => s.updatePreview);
   const updateTitle = useConversationStore((s) => s.updateTitle);
   const doneRef = useRef(false);
+  /** 上一次处理的 conversationId，用于检测会话切换 */
+  const prevConvIdRef = useRef<string | null>(conversationId);
+  /**
+   * 会话切换瞬间捕获的 messages 引用（可能是上个会话残留的旧消息）。
+   * 切换会话时 activeId 立即更新但 messages 状态滞后，若不防护，
+   * useChatSync 会用新会话 ID + 旧会话消息调用 updateTitle，
+   * 导致新会话标题被串改成上一个会话的标题。
+   */
+  const staleMessagesRef = useRef<ChatMessagesData[] | null>(null);
 
-  // 会话切换时重置 doneRef，确保新会话的标题能正常更新
   useEffect(() => {
-    doneRef.current = false;
-  }, [conversationId]);
+    // 会话切换检测（须在任何 early return 之前执行，否则切换到空会话时无法重置 doneRef）
+    if (prevConvIdRef.current !== conversationId) {
+      staleMessagesRef.current = messages;
+      prevConvIdRef.current = conversationId;
+      doneRef.current = false;
+    }
 
-  useEffect(() => {
     if (!conversationId || messages.length === 0) return;
+
+    // 防护：messages 仍是切换瞬间捕获的旧引用 → 是上个会话残留消息，跳过避免串改标题
+    if (messages === staleMessagesRef.current) {
+      return;
+    }
+    staleMessagesRef.current = null;
 
     const last = messages[messages.length - 1];
     const textContent = last.content?.find((c: any) => c.type === 'text' || c.type === 'markdown');
