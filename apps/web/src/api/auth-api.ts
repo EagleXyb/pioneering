@@ -10,7 +10,7 @@ export function loginApi(data: LoginRequest): Promise<AuthResponse> {
   return post<AuthResponse>('/auth/login', data);
 }
 
-/** 注册 POST /auth/register（后端待实现，当前为预留接口） */
+/** 注册 POST /auth/register */
 export function registerApi(data: RegisterRequest): Promise<AuthResponse> {
   return post<AuthResponse>('/auth/register', data);
 }

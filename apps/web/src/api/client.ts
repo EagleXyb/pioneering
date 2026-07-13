@@ -54,8 +54,10 @@ async function request<T>(
   const url = `${BASE_URL}${path}`;
   const token = getToken();
 
+  const hasBody = options.method && options.method !== 'GET' && options.method !== 'DELETE' && options.body != null
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 

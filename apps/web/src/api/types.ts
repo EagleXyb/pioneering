@@ -14,24 +14,14 @@ export interface ErrorResponse {
 
 // ========== 用户相关 ==========
 
-export interface User {
-  id: string;
-  username: string;
-  nickname: string;
-  avatar: string;
-  email?: string;
-  phone?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface QuotaInfo {
   totalTokens: number;
   usedTokens: number;
-  remainingTokens: number;
   dailyLimit: number;
   dailyUsed: number;
+  resetAt?: string | null;
 }
+// 剩余 Token 由前端派生：totalTokens - usedTokens
 
 // ========== 会话相关 ==========
 
@@ -129,29 +119,9 @@ export interface ChatCompletionRequest {
   maxTokens?: number;
   stream?: boolean;
   parentMessageId?: string;
-}
-
-export interface ChatCompletionChoice {
-  index: number;
-  delta: {
-    role?: string;
-    content?: string;
-  };
-  finishReason?: 'stop' | 'length' | 'content_filter' | null;
-}
-
-export interface ChatCompletionUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
-
-export interface ChatCompletionResponse {
-  id: string;
-  sessionId: string;
-  choices: ChatCompletionChoice[];
-  usage?: ChatCompletionUsage;
-  createdAt: string;
+  deepThink?: boolean;
+  netSearch?: boolean;
+  messageId?: string;
 }
 
 // ========== 停止生成 ==========
@@ -177,6 +147,5 @@ export interface RegenerateRequest {
 // ========== 消息反馈 ==========
 
 export interface FeedbackRequest {
-  messageId: string;
   feedback: FeedbackType;
 }

@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Dialog } from 'tdesign-react';
+import { Dialog, MessagePlugin } from 'tdesign-react';
 import { useAppStore } from '../../store/appStore';
 import { useConversationStore, type Conversation } from '../../store/conversationStore';
 import { useTheme } from '../../store/themeContext';
@@ -10,11 +10,12 @@ import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
 import './sidebar.css';
 
-function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
+function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename }: {
   conv: Conversation;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onArchive: () => void;
   onRename: (title: string) => void;
 }) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -74,7 +75,7 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onRename }: {
   const handleArchive = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
-    showToast('归档功能开发中');
+    onArchive();
   };
 
   const handlePin = (e: React.MouseEvent) => {
@@ -363,6 +364,27 @@ export function Sidebar() {
     setDeleteTargetId(id);
   }, []);
 
+  /** 归档会话（不删除数据，隐藏到归档列表） */
+  const handleArchiveSession = useCallback(async (id: string) => {
+    const wasActive = id === activeId;
+    try {
+      await remove(id, true);
+      if (wasActive) {
+        const remaining = useConversationStore.getState().conversations.filter(
+          (c) => c.id !== id,
+        );
+        if (remaining.length > 0) {
+          const first = remaining[0];
+          activate(first.id);
+          navigate(`/${first.mode}`);
+        }
+      }
+      MessagePlugin.success('已归档');
+    } catch {
+      MessagePlugin.error('归档失败');
+    }
+  }, [activeId, remove, activate, navigate, showToast]);
+
   /** 确认删除：从数据库物理删除 */
   const confirmDelete = useCallback(async () => {
     const id = deleteTargetId;
@@ -379,8 +401,9 @@ export function Sidebar() {
           navigate(`/${first.mode}`);
         }
       }
-    } catch {
-      showToast('删除失败');
+      MessagePlugin.success('已删除');
+    } catch (e: any) {
+      MessagePlugin.error(`删除失败: ${e?.message || e?.code || '未知错误'}`);
     } finally {
       setDeleting(false);
       setDeleteTargetId(null);
@@ -514,6 +537,7 @@ export function Sidebar() {
                       isActive={item.id === activeId}
                       onSelect={() => handleSelectConversation(item)}
                       onDelete={() => handleDelete(item.id)}
+                      onArchive={() => handleArchiveSession(item.id)}
                       onRename={(title) => { updateTitle(item.id, title).catch(() => showToast('重命名失败')); }}
                     />
                   ))}

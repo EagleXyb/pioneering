@@ -6,8 +6,10 @@ import { buildSchema } from '../utils/zod-schema.js'
 import { z } from 'zod'
 
 export const userRoutes: FastifyPluginAsync = async (fastify) => {
-  // 公开路由（无需认证）—— 对应 Python 中没有 Depends(get_current_user) 的路由
+  // 受保护路由（需认证）
   fastify.register(async (app) => {
+    app.addHook('preHandler', authGuard)
+
     // 对应 Python: @router.get("/list")
     app.get('/list', buildSchema({
       querystring: z.object({

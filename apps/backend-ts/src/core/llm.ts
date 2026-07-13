@@ -178,7 +178,7 @@ export async function* streamAgui(
 
         if (reasoningContent) {
           yield ensureThinkStart()
-          yield toSse({ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: reasoningContent })
+          yield toSse({ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: reasoningContent, reasoning_content: reasoningContent })
         }
 
         if (content) {

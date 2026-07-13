@@ -45,7 +45,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         querystring: z.object({
           page: z.number().int().min(1).optional(),
           pageSize: z.number().int().min(1).max(100).optional(),
-          archived: z.boolean().optional(),
+          archived: z.string().optional(),
         }),
         tags: ['chat'],
         summary: '会话列表',
@@ -199,7 +199,8 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       // 对应 Python: @router.delete("/sessions/{sessionId}")
       app.delete('/sessions/:sessionId', buildSchema({
         params: z.object({ sessionId: z.string() }),
-        querystring: z.object({ archive: z.boolean().optional() }),
+        // 注意：URL query 参数始终为字符串，z.boolean() 会被 AJV 拦截为 400，故用 z.string()
+        querystring: z.object({ archive: z.string().optional() }),
         tags: ['chat'],
         summary: '删除/归档会话',
         security: [{ BearerAuth: [] }],

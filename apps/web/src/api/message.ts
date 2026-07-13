@@ -44,7 +44,7 @@ export function feedbackMessage(
 ): Promise<void> {
   return post<void>(
     `/chat/messages/${messageId}/feedback`,
-    { messageId, feedback } as FeedbackRequest,
+    { feedback } as FeedbackRequest,
   );
 }
 

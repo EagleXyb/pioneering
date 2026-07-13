@@ -13,6 +13,7 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   group: '今天' | '昨天' | '更早';
+  isArchived: boolean;
 }
 
 interface ConversationStore {
@@ -65,6 +66,7 @@ function sessionToConversation(s: Session, sessionModes: Record<string, AppMode>
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     group: getGroup(s.updatedAt),
+    isArchived: s.isArchived ?? false,
   };
 }
 

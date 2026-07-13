@@ -242,57 +242,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         return generateAuthResponse(user)
       })
 
-      // 对应 Python: @router.get("/profile", response_model=UserProfile)
-      app.get('/profile', {
-        preHandler: authGuard,
-        ...buildSchema({ tags: ['auth'], summary: '获取当前用户信息', security: [{ BearerAuth: [] }] }),
-      }, async (req) => {
-        const user = req.user
-        return {
-          id: user.id,
-          username: user.username,
-          nickname: user.nickname,
-          avatar: user.avatar,
-          email: user.email,
-          phone: user.phone,
-          status: user.status,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        }
-      })
-
-      // 对应 Python: @router.put("/profile", response_model=UserProfile)
-      app.put('/profile', {
-        preHandler: authGuard,
-        ...buildSchema({ body: UpdateProfileRequestSchema, tags: ['auth'], summary: '更新当前用户信息', security: [{ BearerAuth: [] }] }),
-      }, async (req) => {
-        const dto = UpdateProfileRequestSchema.parse(req.body)
-
-        const data: { nickname?: string | null; avatar?: string | null } = {}
-        if (dto.nickname != null) {
-          data.nickname = dto.nickname
-        }
-        if (dto.avatar != null) {
-          data.avatar = dto.avatar
-        }
-
-        const updated = await fastify.prisma.user.update({
-          where: { id: req.user.id },
-          data,
-          select: {
-            id: true,
-            username: true,
-            nickname: true,
-            avatar: true,
-            email: true,
-            phone: true,
-            status: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        })
-        return updated
-      })
     },
     { prefix: '/auth' },
   )

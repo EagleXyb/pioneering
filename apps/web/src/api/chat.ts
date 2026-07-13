@@ -1,30 +1,43 @@
 /**
  * 对话补全 API
- * 支持流式 SSE 和非流式两种模式
+ * 使用 AG-UI SSE 协议流式对话
+ *
+ * 后端发送 AG-UI 事件格式：
+ *   {"type":"TEXT_MESSAGE_CONTENT","delta":"文本增量"}
+ *   {"type":"THINKING_TEXT_MESSAGE_CONTENT","delta":"思考增量"}
+ *   {"type":"RUN_FINISHED","threadId":"...","runId":"..."}
+ *   {"type":"RUN_ERROR","message":"...","code":"..."}
  */
 import { getAuthHeader } from './client';
-import type {
-  ChatCompletionRequest,
-  ChatCompletionResponse,
-} from './types';
+import type { ChatCompletionRequest } from './types';
 
 const BASE_URL = '/api';
+
+/** AG-UI 流式数据块 */
+export interface AguiEvent {
+  type: string;
+  delta?: string;
+  message?: string;
+  code?: string;
+  threadId?: string;
+  runId?: string;
+}
 
 /** 流式回调接口 */
 export interface StreamCallbacks {
   /** 收到文本增量 */
   onChunk?: (delta: string) => void;
   /** 流结束 */
-  onDone?: (response: ChatCompletionResponse | null) => void;
+  onDone?: () => void;
   /** 错误 */
   onError?: (error: Error) => void;
 }
 
 /**
- * 流式对话补全
+ * AG-UI 流式对话补全
  *
  * 使用 fetch + ReadableStream 读取 SSE 数据，
- * 解析后通过回调逐块返回文本增量。
+ * 按 AG-UI 事件协议解析后通过回调逐块返回。
  *
  * @returns AbortController（用于中止请求）
  */
@@ -58,7 +71,6 @@ export function streamChat(
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalResponse: ChatCompletionResponse | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -76,18 +88,26 @@ export function streamChat(
             if (!line.startsWith('data:')) continue;
 
             const dataStr = line.slice(5).trim();
-            if (dataStr === '[DONE]') {
-              callbacks.onDone?.(finalResponse);
-              return;
-            }
+            if (!dataStr) continue;
 
             try {
-              const data: ChatCompletionResponse = JSON.parse(dataStr);
-              finalResponse = data;
+              const data: AguiEvent = JSON.parse(dataStr);
 
-              const content = data.choices?.[0]?.delta?.content;
-              if (content) {
-                callbacks.onChunk?.(content);
+              switch (data.type) {
+                case 'TEXT_MESSAGE_CONTENT':
+                case 'THINKING_TEXT_MESSAGE_CONTENT':
+                  if (data.delta) {
+                    callbacks.onChunk?.(data.delta);
+                  }
+                  break;
+
+                case 'RUN_ERROR':
+                  callbacks.onError?.(new Error(data.message || '流式生成出错'));
+                  return;
+
+                case 'RUN_FINISHED':
+                  callbacks.onDone?.();
+                  return;
               }
             } catch {
               // 忽略解析失败的行
@@ -96,11 +116,11 @@ export function streamChat(
         }
       }
 
-      callbacks.onDone?.(finalResponse);
+      callbacks.onDone?.();
     })
     .catch((err) => {
       if (err.name === 'AbortError') {
-        callbacks.onDone?.(null);
+        callbacks.onDone?.();
         return;
       }
       callbacks.onError?.(err);
