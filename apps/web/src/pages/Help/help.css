@@ -1,0 +1,142 @@
+/* ===== 帮助与反馈页 ===== */
+.help-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.help-header {
+  margin-bottom: 24px;
+}
+
+.help-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.help-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.help-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.help-card-title {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.help-faq-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.help-faq-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.help-faq-q {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.help-faq-a {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.help-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.help-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.help-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  min-width: 64px;
+  justify-content: center;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary);
+  background: var(--bg-sidebar-hover);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+.help-shortcut-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.help-feedback-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.help-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  transition: border-color var(--transition-fast);
+}
+
+.help-textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.help-submit {
+  margin-top: 12px;
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.help-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.help-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

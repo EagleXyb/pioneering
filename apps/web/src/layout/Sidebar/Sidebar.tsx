@@ -1,12 +1,22 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Dialog, MessagePlugin } from 'tdesign-react';
+import { Dialog, MessagePlugin, Popup, Avatar, Radio } from 'tdesign-react';
+import {
+  SettingIcon,
+  HelpCircleIcon,
+  RefreshIcon,
+  LogoutIcon,
+  ModeLightIcon,
+  ModeDarkIcon,
+} from 'tdesign-icons-react';
 import { useAppStore } from '../../store/appStore';
 import { useConversationStore, type Conversation } from '../../store/conversationStore';
 import { useTheme } from '../../store/themeContext';
 import { useToast } from '../../store/toastContext';
 import { useMode } from '../../hooks/useMode';
 import { useAuth } from '../../hooks/useAuth';
+import { getHealth } from '../../api/system';
+import SettingsDialog from '../../components/SettingsDialog';
 import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
 import './sidebar.css';
@@ -220,26 +230,21 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename, 
 function AccountPopover() {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  const { showToast } = useToast();
-  const { logout } = useAuth();
-  const ref = useRef<HTMLDivElement>(null);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [version, setVersion] = useState('');
+  const [checking, setChecking] = useState(false);
 
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    if (open) {
-      document.addEventListener('click', handler);
-      return () => document.removeEventListener('click', handler);
-    }
-  }, [open]);
+  const displayName = user?.nickname || user?.username || '未命名用户';
+  const initial = (user?.nickname || user?.username || '?').charAt(0).toUpperCase();
 
   /** 确认退出登录：调后端撤销 token + 清本地 + 跳登录页，并用 TDesign 消息提示反馈 */
   const handleLogout = useCallback(async () => {
     setLogoutOpen(false);
+    setOpen(false);
     try {
       await logout();
       MessagePlugin.success('已登出');
@@ -248,86 +253,122 @@ function AccountPopover() {
     }
   }, [logout]);
 
-  return (
-    <div className="sidebar-account" ref={ref}>
-      <div
-        className="sidebar-account-trigger"
-        role="button"
-        tabIndex={0}
-        aria-label="账号菜单"
-        aria-haspopup="true"
-        aria-expanded={open}
-        onClick={() => setOpen(prev => !prev)}
-        onKeyDown={(e) => { if (e.key === 'Enter') setOpen(prev => !prev); }}
+  /** 检查更新：真实请求后端 /health 获取版本号 */
+  const handleCheckUpdate = useCallback(async () => {
+    setChecking(true);
+    try {
+      const health = await getHealth();
+      setVersion(health.version);
+      setUpdateOpen(true);
+    } catch {
+      MessagePlugin.error('检查更新失败，请稍后重试');
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  // 点击菜单项后关闭弹层并执行对应动作
+  const runAndClose = (action: () => void) => () => {
+    setOpen(false);
+    action();
+  };
+
+  // 弹层内容（由 TDesign Popup 负责定位、点击外部关闭与动画）
+  const menu = (
+    <div className="account-popover">
+      <button
+        className="account-popover-item"
+        onClick={() => {
+          setOpen(false);
+          setSettingsOpen(true);
+        }}
       >
-        <div className="sidebar-avatar">李</div>
-        <div className="sidebar-user-info">
-          <div className="sidebar-user-name">李总</div>
-          <div className="sidebar-user-plan">专业版</div>
+        <SettingIcon />
+        设置
+      </button>
+
+      <div className="account-popover-row">
+        <div className="account-popover-item account-popover-item-static">
+          <ModeLightIcon />
+          外观
         </div>
+        <Radio.Group
+          className="popover-theme-toggle"
+          size="small"
+          variant="default-filled"
+          value={theme}
+          onChange={(val) => setTheme(val as 'light' | 'dark')}
+        >
+          <Radio.Button value="light">
+            <ModeLightIcon /> 浅色
+          </Radio.Button>
+          <Radio.Button value="dark">
+            <ModeDarkIcon /> 深色
+          </Radio.Button>
+        </Radio.Group>
       </div>
 
-      {open && (
-        <div className="account-popover">
-          <button className="account-popover-item" onClick={() => { setOpen(false); showToast('设置页面'); }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M8.3 2.2a1 1 0 00-1.6 0l-.9 1.4a1 1 0 01-.7.5l-1.7.3a1 1 0 00-.6 1.5l1 1.5a1 1 0 010 .9l-1 1.5a1 1 0 00.6 1.5l1.7.3a1 1 0 01.7.5l.9 1.4a1 1 0 001.6 0l.9-1.4a1 1 0 01.7-.5l1.7-.3a1 1 0 00.6-1.5l-1-1.5a1 1 0 010-.9l1-1.5a1 1 0 00-.6-1.5l-1.7-.3a1 1 0 01-.7-.5z"/>
-              <circle cx="8" cy="8" r="1.5"/>
-            </svg>
-            设置
-          </button>
+      <button className="account-popover-item" onClick={runAndClose(() => navigate('/help'))}>
+        <HelpCircleIcon />
+        帮助与反馈
+      </button>
 
-          <div className="account-popover-row">
-            <div className="account-popover-item account-popover-item-static">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="7.5" cy="7.5" r="4.5"/>
-                <path d="M12 12L14.5 14.5M10.5 4.5A3 3 0 0112 7.5"/>
-              </svg>
-              外观
-            </div>
-            <div className="popover-theme-toggle" role="radiogroup" aria-label="主题切换">
-              <button
-                className={`popover-theme-toggle-opt${theme === 'light' ? ' active' : ''}`}
-                role="radio"
-                aria-checked={theme === 'light'}
-                onClick={() => setTheme('light')}
-              >浅色</button>
-              <button
-                className={`popover-theme-toggle-opt${theme === 'dark' ? ' active' : ''}`}
-                role="radio"
-                aria-checked={theme === 'dark'}
-                onClick={() => setTheme('dark')}
-              >深色</button>
-            </div>
+      <button
+        className="account-popover-item"
+        onClick={runAndClose(() => void handleCheckUpdate())}
+        disabled={checking}
+      >
+        <RefreshIcon />
+        {checking ? '检查中…' : '检查更新'}
+      </button>
+
+      <div className="account-popover-divider" />
+
+      <button
+        className="account-popover-item account-popover-logout"
+        onClick={runAndClose(() => setLogoutOpen(true))}
+      >
+        <LogoutIcon />
+        退出登录
+      </button>
+    </div>
+  );
+
+  return (
+    <>
+      <Popup
+        content={menu}
+        trigger="click"
+        placement="top-left"
+        visible={open}
+        onVisibleChange={setOpen}
+        showArrow={false}
+        destroyOnClose
+        overlayClassName="account-popover-overlay"
+      >
+        <div
+          className="sidebar-account-trigger"
+          role="button"
+          tabIndex={0}
+          aria-label="账号菜单"
+          aria-haspopup="true"
+          aria-expanded={open}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setOpen((prev) => !prev);
+            }
+          }}
+        >
+          <Avatar className="sidebar-avatar" size="32px" image={user?.avatar || undefined}>
+            {initial}
+          </Avatar>
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-name">{displayName}</div>
+            <div className="sidebar-user-plan">@{user?.username || '—'}</div>
           </div>
-
-          <button className="account-popover-item" onClick={() => { setOpen(false); showToast('帮助与反馈'); }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="8" cy="8" r="6.5"/>
-              <path d="M6 6.5c0-1.1.9-2 2-2s2 .9 2 2c0 .8-.5 1.3-1.2 1.7-.5.3-.8.7-.8 1.3M8 12v.5"/>
-            </svg>
-            帮助与反馈
-          </button>
-
-          <button className="account-popover-item" onClick={() => { setOpen(false); showToast('检查更新'); }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="8" cy="8" r="6.5"/>
-              <path d="M8 4.5v3.5l2 2"/>
-              <path d="M13 8h-2M8 13v-2"/>
-            </svg>
-            检查更新
-          </button>
-
-          <div className="account-popover-divider" />
-
-          <button className="account-popover-item account-popover-logout" onClick={() => { setOpen(false); setLogoutOpen(true); }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M6 14H3a1 1 0 01-1-1V3a1 1 0 011-1h3M11 10l3-3-3-3M14 7H6"/>
-            </svg>
-            退出登录
-          </button>
         </div>
-      )}
+      </Popup>
 
       <Dialog
         visible={logoutOpen}
@@ -340,7 +381,29 @@ function AccountPopover() {
         onClose={() => setLogoutOpen(false)}
         destroyOnClose
       />
-    </div>
+
+      <Dialog
+        visible={updateOpen}
+        header="检查更新"
+        confirmBtn="知道了"
+        cancelBtn={null}
+        onConfirm={() => setUpdateOpen(false)}
+        onClose={() => setUpdateOpen(false)}
+        destroyOnClose
+      >
+        <div className="update-info">
+          <div className="update-row">
+            <span className="update-label">当前版本</span>
+            <b className="update-version">v{version}</b>
+          </div>
+          <div className="update-status">
+            {version ? '已是最新版本 🎉' : '暂未获取到版本信息'}
+          </div>
+        </div>
+      </Dialog>
+
+      <SettingsDialog visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   );
 }
 

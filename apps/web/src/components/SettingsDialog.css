@@ -1,0 +1,325 @@
+/* ===== 设置模态框（两栏：左侧分类导航 + 右侧内容区） ===== */
+
+/* 去掉 Dialog 默认的内部 padding，让两栏顶满 */
+.settings-dialog .t-dialog__body {
+  padding: 0;
+}
+.settings-dialog .t-dialog__close {
+  z-index: 2;
+}
+
+.settings-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: 540px;
+  max-height: 62vh;
+}
+
+/* ===== 左侧导航 ===== */
+.settings-nav {
+  width: 208px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px 0 0 12px;
+}
+
+.settings-nav-head {
+  padding: 24px 20px 14px;
+}
+
+.settings-nav-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.settings-nav-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 10px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-nav-item {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 14px;
+  color: var(--text-sidebar);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  position: relative;
+}
+
+.settings-nav-item:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+.settings-nav-item.is-active {
+  background: var(--bg-card);
+  color: var(--accent-purple);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-purple);
+}
+
+.settings-nav-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 18px;
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.9;
+}
+
+.settings-nav-item-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== 右侧内容区 ===== */
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-content-head {
+  padding: 26px 32px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.settings-content-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-content-subtitle {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-content-body {
+  padding: 6px 32px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* ===== 选项行 ===== */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-row--block {
+  display: block;
+  padding: 20px 0 8px;
+}
+
+.setting-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.setting-row-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  max-width: 380px;
+}
+
+/* 控件与文字的视觉对齐 */
+.setting-row > .t-select,
+.setting-row > .t-slider,
+.setting-row > .t-switch,
+.setting-row > .t-radio-group {
+  flex-shrink: 0;
+}
+
+/* 主题/密度切换紧凑化 */
+.setting-row .t-radio-group {
+  gap: 4px;
+}
+.setting-row .t-radio-button {
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.setting-row .t-radio-button .t-icon {
+  font-size: 16px;
+}
+
+/* ===== 底部 ===== */
+.settings-dialog .t-dialog__footer {
+  border-top: 1px solid var(--border-light);
+  padding: 14px 24px;
+}
+
+/* ===== 账户摘要 ===== */
+.settings-account {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 18px;
+  row-gap: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  overflow: hidden;
+}
+
+.settings-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.settings-account-info {
+  align-self: center;
+  min-width: 0;
+}
+
+.settings-account-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-account-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-account-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+
+.settings-account-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-account-cell-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-account-cell-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== 版本号标签 ===== */
+.settings-version-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-purple) 14%, transparent);
+  color: var(--accent-purple);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+/* ===== 密度切换（紧凑模式） ===== */
+:root[data-density='compact'] .settings-nav-item {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+:root[data-density='compact'] .setting-row {
+  padding: 12px 0;
+}
+:root[data-density='compact'] .settings-content-head {
+  padding: 20px 32px 12px;
+}
+:root[data-density='compact'] .settings-content-body {
+  padding: 4px 32px 18px;
+}

@@ -12,6 +12,7 @@ const TaskMode = lazy(() => import('./modes/task/TaskMode'));
 const LoginPage = lazy(() => import('./pages/auth/Login'));
 const RegisterPage = lazy(() => import('./pages/auth/Register'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPassword'));
+const HelpPage = lazy(() => import('./pages/Help/HelpPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFound'));
 
 function ModeFallback() {
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/chat" element={<ChatMode />} />
             <Route path="/pro" element={<ProMode />} />
             <Route path="/task" element={<TaskMode />} />
+            <Route path="/help" element={<HelpPage />} />
           </Route>
 
           {/* 404 — 未匹配路径展示 NotFound 页面 */}

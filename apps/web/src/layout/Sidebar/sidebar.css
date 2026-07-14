@@ -385,10 +385,6 @@
   pointer-events: none;
 }
 
-.sidebar-account {
-  position: relative;
-}
-
 .sidebar-account-trigger {
   display: flex;
   align-items: center;
@@ -428,20 +424,37 @@
   color: var(--text-sidebar-dim);
 }
 
-/* Account Popover */
+/* Account Popover (TDesign Popup 内容容器) */
 .account-popover {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 8px;
   background: var(--bg-card);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
-  padding: 6px 0;
+  padding: 6px;
   box-shadow: var(--shadow-lg);
-  z-index: 30;
-  min-width: 220px;
+  min-width: 210px;
+  transform-origin: bottom left;
+  animation: popIn 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 让 Popup 外层包裹透明，卡片外观完全由 .account-popover 负责 */
+.account-popover-overlay .t-popup__content {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* 头像沿用原有渐变风格（TDesign Avatar） */
+.sidebar-avatar.t-avatar {
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+  color: #fff;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .account-popover-item {
@@ -449,10 +462,13 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 14px;
+  margin: 2px 0;
+  padding: 9px 10px;
   font-size: 14px;
+  font-weight: 500;
   color: var(--text-primary);
-  transition: background var(--transition-fast);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
   border: none;
   background: none;
   cursor: pointer;
@@ -466,67 +482,143 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.account-popover-item:hover svg {
   color: var(--text-secondary);
 }
 
-/* 外观行 - 左侧文字 + 右侧切换 */
+/* 外观行 - 左侧文字 + 右侧分段切换（整行作为一组） */
 .account-popover-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.account-popover-row:hover {
+  background: var(--bg-sidebar-hover);
 }
 
 .account-popover-item-static {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: default;
   border: none;
   background: none;
   font-size: 14px;
+  font-weight: 500;
   color: var(--text-primary);
-  padding: 10px 6px;
+  padding: 0;
 }
 
 .account-popover-item-static:hover {
   background: none;
 }
 
-/* 内联主题切换 (分段控制器) */
-.popover-theme-toggle {
+/* 内联主题切换：复用 TDesign Radio.Group，定制为圆角胶囊分段控件 */
+.popover-theme-toggle.t-radio-group {
   display: flex;
+  flex-shrink: 0;
+  gap: 2px;
   background: var(--bg-sidebar-hover);
   border-radius: 20px;
-  padding: 2px;
+  padding: 3px;
+  border: none;
 }
 
-.popover-theme-toggle-opt {
-  padding: 4px 12px;
+.popover-theme-toggle .t-radio-button {
+  border: none;
+  background: transparent;
   border-radius: 18px;
+  padding: 4px 12px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-tertiary);
-  border: none;
-  background: transparent;
-  cursor: pointer;
   transition: all var(--transition-fast);
-  white-space: nowrap;
 }
 
-.popover-theme-toggle-opt.active {
-  background: white;
+.popover-theme-toggle .t-radio-button .t-radio-button__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.popover-theme-toggle .t-radio-button:hover:not(.t-is-checked) {
+  color: var(--text-secondary);
+}
+
+.popover-theme-toggle .t-radio-button.t-is-checked {
+  background: var(--bg-secondary);
   color: var(--text-primary);
   box-shadow: var(--shadow-sm);
 }
 
-/* 分隔线 */
+/* 分隔线（与菜单项文字左对齐） */
 .account-popover-divider {
   height: 1px;
-  margin: 4px 12px;
+  margin: 6px 10px;
   background: var(--border-light);
 }
 
-/* 退出登录 */
+/* 退出登录（危险操作：hover 时红色强调） */
 .account-popover-logout {
   color: var(--text-secondary);
+}
+
+.account-popover-logout svg {
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.account-popover-logout:hover {
+  background: var(--accent-red-light);
+  color: var(--accent-red);
+}
+
+.account-popover-logout:hover svg {
+  color: var(--accent-red);
+}
+
+/* 触发器键盘可达性 */
+.sidebar-account-trigger:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* 检查更新弹层内容 */
+.update-info {
+  padding: 4px 0;
+}
+
+.update-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.update-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.update-version {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.update-status {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-tertiary);
 }
 
 /* ===== 会话列表状态 ===== */
