@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useChat } from '@tdesign-react/chat';
+import { MessagePlugin } from 'tdesign-react';
 import { ChatMessageList } from './components/ChatMessageList';
 import { ChatInput } from './components/ChatInput';
 import { useConversationStore } from '../../store/conversationStore';
@@ -8,7 +9,6 @@ import { getMessages, stopGeneration, regenerateMessage } from '../../api/messag
 import { convertMessages } from '../../api/converter';
 import type { ChatMessageData } from '../../api/converter';
 import { getAuthHeader } from '../../api/client';
-import { useToast } from '../../store/toastContext';
 import './chat.css';
 
 // ─── 子组件：持有 useChat 实例 ─────────────────────────────────────
@@ -280,16 +280,15 @@ export default function ChatMode() {
   // P0-2 修复：重新生成 —— 调用专用 regenerate 端点（不重复写入用户消息），
   // 成功后重新加载历史消息以显示新的 assistant 回复
   // P0-5：配额超限（429）或其他错误时弹 toast 提示
-  const { showToast } = useToast();
   const handleReplay = useCallback(async (messageId: string) => {
     try {
       await regenerateMessage(messageId);
       reloadHistory();
     } catch (e: any) {
       const msg = e?.message || '重新生成失败';
-      showToast(msg);
+      MessagePlugin.info(msg);
     }
-  }, [regenerateMessage, reloadHistory, showToast]);
+  }, [regenerateMessage, reloadHistory]);
 
   return (
     <div className="chat-mode" ref={scrollAreaRef}>

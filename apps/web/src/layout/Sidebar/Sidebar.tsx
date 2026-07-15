@@ -12,7 +12,6 @@ import {
 import { useAppStore } from '../../store/appStore';
 import { useConversationStore, type Conversation } from '../../store/conversationStore';
 import { useTheme } from '../../store/themeContext';
-import { useToast } from '../../store/toastContext';
 import { useMode } from '../../hooks/useMode';
 import { useAuth } from '../../hooks/useAuth';
 import { getHealth } from '../../api/system';
@@ -35,7 +34,6 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename, 
   const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { showToast } = useToast();
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -93,13 +91,13 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename, 
   const handlePin = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
-    showToast('置顶功能开发中');
+    MessagePlugin.info('置顶功能开发中');
   };
 
   const handleAnalyze = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
-    showToast('分享功能开发中');
+    MessagePlugin.info('分享功能开发中');
   };
 
   const handleRestoreClick = (e: React.MouseEvent) => {
@@ -424,7 +422,6 @@ export function Sidebar() {
     fetchSessions, fetchMoreSessions, loading, error, total, hasMore,
     archivedView, setArchivedView, restoreFromArchive,
   } = useConversationStore();
-  const { showToast } = useToast();
   const navigate = useNavigate();
 
   /** 待删除的会话 ID，非 null 时显示确认弹框 */
@@ -478,11 +475,11 @@ export function Sidebar() {
     try {
       await create(mode);
       navigate(`/${mode}`);
-      showToast('已创建新会话');
+      MessagePlugin.info('已创建新会话');
     } catch {
-      showToast('创建会话失败');
+      MessagePlugin.info('创建会话失败');
     }
-  }, [create, mode, navigate, showToast]);
+  }, [create, mode, navigate]);
 
   const handleSelectConversation = useCallback((conv: Conversation) => {
     activate(conv.id);
@@ -686,7 +683,7 @@ export function Sidebar() {
                       onSelect={() => handleSelectConversation(item)}
                       onDelete={() => handleDelete(item.id)}
                       onArchive={() => handleArchiveSession(item.id)}
-                      onRename={(title) => { updateTitle(item.id, title).catch(() => showToast('重命名失败')); }}
+                      onRename={(title) => { updateTitle(item.id, title).catch(() => MessagePlugin.info('重命名失败')); }}
                       onRestore={archivedView ? () => handleRestore(item.id) : undefined}
                     />
                   ))}

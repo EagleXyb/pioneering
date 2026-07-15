@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ChatMessage, ChatActionBar } from '@tdesign-react/chat';
+import { MessagePlugin } from 'tdesign-react';
 import type { ChatComment, TdChatActionsName } from '../../../types/tdesign';
 import type { ChatMessageData } from '../../../api/converter';
 import { feedbackMessage } from '../../../api/message';
-import { useToast } from '../../../store/toastContext';
 
 interface Props {
   message: ChatMessageData;
@@ -20,7 +20,6 @@ export function ChatMessageItem({ message, onReplay }: Props) {
   const [comment, setComment] = useState<ChatComment>(
     feedbackToComment[message.feedback ?? 'none'] || '',
   );
-  const { showToast } = useToast();
 
   const handleAction = (name: TdChatActionsName) => {
     if (name === 'replay') {
@@ -36,9 +35,9 @@ export function ChatMessageItem({ message, onReplay }: Props) {
         .join('\n') || '';
       if (text) {
         navigator.clipboard.writeText(text).then(() => {
-          showToast('已复制消息内容，可粘贴分享');
+          MessagePlugin.info('已复制消息内容，可粘贴分享');
         }).catch(() => {
-          showToast('复制失败，请手动选择文本');
+          MessagePlugin.info('复制失败，请手动选择文本');
         });
       }
       return;
