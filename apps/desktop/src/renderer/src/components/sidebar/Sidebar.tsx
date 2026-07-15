@@ -2,7 +2,7 @@
 // Sidebar — 左栏（会话历史）
 // ============================================================
 
-import { memo } from 'react'
+import { memo, useEffect } from 'react'
 import { useAtom } from 'jotai'
 import { userAtom } from '@/stores/atoms'
 import { useAppStore, type ThemeMode } from '@/stores/useAppStore'
@@ -34,16 +34,38 @@ import { ConversationList } from './ConversationList'
 import { authService } from '@/services/api/auth'
 
 export const Sidebar = memo(function Sidebar() {
-  const [user] = useAtom(userAtom)
+  const [user, setUser] = useAtom(userAtom)
   // 订阅粒度细化：仅订阅 theme / setTheme（P2-3）
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+
+  // 挂载时拉取后端真实用户资料
+  useEffect(() => {
+    if (!authService.isAuthenticated()) return
+    authService
+      .getProfile()
+      .then((p) => {
+        setUser({
+          id: p.id,
+          username: p.username,
+          nickname: p.nickname ?? null,
+          email: p.email ?? null,
+          avatar: p.avatar ?? null
+        })
+      })
+      .catch(() => {
+        // 拉取失败时保留占位数据，登录/重新登录后再更新
+      })
+  }, [setUser])
 
   // 设置/帮助/检查更新 复用统一菜单动作（runMenuAction），避免与全局菜单逻辑重复
   const handleLogout = () => {
     // logout 改为 async（S7），此处不阻塞 UI，best-effort 撤销后端 token
     void authService.logout()
   }
+
+  const displayName = user.nickname || user.username || '未登录'
+  const displayInitial = displayName.slice(0, 1).toUpperCase()
 
   return (
     <div className="conversation-sidebar flex flex-col h-full bg-sidebar border-r border-border">
@@ -61,24 +83,24 @@ export const Sidebar = memo(function Sidebar() {
               title="账户菜单"
             >
               <Avatar className="h-6 w-6">
-                {user.avatarUrl ? (
-                  <AvatarImage src={user.avatarUrl} alt={user.name} />
+                {user.avatar ? (
+                  <AvatarImage src={user.avatar} alt={displayName} />
                 ) : null}
                 <AvatarFallback className="text-[10px] font-medium">
-                  {user.name.slice(0, 1).toUpperCase()}
+                  {displayInitial}
                 </AvatarFallback>
               </Avatar>
               <span className="max-w-[110px] truncate text-xs text-foreground/80">
-                {user.name}
+                {displayName}
               </span>
             </button>
           </DropdownMenuTrigger>
 
           <DropdownMenuContent side="top" align="start" className="w-56">
             <DropdownMenuLabel className="py-2">
-              <div className="truncate text-sm">{user.name}</div>
+              <div className="truncate text-sm">{displayName}</div>
               <div className="truncate text-[11px] font-normal text-muted-foreground">
-                {user.email}
+                {user.email || '—'}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -89,26 +111,29 @@ export const Sidebar = memo(function Sidebar() {
             </DropdownMenuItem>
 
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Sun />
-                主题
+              <DropdownMenuSubTrigger className="flex items-center gap-2">
+                <Sun className="size-4" />
+                <span>主题</span>
+                <span className="ml-auto text-[11px] text-muted-foreground/60">
+                  {theme === 'light' ? '浅色' : theme === 'dark' ? '深色' : '跟随系统'}
+                </span>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
+              <DropdownMenuSubContent className="min-w-[150px]">
                 <DropdownMenuRadioGroup
                   value={theme}
                   onValueChange={(v) => setTheme(v as ThemeMode)}
                 >
-                  <DropdownMenuRadioItem value="light">
-                    <Sun />
-                    浅色
+                  <DropdownMenuRadioItem value="light" className="flex items-center gap-3 py-2 pl-3 pr-4">
+                    <Sun className="size-4 text-amber-500" />
+                    <span>浅色</span>
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark">
-                    <Moon />
-                    深色
+                  <DropdownMenuRadioItem value="dark" className="flex items-center gap-3 py-2 pl-3 pr-4">
+                    <Moon className="size-4 text-blue-400" />
+                    <span>深色</span>
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="system">
-                    <Monitor />
-                    跟随系统
+                  <DropdownMenuRadioItem value="system" className="flex items-center gap-3 py-2 pl-3 pr-4">
+                    <Monitor className="size-4 text-muted-foreground" />
+                    <span>跟随系统</span>
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>

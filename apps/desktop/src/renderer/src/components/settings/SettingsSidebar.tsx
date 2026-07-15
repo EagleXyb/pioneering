@@ -27,7 +27,7 @@ export function SettingsSidebar() {
               onClick={() => setActive(id)}
               className={cn(
                 'w-full flex items-center gap-3 rounded-[4px] px-3 text-sm text-left transition-colors duration-150',
-                'h-10',
+                'h-[33px]',
                 isActive
                   ? 'bg-[#e0e0e0] font-semibold text-[#262626]'
                   : 'text-[#262626] hover:bg-[#e8e8e8]'

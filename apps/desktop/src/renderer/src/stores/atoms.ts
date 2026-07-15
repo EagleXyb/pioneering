@@ -20,11 +20,20 @@ export const contextPanelVisibleAtom = atom(false)
 // 设置弹框开关
 export const settingsOpenAtom = atom(false)
 
-// 当前用户信息（占位，后续可由 IPC/登录态填充）
-export const userAtom = atom<{ name: string; email: string; avatarUrl: string }>({
-  name: 'Demo User',
-  email: 'demo@pioneering.ai',
-  avatarUrl: ''
+// 当前用户信息（启动时由 IPC 注入 / 登录态填充）
+export interface AppUser {
+  id: string
+  username: string
+  nickname: string | null
+  email: string | null
+  avatar: string | null
+}
+export const userAtom = atom<AppUser>({
+  id: '',
+  username: '未登录',
+  nickname: null,
+  email: null,
+  avatar: null
 })
 
 // 设置弹框当前分类（持久化）
