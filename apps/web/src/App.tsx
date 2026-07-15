@@ -50,12 +50,23 @@ export default function App() {
           <Route path="/auth/register" element={<Suspense fallback={<ModeFallback />}><RegisterPage /></Suspense>} />
           <Route path="/auth/forgot-password" element={<Suspense fallback={<ModeFallback />}><ForgotPasswordPage /></Suspense>} />
 
+          {/* 帮助与反馈 — 独立全屏浮层，需要登录 */}
+          <Route
+            path="/help"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<ModeFallback />}>
+                  <HelpPage />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
           {/* 主应用 — 受路由守卫保护，未登录跳转登录页 */}
           <Route element={<AppLayout />}>
             <Route path="/chat" element={<ChatMode />} />
             <Route path="/pro" element={<ProMode />} />
             <Route path="/task" element={<TaskMode />} />
-            <Route path="/help" element={<HelpPage />} />
           </Route>
 
           {/* 404 — 未匹配路径展示 NotFound 页面 */}

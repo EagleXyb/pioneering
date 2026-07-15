@@ -25,7 +25,6 @@ import {
 import { useTheme } from '../store/themeContext';
 import { useAuth } from '../hooks/useAuth';
 import { getHealth } from '../api/system';
-import type { UserProfile } from '../types/auth';
 import './SettingsDialog.css';
 
 type Density = 'compact' | 'comfortable';
@@ -92,17 +91,19 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
-function AccountSummary({ user }: { user: UserProfile | null }) {
-  // 已废弃：账户信息展示已重构为分组卡片形式
-  return null;
-}
-
-export default function SettingsDialog({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export default function SettingsDialog({ visible, onClose, initialSection = 'general' }: { visible: boolean; onClose: () => void; initialSection?: string }) {
   const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const [version, setVersion] = useState<string>('—');
   const [active, setActive] = useState<SectionId>('general');
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+
+  // 弹框打开时定位到指定标签页
+  useEffect(() => {
+    if (visible && initialSection) {
+      setActive(initialSection as SectionId);
+    }
+  }, [visible, initialSection]);
 
   // 打开时拉取后端真实版本号
   useEffect(() => {

@@ -235,6 +235,7 @@ function AccountPopover() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<string>('general');
   const [version, setVersion] = useState('');
   const [checking, setChecking] = useState(false);
 
@@ -280,6 +281,7 @@ function AccountPopover() {
         className="account-popover-item"
         onClick={() => {
           setOpen(false);
+          setSettingsSection('general');
           setSettingsOpen(true);
         }}
       >
@@ -308,7 +310,14 @@ function AccountPopover() {
         </Radio.Group>
       </div>
 
-      <button className="account-popover-item" onClick={runAndClose(() => navigate('/help'))}>
+      <button
+        className="account-popover-item"
+        onClick={() => {
+          setOpen(false);
+          setSettingsSection('help');
+          setSettingsOpen(true);
+        }}
+      >
         <HelpCircleIcon />
         帮助与反馈
       </button>
@@ -402,7 +411,7 @@ function AccountPopover() {
         </div>
       </Dialog>
 
-      <SettingsDialog visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog visible={settingsOpen} onClose={() => setSettingsOpen(false)} initialSection={settingsSection} />
     </>
   );
 }
