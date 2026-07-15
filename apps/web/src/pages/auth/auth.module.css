@@ -37,7 +37,7 @@
 .logoIcon {
   width: 44px;
   height: 44px;
-  background: #2563EB;
+  background: var(--accent-blue);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -65,7 +65,7 @@
 .highlightTitle {
   font-size: 48px;
   font-weight: 800;
-  color: #2563EB;
+  color: var(--accent-blue);
   line-height: 1.2;
   margin-bottom: 20px;
 }
@@ -225,12 +225,12 @@
   flex: 1;
   height: 38px;
   border: none;
-  background: white;
+  background: var(--bg-card);
   border-radius: 3px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: #2563EB;
+  color: var(--accent-blue);
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
@@ -267,7 +267,7 @@
   height: 48px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(180deg, #2563EB 0%, #4D80FF 100%);
+  background: linear-gradient(180deg, var(--accent-blue) 0%, #4D80FF 100%);
   color: white;
   font-family: inherit;
   font-size: 16px;
@@ -303,7 +303,7 @@
 
 /* 错误提示 */
 .errorText {
-  color: #EF4444;
+  color: var(--accent-red);
   font-size: 13px;
   margin-bottom: 16px;
   text-align: center;
@@ -320,7 +320,7 @@
 .dividerLine {
   flex: 1;
   height: 1px;
-  background: #E0E8F2;
+  background: var(--border-light);
 }
 
 .dividerText {
@@ -362,7 +362,7 @@
 .footerAction {
   font-size: 13px;
   font-weight: 600;
-  color: #2563EB;
+  color: var(--accent-blue);
   background: none;
   border: none;
   cursor: pointer;
@@ -386,21 +386,21 @@
 .strengthBar {
   width: 60px;
   height: 4px;
-  background: #E0E8F2;
+  background: var(--border-light);
   border-radius: 2px;
   transition: background 0.3s;
 }
 
 .strengthBarWeak {
-  background: #EF4444;
+  background: var(--accent-red);
 }
 
 .strengthBarMedium {
-  background: #F59E0B;
+  background: var(--accent-amber);
 }
 
 .strengthBarStrong {
-  background: #22C55E;
+  background: var(--accent-green);
 }
 
 .strengthText {
@@ -409,15 +409,15 @@
 }
 
 .strengthTextWeak {
-  color: #EF4444;
+  color: var(--accent-red);
 }
 
 .strengthTextMedium {
-  color: #F59E0B;
+  color: var(--accent-amber);
 }
 
 .strengthTextStrong {
-  color: #22C55E;
+  color: var(--accent-green);
 }
 
 /* 确认密码提示 */
@@ -433,11 +433,11 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #E0E8F2;
+  background: var(--border-light);
 }
 
 .hintDotMatch {
-  background: #22C55E;
+  background: var(--accent-green);
 }
 
 .hintText {
@@ -446,7 +446,7 @@
 }
 
 .hintTextMatch {
-  color: #22C55E;
+  color: var(--accent-green);
 }
 
 

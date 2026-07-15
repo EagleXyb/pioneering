@@ -151,7 +151,7 @@
 }
 
 .btn-new-chat:hover {
-  background: white;
+  background: var(--bg-secondary);
 }
 
 .btn-new-chat svg {

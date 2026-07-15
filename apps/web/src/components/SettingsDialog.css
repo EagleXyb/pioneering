@@ -5,6 +5,7 @@
    - 左侧导航 230px，浅灰底，条目 40px 高 / 8px 圆角 / 4px 间距
    - 右侧内容 32px 40px 内边距，标题下边框分隔
    - 中性灰配色，激活态以底色区分（无强调色、无左侧色条）
+   颜色统一使用 tokens.css 中的语义变量，以支持深色模式。
 */
 
 /* ===== 全屏遮罩 ===== */
@@ -23,7 +24,7 @@
 .settings-window {
   width: 900px;
   height: 600px;
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 12px;
   box-shadow: 0 16px 56px rgba(0, 0, 0, 0.14);
   display: flex;
@@ -34,7 +35,7 @@
 .settings-nav {
   width: 230px;
   flex-shrink: 0;
-  background: #f2f2f2;
+  background: var(--bg-input);
   display: flex;
   flex-direction: column;
   padding: 20px 12px;
@@ -52,8 +53,8 @@
   height: 34px;
   flex-shrink: 0;
   border-radius: 6px !important;
-  background: linear-gradient(135deg, #a855f7, #6366f1);
-  color: #ffffff;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+  color: var(--bg-card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -77,7 +78,7 @@
 .settings-nav-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -87,7 +88,7 @@
 .settings-nav-meta {
   margin-top: 2px;
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -115,7 +116,7 @@
   align-items: center;
   gap: 12px;
   font-size: 14px;
-  color: #262626;
+  color: var(--text-primary);
   cursor: pointer;
   text-align: left;
   transition: background-color 0.15s ease;
@@ -124,11 +125,11 @@
 }
 
 .settings-nav-item:hover {
-  background: #e8e8e8;
+  background: var(--bg-sidebar-hover);
 }
 
 .settings-nav-item.is-active {
-  background: #e0e0e0;
+  background: var(--bg-sidebar-active);
   font-weight: 600;
 }
 
@@ -140,11 +141,11 @@
   height: 18px;
   font-size: 18px;
   flex-shrink: 0;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
 }
 
 .settings-nav-item.is-active .settings-nav-item-icon {
-  color: #595959;
+  color: var(--text-secondary);
 }
 
 .settings-nav-item-label {
@@ -175,7 +176,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   cursor: pointer;
   background: none;
   border: none;
@@ -184,7 +185,7 @@
 }
 
 .settings-close-btn:hover {
-  color: #595959;
+  color: var(--text-secondary);
 }
 
 .settings-close-btn svg {
@@ -195,21 +196,21 @@
 .settings-main-head {
   padding: 0 0 16px;
   margin-bottom: 24px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .settings-main-title {
   margin: 0;
   font-size: 22px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   letter-spacing: 0.01em;
 }
 
 .settings-main-subtitle {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
 }
 
 .settings-main-body {
@@ -232,17 +233,17 @@
   align-items: center;
   justify-content: space-between;
   padding: 13px 16px;
-  background: #f7f7f7;
+  background: var(--bg-input);
   border-radius: 5px;
   font-size: 14px;
-  color: #262626;
+  color: var(--text-primary);
   cursor: pointer;
   transition: background-color 0.15s ease;
   user-select: none;
 }
 
 .help-item:hover {
-  background: #f0f0f0;
+  background: var(--bg-sidebar-hover);
 }
 
 .help-item__left {
@@ -254,14 +255,14 @@
 .help-item__icon {
   width: 18px;
   height: 18px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   flex-shrink: 0;
 }
 
 .help-item__arrow {
   width: 14px;
   height: 14px;
-  color: #bfbfbf;
+  color: var(--text-tertiary);
   flex-shrink: 0;
 }
 
@@ -269,22 +270,22 @@
   margin-top: 24px;
   text-align: center;
   font-size: 13px;
-  color: #bfbfbf;
+  color: var(--text-tertiary);
 }
 
 .help-footer a {
-  color: #bfbfbf;
+  color: var(--text-tertiary);
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .help-footer a:hover {
-  color: #8c8c8c;
+  color: var(--text-secondary);
 }
 
 .help-footer__divider {
   margin: 0 8px;
-  color: #d9d9d9;
+  color: var(--text-tertiary);
 }
 
 /* ===== 选项行 ===== */
@@ -294,7 +295,7 @@
   justify-content: space-between;
   gap: 24px;
   padding: 16px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .setting-row:last-child {
@@ -319,20 +320,20 @@
   margin: 0 0 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   letter-spacing: 0.01em;
 }
 
 .settings-group-card {
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 5px;
   padding: 4px 16px;
 }
 
 .settings-group-card .setting-row--card {
   padding: 14px 0;
-  border-bottom: 1px solid #ececec;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .settings-group-card .setting-row--card:last-child {
@@ -352,11 +353,11 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  background: #f0f0f0;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-sidebar-hover);
+  border: 1px solid var(--border-medium);
   border-radius: 6px;
   font-size: 12px;
-  color: #595959;
+  color: var(--text-secondary);
 }
 
 .settings-kbd {
@@ -366,19 +367,19 @@
   min-width: 22px;
   height: 20px;
   padding: 0 5px;
-  background: #ffffff;
-  border: 1px solid #d9d9d9;
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
   border-bottom-width: 2px;
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .settings-kbd-plus {
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   font-weight: 500;
   font-size: 12px;
 }
@@ -390,18 +391,18 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background: #f0f0f0;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-sidebar-hover);
+  border: 1px solid var(--border-medium);
   border-radius: 6px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   cursor: pointer;
   padding: 0;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .settings-icon-btn:hover {
-  background: #e8e8e8;
-  color: #595959;
+  background: var(--bg-sidebar-active);
+  color: var(--text-secondary);
 }
 
 .settings-icon-btn svg {
@@ -416,11 +417,11 @@
   gap: 4px;
   height: 30px;
   padding: 0 12px;
-  background: #f0f0f0;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-sidebar-hover);
+  border: 1px solid var(--border-medium);
   border-radius: 6px;
   font-size: 13px;
-  color: #262626;
+  color: var(--text-primary);
   cursor: pointer;
   transition: background 0.15s ease;
   font-family: inherit;
@@ -428,7 +429,7 @@
 }
 
 .settings-action-pill:hover {
-  background: #e8e8e8;
+  background: var(--bg-sidebar-active);
 }
 
 .settings-action-pill svg {
@@ -437,18 +438,18 @@
 }
 
 .settings-action-pill--primary {
-  background: #e6f7ed;
-  border-color: #b7ebc1;
-  color: #389e0d;
+  background: var(--accent-green-light);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
 }
 
 .settings-action-pill--primary:hover {
-  background: #d9f2e0;
+  filter: brightness(0.97);
 }
 
 .settings-action-pill--primary svg {
   fill: currentColor;
-  color: #52c41a;
+  color: var(--accent-green);
   width: 14px;
   height: 14px;
 }
@@ -458,7 +459,7 @@
   display: inline-flex;
   vertical-align: -3px;
   margin-right: 4px;
-  color: #52c41a;
+  color: var(--accent-green);
 }
 
 .settings-quota-icon svg {
@@ -469,7 +470,7 @@
 
 /* ===== 描述内行内链接 ===== */
 .settings-inline-link {
-  color: #1a1a1a;
+  color: var(--text-primary);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
@@ -477,7 +478,7 @@
 }
 
 .settings-inline-link:hover {
-  color: #595959;
+  color: var(--text-secondary);
 }
 
 /* ===== 账户页底部（退出登录） ===== */
@@ -491,18 +492,18 @@
   justify-content: center;
   height: 32px;
   padding: 0 16px;
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-medium);
   border-radius: 6px;
   font-size: 13px;
-  color: #1a1a1a;
+  color: var(--text-primary);
   cursor: pointer;
   transition: background 0.15s ease;
   font-family: inherit;
 }
 
 .settings-btn-logout:hover {
-  background: #ebebeb;
+  background: var(--bg-sidebar-hover);
 }
 
 .setting-row-text {
@@ -513,14 +514,14 @@
 .setting-row-title {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   line-height: 1.4;
 }
 
 .setting-row-desc {
   margin-top: 3px;
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
   line-height: 1.5;
   max-width: 420px;
 }
@@ -554,8 +555,8 @@
   grid-template-columns: auto 1fr;
   column-gap: 18px;
   row-gap: 16px;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
@@ -565,8 +566,8 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #a855f7, #6366f1);
-  color: #fff;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+  color: var(--bg-card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -591,7 +592,7 @@
 .settings-account-name {
   font-size: 16px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -600,7 +601,7 @@
 .settings-account-meta {
   margin-top: 2px;
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
 }
 
 .settings-account-grid {
@@ -609,7 +610,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 12px 24px;
   padding-top: 14px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-light);
 }
 
 .settings-account-cell {
@@ -621,12 +622,12 @@
 
 .settings-account-cell-label {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-tertiary);
 }
 
 .settings-account-cell-value {
   font-size: 14px;
-  color: #1a1a1a;
+  color: var(--text-primary);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -639,8 +640,8 @@
   align-items: center;
   padding: 4px 14px;
   border-radius: 999px;
-  background: rgba(168, 85, 247, 0.14);
-  color: #a855f7;
+  background: var(--accent-purple-light);
+  color: var(--accent-purple);
   font-weight: 600;
   font-size: 13px;
   letter-spacing: 0.02em;

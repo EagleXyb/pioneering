@@ -3,7 +3,7 @@
   display: flex;
   height: 100dvh;
   width: 100%;
-  background-color: #eeeff2;
+  background-color: var(--bg-sidebar);
 }
 
 .main-area {
@@ -14,7 +14,7 @@
   overflow: hidden;
   margin: 5px 5px 5px 5px;
   border-radius: 8px;
-  background-color: #eeeff2;
+  background-color: var(--bg-sidebar);
 }
 
 .main-content {

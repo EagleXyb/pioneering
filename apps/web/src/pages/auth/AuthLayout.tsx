@@ -21,13 +21,13 @@ export default function AuthLayout({ children, welcomeTitle, welcomeSubtitle }: 
       <div className={styles.brandPanel}>
         <div className={styles.brandContent}>
           <div className={styles.logoRow}>
-            <div className={styles.logoIcon}>C</div>
-            <div className={styles.brandName}>CloudHub</div>
+            <div className={styles.logoIcon}>创</div>
+            <div className={styles.brandName}>创路Agent</div>
           </div>
           <div className={styles.mainTitle}>构建未来的数字</div>
-          <div className={styles.highlightTitle}>智能云基础设施</div>
+          <div className={styles.highlightTitle}>智能助手</div>
           <div className={styles.subtitle}>
-            一站式云端管理平台，让您的业务高效运行，安全可靠。
+            AI 智能助手，让您的创意与工作高效运转，安全可靠。
           </div>
         </div>
 
