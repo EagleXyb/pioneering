@@ -17,7 +17,8 @@ export function ApiConnectionSection() {
     setApiStatus('loading')
     // B3 修复：原实现测试前就 setBaseURL，即使测试失败 apiClient.baseURL 已被污染，
     // 后续所有 API 全部失败。改为先用临时 URL 发起健康检查，成功后再 setBaseURL。
-    const testBaseURL = apiBaseUrl.replace(/\/$/, '') + '/api/v1'
+    // TS 后端路由不带 /api/v1 前缀，直接拼接基础地址
+    const testBaseURL = apiBaseUrl.replace(/\/$/, '')
     try {
       const res = await apiClient.get<{ status: string }>('/health', {
         baseURL: testBaseURL
@@ -45,7 +46,7 @@ export function ApiConnectionSection() {
           type="text"
           value={apiBaseUrl}
           onChange={(e) => setApiBaseUrl(e.target.value)}
-          placeholder="http://localhost:9000"
+          placeholder="http://localhost:6000"
           className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <Button size="sm" onClick={checkApiHealth} disabled={apiStatus === 'loading'}>

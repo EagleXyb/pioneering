@@ -11,7 +11,7 @@ import axios, {
 import type { ApiResponse, AuthTokens } from '@shared/types'
 
 const DEFAULT_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:9000'
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:6000'
 
 class ApiClient {
   private instance: AxiosInstance

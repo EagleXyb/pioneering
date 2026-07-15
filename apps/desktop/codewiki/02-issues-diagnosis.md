@@ -22,7 +22,7 @@
 - 现状：
 
 ```
-connect-src 'self' http://localhost:9000 ws://localhost:* wss:
+connect-src 'self' http://localhost:6000 ws://localhost:* wss:
 ```
 
 - 问题：`wss:` 无主机限定，渲染端被 XSS 后可通过 `wss://attacker.com` 外泄数据。

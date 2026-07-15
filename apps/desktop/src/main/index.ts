@@ -9,7 +9,7 @@ import appIcon from '../../resources/icon.png?asset'
 
 // H4: 注入 Content-Security-Policy（CSP），收缩渲染进程可加载/执行的资源来源，
 // 即使存在 XSS 也禁止其通过 window.electron.ipcRenderer（已移除）或在内联脚本中
-// 调用任意通道。connect-src 放行本地后端（localhost:9000）与开发期 HMR 的 ws。
+// 放行本地 TS 后端（localhost:6000）与开发期 HMR 的 ws。
 //
 // 开发期放宽 script-src：Vite 的 @react-refresh 会在 HTML 内联一段 preamble 脚本，
 // 若不加 'unsafe-inline' 会被 CSP 拦截，导致开发环境直接白屏。生产（loadFile）无任何
@@ -24,7 +24,7 @@ const RENDERER_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' http://localhost:9000 ws://localhost:*",
+  "connect-src 'self' http://localhost:6000 ws://localhost:*",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'none'",

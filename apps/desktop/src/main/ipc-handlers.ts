@@ -231,7 +231,7 @@ export function registerIpcHandlers(): void {
   // 网络检测：探测后端可达性（5s 超时）
   ipcMain.handle(IpcChannel.APP_NETWORK_CHECK, async (event) => {
     if (!isTrustedSender(event)) return false
-    const base = process.env['VITE_API_BASE_URL'] ?? 'http://localhost:9000'
+    const base = process.env['VITE_API_BASE_URL'] ?? 'http://localhost:6000'
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 5000)
     try {
