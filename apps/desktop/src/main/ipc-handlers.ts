@@ -235,7 +235,8 @@ export function registerIpcHandlers(): void {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 5000)
     try {
-      const res = await fetch(`${base}/ping`, { signal: controller.signal })
+      // TS 后端使用 /health 而非 /ping
+      const res = await fetch(`${base}/health`, { signal: controller.signal })
       return res.ok
     } catch {
       return false
