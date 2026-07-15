@@ -36,6 +36,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    server: {
+      port: 5174,
+    },
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),
