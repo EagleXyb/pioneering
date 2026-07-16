@@ -10,8 +10,16 @@ import axios, {
 } from 'axios'
 import type { ApiResponse, AuthTokens } from '@shared/types'
 
+// 默认后端地址。
+// 关键 1：使用 127.0.0.1 而非 localhost。
+//   Windows 上 localhost 优先解析到 IPv6 ::1，但 Fastify 默认 host（0.0.0.0）仅监听 IPv4，
+//   Chromium/Electron 的 fetch 优先走 IPv6 → 连接被拒 → "Failed to fetch"。
+//   显式 127.0.0.1 强制走 IPv4，绕开 IPv6 解析不一致问题。
+// 关键 2：端口必须避开 Chromium 不安全端口黑名单。
+//   6000 是 X11 协议端口，被 Chromium 内核直接拦截（net::ERR_UNSAFE_PORT），
+//   改用 8088（不在黑名单）。
 const DEFAULT_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:6000'
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://127.0.0.1:8088'
 
 class ApiClient {
   private instance: AxiosInstance

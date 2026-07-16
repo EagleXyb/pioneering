@@ -79,8 +79,8 @@ Get-Process -Name "python","node","electron" -ErrorAction SilentlyContinue | For
 
 Write-Host ""
 Write-Host "=== Service URLs ==="
-Write-Host "  Backend-TS API: http://localhost:6000"
-Write-Host "  API Docs:       http://localhost:6000/docs"
+Write-Host "  Backend-TS API: http://localhost:8088"
+Write-Host "  API Docs:       http://localhost:8088/docs"
 Write-Host "  Frontend Web:   http://localhost:5173"
 Write-Host "  Marketing:      http://localhost:9001"
 Write-Host "  Desktop:        Electron App (launched separately)"

@@ -26,6 +26,7 @@ interface AppApi {
   quit: () => Promise<void>
   checkUpdate: () => Promise<string>
   networkCheck: () => Promise<boolean>
+  setApiBaseUrl: (url: string) => Promise<boolean>
   openLogDir: () => Promise<string>
   onMenuAction: (callback: (id: string) => void) => () => void
 }

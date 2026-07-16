@@ -9,22 +9,27 @@ import appIcon from '../../resources/icon.png?asset'
 
 // H4: 注入 Content-Security-Policy（CSP），收缩渲染进程可加载/执行的资源来源，
 // 即使存在 XSS 也禁止其通过 window.electron.ipcRenderer（已移除）或在内联脚本中
-// 放行本地 TS 后端（localhost:6000）与开发期 HMR 的 ws。
+// 放行本地 TS 后端与开发期 HMR 的 ws。
 //
-// 开发期放宽 script-src：Vite 的 @react-refresh 会在 HTML 内联一段 preamble 脚本，
+// 开发期放宽 script-src：Vite 的 @react-refresh 会在 HTML 内放一段 preamble 脚本，
 // 若不加 'unsafe-inline' 会被 CSP 拦截，导致开发环境直接白屏。生产（loadFile）无任何
 // 内联脚本，保持严格 'self' 即可。这样在不破坏开发体验的前提下仍满足 H4 的安全目标。
 //
 // S2 修复：原 connect-src 含 "wss:"（无主机限定），一旦渲染端被 XSS 攻破，攻击者
 // 可通过 wss://attacker.com 外泄数据。当前后端未使用 secure WebSocket，直接移除；
 // 若未来需要，应限定为具体主机，如 wss://api.example.com。
+//
+// IPv6 修复：Windows 上 localhost 优先解析到 IPv6 ::1，但 Fastify 默认 host=0.0.0.0
+// 仅监听 IPv4，Chromium fetch 优先 IPv6 → 连接被拒。渲染端改用 127.0.0.1 绕开，
+// 故 CSP connect-src 必须同时放行 127.0.0.1。
+// 通配端口（:*）避免端口变化又要改 CSP；localhost/127.0.0.1 均为本机回环，安全可控。
 const RENDERER_CSP = [
   "default-src 'self'",
   `script-src 'self'${is.dev ? " 'unsafe-inline'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' http://localhost:6000 ws://localhost:*",
+  "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'none'",

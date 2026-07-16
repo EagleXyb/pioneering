@@ -50,6 +50,7 @@ const mockApi: PioneeringApi = {
     quit: noop,
     checkUpdate: () => Promise.resolve('0.0.0'),
     networkCheck: () => Promise.resolve(true),
+    setApiBaseUrl: (_url: string) => Promise.resolve(true),
     openLogDir: () => Promise.resolve(''),
     onMenuAction: (_callback: (id: string) => void) => noop
   },

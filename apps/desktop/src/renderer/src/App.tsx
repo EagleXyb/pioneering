@@ -18,6 +18,9 @@ import { runMenuAction } from './menu/menuActions'
 // S5: Token 在主进程 storeApi 中的持久化 key
 const TOKEN_STORAGE_KEY = 'auth.tokens'
 
+// API baseURL 持久化 key（与 ApiConnectionSection 共用）
+const API_BASE_URL_STORAGE_KEY = 'api.baseUrl'
+
 function App() {
   const initTheme = useAppStore((s) => s.initTheme)
   const setPlatform = useSetAtom(platformAtom)
@@ -26,6 +29,32 @@ function App() {
   useEffect(() => {
     initTheme()
   }, [initTheme])
+
+  // 启动时恢复持久化的 API baseURL，并同步到主进程。
+  // 解决原实现 baseURL 仅存于 apiClient 内存、重启即丢失的问题（M5 修复）。
+  // 必须在 token 恢复与其他 API 调用之前完成，确保后续请求使用正确的基础地址。
+  useEffect(() => {
+    void (async () => {
+      const saved = await storeApi.get<string>(API_BASE_URL_STORAGE_KEY)
+      if (typeof saved === 'string' && saved.trim()) {
+        // 归一化：
+        // 1. 剥离尾部斜杠与遗留 /api 前缀
+        // 2. localhost → 127.0.0.1，绕开 Windows IPv6 解析问题
+        // 3. 旧端口（6000/8787）→ 8088，迁移到当前安全端口
+        const normalized = saved
+          .trim()
+          .replace(/\/+$/, '')
+          .replace(/\/api\/v\d+$/, '')
+          .replace(/\/api$/, '')
+          .replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1')
+          .replace(/^(https?:\/\/127\.0\.0\.1):6000(?=[:\/]|$)/i, '$1:8088')
+          .replace(/^(https?:\/\/127\.0\.0\.1):8787(?=[:\/]|$)/i, '$1:8088')
+        apiClient.setBaseURL(normalized)
+        // 同步到主进程，使 APP_NETWORK_CHECK 与渲染端一致
+        void appApi.setApiBaseUrl(normalized)
+      }
+    })()
+  }, [])
 
   // S5 修复：应用启动时从主进程 storeApi 恢复已持久化的 token，避免刷新即登出。
   // 并注册 onTokensChange 回调，token 变化时持久化到主进程内存（刷新页面不丢失）。

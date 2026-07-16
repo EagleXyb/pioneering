@@ -46,6 +46,7 @@ const appApi = {
   quit: () => ipcRenderer.invoke(IpcChannel.APP_QUIT),
   checkUpdate: () => ipcRenderer.invoke(IpcChannel.APP_CHECK_UPDATE),
   networkCheck: () => ipcRenderer.invoke(IpcChannel.APP_NETWORK_CHECK),
+  setApiBaseUrl: (url: string) => ipcRenderer.invoke(IpcChannel.APP_SET_API_BASE_URL, url),
   openLogDir: () => ipcRenderer.invoke(IpcChannel.APP_OPEN_LOG_DIR),
   onMenuAction: (callback: (id: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, id: string) => callback(id)

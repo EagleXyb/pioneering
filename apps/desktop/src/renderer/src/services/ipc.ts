@@ -75,6 +75,8 @@ export const appApi = {
   quit: () => getApi()?.app.quit(),
   checkUpdate: () => getApi()?.app.checkUpdate() ?? Promise.resolve('0.0.0'),
   networkCheck: () => getApi()?.app.networkCheck() ?? Promise.resolve(false),
+  setApiBaseUrl: (url: string) =>
+    getApi()?.app.setApiBaseUrl(url) ?? Promise.resolve(false),
   openLogDir: () => getApi()?.app.openLogDir() ?? Promise.resolve(''),
   // 主进程原生菜单 -> 渲染端的动作转发监听
   onMenuAction: (callback: (id: string) => void) =>

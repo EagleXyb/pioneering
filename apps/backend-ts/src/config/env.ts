@@ -17,7 +17,8 @@ const EnvSchema = z.object({
   LLM_DEFAULT_MODEL: z.string().default('deepseek-chat'),
 
   HOST: z.string().default('0.0.0.0'),
-  PORT: z.coerce.number().int().default(6000),
+  // 默认 8088：避开 Chromium 不安全端口黑名单（6000 是 X11 端口，会被 net::ERR_UNSAFE_PORT 拦截）
+  PORT: z.coerce.number().int().default(8088),
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,file://'),
 
   UPLOAD_DIR: z.string().default('./uploads'),

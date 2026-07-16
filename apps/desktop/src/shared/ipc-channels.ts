@@ -26,6 +26,7 @@ export enum IpcChannel {
   APP_QUIT = 'app:quit',
   APP_CHECK_UPDATE = 'app:checkUpdate',
   APP_NETWORK_CHECK = 'app:networkCheck',
+  APP_SET_API_BASE_URL = 'app:setApiBaseUrl',
   APP_OPEN_LOG_DIR = 'app:openLogDir',
 
   // 主进程(原生菜单) -> 渲染端 的动作转发（如打开设置弹框）

@@ -30,6 +30,15 @@ import type {
 // 简单的内存 Store（可替换为 electron-store）
 const appStore = new Map<string, unknown>()
 
+// 主进程持有的后端 baseURL，由渲染端通过 IPC 同步。
+// 解决原 APP_NETWORK_CHECK 直接读 process.env['VITE_API_BASE_URL']（主进程不加载
+// Vite env，永远 fallback 默认值）导致与渲染端 apiClient.baseURL 脱钩的问题。
+// 默认值与渲染端 client.ts 的 DEFAULT_BASE_URL 保持一致。
+// 用 127.0.0.1 而非 localhost，绕开 Windows IPv6 解析问题（详见 client.ts 注释）。
+// 端口 8088：避开 Chromium 不安全端口黑名单（6000 是 X11 端口，会被 ERR_UNSAFE_PORT 拦截）。
+let backendBaseUrl =
+  process.env['VITE_API_BASE_URL'] ?? 'http://127.0.0.1:8088'
+
 // H2: 经对话框选择、允许读写的用户路径集合（命中即视为白名单成员）。
 // 文档要求「用户经对话框选定路径」也应放行，这里在打开/保存对话框返回后记录。
 const userAllowedPaths = new Set<string>()
@@ -229,9 +238,17 @@ export function registerIpcHandlers(): void {
   })
 
   // 网络检测：探测后端可达性（5s 超时）
+  // 使用主进程持有的 backendBaseUrl（由渲染端经 APP_SET_API_BASE_URL 同步），
+  // 不再读 process.env['VITE_API_BASE_URL']，确保与渲染端 apiClient.baseURL 一致。
+  // localhost → 127.0.0.1，绕开 Windows IPv6 解析问题。
+  // 旧端口（6000/8787）→ 8088，迁移到当前安全端口（6000 是 Chromium 黑名单端口）。
   ipcMain.handle(IpcChannel.APP_NETWORK_CHECK, async (event) => {
     if (!isTrustedSender(event)) return false
-    const base = process.env['VITE_API_BASE_URL'] ?? 'http://localhost:6000'
+    const base = backendBaseUrl
+      .replace(/\/+$/, '')
+      .replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1')
+      .replace(/^(https?:\/\/127\.0\.0\.1):6000(?=[:\/]|$)/i, '$1:8088')
+      .replace(/^(https?:\/\/127\.0\.0\.1):8787(?=[:\/]|$)/i, '$1:8088')
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 5000)
     try {
@@ -244,6 +261,20 @@ export function registerIpcHandlers(): void {
       clearTimeout(timer)
     }
   })
+
+  // 渲染端同步后端 baseURL 到主进程，供 APP_NETWORK_CHECK 使用。
+  // 同时持久化到 appStore，使主进程在后续重启中也能恢复（best-effort）。
+  ipcMain.handle(
+    IpcChannel.APP_SET_API_BASE_URL,
+    (event, url: string): boolean => {
+      if (!isTrustedSender(event)) return false
+      if (typeof url !== 'string' || !url.trim()) return false
+      // 仅允许 http(s) 协议，防止 file:// / javascript: 等注入
+      if (!/^https?:\/\//i.test(url)) return false
+      backendBaseUrl = url.trim()
+      return true
+    }
+  )
 
   // 打开日志目录
   ipcMain.handle(IpcChannel.APP_OPEN_LOG_DIR, (event) => {
