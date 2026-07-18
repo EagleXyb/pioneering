@@ -60,7 +60,7 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 880px;
+  max-width: 917px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -126,7 +126,7 @@
   text-align: left;
   background: var(--bg-card);
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   cursor: pointer;
   overflow: hidden;
   transition:
