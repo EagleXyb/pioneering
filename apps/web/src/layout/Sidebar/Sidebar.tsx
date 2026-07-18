@@ -581,7 +581,22 @@ export function Sidebar() {
     if (window.innerWidth <= 768 && sidebarOpen) toggleSidebar();
   }, [navigate, sidebarOpen, toggleSidebar]);
 
+  /** 判断当前是否处于"新建会话"状态：
+   * 即当前激活的会话是一个尚未产生任何消息的空会话（默认标题"新会话"且无预览内容）。
+   * 一旦用户发送过消息，预览会被 updatePreview 填充、标题会被 setTitle 改写，
+   * 该会话即不再被视为"新建会话"。 */
+  const isActiveConversationNew = useCallback(() => {
+    const state = useConversationStore.getState();
+    const active = state.conversations.find((c) => c.id === state.activeId);
+    return !!active && active.title === '新会话' && !active.preview;
+  }, []);
+
   const handleNewConversation = useCallback(async () => {
+    // 已处于新建会话状态：拦截重复新建，给出全局提示
+    if (isActiveConversationNew()) {
+      MessagePlugin.success({ content: '已是最新的对话', duration: 3000 });
+      return;
+    }
     try {
       await create(mode);
       navigate(`/${mode}`);
@@ -589,7 +604,7 @@ export function Sidebar() {
     } catch {
       MessagePlugin.info('创建会话失败');
     }
-  }, [create, mode, navigate]);
+  }, [create, mode, navigate, isActiveConversationNew]);
 
   const handleSelectConversation = useCallback((conv: Conversation) => {
     activate(conv.id);

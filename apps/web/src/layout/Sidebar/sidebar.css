@@ -76,6 +76,8 @@
 
 .sidebar-collapse-btn {
   margin-left: auto;
+  width: 28px;
+  height: 28px;
   padding: 4px;
   border-radius: 4px;
   color: var(--text-sidebar-dim);
