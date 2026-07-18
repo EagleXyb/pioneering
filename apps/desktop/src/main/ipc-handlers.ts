@@ -500,8 +500,16 @@ export function registerIpcHandlers(): void {
   // 若用户在拖拽中关闭窗口，对应 entry 永不释放，造成内存泄漏。
   // 监听每个新建窗口的 closed 事件，清理对应的拖拽状态。
   app.on('browser-window-created', (_event, win) => {
+    // B13 修复：窗口创建时 webContents 仍存活，立即捕获其 id。
+    // closed 事件触发时 webContents 已被销毁，此时再访问会抛
+    // "Object has been destroyed"（?. 无法拦截会抛错的 getter）。
+    let id: number | undefined
+    try {
+      id = win.webContents?.id
+    } catch {
+      id = undefined
+    }
     win.on('closed', () => {
-      const id = win.webContents?.id
       if (id !== undefined) {
         dragTargets.delete(id)
         dragStates.delete(id)

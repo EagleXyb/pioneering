@@ -3,6 +3,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { randomUUID } from 'crypto'
 import { authGuard } from '../plugins/auth.js'
+import { isOriginAllowed } from '../plugins/cors.js'
 import { NotFoundError, ForbiddenError, BadGatewayError, TooManyRequestsError } from '../plugins/error-handler.js'
 import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
@@ -707,12 +708,21 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         runningRuns.set(runId, { abortController, sessionId, userId: req.user.id })
 
         // Fastify SSE: hijack 后直接操作 raw response
+        // 注意：hijack 会绕过 Fastify 的 onSend 钩子，@fastify/cors 不会自动补 CORS 头，
+        // 需在此手动按请求的 Origin 补回，否则浏览器会因缺少 Access-Control-Allow-Origin 拦截流。
+        const reqOrigin = req.headers.origin
+        const corsHeaders: Record<string, string> = {}
+        if (reqOrigin && isOriginAllowed(reqOrigin)) {
+          corsHeaders['Access-Control-Allow-Origin'] = reqOrigin
+          corsHeaders['Access-Control-Allow-Credentials'] = 'true'
+        }
         reply.hijack()
         reply.raw.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
+          ...corsHeaders,
         })
 
         const collectedContent: string[] = []

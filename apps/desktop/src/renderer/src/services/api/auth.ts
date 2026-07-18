@@ -37,7 +37,7 @@ export const authService = {
 
   /** 获取当前用户资料 */
   async getProfile(): Promise<UserProfile> {
-    const res = await apiClient.get<UserProfile>('/auth/profile')
+    const res = await apiClient.get<UserProfile>('/user/profile')
     return res.data
   },
 
@@ -45,7 +45,7 @@ export const authService = {
   async updateProfile(
     data: Partial<Pick<UserProfile, 'nickname' | 'avatar'>>
   ): Promise<UserProfile> {
-    const res = await apiClient.put<UserProfile>('/auth/profile', data)
+    const res = await apiClient.put<UserProfile>('/user/profile', data)
     return res.data
   },
 

@@ -236,7 +236,9 @@ export function streamAgui(
     })
     .catch((err) => {
       if (err.name !== 'AbortError') {
-        cb.onError(err.message || 'Network error')
+        const base = apiClient.getBaseURL()
+        console.error('[streamAgui] fetch failed', base + url, err)
+        cb.onError(`${err.message || 'Network error'} @ ${base}${url}`)
       }
     })
 
