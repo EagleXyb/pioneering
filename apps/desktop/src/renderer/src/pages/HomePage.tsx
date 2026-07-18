@@ -4,7 +4,7 @@
 
 // ---- HomePage ----
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Settings, ArrowRight } from 'lucide-react'
+import { MessageSquare, Settings, ArrowRight } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
 import { useSetAtom } from 'jotai'
@@ -14,18 +14,15 @@ export function HomePage() {
   const navigate = useNavigate()
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
 
+  // A1 双轨统一：移除原指向 /agent 路由的「AI Agent」卡片。
+  // Agent 能力已统一由 chatStore.agentMode（ChatArea 输入区切换）承载，
+  // 不再需要独立的 mock 入口页（useAgentStore + AgentPage 已删除）。
   const features = [
     {
       icon: <MessageSquare className="size-10 text-primary" />,
       title: 'AI Chat',
       desc: '对话式 AI 助手，支持流式输出、多模型切换、会话管理',
       path: '/'
-    },
-    {
-      icon: <Bot className="size-10 text-primary" />,
-      title: 'AI Agent',
-      desc: '智能体执行引擎，支持工具调用、多步推理、任务编排',
-      path: '/agent'
     },
     {
       icon: <Settings className="size-10 text-primary" />,
@@ -67,19 +64,11 @@ export function HomePage() {
               <MessageSquare className="size-5 mr-2" />
               Start Chat
             </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => navigate('/agent')}
-            >
-              <Bot className="size-5 mr-2" />
-              Try Agent
-            </Button>
           </div>
         </div>
 
         {/* 功能卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {features.map((f) => (
             <Card
               key={f.path}

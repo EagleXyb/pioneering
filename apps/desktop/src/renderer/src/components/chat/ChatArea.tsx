@@ -105,6 +105,7 @@ export function ChatArea() {
               streamingToolCalls={streamingToolCalls}
               streamingMessageId={streamingMessageId}
               isStreaming={isStreaming}
+              scrollElementRef={scrollRef}
             />
           </div>
         </ScrollArea>

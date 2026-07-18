@@ -26,7 +26,15 @@ export function ConversationList() {
   const navigate = useNavigate()
   const { platform } = usePlatform()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
-  const { sessions, currentSessionId, selectSession, createSession, deleteSession } = useChatStore()
+  // P2 修复：原实现 `const { sessions, ... } = useChatStore()` 订阅整个 store，
+  // 流式期间 streamingContent/streamingThinking 等高频更新会触发本组件全量重渲染，
+  // 即使会话列表数据未变。改为逐项选择器订阅，仅在对应切片变化时重渲染。
+  // action 函数（selectSession 等）在 store 创建时定义、引用稳定，订阅它们不会重渲染。
+  const sessions = useChatStore((s) => s.sessions)
+  const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const selectSession = useChatStore((s) => s.selectSession)
+  const createSession = useChatStore((s) => s.createSession)
+  const deleteSession = useChatStore((s) => s.deleteSession)
 
   // 长列表虚拟化：仅渲染视口内行，避免大量会话时 DOM 膨胀（固定行高）
   const scrollRef = useRef<HTMLDivElement>(null)

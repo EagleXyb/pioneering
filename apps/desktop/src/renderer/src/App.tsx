@@ -3,7 +3,6 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
-import { AgentPage } from './pages/AgentPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { useAppStore } from './stores/useAppStore'
 import { useSetAtom } from 'jotai'
@@ -119,7 +118,6 @@ function App() {
         <Route element={<RootLayout />}>
           <Route index element={<ChatPage />} />
           <Route path="/home" element={<HomePage />} />
-          <Route path="/agent" element={<AgentPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
         </Route>
       </Routes>
