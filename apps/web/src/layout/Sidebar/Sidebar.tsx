@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Dialog, MessagePlugin, Popup, Avatar, Loading } from 'tdesign-react';
+import { Dialog, MessagePlugin, Popup, Avatar, Loading, Tooltip } from 'tdesign-react';
 import {
   SettingIcon,
   HelpCircleIcon,
@@ -668,64 +668,76 @@ export function Sidebar() {
           <div className="sidebar-logo">
             <div className="sidebar-logo-icon">创</div>
             <span className="sidebar-logo-text">创路Agent</span>
-            <button
-              className="sidebar-collapse-btn"
-              onClick={toggleSidebar}
-              title={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
-              aria-label={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
+            <Tooltip
+              content={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
+              placement="bottom"
+              showArrow
             >
-              {sidebarOpen ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2"/>
-                  <path d="M9 3v18"/>
-                  <path d="m16 15-3-3 3-3"/>
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2"/>
-                  <path d="M9 3v18"/>
-                  <path d="m14 9 3 3-3 3"/>
-                </svg>
-              )}
-            </button>
+              <button
+                className="sidebar-collapse-btn"
+                onClick={toggleSidebar}
+                aria-label={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
+              >
+                {sidebarOpen ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2"/>
+                    <path d="M9 3v18"/>
+                    <path d="m16 15-3-3 3-3"/>
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2"/>
+                    <path d="M9 3v18"/>
+                    <path d="m14 9 3 3-3 3"/>
+                  </svg>
+                )}
+              </button>
+            </Tooltip>
           </div>
           <div className="sidebar-mode-switcher" role="tablist" aria-label="模式切换">
             {(['chat', 'pro', 'task'] as const).map((m) => (
-              <button
+              <Tooltip
                 key={m}
-                className={`sidebar-mode-btn${mode === m ? ' active' : ''}`}
-                role="tab"
-                aria-selected={mode === m}
-                title={{ chat: '对话模式', pro: '分析模式', task: '任务模式' }[m]}
-                onClick={() => handleSwitchMode(m)}
+                content={{ chat: '对话模式', pro: '分析模式', task: '任务模式' }[m]}
+                placement="top"
+                showArrow
               >
-                {m === 'chat' && (
-                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3">
-                    <path d="M2 3h10a1 1 0 011 1v5a1 1 0 01-1 1H5l-3 2V4a1 1 0 011-1z"/>
-                  </svg>
-                )}
-                {m === 'pro' && (
-                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3">
-                    <path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/>
-                  </svg>
-                )}
-                {m === 'task' && (
-                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3">
-                    <rect x="1" y="1" width="12" height="12" rx="2"/>
-                    <path d="M4 5h6M4 7h4M4 9h5"/>
-                  </svg>
-                )}
-                {{ chat: '对话', pro: '分析', task: '任务' }[m]}
-              </button>
+                <button
+                  className={`sidebar-mode-btn${mode === m ? ' active' : ''}`}
+                  role="tab"
+                  aria-selected={mode === m}
+                  onClick={() => handleSwitchMode(m)}
+                >
+                  {m === 'chat' && (
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <path d="M2 3h10a1 1 0 011 1v5a1 1 0 01-1 1H5l-3 2V4a1 1 0 011-1z"/>
+                    </svg>
+                  )}
+                  {m === 'pro' && (
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/>
+                    </svg>
+                  )}
+                  {m === 'task' && (
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <rect x="1" y="1" width="12" height="12" rx="2"/>
+                      <path d="M4 5h6M4 7h4M4 9h5"/>
+                    </svg>
+                  )}
+                  {{ chat: '对话', pro: '分析', task: '任务' }[m]}
+                </button>
+              </Tooltip>
             ))}
           </div>
-          <button className="btn-new-chat" onClick={handleNewConversation} title="新建会话">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <line x1="8" y1="3" x2="8" y2="13"/>
-              <line x1="3" y1="8" x2="13" y2="8"/>
-            </svg>
-            新建会话
-          </button>
+          <Tooltip content="新建会话" placement="top" showArrow>
+            <button className="btn-new-chat" onClick={handleNewConversation}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <line x1="8" y1="3" x2="8" y2="13"/>
+                <line x1="3" y1="8" x2="13" y2="8"/>
+              </svg>
+              新建会话
+            </button>
+          </Tooltip>
           {/* 归档视图切换：在活跃/归档会话列表之间切换 */}
           <button
             className={`btn-archive-toggle${archivedView ? ' active' : ''}`}
