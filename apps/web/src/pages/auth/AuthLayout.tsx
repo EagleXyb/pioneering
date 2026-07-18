@@ -24,8 +24,8 @@ export default function AuthLayout({ children, welcomeTitle, welcomeSubtitle }: 
             <div className={styles.logoIcon}>创</div>
             <div className={styles.brandName}>创路Agent</div>
           </div>
-          <div className={styles.mainTitle}>构建未来的数字</div>
-          <div className={styles.highlightTitle}>智能助手</div>
+          <div className={styles.mainTitle}>构建未来</div>
+          <div className={styles.highlightTitle}>数字智能助手</div>
           <div className={styles.subtitle}>
             AI 智能助手，让您的创意与工作高效运转，安全可靠。
           </div>

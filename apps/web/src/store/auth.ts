@@ -17,6 +17,8 @@ interface AuthStore {
   authenticate: (user: UserProfile, token: string, refreshToken?: string, rememberMe?: boolean) => void;
   /** 登出 — 清除状态 */
   logout: () => void;
+  /** 更新已登录用户信息（如个人中心拉取最新资料后同步） */
+  updateUser: (user: UserProfile) => void;
   /** 更新状态 */
   setStatus: (status: AuthStatus) => void;
   /** 设置错误信息 */
@@ -40,6 +42,10 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         clearToken();
         set({ status: 'idle', user: null, error: null });
+      },
+
+      updateUser: (user) => {
+        set({ user });
       },
 
       setStatus: (status) => set({ status }),

@@ -12,7 +12,7 @@ import type { LoginRequest } from '../types/auth';
 export function useAuth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, status, error, authenticate, logout: storeLogout, setStatus, setError } = useAuthStore();
+  const { user, status, error, authenticate, logout: storeLogout, updateUser, setStatus, setError } = useAuthStore();
 
   /** 登录 — 后端 POST /auth/login，字段为 username + password
    * @param rememberMe true 存 localStorage（跨会话保留），false 存 sessionStorage（关闭浏览器清除）
@@ -59,6 +59,7 @@ export function useAuth() {
     isLoading: status === 'loading',
     login,
     logout,
+    updateUser,
     clearError,
   };
 }

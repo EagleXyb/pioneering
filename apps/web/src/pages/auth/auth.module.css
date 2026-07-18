@@ -4,13 +4,16 @@
   display: flex;
   width: 100%;
   min-height: 100vh;
+  max-width: 1920px;
+  margin: 0 auto;
+  overflow-y: auto;
 }
 
 /* ----- 左侧品牌面板 ----- */
 .brandPanel {
   flex: 0 0 64.6%;
   min-height: 100vh;
-  background: linear-gradient(135deg, #E8F5FF 0%, #A6CCF2 50%, #73A6E6 100%);
+  background: var(--auth-brand-bg);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -51,13 +54,13 @@
 .brandName {
   font-size: 26px;
   font-weight: 700;
-  color: #1E293B;
+  color: var(--auth-text-title);
 }
 
 .mainTitle {
   font-size: 48px;
   font-weight: 800;
-  color: #1E293B;
+  color: var(--auth-text-title);
   line-height: 1.2;
   margin-bottom: 8px;
 }
@@ -72,28 +75,30 @@
 
 .subtitle {
   font-size: 18px;
-  color: #475569;
+  color: var(--auth-text-subtitle);
   line-height: 28px;
   font-weight: 400;
 }
 
-/* 3D 立方体装饰 */
+/* 3D 立方体装饰 — 相对定位避免溢出 */
 .decorContainer {
   position: absolute;
-  right: 215px;
-  top: 366px;
-  width: 500px;
-  height: 400px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(500px, 60%);
+  aspect-ratio: 5 / 4;
   pointer-events: none;
+  z-index: 1;
 }
 
 .cubeTop {
   position: absolute;
-  width: 160px;
-  height: 80px;
-  left: 140px;
-  top: 60px;
-  background: rgba(37, 99, 235, 0.25);
+  width: 32%;
+  height: 20%;
+  left: 28%;
+  top: 15%;
+  background: var(--auth-decor-blue-25);
   border-radius: 2px;
   border: 1.5px solid rgba(37, 99, 235, 0.4);
   transform: rotate(-30deg);
@@ -101,22 +106,22 @@
 
 .cubeRight {
   position: absolute;
-  width: 140px;
-  height: 140px;
-  left: 265px;
-  top: 90px;
-  background: rgba(37, 99, 235, 0.15);
+  width: 28%;
+  height: 35%;
+  left: 53%;
+  top: 22%;
+  background: var(--auth-decor-blue-15);
   border-radius: 2px;
   border: 1.5px solid rgba(37, 99, 235, 0.4);
 }
 
 .cubeLeft {
   position: absolute;
-  width: 160px;
-  height: 80px;
-  left: 70px;
-  top: 150px;
-  background: rgba(37, 99, 235, 0.2);
+  width: 32%;
+  height: 20%;
+  left: 14%;
+  top: 37%;
+  background: var(--auth-decor-blue-20);
   border-radius: 2px;
   border: 1.5px solid rgba(37, 99, 235, 0.4);
   transform: rotate(30deg);
@@ -124,31 +129,31 @@
 
 .circle1 {
   position: absolute;
-  width: 120px;
-  height: 120px;
-  right: 100px;
-  top: 20px;
-  background: rgba(37, 99, 235, 0.08);
+  width: 24%;
+  height: 30%;
+  right: 20%;
+  top: 5%;
+  background: var(--auth-decor-blue-08);
   border-radius: 50%;
 }
 
 .circle2 {
   position: absolute;
-  width: 80px;
-  height: 80px;
-  left: 30px;
-  bottom: 20px;
-  background: rgba(51, 128, 255, 0.06);
+  width: 16%;
+  height: 20%;
+  left: 6%;
+  bottom: 5%;
+  background: var(--auth-decor-blue-08);
   border-radius: 50%;
 }
 
 .circle3 {
   position: absolute;
-  width: 60px;
-  height: 60px;
-  right: 60px;
-  bottom: 40px;
-  background: rgba(26, 77, 204, 0.1);
+  width: 12%;
+  height: 15%;
+  right: 12%;
+  bottom: 10%;
+  background: var(--auth-decor-blue-08);
   border-radius: 50%;
 }
 
@@ -156,7 +161,7 @@
 .formPanel {
   flex: 0 0 35.4%;
   min-height: 100vh;
-  background: linear-gradient(180deg, #F7FAFF 0%, #EDF2FC 100%);
+  background: var(--auth-form-bg);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -164,17 +169,34 @@
   padding: 40px 45px;
 }
 
-/* 毛玻璃卡片 */
+/* 毛玻璃卡片 — 提供 backdrop-filter fallback */
 .authCard {
-  width: 100%;
-  max-width: 420px;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  width: clamp(320px, 90vw, 420px);
+  background: var(--auth-card-bg-solid);
+  border: 1px solid var(--auth-card-border);
   border-radius: 20px;
   padding: 28px 36px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--auth-card-shadow);
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .authCard {
+    background: var(--auth-card-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .welcomeHeader {
@@ -184,13 +206,13 @@
 .welcomeTitle {
   font-size: 22px;
   font-weight: 700;
-  color: #1E293B;
+  color: var(--auth-text-title);
   margin-bottom: 4px;
 }
 
 .welcomeSubtitle {
   font-size: 14px;
-  color: #64748B;
+  color: var(--auth-text-muted);
 }
 
 /* Tab 切换 */
@@ -254,39 +276,63 @@
   padding-bottom: 8px;
   font-size: 14px;
   font-weight: 500;
-  color: #334155;
+  color: var(--auth-text-label);
 }
 
 .formSection :global(.t-form__label label) {
   font-size: 14px;
 }
 
-/* 提交按钮 */
-.submitBtn {
-  width: 100%;
+/* 去掉 TDesign 输入框自带的浅灰背景色，去除"框中框"观感 */
+.formSection :global(.t-input) {
+  background-color: transparent !important;
+}
+
+.formSection :global(.t-input--focused) {
+  background-color: transparent !important;
+}
+
+.formSection :global(.t-input__inner) {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 自定义 TDesign 输入框 focus 状态，对齐品牌蓝 */
+.formSection :global(.t-input.t-is-focused),
+.formSection :global(.t-input__inner:focus) {
+  border-color: var(--accent-blue);
+  box-shadow: var(--auth-focus-ring);
+  background-color: transparent !important;
+}
+
+/* 公共输入框类 — 替代内联 style */
+.formInput {
   height: 48px;
-  border: none;
-  border-radius: 10px;
-  background: linear-gradient(180deg, var(--accent-blue) 0%, #4D80FF 100%);
-  color: white;
-  font-family: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.submitBtn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+/* 公共提交按钮类 — 统一 Login/Register 规格 */
+.submitButton {
+  height: 48px !important;
+  border-radius: 8px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.3em;
+  background: var(--auth-btn-gradient) !important;
+  border: none !important;
+  box-shadow: var(--auth-btn-shadow) !important;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast) !important;
 }
 
-.submitBtn:active {
+.submitButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--auth-btn-shadow-hover) !important;
+}
+
+.submitButton:active:not(:disabled) {
   transform: translateY(0);
 }
 
-.submitBtn:disabled {
+.submitButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
@@ -298,35 +344,27 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-  margin-top: 0px;
+  margin-top: 0;
 }
 
-/* 错误提示 */
+/* 错误提示 — 带 fadeIn 动画与无障碍属性 */
 .errorText {
   color: var(--accent-red);
   font-size: 13px;
   margin-bottom: 16px;
   text-align: center;
+  animation: fadeIn 0.25s ease;
 }
 
-/* 分割线 */
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 24px 0;
-}
-
-.dividerLine {
-  flex: 1;
-  height: 1px;
-  background: var(--border-light);
-}
-
-.dividerText {
-  font-size: 12px;
-  color: #94A3B8;
-  white-space: nowrap;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 密码强度 */
@@ -334,61 +372,15 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 20px;
-}
-
-/* 确认密码提示 */
-.confirmHint {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 20px;
-}
-
-/* 底部链接 */
-.footerLink {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 4px;
-  margin-top: 16px;
-}
-
-.footerText {
-  font-size: 13px;
-  color: #64748B;
-}
-
-.footerAction {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent-blue);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font-family: inherit;
-}
-
-.footerAction:hover {
-  text-decoration: underline;
-}
-
-/* 密码强度 */
-.passwordStrength {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 0;
   margin-bottom: 20px;
 }
 
 .strengthBar {
-  width: 60px;
+  flex: 1;
   height: 4px;
   background: var(--border-light);
   border-radius: 2px;
-  transition: background 0.3s;
+  transition: background var(--transition-normal);
 }
 
 .strengthBarWeak {
@@ -405,7 +397,9 @@
 
 .strengthText {
   font-size: 11px;
-  color: #94A3B8;
+  color: var(--auth-text-dim);
+  white-space: nowrap;
+  margin-left: 4px;
 }
 
 .strengthTextWeak {
@@ -425,7 +419,6 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 0;
   margin-bottom: 20px;
 }
 
@@ -434,6 +427,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--border-light);
+  flex-shrink: 0;
 }
 
 .hintDotMatch {
@@ -442,14 +436,44 @@
 
 .hintText {
   font-size: 11px;
-  color: #94A3B8;
+  color: var(--auth-text-dim);
 }
 
 .hintTextMatch {
   color: var(--accent-green);
 }
 
+/* 底部链接 */
+.footerLink {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin-top: 16px;
+}
 
+.footerText {
+  font-size: 13px;
+  color: var(--auth-text-muted);
+}
+
+.footerAction {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+.footerAction:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
 
 /* 占位提示（功能开发中） */
 .comingSoon {
@@ -467,34 +491,33 @@
   font-size: 16px;
   font-weight: 500;
   margin-bottom: 8px;
-  color: #1E293B;
+  color: var(--auth-text-title);
 }
 
 .comingSoonDesc {
-  color: #64748B;
+  color: var(--auth-text-muted);
   margin-bottom: 24px;
   line-height: 1.6;
   font-size: 14px;
 }
 
-/* 加载动画 */
-.loading {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: white;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+/* ----- 响应式 ----- */
+/* 中等屏（1280-1440px） */
+@media (max-width: 1440px) {
+  .brandPanel {
+    flex: 0 0 55%;
+    padding: 60px 40px;
+  }
+  .formPanel {
+    flex: 0 0 45%;
+    padding: 40px 30px;
+  }
+  .mainTitle,
+  .highlightTitle {
+    font-size: 40px;
   }
 }
 
-/* ----- 响应式 ----- */
 @media (max-width: 1024px) {
   .brandPanel {
     flex: 0 0 50%;
@@ -507,18 +530,42 @@
     font-size: 36px;
   }
   .decorContainer {
-    transform: scale(0.7);
-    right: 50px;
+    transform: translate(-50%, -50%) scale(0.7);
   }
 }
 
+/* 768px 平板：保留精简品牌 banner，避免完全失去品牌曝光 */
 @media (max-width: 768px) {
+  .pageContainer {
+    flex-direction: column;
+  }
   .brandPanel {
+    flex: 0 0 auto;
+    min-height: auto;
+    padding: 24px 20px;
+  }
+  .brandContent {
+    max-width: 100%;
+  }
+  .logoRow {
+    margin-bottom: 12px;
+  }
+  .mainTitle,
+  .highlightTitle {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 14px;
+    line-height: 22px;
+  }
+  .decorContainer {
     display: none;
   }
   .formPanel {
     flex: 1;
-    padding: 40px 24px;
+    padding: 32px 24px;
+    min-height: auto;
   }
   .authCard {
     max-width: 100%;
@@ -529,7 +576,7 @@
 @media (max-width: 480px) {
   .mainTitle,
   .highlightTitle {
-    font-size: 28px;
+    font-size: 20px;
   }
   .formPanel {
     padding: 24px 16px;

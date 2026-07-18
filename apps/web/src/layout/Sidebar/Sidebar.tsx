@@ -1,20 +1,22 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Dialog, MessagePlugin, Popup, Avatar, Radio } from 'tdesign-react';
+import { Dialog, MessagePlugin, Popup, Avatar, Loading } from 'tdesign-react';
 import {
   SettingIcon,
   HelpCircleIcon,
-  RefreshIcon,
+  UserIcon,
   LogoutIcon,
   ModeLightIcon,
   ModeDarkIcon,
+  RefreshIcon,
+  FileCopyIcon,
 } from 'tdesign-icons-react';
 import { useAppStore } from '../../store/appStore';
 import { useConversationStore, type Conversation } from '../../store/conversationStore';
 import { useTheme } from '../../store/themeContext';
 import { useMode } from '../../hooks/useMode';
 import { useAuth } from '../../hooks/useAuth';
-import { getHealth } from '../../api/system';
+import { getProfileApi } from '../../api/auth-api';
 import SettingsDialog from '../../components/SettingsDialog';
 import type { AppMode } from '../../types';
 import '../../styles/tokens.css';
@@ -228,14 +230,13 @@ function SidebarItem({ conv, isActive, onSelect, onDelete, onArchive, onRename, 
 function AccountPopover() {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const [updateOpen, setUpdateOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string>('general');
-  const [version, setVersion] = useState('');
-  const [checking, setChecking] = useState(false);
 
   const displayName = user?.nickname || user?.username || '未命名用户';
   const initial = (user?.nickname || user?.username || '?').charAt(0).toUpperCase();
@@ -252,29 +253,87 @@ function AccountPopover() {
     }
   }, [logout]);
 
-  /** 检查更新：真实请求后端 /health 获取版本号 */
-  const handleCheckUpdate = useCallback(async () => {
-    setChecking(true);
-    try {
-      const health = await getHealth();
-      setVersion(health.version);
-      setUpdateOpen(true);
-    } catch {
-      MessagePlugin.error('检查更新失败，请稍后重试');
-    } finally {
-      setChecking(false);
-    }
-  }, []);
-
   // 点击菜单项后关闭弹层并执行对应动作
   const runAndClose = (action: () => void) => () => {
     setOpen(false);
     action();
   };
 
+  /** 拉取最新个人资料并同步到全局 store（打开弹框或手动刷新时调用）
+   * 失败不影响已有展示，仅静默忽略 */
+  const refreshProfile = useCallback(async () => {
+    setProfileLoading(true);
+    try {
+      const fresh = await getProfileApi();
+      updateUser(fresh);
+    } catch {
+      // 后端不可用时沿用本地缓存数据，不报错打断用户
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [updateUser]);
+
+  /** 格式化 createdAt（ISO 字符串）为可读日期 */
+  const formatDate = (iso: string | undefined | null) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('zh-CN', { hour12: false });
+  };
+
+  /** 复制到剪贴板并提示 */
+  const copyText = useCallback((text: string, label: string) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text).then(
+      () => MessagePlugin.success(`已复制${label}`),
+      () => MessagePlugin.error('复制失败'),
+    );
+  }, []);
+
   // 弹层内容（由 TDesign Popup 负责定位、点击外部关闭与动画）
   const menu = (
     <div className="account-popover">
+      <button
+        className="account-popover-item"
+        onClick={runAndClose(() => {
+          setProfileOpen(true);
+          void refreshProfile();
+        })}
+      >
+        <UserIcon />
+        个人中心
+      </button>
+
+      <div className="account-popover-row">
+        <div className="account-popover-item-static">
+          <ModeLightIcon />
+          外观
+        </div>
+        <div className="theme-switch" role="radiogroup" aria-label="主题外观">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={theme === 'light'}
+            className={`theme-switch-option${theme === 'light' ? ' active' : ''}`}
+            onClick={() => setTheme('light')}
+          >
+            <ModeLightIcon />
+            浅色
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={theme === 'dark'}
+            className={`theme-switch-option${theme === 'dark' ? ' active' : ''}`}
+            onClick={() => setTheme('dark')}
+          >
+            <ModeDarkIcon />
+            深色
+          </button>
+          <span className={`theme-switch-thumb theme-switch-thumb--${theme}`} />
+        </div>
+      </div>
+
       <button
         className="account-popover-item"
         onClick={() => {
@@ -287,27 +346,6 @@ function AccountPopover() {
         设置
       </button>
 
-      <div className="account-popover-row">
-        <div className="account-popover-item account-popover-item-static">
-          <ModeLightIcon />
-          外观
-        </div>
-        <Radio.Group
-          className="popover-theme-toggle"
-          size="small"
-          variant="default-filled"
-          value={theme}
-          onChange={(val) => setTheme(val as 'light' | 'dark')}
-        >
-          <Radio.Button value="light">
-            <ModeLightIcon /> 浅色
-          </Radio.Button>
-          <Radio.Button value="dark">
-            <ModeDarkIcon /> 深色
-          </Radio.Button>
-        </Radio.Group>
-      </div>
-
       <button
         className="account-popover-item"
         onClick={() => {
@@ -318,15 +356,6 @@ function AccountPopover() {
       >
         <HelpCircleIcon />
         帮助与反馈
-      </button>
-
-      <button
-        className="account-popover-item"
-        onClick={runAndClose(() => void handleCheckUpdate())}
-        disabled={checking}
-      >
-        <RefreshIcon />
-        {checking ? '检查中…' : '检查更新'}
       </button>
 
       <div className="account-popover-divider" />
@@ -367,7 +396,7 @@ function AccountPopover() {
             }
           }}
         >
-          <Avatar className="sidebar-avatar" size="32px" image={user?.avatar || undefined}>
+          <Avatar className="sidebar-avatar" size="28px" image={user?.avatar || undefined}>
             {initial}
           </Avatar>
           <div className="sidebar-user-info">
@@ -390,23 +419,104 @@ function AccountPopover() {
       />
 
       <Dialog
-        visible={updateOpen}
-        header="检查更新"
-        confirmBtn="知道了"
+        visible={profileOpen}
+        header={
+          <div className="account-info-dialog-header">
+            <span>个人中心</span>
+            <button
+              type="button"
+              className="account-info-refresh"
+              onClick={() => void refreshProfile()}
+              disabled={profileLoading}
+              title={profileLoading ? '刷新中…' : '刷新资料'}
+              aria-label="刷新资料"
+            >
+              <RefreshIcon className={profileLoading ? 'is-spinning' : undefined} />
+            </button>
+          </div>
+        }
+        confirmBtn="关闭"
         cancelBtn={null}
-        onConfirm={() => setUpdateOpen(false)}
-        onClose={() => setUpdateOpen(false)}
+        onConfirm={() => setProfileOpen(false)}
+        onClose={() => setProfileOpen(false)}
         destroyOnClose
+        width={440}
       >
-        <div className="update-info">
-          <div className="update-row">
-            <span className="update-label">当前版本</span>
-            <b className="update-version">v{version}</b>
+        {profileLoading && !user ? (
+          <div className="account-info-loading">
+            <Loading size="small" text="加载中…" />
           </div>
-          <div className="update-status">
-            {version ? '已是最新版本 🎉' : '暂未获取到版本信息'}
+        ) : (
+          <div className="account-info">
+            <div className="account-info-header">
+              <Avatar
+                className="account-info-avatar"
+                size="64px"
+                image={user?.avatar || undefined}
+              >
+                {initial}
+              </Avatar>
+              <div className="account-info-name">
+                <div className="account-info-nickname">
+                  {user?.nickname || user?.username || '未命名用户'}
+                </div>
+                <div className="account-info-username">@{user?.username || '—'}</div>
+              </div>
+            </div>
+
+            <div className="account-info-list">
+              <div className="account-info-row">
+                <span className="account-info-label">用户 ID</span>
+                <span className="account-info-value-group">
+                  <span className="account-info-value account-info-mono">{user?.id || '—'}</span>
+                  <button
+                    type="button"
+                    className="account-info-copy"
+                    onClick={() => copyText(user?.id || '', '用户 ID')}
+                    disabled={!user?.id}
+                    title="复制用户 ID"
+                    aria-label="复制用户 ID"
+                  >
+                    <FileCopyIcon />
+                  </button>
+                </span>
+              </div>
+              <div className="account-info-row">
+                <span className="account-info-label">用户名</span>
+                <span className="account-info-value">{user?.username || '—'}</span>
+              </div>
+              <div className="account-info-row">
+                <span className="account-info-label">昵称</span>
+                <span className="account-info-value">{user?.nickname || '—'}</span>
+              </div>
+              <div className="account-info-row">
+                <span className="account-info-label">邮箱</span>
+                <span className="account-info-value-group">
+                  <span className="account-info-value">{user?.email || '—'}</span>
+                  {user?.email && (
+                    <button
+                      type="button"
+                      className="account-info-copy"
+                      onClick={() => copyText(user.email || '', '邮箱')}
+                      title="复制邮箱"
+                      aria-label="复制邮箱"
+                    >
+                      <FileCopyIcon />
+                    </button>
+                  )}
+                </span>
+              </div>
+              <div className="account-info-row">
+                <span className="account-info-label">手机号</span>
+                <span className="account-info-value">{user?.phone || '—'}</span>
+              </div>
+              <div className="account-info-row">
+                <span className="account-info-label">注册时间</span>
+                <span className="account-info-value">{formatDate(user?.createdAt)}</span>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </Dialog>
 
       <SettingsDialog visible={settingsOpen} onClose={() => setSettingsOpen(false)} initialSection={settingsSection} />

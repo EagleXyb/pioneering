@@ -13,8 +13,8 @@ import {
   Moon,
   Monitor,
   HelpCircle,
-  RefreshCw,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -144,8 +144,8 @@ export const Sidebar = memo(function Sidebar() {
               帮助与反馈
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => runMenuAction('checkUpdate')}>
-              <RefreshCw />
-              检查更新
+              <User />
+              个人中心
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />

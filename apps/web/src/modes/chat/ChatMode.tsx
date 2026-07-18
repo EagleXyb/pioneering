@@ -3,6 +3,7 @@ import { useChat } from '@tdesign-react/chat';
 import { MessagePlugin } from 'tdesign-react';
 import { ChatMessageList } from './components/ChatMessageList';
 import { ChatInput } from './components/ChatInput';
+import { ChatWelcome } from './components/ChatWelcome';
 import { useConversationStore } from '../../store/conversationStore';
 import { useChatSync } from './hooks/useChatSync';
 import { getMessages, stopGeneration, regenerateMessage } from '../../api/message';
@@ -131,27 +132,9 @@ function ChatSession({
   return (
     <>
       <div className="chat-scroll-area">
-        {/* 空态 */}
+        {/* 空态 / 初始欢迎页 */}
         {messages.length === 0 ? (
-          <div className="chat-messages-empty">
-            <div className="chat-empty-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-              </svg>
-            </div>
-            <div className="chat-empty-title">你好，有什么可以帮你的？</div>
-            <div className="chat-suggestions-list">
-              {['帮我分析销售流失原因', '本季度渠道回报如何', '新开产品线需要什么'].map((s, i) => (
-                <button
-                  key={i}
-                  className="chat-suggestion-btn"
-                  onClick={() => handleSuggestionClick(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ChatWelcome onSuggestion={handleSuggestionClick} />
         ) : (
           <ChatMessageList
             messages={messages}
