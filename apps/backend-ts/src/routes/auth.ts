@@ -50,6 +50,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     avatar: string | null
     email: string | null
     phone: string | null
+    createdAt: Date
+    updatedAt: Date
   }) {
     const accessToken = createAccessToken(user.id, { username: user.username })
     const refreshToken = await createRefreshToken(user.id)
@@ -63,6 +65,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         avatar: user.avatar,
         email: user.email,
         phone: user.phone,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
     }
   }

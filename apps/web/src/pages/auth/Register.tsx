@@ -1,7 +1,7 @@
 /**
  * 注册页 — 对齐原型 V1.3
  * 使用 TDesign Form 组件 + AuthLayout 品牌布局
- * 后端: POST /auth/register（待实现，当前为预留接口）
+ * 后端: POST /auth/register（backend-ts 已实现，返回 { token, refreshToken, user }）
  */
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate, NavLink } from 'react-router';
@@ -57,7 +57,27 @@ export default function RegisterPage() {
         MessagePlugin.success('注册成功');
         navigate('/chat', { replace: true });
       } catch (e: any) {
-        const msg = e?.message || '注册失败，请稍后重试';
+        // 处理后端响应状态码（状态码透传在 e.code，字段级校验错误在 e.details）
+        const code = typeof e?.code === 'number' ? e.code : 0;
+        let msg = '注册失败，请稍后重试';
+        if (code === 409) {
+          // 用户名或邮箱已被注册
+          msg = e?.message || '用户名或邮箱已被注册';
+        } else if (code === 400) {
+          // 参数校验失败：优先展示字段级 details（如 body.email: Required）
+          msg = e?.details || e?.message || '请求参数校验失败';
+        } else if (code === 401) {
+          msg = e?.message || '认证失败，请重新登录';
+        } else if (code === 429) {
+          msg = e?.message || '操作过于频繁，请稍后再试';
+        } else if (code >= 500) {
+          msg = e?.message || '服务器内部错误，请稍后重试';
+        } else if (code === 0) {
+          // 无法连接后端 / 网络异常（无状态码）
+          msg = e?.message || '网络异常，请检查网络连接';
+        } else {
+          msg = e?.message || '注册失败，请稍后重试';
+        }
         setError(msg);
       } finally {
         setLoading(false);
