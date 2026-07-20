@@ -2,6 +2,10 @@
 // SlashCommandPopover — 「/」命令弹出层（对应文档 §10.1）
 // 由 InputArea 以受控方式驱动（open / query / activeIndex），
 // 键盘导航在 InputArea 统一处理，本组件只负责渲染与回调。
+//
+// T01 a11y：采用 listbox + option + aria-activedescendant 模式，
+// 让屏幕阅读器能正确朗读当前激活项；外层提供 aria-label 与
+// role="dialog"（轻量弹出）便于 AT 识别上下文。
 // ============================================================
 
 import { Eraser, FilePlus2, Terminal, HelpCircle, Sparkles } from 'lucide-react'
@@ -57,15 +61,35 @@ export function SlashCommandPopover({
 }: SlashCommandPopoverProps) {
   if (!open || commands.length === 0) return null
 
+  // 稳定的 option id 前缀，供 aria-activedescendant 引用
+  const optionId = (i: number) => `slash-option-${i}`
+  const activeId = optionId(activeIndex)
+
   return (
-    <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-lg">
-      <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">命令</div>
+    <div
+      className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-lg"
+      // T01 a11y：作为命令选择列表，使用 listbox 角色
+      role="listbox"
+      aria-label="斜杠命令列表"
+      aria-activedescendant={activeId}
+      // tabIndex={-1} 让容器可被程序化聚焦但不打断 Tab 流
+      tabIndex={-1}
+    >
+      <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground" aria-hidden>
+        命令
+      </div>
       {commands.map((cmd, i) => {
         const Icon = cmd.icon
+        const isActive = i === activeIndex
         return (
           <button
             key={cmd.name}
+            id={optionId(i)}
             type="button"
+            // T01 a11y：每个命令作为 listbox option，ARIA 状态用 aria-selected
+            role="option"
+            aria-selected={isActive}
+            aria-label={`${cmd.name}，${cmd.description}`}
             onMouseEnter={() => onHover(i)}
             onMouseDown={(e) => {
               e.preventDefault()
@@ -73,10 +97,10 @@ export function SlashCommandPopover({
             }}
             className={cn(
               'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
-              i === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
+              isActive ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
             )}
           >
-            <Icon className="size-4 shrink-0 text-muted-foreground" />
+            <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <span className="font-medium">{cmd.name}</span>
             <span className="ml-auto truncate text-[11px] text-muted-foreground">
               {cmd.description}

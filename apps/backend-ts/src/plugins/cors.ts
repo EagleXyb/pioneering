@@ -32,8 +32,13 @@ export function isOriginAllowed(origin: string | undefined): boolean {
 
 export const corsPlugin = fp(async (fastify) => {
   await fastify.register(cors, {
-    // 函数式 origin：兼容 dev (http://localhost:5174) / prod (file://) / 显式白名单
-    origin: isOriginAllowed,
+    // 注意：@fastify/cors v10 的 origin 函数签名是 (origin, cb)，
+    // 它依赖回调 cb 被调用来推进请求；若直接传同步函数 isOriginAllowed
+    // （仅 return 布尔、不调用 cb），会导致每个请求卡死在 cors 钩子里。
+    // 因此这里用回调式适配，内部仍复用同步的 isOriginAllowed。
+    origin: (origin, cb) => {
+      cb(null, isOriginAllowed(origin))
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-Id'],

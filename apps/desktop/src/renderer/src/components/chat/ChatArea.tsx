@@ -1,15 +1,29 @@
 // ============================================================
 // ChatArea — 中栏对话区（消息流 + 输入框）
 // ============================================================
+//
+// T10/T11/T12/T13/T14：通过 feature flag messageScroller 切换
+//   - 关（默认）：使用 legacy ScrollArea + MessageList（虚拟化 + isNearBottomRef）
+//   - 开：使用 MessageScrollerList（@shadcn/react + content-visibility）
+//
+// 安全保障：
+//   1. legacy 路径完全保留，未做任何修改，flag 关闭时行为与改造前一致
+//   2. 新路径独立组件，flag 开启时才挂载
+//   3. 两条路径共用同一份 store 数据与 InputArea，无数据层改动
+// ============================================================
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageList } from './MessageList'
+import { MessageScrollerList } from './MessageScrollerList'
 import { InputArea, type InputAreaSendOptions } from './input/InputArea'
 import { AgentStatus } from './AgentStatus'
 import { useChatStore } from '../../stores/chatStore'
+import { useFeatureFlag } from '@/lib/feature-flags'
 import type { Message } from '@shared/types'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
+// T09：dev-only 压测 mock 数据（仅 DEV 环境打包）
+import { generateStressMessages, STRESS_SESSION_PREFIX } from '@/lib/dev/stress-messages'
 
 export function ChatArea() {
   // 逐项选择器订阅，避免全量重渲染（流式期间仅 streaming* 触发重渲染）
@@ -29,12 +43,27 @@ export function ChatArea() {
   const clearError = useChatStore((s) => s.clearError)
   const loadSessions = useChatStore((s) => s.loadSessions)
 
+  // T10/T11/T12/T13/T14：feature flag 控制 Message Scroller 启用
+  const useMessageScroller = useFeatureFlag('messageScroller')
+  // T09：dev-only 压测开关
+  const devStress = useFeatureFlag('devStressMessages')
+  const devStressCount = useFeatureFlag('devStressCount')
+
   const scrollRef = useRef<HTMLDivElement>(null)
   // B8: 记录用户是否在底部附近，用于判断流式输出时是否自动滚动。
   // 仅当用户在底部附近才自动滚动，避免用户向上回看历史时被强制拉回底部。
   const isNearBottomRef = useRef(true)
 
-  const currentMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
+  const realMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
+
+  // T09：dev 压测时注入大量 mock 消息（仅 dev，且用 __stress__ 前缀隔离）
+  const currentMessages: Message[] = useMemo(() => {
+    if (import.meta.env.DEV && devStress && currentSessionId) {
+      const stressSessionId = STRESS_SESSION_PREFIX + currentSessionId
+      return generateStressMessages(devStressCount, stressSessionId)
+    }
+    return realMessages
+  }, [realMessages, devStress, devStressCount, currentSessionId])
 
   useEffect(() => {
     if (sessionsLength === 0) {
@@ -43,7 +72,9 @@ export function ChatArea() {
   }, [sessionsLength, loadSessions])
 
   // B8: 监听滚动位置，更新 isNearBottomRef
+  // 仅 legacy 路径需要，新路径由 MessageScrollerProvider 接管
   useEffect(() => {
+    if (useMessageScroller) return
     const root = scrollRef.current
     if (!root) return
     const viewport = root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
@@ -55,9 +86,10 @@ export function ChatArea() {
     }
     target.addEventListener('scroll', handleScroll, { passive: true })
     return () => target.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [useMessageScroller])
 
   useEffect(() => {
+    if (useMessageScroller) return
     const root = scrollRef.current
     if (!root) return
     // ScrollArea 的滚动发生在内部 Viewport（Root 自身 overflow-hidden），
@@ -68,7 +100,7 @@ export function ChatArea() {
     if (isNearBottomRef.current) {
       target.scrollTop = target.scrollHeight
     }
-  }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming])
+  }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming, useMessageScroller])
 
   const handleSend = (
     content: string,
@@ -96,19 +128,33 @@ export function ChatArea() {
 
       {/* Messages */}
       <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full" ref={scrollRef}>
-          <div className="min-h-full px-3">
-            <MessageList
-              messages={currentMessages}
-              streamingContent={streamingContent}
-              streamingThinking={streamingThinking}
-              streamingToolCalls={streamingToolCalls}
-              streamingMessageId={streamingMessageId}
-              isStreaming={isStreaming}
-              scrollElementRef={scrollRef}
-            />
-          </div>
-        </ScrollArea>
+        {useMessageScroller ? (
+          // T10/T11/T12/T13/T14：新路径 — Message Scroller + content-visibility
+          <MessageScrollerList
+            messages={currentMessages}
+            streamingContent={streamingContent}
+            streamingThinking={streamingThinking}
+            streamingToolCalls={streamingToolCalls}
+            streamingMessageId={streamingMessageId}
+            isStreaming={isStreaming}
+          />
+        ) : (
+          // legacy 路径 — ScrollArea + 虚拟化 + isNearBottomRef
+          // 完全保留改造前实现，flag 关闭时行为一致
+          <ScrollArea className="h-full" ref={scrollRef}>
+            <div className="min-h-full px-3">
+              <MessageList
+                messages={currentMessages}
+                streamingContent={streamingContent}
+                streamingThinking={streamingThinking}
+                streamingToolCalls={streamingToolCalls}
+                streamingMessageId={streamingMessageId}
+                isStreaming={isStreaming}
+                scrollElementRef={scrollRef}
+              />
+            </div>
+          </ScrollArea>
+        )}
       </div>
 
       {/* Input */}

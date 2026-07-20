@@ -7,8 +7,16 @@ import { defaultSchema, type Schema as SanitizeSchema } from 'hast-util-sanitize
 import { Copy, ThumbsUp, ThumbsDown, Bot, User, Check } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+// T04：引入 shadcn/ui 官方 Message + Bubble 组件作为消息行布局外壳
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter
+} from '@/components/ui/message'
+import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { cn } from '@/lib/utils'
-import type { Message, ToolCall } from '@shared/types'
+import type { Message as ChatMessage, ToolCall } from '@shared/types'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 
@@ -70,12 +78,27 @@ function SafeLink({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLA
   )
 }
 
+/**
+ * T05 同发送者分组位置：
+ *   - 'single'：孤立消息（前后均无同发送者消息）
+ *   - 'start' ：同发送者组的第一条
+ *   - 'middle'：同发送者组的中间条
+ *   - 'end'   ：同发送者组的最后一条
+ *
+ * 视觉规则：
+ *   - 组内非末条（start/middle）隐藏头像但保留占位宽度，避免布局跳动
+ *   - 组内首条（start）保留 MessageHeader（角色名/时间），其余隐藏
+ */
+type GroupPosition = 'single' | 'start' | 'middle' | 'end'
+
 interface MessageBubbleProps {
-  message: Message
+  message: ChatMessage
   isStreaming?: boolean
   streamingContent?: string
   streamingThinking?: string
   streamingToolCalls?: ToolCall[]
+  /** T05：同发送者分组位置，控制头像/间距的视觉聚合 */
+  groupPosition?: GroupPosition
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -83,7 +106,8 @@ export const MessageBubble = memo(function MessageBubble({
   isStreaming,
   streamingContent,
   streamingThinking,
-  streamingToolCalls
+  streamingToolCalls,
+  groupPosition = 'single'
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [liked, setLiked] = useState<'none' | 'like' | 'dislike'>('none')
@@ -109,22 +133,39 @@ export const MessageBubble = memo(function MessageBubble({
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000)
   }
 
-  return (
-    <div className={cn('flex gap-3 group', isUser && 'flex-row-reverse')}>
-      <Avatar className="size-7 shrink-0 mt-1">
-        <AvatarFallback
-          className={cn(
-            'text-xs',
-            isUser ? 'bg-blue-500/20 text-blue-600' : 'bg-primary/20 text-primary'
-          )}
-        >
-          {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
-        </AvatarFallback>
-      </Avatar>
+  // T04：用户消息右对齐（align="end"），助手/系统/工具消息左对齐（align="start"）
+  const align = isUser ? 'end' : 'start'
 
-      <div className={cn('flex min-w-0 flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
+  // T05：组内非末条消息隐藏头像内容（保留占位宽度避免布局跳动）
+  const showAvatar = groupPosition === 'single' || groupPosition === 'end' || groupPosition === 'start'
+
+  return (
+    // T04：Message 作为消息行布局外壳，承担头像 + 对齐 + 内容容器的组合
+    <Message align={align}>
+      <MessageAvatar>
+        {/* T05：组内中间条消息隐藏头像内容，保留 Avatar 占位以维持宽度对齐 */}
+        {showAvatar ? (
+          <Avatar className="size-7 shrink-0 mt-1">
+            <AvatarFallback
+              className={cn(
+                'text-xs',
+                isUser ? 'bg-blue-500/20 text-blue-600' : 'bg-primary/20 text-primary'
+              )}
+            >
+              {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          // 占位：保留与头像同宽（size-7 = 1.75rem），高度 0 避免撑高
+          <div className="size-7 shrink-0" aria-hidden />
+        )}
+      </MessageAvatar>
+
+      <MessageContent>
+        {/* T06：ThinkingBlock 内联于 MessageContent，置于气泡之前 */}
         {isAssistant && thinking && <ThinkingBlock content={thinking} isStreaming={isStreaming} />}
 
+        {/* T06：ToolCallCard 内联于 MessageContent，置于气泡之前 */}
         {isAssistant && toolCalls && toolCalls.length > 0 && (
           <div className="space-y-2">
             {toolCalls.map((tc) => (
@@ -133,6 +174,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
+        {/* 图片附件：保持原有的安全降级（非 image/* 不开 <a href>） */}
         {message.images && message.images.length > 0 && (
           <div className={cn('flex flex-wrap gap-2', isUser && 'justify-end')}>
             {message.images.map((img) => {
@@ -169,33 +211,61 @@ export const MessageBubble = memo(function MessageBubble({
         )}
 
         {(displayContent || message.content || isStreaming) && (
-          <div
-            className={cn(
-              'min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
-              isUser
-                ? 'bg-blue-600 text-white'
-                : 'bg-muted/60 text-foreground'
-            )}
+          // T04：Bubble 作为消息可见表面；用户消息沿用蓝色（保留原视觉），
+          // 助手消息使用 muted variant（与原 bg-muted/60 一致）。
+          // T03 a11y：流式输出期间让 AT 朗读新内容；助手消息作为 live region 通告更新。
+          <Bubble
+            variant={isUser ? 'default' : 'muted'}
+            align={align}
+            className={cn(isUser && '[&>[data-slot=bubble-content]]:bg-blue-600 [&>[data-slot=bubble-content]]:text-white')}
           >
-            {isAssistant || message.role === 'system' || message.role === 'tool' ? (
-              <div className="chat-markdown max-w-none break-words">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
-                  components={{ a: SafeLink }}
-                >
-                  {displayContent || (isStreaming ? '▊' : '')}
-                </ReactMarkdown>
-              </div>
-            ) : (
-              <p className="whitespace-pre-wrap break-words">{displayContent}</p>
-            )}
-          </div>
+            <BubbleContent
+              // T03 a11y：role/aria-live/aria-atomic 仅在流式助手消息上启用
+              role={isAssistant && isStreaming ? 'status' : undefined}
+              aria-live={isAssistant && isStreaming ? 'polite' : undefined}
+              aria-atomic={isAssistant && isStreaming ? 'false' : undefined}
+              aria-label={
+                isAssistant
+                  ? isStreaming
+                    ? '助手正在回复'
+                    : '助手消息'
+                  : undefined
+              }
+              className={cn(
+                'min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+                // 用户消息保留蓝色背景（覆盖 BubbleContent 默认 border/bg）
+                isUser && 'bg-blue-600 text-white border-transparent',
+                !isUser && 'bg-muted/60 text-foreground border-transparent'
+              )}
+            >
+              {isAssistant || message.role === 'system' || message.role === 'tool' ? (
+                <div className="chat-markdown max-w-none break-words">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
+                    components={{ a: SafeLink }}
+                  >
+                    {displayContent || (isStreaming ? '▊' : '')}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap break-words">{displayContent}</p>
+              )}
+            </BubbleContent>
+          </Bubble>
         )}
 
+        {/* T07：actions 由 MessageFooter 承载，align="end" 时自动右对齐 */}
         {isAssistant && !isStreaming && message.content && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button variant="ghost" size="icon" className="size-6" onClick={handleCopy} title="Copy">
+          <MessageFooter className="opacity-0 group-hover/message:opacity-100 transition-opacity gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6"
+              onClick={handleCopy}
+              title="复制"
+              aria-label={copied ? '已复制' : '复制消息内容'}
+            >
               {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
             </Button>
             <Button
@@ -203,7 +273,9 @@ export const MessageBubble = memo(function MessageBubble({
               size="icon"
               className="size-6"
               onClick={() => setLiked(liked === 'like' ? 'none' : 'like')}
-              title="Like"
+              title="赞"
+              aria-label={liked === 'like' ? '取消赞' : '赞'}
+              aria-pressed={liked === 'like'}
             >
               <ThumbsUp className={cn('size-3', liked === 'like' && 'text-blue-500')} />
             </Button>
@@ -212,7 +284,9 @@ export const MessageBubble = memo(function MessageBubble({
               size="icon"
               className="size-6"
               onClick={() => setLiked(liked === 'dislike' ? 'none' : 'dislike')}
-              title="Dislike"
+              title="踩"
+              aria-label={liked === 'dislike' ? '取消踩' : '踩'}
+              aria-pressed={liked === 'dislike'}
             >
               <ThumbsDown className={cn('size-3', liked === 'dislike' && 'text-red-500')} />
             </Button>
@@ -222,9 +296,9 @@ export const MessageBubble = memo(function MessageBubble({
             {message.tokenUsage?.total && message.tokenUsage.total > 0 && (
               <span className="text-[10px] text-muted-foreground">{message.tokenUsage.total} tokens</span>
             )}
-          </div>
+          </MessageFooter>
         )}
-      </div>
-    </div>
+      </MessageContent>
+    </Message>
   )
 })
