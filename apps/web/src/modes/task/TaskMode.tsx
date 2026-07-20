@@ -52,7 +52,7 @@ export default function TaskMode() {
   }
 
   return (
-    <div className="task-mode">
+    <div className="task-mode tw-scope">
       <div className="task-main">
         <TaskMessageList messages={messages} status={status} />
         <TaskInput

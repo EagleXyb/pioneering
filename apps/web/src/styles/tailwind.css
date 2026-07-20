@@ -1,0 +1,112 @@
+/*
+ * Tailwind 入口 + shadcn token 映射
+ *
+ * 隔离策略：
+ * - preflight 已在 tailwind.config.ts 关闭，@tailwind base 输出为空
+ * - shadcn 变量定义在 .tw-scope 选择器下，仅任务模式子树可见
+ * - 变量值映射到现有 tokens.css 语义变量，自动跟随 light/dark/system 三态切换
+ *   （tokens.css 已通过 [data-theme="dark"] 与 @media prefers-color-scheme 处理）
+ *
+ * 颜色格式：HSL 通道分量（如 "210 40% 98%"），与 shadcn 默认主题一致，
+ * 便于后续直接复用 shadcn/ui 官方组件而无需重写 className
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * shadcn token 映射 —— 亮色（默认）
+ * 数值来源：将 tokens.css 的 HEX 值转为 HSL 通道分量
+ * ============================================================ */
+.tw-scope {
+  --background: 210 40% 98%;        /* --bg-primary #f8f9fb */
+  --foreground: 220 14% 12%;        /* --text-primary #1a1d23 */
+
+  --card: 0 0% 100%;                /* --bg-card #ffffff */
+  --card-foreground: 220 14% 12%;
+
+  --popover: 0 0% 100%;             /* --bg-card */
+  --popover-foreground: 220 14% 12%;
+
+  --primary: 38 92% 50%;            /* --accent-amber #f59e0b */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 20% 96%;         /* --bg-input #f0f2f5 */
+  --secondary-foreground: 220 14% 12%;
+
+  --muted: 210 20% 96%;
+  --muted-foreground: 217 11% 62%;  /* --text-secondary #6b7280 */
+
+  --accent: 38 92% 95%;             /* --accent-amber-light #fef3c7 */
+  --accent-foreground: 38 92% 30%;
+
+  --destructive: 0 84% 60%;         /* --accent-red #ef4444 */
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 13% 91%;            /* --border-light #e5e7eb */
+  --input: 220 13% 91%;
+  --ring: 38 92% 50%;               /* 焦点环跟随 primary */
+
+  --radius: 0.625rem;               /* --radius-md 10px */
+}
+
+/* ============================================================
+ * 暗色覆盖：跟随 [data-theme="dark"]
+ * （tokens.css 中 --bg-* / --text-* / --accent-* 已自动切换，
+ *   这里只需把 shadcn 变量重新指向暗色语义值）
+ * ============================================================ */
+[data-theme="dark"] .tw-scope,
+[data-theme="dark"].tw-scope {
+  --background: 220 14% 12%;        /* --bg-primary dark */
+  --foreground: 210 20% 96%;
+
+  --card: 220 14% 16%;
+  --card-foreground: 210 20% 96%;
+
+  --popover: 220 14% 16%;
+  --popover-foreground: 210 20% 96%;
+
+  --primary: 38 92% 55%;
+  --primary-foreground: 220 14% 12%;
+
+  --secondary: 220 14% 20%;
+  --secondary-foreground: 210 20% 96%;
+
+  --muted: 220 14% 20%;
+  --muted-foreground: 217 11% 65%;
+
+  --accent: 38 50% 25%;
+  --accent-foreground: 38 92% 90%;
+
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 14% 25%;
+  --input: 220 14% 25%;
+  --ring: 38 92% 55%;
+}
+
+/* 系统暗色（无 data-theme 属性时跟随 prefers-color-scheme） */
+@media (prefers-color-scheme: dark) {
+  .tw-scope:not([data-theme="light"]):not([data-theme="dark"]) {
+    --background: 220 14% 12%;
+    --foreground: 210 20% 96%;
+    --card: 220 14% 16%;
+    --card-foreground: 210 20% 96%;
+    --popover: 220 14% 16%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 38 92% 55%;
+    --primary-foreground: 220 14% 12%;
+    --secondary: 220 14% 20%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 220 14% 20%;
+    --muted-foreground: 217 11% 65%;
+    --accent: 38 50% 25%;
+    --accent-foreground: 38 92% 90%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 14% 25%;
+    --input: 220 14% 25%;
+    --ring: 38 92% 55%;
+  }
+}

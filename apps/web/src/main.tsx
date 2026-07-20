@@ -15,6 +15,9 @@ import './styles/tokens.css';
 // 全局 Reset
 import './index.css';
 
+// Tailwind + shadcn token（作用域限定在 .tw-scope，不影响其他模式）
+import './styles/tailwind.css';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider>

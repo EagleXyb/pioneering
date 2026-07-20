@@ -92,6 +92,7 @@
   justify-content: center;
   gap: 12px;
   padding: 40px;
+  background: var(--bg-secondary);
 }
 
 .task-empty-icon {
@@ -190,10 +191,9 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* Input Area */
+/* Input Area —— 视觉细节由 shadcn Textarea / Button 承担，这里仅保留布局 */
 .task-input-area {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-light);
+  padding: 0px 0px;
   flex-shrink: 0;
 }
 
@@ -201,9 +201,9 @@
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  background: var(--bg-input);
+  background: #ffffff;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   padding: 8px 8px 8px 16px;
   transition: border-color var(--transition-fast);
 }
@@ -212,64 +212,11 @@
   border-color: var(--accent-amber);
 }
 
-.task-input-textarea {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  resize: none;
-  padding: 4px 0;
-  max-height: 150px;
-}
-
-.task-input-textarea::placeholder {
-  color: var(--text-tertiary);
-}
-
-.task-input-textarea:disabled {
-  opacity: 0.6;
-}
-
 .task-input-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-}
-
-.task-input-btn {
-  padding: 8px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-}
-
-.task-input-btn-send {
-  background: var(--accent-amber);
-  color: white;
-}
-
-.task-input-btn-send:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.task-input-btn-send:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.task-input-btn-stop {
-  background: var(--accent-red);
-  color: white;
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  gap: 4px;
 }
 
 /* Task Empty State */
@@ -298,8 +245,9 @@
 
 .task-empty button {
   padding: 10px 24px;
-  background: var(--accent-amber);
-  color: white;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 500;

@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router';
+import { BrowserRouter, Routes, Route, Outlet, useLocation } from 'react-router';
 import { Sidebar } from './layout/Sidebar/Sidebar';
 import { TopNav } from './layout/TopNav/TopNav';
+import { TaskTopBar } from './layout/TaskTopBar/TaskTopBar';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './layout/AppShell.css';
@@ -21,13 +22,17 @@ function ModeFallback() {
 
 /** 需要 Sidebar + TopNav 的主应用布局（受路由守卫保护） */
 function AppLayout() {
+  const location = useLocation();
+  // 仅 /task 路由使用 shadcn/ui 实现的 TaskTopBar，其他路由保持 TDesign TopNav
+  const isTaskRoute = location.pathname.startsWith('/task');
+
   return (
     <ProtectedRoute>
       <ErrorBoundary>
         <div className="app-shell">
           <Sidebar />
           <div className="main-area">
-            <TopNav />
+            {isTaskRoute ? <TaskTopBar /> : <TopNav />}
             <div className="main-content">
               <Suspense fallback={<ModeFallback />}>
                 <Outlet />

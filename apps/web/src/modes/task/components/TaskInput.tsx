@@ -1,5 +1,8 @@
 import React, { useState, useCallback } from 'react';
+import { Send, Square } from 'lucide-react';
 import type { ChatStatus } from '../../../types/tdesign';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   status: ChatStatus;
@@ -17,45 +20,51 @@ export function TaskInput({ status, onSend, onStop }: Props) {
     setValue('');
   }, [value, onSend]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
 
   const isStreaming = status === 'streaming' || status === 'pending';
 
   return (
     <div className="task-input-area">
       <div className="task-input-inner">
-        <textarea
-          className="task-input-textarea"
+        <Textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="描述任务需求... Enter 发送，Shift+Enter 换行"
           rows={1}
           disabled={isStreaming}
+          className="task-input-textarea min-h-0 resize-none border-0 bg-transparent px-0 py-1 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground"
         />
         <div className="task-input-actions">
           {isStreaming ? (
-            <button className="task-input-btn task-input-btn-stop" onClick={onStop}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <rect x="2" y="2" width="10" height="10" rx="1"/>
-              </svg>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onStop}
+              className="gap-1 rounded-md"
+            >
+              <Square className="h-3 w-3 fill-current" />
               停止
-            </button>
+            </Button>
           ) : (
-            <button
-              className="task-input-btn task-input-btn-send"
+            <Button
+              size="icon"
               onClick={handleSend}
               disabled={!value.trim()}
+              className="rounded-full"
+              aria-label="发送"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M14 2L2 7l4 2 8-7-4 8 4 4z"/>
-              </svg>
-            </button>
+              <Send className="h-4 w-4" />
+            </Button>
           )}
         </div>
       </div>
