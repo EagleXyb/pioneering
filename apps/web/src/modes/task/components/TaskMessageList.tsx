@@ -42,6 +42,7 @@ export function TaskMessageList({ messages, status }: Props) {
 
   return (
     <div className="task-messages">
+      <div className="task-messages-inner">
       {messages.map((msg) => {
         const isUser = msg.role === 'user';
         const text = getMessageText(msg);
@@ -87,6 +88,7 @@ export function TaskMessageList({ messages, status }: Props) {
         </div>
       )}
       <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

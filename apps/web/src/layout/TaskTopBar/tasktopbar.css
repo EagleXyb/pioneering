@@ -1,8 +1,11 @@
 /* ===== TaskTopBar（任务模式专属顶部栏） ===== */
 /*
- * 布局职责由本 CSS 承担；视觉属性（背景、文字色、按钮样式、圆角等）
+ * 布局职责由本 CSS 承担；视觉属性（按钮样式、圆角、颜色等）
  * 交给 shadcn 组件 + .tw-scope 作用域内的 Tailwind utility。
  * 与全局 topnav.css 解耦，确保不影响其他模式。
+ *
+ * 响应式：使用 Tailwind 的 md:hidden / hidden md:inline-flex 类，
+ * 不在此处重复媒体查询（避免与 important: '.tw-scope' 的优先级冲突）。
  */
 .task-top-bar {
   height: var(--nav-height);
@@ -14,19 +17,11 @@
   position: relative;
   z-index: 10;
   gap: 8px;
+  cursor: pointer;
+  user-select: none;
 }
 
-.task-top-bar-mobile-toggle {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .task-top-bar-mobile-toggle {
-    display: inline-flex;
-  }
-}
-
-/* 桌面端展开按钮：保留与原 TopNav 一致的入场动画 */
+/* 桌面端展开按钮入场动画 */
 .task-top-bar-expand {
   animation: task-top-bar-expand-enter 0.25s ease;
 }

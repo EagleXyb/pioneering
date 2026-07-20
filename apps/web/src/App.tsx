@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, useLocation } from 'react-router';
 import { Sidebar } from './layout/Sidebar/Sidebar';
 import { TopNav } from './layout/TopNav/TopNav';
-import { TaskTopBar } from './layout/TaskTopBar/TaskTopBar';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './layout/AppShell.css';
@@ -32,7 +31,7 @@ function AppLayout() {
         <div className="app-shell">
           <Sidebar />
           <div className="main-area">
-            {isTaskRoute ? <TaskTopBar /> : <TopNav />}
+            {!isTaskRoute && <TopNav />}
             <div className="main-content">
               <Suspense fallback={<ModeFallback />}>
                 <Outlet />
