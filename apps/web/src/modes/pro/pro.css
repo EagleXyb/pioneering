@@ -11,13 +11,18 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* 与任务模式 .task-main 一致：整列统一 bg-secondary，
+   * 使顶部栏、消息区、输入区底色连贯（任务模式即如此） */
+  background: var(--bg-secondary);
 }
 
 /* 右侧面板外壳：pro 独立样式（.pro-pipeline），不再依赖 task.css。
  * 宽度 / 折叠 / 分隔条仍由 TaskResizer 与 useAppStore.pipelineWidth 控制 */
 
-/* 分析模式顶部标题栏（.pro-main-header）已移除，折叠/展开推理面板的入口迁移到
- * 全局 TopNav（仅 /pro 路由显示），与任务模式 TaskTopBar 的折叠交互一致 */
+/* 分析模式中间栏现在自带顶部标题栏（.pro-main-header，见下方独立区块），
+ * 与右侧面板 .pro-pipeline-header 同为 .pro-layout 直接子列的头部，故两者
+ * 同高(48px)、同级；折叠/展开推理面板的入口已迁回中间栏头部（面板折叠时显示），
+ * 不再依赖全局 TopNav（/pro 路由已不渲染 TopNav） */
 
 /* Messages —— 背景与任务模式 .task-messages 一致（var(--bg-secondary)），
  * 居中容器 .pro-messages-inner 对齐 .task-messages-inner（max-width 760） */
@@ -380,6 +385,79 @@
   white-space: nowrap;
 }
 
+/* 中间栏顶部栏：与右侧面板 .pro-pipeline-header、任务模式 .task-top-bar
+ * 完全对齐——同为 bg-secondary、无底边框、左右内边距 0 20px、高 48px。
+ * 三者都是各自列的直接子头部，Y 轴起点与高度一致，视觉统一 */
+.pro-main-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 20px;
+  background: var(--bg-secondary);
+}
+
+.pro-main-header .pro-main-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pro-main-header .pro-main-spacer {
+  flex: 1;
+}
+
+.pro-main-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pro-main-header button:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  color: var(--text-primary);
+}
+
+/* 中间栏与右侧面板之间的可拖动分隔条（复用 task 模式的 TaskResizer 组件）。
+ * 其样式原本只存在于 task.css，而分析模式(pro)是独立 lazy 分包、不会加载 task.css，
+ * 导致分隔条“裸奔”（无宽度/无竖线/不可拖）。这里在 pro.css 内补一份等价规则，
+ * 保证分析模式下同样可用，且与任务模式视觉一致。 */
+.task-resizer {
+  width: 5px;
+  flex-shrink: 0;
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+}
+
+.task-resizer::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border-light);
+  transition: background var(--transition-fast);
+}
+
+.task-resizer:hover::before,
+.task-resizer:active::before {
+  background: var(--accent-primary, #3b82f6);
+}
+
 .pro-pipeline-header-left {
   display: flex;
   align-items: center;
@@ -422,7 +500,7 @@
   min-width: 0;
   background: var(--bg-card);
   border: 1px solid var(--border-light);
-  border-radius: 24px;
+  border-radius: 20px;
   padding: 6px 0 0;
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.02),

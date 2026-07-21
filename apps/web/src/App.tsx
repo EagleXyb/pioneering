@@ -22,8 +22,10 @@ function ModeFallback() {
 /** 需要 Sidebar + TopNav 的主应用布局（受路由守卫保护） */
 function AppLayout() {
   const location = useLocation();
-  // 仅 /task 路由使用 shadcn/ui 实现的 TaskTopBar，其他路由保持 TDesign TopNav
+  // 仅 /task 路由使用 shadcn/ui 实现的 TaskTopBar；
+  // /pro 路由不使用全局 TopNav——其顶部栏由中间栏自身头部承载，与右侧面板同级
   const isTaskRoute = location.pathname.startsWith('/task');
+  const isProRoute = location.pathname.startsWith('/pro');
 
   return (
     <ProtectedRoute>
@@ -31,7 +33,7 @@ function AppLayout() {
         <div className="app-shell">
           <Sidebar />
           <div className="main-area">
-            {!isTaskRoute && <TopNav />}
+            {!isTaskRoute && !isProRoute && <TopNav />}
             <div className="main-content">
               <Suspense fallback={<ModeFallback />}>
                 <Outlet />
