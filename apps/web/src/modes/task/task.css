@@ -13,14 +13,43 @@
   overflow: hidden;
 }
 
-.task-pipeline {
-  width: 320px;
-  min-width: 320px;
+/* 中间栏与右侧面板之间的可拖动分隔条：
+ * 视觉为 1px 竖线（与原 border-left 分隔一致），命中区放宽到 5px 便于拖拽 */
+.task-resizer {
+  width: 5px;
   flex-shrink: 0;
-  border-left: 1px solid var(--border-light);
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+}
+
+.task-resizer::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border-light);
+  transition: background var(--transition-fast);
+}
+
+.task-resizer:hover::before,
+.task-resizer:active::before {
+  background: var(--accent-primary, #3b82f6);
+}
+
+.task-pipeline {
+  flex-shrink: 0;
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width var(--transition-normal), min-width var(--transition-normal),
+    padding var(--transition-normal);
 }
 
 .task-pipeline-header {
@@ -31,19 +60,15 @@
   flex-shrink: 0;
   padding: 0 20px;
   border-bottom: 1px solid var(--border-light);
-  cursor: pointer;
   user-select: none;
-  transition: background 0.15s ease;
-}
-
-.task-pipeline-header:hover {
-  background: var(--bg-hover);
+  white-space: nowrap;
 }
 
 .task-pipeline-header-left {
   display: flex;
   align-items: center;
   gap: 8px;
+  overflow: hidden;
 }
 
 .task-pipeline-title {
@@ -52,10 +77,25 @@
   color: var(--text-primary);
 }
 
-.task-pipeline-toggle {
-  color: var(--text-tertiary);
-  transition: transform 0.2s ease;
+.task-pipeline-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
+  margin-left: auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.task-pipeline-collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .task-pipeline-badge {
@@ -75,24 +115,14 @@
   justify-content: center;
   padding: 40px;
   overflow: hidden;
-  transition: max-height 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
-  max-height: 2000px;
-  opacity: 1;
 }
 
-.task-pipeline--collapsed .task-pipeline-header {
-  border-bottom: none;
-}
-
-.task-pipeline--collapsed .task-pipeline-toggle {
-  transform: rotate(180deg);
-}
-
-.task-pipeline--collapsed .task-pipeline-body {
-  max-height: 0;
-  opacity: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+/* 折叠：参照左侧侧边栏，整体完全收为 0 宽度，把水平空间让给左侧对话区；
+ * 展开入口移至顶栏（TaskTopBar）的展开按钮 */
+.task-pipeline--collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
 }
 
 .task-pipeline-empty {
@@ -253,7 +283,7 @@
 
 .task-input-inner {
   width: 100%;
-  max-width: var(--task-content-width, 760px);
+  max-width: var(--task-content-width, 880px);
   margin: 0 auto;
 }
 
@@ -325,7 +355,10 @@
 }
 
 .task-input-toolbar-right {
-  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-right: 2px;
 }
 
 .task-input-toolbar-btn {

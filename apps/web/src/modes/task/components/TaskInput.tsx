@@ -1,5 +1,5 @@
 import type { ChatStatus } from '../../../types/tdesign';
-import { ArrowUp, Command, FileText, Mic, Square } from 'lucide-react';
+import { ArrowUp, Mic, Square } from 'lucide-react';
 import { useTaskInput } from '../hooks/useTaskInput';
 import { TaskInputMoreMenu } from './TaskInputMoreMenu';
 
@@ -57,28 +57,9 @@ export function TaskInput({ chatId, status, onSend, onStop }: Props) {
           <div className="task-input-toolbar">
             <div className="task-input-toolbar-left">
               <TaskInputMoreMenu />
-              <span className="task-input-divider" />
-              <button
-                type="button"
-                className="task-input-toolbar-btn"
-                aria-label="命令面板"
-                disabled
-                title="命令面板即将上线"
-              >
-                <Command className="h-5 w-5" strokeWidth={1.8} />
-              </button>
             </div>
 
             <div className="task-input-toolbar-right">
-              <button
-                type="button"
-                className="task-input-toolbar-btn"
-                aria-label="引用文档"
-                disabled
-                title="引用文档即将上线"
-              >
-                <FileText className="h-5 w-5" strokeWidth={1.8} />
-              </button>
               <button
                 type="button"
                 className="task-input-toolbar-btn"

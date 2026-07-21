@@ -1,12 +1,10 @@
 /* ===== Artifact 预览面板 ===== */
-/* 复用 .task-pipeline 的容器尺寸，保证与原右侧面板布局一致 */
+/* 宽度由 appStore.pipelineWidth 内联控制，与 TaskPipeline 共享同一宽度；
+ * 左侧 1px 分隔线由 .task-resizer 提供，这里不再画 border-left */
 .artifact-panel {
   display: flex;
   flex-direction: column;
-  width: 320px;
-  min-width: 320px;
   flex-shrink: 0;
-  border-left: 1px solid var(--border-light);
   background: var(--bg-secondary);
   overflow: hidden;
 }

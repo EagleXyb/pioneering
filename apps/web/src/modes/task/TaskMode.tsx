@@ -1,10 +1,12 @@
 import { useChat } from '@tdesign-react/chat';
 import { useConversationStore } from '../../store/conversationStore';
 import { useArtifactStore } from '../../store/artifactStore';
+import { useAppStore } from '../../store/appStore';
 import { useChatSync } from './hooks/useChatSync';
 import { TaskMessageList } from './components/TaskMessageList';
 import { TaskInput } from './components/TaskInput';
 import { TaskPipeline } from './components/TaskPipeline';
+import { TaskResizer } from './components/TaskResizer';
 import { ArtifactPanel } from '@/components/ArtifactPreview/ArtifactPanel';
 import '@/components/ArtifactPreview/artifactPanel.css';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
@@ -20,6 +22,9 @@ export default function TaskMode() {
   // 否则显示原有的 TaskPipeline。二者互斥，避免布局挤压。
   const hasActiveArtifact = useArtifactStore((s) => s.activeArtifact !== null);
   const resetArtifact = useArtifactStore((s) => s.reset);
+  const pipelineOpen = useAppStore((s) => s.pipelineOpen);
+  // 右侧面板实际可见（artifact 预览中，或任务流水线展开）时才显示分隔条
+  const showResizer = hasActiveArtifact || pipelineOpen;
 
   const { chatEngine, messages, status } = useChat({
     chatServiceConfig: {
@@ -92,6 +97,8 @@ export default function TaskMode() {
         )}
       </div>
       {/* 右侧面板：有 artifact 预览时显示 ArtifactPanel，否则显示原 TaskPipeline */}
+      {/* resizer 仅在右侧面板实际可见（非折叠 / 有 artifact）时显示 */}
+      {showResizer && <TaskResizer />}
       {hasActiveArtifact ? <ArtifactPanel /> : <TaskPipeline />}
     </div>
   );

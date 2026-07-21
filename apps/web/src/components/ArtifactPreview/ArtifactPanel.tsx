@@ -1,5 +1,6 @@
 import { X, ArrowLeft, Copy, Download } from 'lucide-react';
 import { useArtifactStore } from '@/store/artifactStore';
+import { useAppStore } from '@/store/appStore';
 import { ArtifactRender } from './ArtifactRender';
 
 /**
@@ -22,6 +23,7 @@ export function ArtifactPanel() {
   const activeArtifact = useArtifactStore((s) => s.activeArtifact);
   const closeArtifact = useArtifactStore((s) => s.closeArtifact);
   const highlightMessage = useArtifactStore((s) => s.highlightMessage);
+  const pipelineWidth = useAppStore((s) => s.pipelineWidth);
 
   if (!activeArtifact) return null;
 
@@ -57,7 +59,10 @@ export function ArtifactPanel() {
   };
 
   return (
-    <div className="artifact-panel">
+    <div
+      className="artifact-panel"
+      style={{ width: pipelineWidth, minWidth: pipelineWidth }}
+    >
       <div className="artifact-panel-header">
         <div className="artifact-panel-header-left">
           <button

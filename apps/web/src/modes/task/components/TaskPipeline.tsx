@@ -1,38 +1,32 @@
-import React, { useState } from 'react';
+import { PanelRight } from 'lucide-react';
+import { useAppStore } from '../../../store/appStore';
 
 export function TaskPipeline() {
-  const [collapsed, setCollapsed] = useState(false);
+  const pipelineOpen = useAppStore((s) => s.pipelineOpen);
+  const togglePipeline = useAppStore((s) => s.togglePipeline);
+  const pipelineWidth = useAppStore((s) => s.pipelineWidth);
+  const collapsed = !pipelineOpen;
 
   return (
-    <div className={`task-pipeline${collapsed ? ' task-pipeline--collapsed' : ''}`}>
-      <div
-        className="task-pipeline-header"
-        onClick={() => setCollapsed((v) => !v)}
-        role="button"
-        tabIndex={0}
-        aria-expanded={!collapsed}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setCollapsed((v) => !v);
-          }
-        }}
-      >
+    <div
+      className={`task-pipeline${collapsed ? ' task-pipeline--collapsed' : ''}`}
+      style={{ width: collapsed ? 0 : pipelineWidth, minWidth: collapsed ? 0 : pipelineWidth }}
+    >
+      <div className="task-pipeline-header">
         <div className="task-pipeline-header-left">
           <h3 className="task-pipeline-title">任务流水线</h3>
           <span className="task-pipeline-badge">开发中</span>
         </div>
-        <svg
-          className="task-pipeline-toggle"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
+        <button
+          type="button"
+          className="task-pipeline-collapse-btn"
+          onClick={togglePipeline}
+          aria-label="收起任务流水线"
+          aria-expanded={pipelineOpen}
+          title="收起任务流水线"
         >
-          <path d="M6 9l6 6 6-6"/>
-        </svg>
+          <PanelRight width={18} height={18} />
+        </button>
       </div>
       <div className="task-pipeline-body">
         <div className="task-pipeline-empty">

@@ -3,14 +3,18 @@ import type { ComponentType } from 'react';
 import {
   Camera,
   ChevronRight,
-  FilePlus,
+  FolderOpen,
   Globe,
+  History,
+  Image,
   Library,
   MessageSquare,
   NotebookText,
   Paperclip,
   Plus,
+  Quote,
   Upload,
+  Zap,
 } from 'lucide-react';
 
 type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -29,45 +33,49 @@ interface MainItem {
 }
 
 // 任务模式「+」按钮弹出的「更多工具」下拉菜单
-// 主菜单 7 项：上传文件、截图、引用网页；带 ▸ 的 4 项悬停展开二级菜单
+// 基于「图片、文件、技能、引用、知识库」五大必备能力收敛为 5 项：
+// - 图片：上传图片、截图
+// - 文件：上传文件、选择已有文件
+// - 技能：打开技能/指令面板
+// - 引用：引用网页、引用笔记、引用其他对话
+// - 知识库：全部知识库、最近使用
 const MAIN_ITEMS: MainItem[] = [
-  { id: 'upload', label: '上传文件', icon: Upload },
-  { id: 'screenshot', label: '截图', icon: Camera },
-  { id: 'web', label: '引用网页', icon: Globe },
   {
-    id: 'add-file',
-    label: '添加文件',
-    icon: FilePlus,
+    id: 'image',
+    label: '图片',
+    icon: Image,
     sub: [
-      { id: 'add-file-local', label: '本地上传', icon: Paperclip },
-      { id: 'add-file-existing', label: '选择已有', icon: FilePlus },
+      { id: 'image-upload', label: '上传图片', icon: Upload },
+      { id: 'image-screenshot', label: '截图', icon: Camera },
     ],
   },
   {
-    id: 'note',
-    label: '引用笔记',
-    icon: NotebookText,
+    id: 'file',
+    label: '文件',
+    icon: FolderOpen,
     sub: [
-      { id: 'note-all', label: '全部笔记', icon: NotebookText },
-      { id: 'note-fav', label: '收藏笔记', icon: NotebookText },
+      { id: 'file-upload', label: '上传文件', icon: Upload },
+      { id: 'file-existing', label: '选择已有文件', icon: Paperclip },
+    ],
+  },
+  { id: 'skill', label: '技能', icon: Zap },
+  {
+    id: 'quote',
+    label: '引用',
+    icon: Quote,
+    sub: [
+      { id: 'quote-web', label: '引用网页', icon: Globe },
+      { id: 'quote-note', label: '引用笔记', icon: NotebookText },
+      { id: 'quote-dialog', label: '引用其他对话', icon: MessageSquare },
     ],
   },
   {
     id: 'kb',
-    label: '引用知识库',
+    label: '知识库',
     icon: Library,
     sub: [
       { id: 'kb-all', label: '全部知识库', icon: Library },
-      { id: 'kb-recent', label: '最近使用', icon: Library },
-    ],
-  },
-  {
-    id: 'dialog',
-    label: '引用其他对话',
-    icon: MessageSquare,
-    sub: [
-      { id: 'dialog-recent', label: '最近对话', icon: MessageSquare },
-      { id: 'dialog-all', label: '全部对话', icon: MessageSquare },
+      { id: 'kb-recent', label: '最近使用', icon: History },
     ],
   },
 ];
@@ -84,7 +92,8 @@ interface Props {
 
 /**
  * 任务模式输入框左下角的「+」按钮，点击后在按钮上方弹出一个工具下拉菜单。
- * - 主菜单 7 项，带 ▸ 的 4 项悬停展开二级子菜单
+ * - 主菜单 5 项，与「图片、文件、技能、引用、知识库」一一对应
+ * - 带 ▸ 的项悬停展开二级子菜单
  * - 使用 fixed 定位到按钮上方，避免被输入区或父容器 overflow 裁剪
  * - 点击外部 / Esc / 滚动 / 窗口缩放 自动关闭
  */
