@@ -1,4 +1,6 @@
 import React from 'react';
+import { PanelRight } from 'lucide-react';
+import { useAppStore } from '../../../store/appStore';
 
 interface StepState {
   id: string;
@@ -14,6 +16,7 @@ interface Props {
 }
 
 export function ProcessPanel({ stateMap, currentStateKey }: Props) {
+  const togglePipeline = useAppStore((s) => s.togglePipeline);
   const steps: StepState[] = Object.entries(stateMap).map(([key, state]) => ({
     id: key,
     type: state.type || 'unknown',
@@ -25,8 +28,19 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
   if (steps.length === 0) {
     return (
       <div className="process-panel">
-        <div className="process-header">
-          <div className="process-title">推理过程</div>
+        <div className="pro-pipeline-header">
+          <div className="pro-pipeline-header-left">
+            <h3 className="pro-pipeline-title">推理过程</h3>
+          </div>
+          <button
+            type="button"
+            className="pro-pipeline-collapse-btn"
+            onClick={togglePipeline}
+            aria-label="收起推理面板"
+            title="收起推理面板"
+          >
+            <PanelRight width={18} height={18} />
+          </button>
         </div>
         <div className="process-empty">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -40,12 +54,21 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
   }
 
   return (
-    <div className="process-panel">
-      <div className="process-header">
-        <div className="process-title">推理过程</div>
-        {steps.some(s => s.status === 'running') && (
-          <span className="process-live-dot" />
-        )}
+      <div className="process-panel">
+        <div className="pro-pipeline-header">
+          <div className="pro-pipeline-header-left">
+            <h3 className="pro-pipeline-title">推理过程</h3>
+          {steps.some((s) => s.status === 'running') && <span className="process-live-dot" />}
+        </div>
+        <button
+          type="button"
+            className="pro-pipeline-collapse-btn"
+            onClick={togglePipeline}
+          aria-label="收起推理面板"
+          title="收起推理面板"
+        >
+          <PanelRight width={18} height={18} />
+        </button>
       </div>
 
       <div className="process-steps">
@@ -55,16 +78,12 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
               <div className="process-step-circle">
                 {step.status === 'done' && (
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 7l3 3 5-5"/>
+                    <path d="M3 7l3 3 5-5" />
                   </svg>
                 )}
-                {step.status === 'running' && (
-                  <div className="process-step-spinner" />
-                )}
+                {step.status === 'running' && <div className="process-step-spinner" />}
               </div>
-              {step.id !== steps[steps.length - 1].id && (
-                <div className="process-step-line" />
-              )}
+              {step.id !== steps[steps.length - 1].id && <div className="process-step-line" />}
             </div>
             <div className="process-step-body">
               <div className="process-step-label">{step.label}</div>

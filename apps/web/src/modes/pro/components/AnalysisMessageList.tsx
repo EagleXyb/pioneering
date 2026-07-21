@@ -41,6 +41,7 @@ export function AnalysisMessageList({ messages, status }: Props) {
 
   return (
     <div className="pro-messages">
+      <div className="pro-messages-inner">
       {messages.map((msg) => {
         const isUser = msg.role === 'user';
         const text = getMessageText(msg);
@@ -86,6 +87,7 @@ export function AnalysisMessageList({ messages, status }: Props) {
         </div>
       )}
       <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

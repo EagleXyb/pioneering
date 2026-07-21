@@ -10,6 +10,34 @@
   z-index: 10;
 }
 
+/* 分析模式（/pro）顶栏高度收窄为 48px，不影响其它模式（保持 --nav-height 56px） */
+.top-nav--pro {
+  height: 48px;
+}
+
+/* 顶栏自带折叠按钮（分析模式推理面板的展开/收起），不依赖 task.css，避免全局样式泄漏 */
+.top-nav-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.top-nav-collapse-btn:hover {
+  background: var(--hover-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
 .btn-sidebar-toggle {
   padding: 8px;
   border-radius: var(--radius-sm);

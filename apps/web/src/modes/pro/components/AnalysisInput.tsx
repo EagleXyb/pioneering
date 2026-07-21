@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowUp, Mic, Square } from 'lucide-react';
 import type { ChatStatus } from '../../../types/tdesign';
-import { TaskInputMoreMenu } from '../../task/components/TaskInputMoreMenu';
-// 复用任务模式输入区样式（发送按钮 / 更多工具 / 宽高 / 图标等保持一致）
-import '../../task/task.css';
+import { ProInputMoreMenu } from './ProInputMoreMenu';
+// 分析模式输入区使用 pro.css 中的 .pro-input-* 独立样式，不依赖 task.css
 
 interface Props {
   status: ChatStatus;
@@ -45,12 +44,12 @@ export function AnalysisInput({ status, onSend, onStop }: Props) {
   }, [value, isStreaming, adjustHeight]);
 
   return (
-    <div className="pro-input-area">
+      <div className="pro-input-area">
       <div className="pro-input-inner">
-        <div className="task-input-card">
+        <div className="pro-input-card">
           <textarea
             ref={textareaRef}
-            className="task-input-text"
+            className="pro-input-text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -59,14 +58,14 @@ export function AnalysisInput({ status, onSend, onStop }: Props) {
             disabled={isStreaming}
             aria-label="分析输入框"
           />
-          <div className="task-input-toolbar">
-            <div className="task-input-toolbar-left">
-              <TaskInputMoreMenu />
+          <div className="pro-input-toolbar">
+            <div className="pro-input-toolbar-left">
+              <ProInputMoreMenu />
             </div>
-            <div className="task-input-toolbar-right">
+            <div className="pro-input-toolbar-right">
               <button
                 type="button"
-                className="task-input-toolbar-btn"
+                className="pro-input-toolbar-btn"
                 aria-label="语音输入"
                 title="语音输入即将上线"
                 disabled
@@ -76,7 +75,7 @@ export function AnalysisInput({ status, onSend, onStop }: Props) {
               {isStreaming ? (
                 <button
                   type="button"
-                  className="task-input-send-btn task-input-send-btn--stop"
+                  className="pro-input-send-btn pro-input-send-btn--stop"
                   onClick={onStop}
                   aria-label="停止"
                 >
@@ -85,7 +84,7 @@ export function AnalysisInput({ status, onSend, onStop }: Props) {
               ) : (
                 <button
                   type="button"
-                  className="task-input-send-btn"
+                  className="pro-input-send-btn"
                   onClick={handleSend}
                   disabled={!value.trim()}
                   aria-label="发送"

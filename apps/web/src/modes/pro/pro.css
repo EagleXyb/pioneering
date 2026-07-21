@@ -13,93 +13,30 @@
   overflow: hidden;
 }
 
-.pro-layout-panel {
-  width: var(--process-panel-width);
-  min-width: var(--process-panel-width);
-  border-left: 1px solid var(--border-light);
-  background: var(--bg-secondary);
-  overflow-y: auto;
-}
+/* 右侧面板外壳：pro 独立样式（.pro-pipeline），不再依赖 task.css。
+ * 宽度 / 折叠 / 分隔条仍由 TaskResizer 与 useAppStore.pipelineWidth 控制 */
 
-/* Header */
-.pro-main-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-light);
-  flex-shrink: 0;
-  background: var(--bg-card);
-}
+/* 分析模式顶部标题栏（.pro-main-header）已移除，折叠/展开推理面板的入口迁移到
+ * 全局 TopNav（仅 /pro 路由显示），与任务模式 TaskTopBar 的折叠交互一致 */
 
-.pro-main-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pro-main-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.pro-main-status {
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 10px;
-  background: var(--accent-blue-light);
-  color: var(--accent-blue);
-  font-weight: 500;
-  animation: pro-pulse 1.5s ease-in-out infinite;
-}
-
-.pro-main-status-done {
-  background: var(--accent-green-light);
-  color: var(--accent-green);
-  animation: none;
-}
-
-@keyframes pro-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-.pro-main-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pro-main-progress-bar {
-  width: 100px;
-  height: 4px;
-  background: var(--border-light);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.pro-main-progress-fill {
-  height: 100%;
-  background: var(--accent-blue);
-  border-radius: 2px;
-  transition: width 0.5s ease;
-}
-
-.pro-main-progress-text {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-/* Messages */
+/* Messages —— 背景与任务模式 .task-messages 一致（var(--bg-secondary)），
+ * 居中容器 .pro-messages-inner 对齐 .task-messages-inner（max-width 760） */
 .pro-messages {
   flex: 1;
   overflow-y: auto;
   padding: 24px 20px;
   display: flex;
   flex-direction: column;
+  background: var(--bg-secondary);
+}
+
+.pro-messages-inner {
+  width: 100%;
+  max-width: var(--task-content-width, 760px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  background: var(--bg-card);
 }
 
 .pro-messages-empty {
@@ -110,7 +47,7 @@
   justify-content: center;
   gap: 12px;
   padding: 40px;
-  background: var(--bg-card);
+  background: var(--bg-secondary);
 }
 
 .pro-empty-icon {
@@ -209,10 +146,8 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* Input Area —— 复用 TaskMode 输入区（task-input-card / task-input-text /
- * task-input-toolbar / task-input-send-btn 等由 task.css 提供，
- * 由 AnalysisInput.tsx 显式 import，保证发送按钮、更多工具、宽高、图标完全一致）。
- * 此处仅保留分析模式外层容器与内容居中定位。 */
+/* Input Area —— pro 独立输入区样式（.pro-input-*），与任务模式视觉一致但互不影响。
+ * 外层容器与内容居中定位在此定义，卡片/文本框/工具栏/发送按钮样式见文件底部 pro 区块 */
 .pro-input-area {
   padding: 16px 20px 24px;
   flex-shrink: 0;
@@ -226,26 +161,21 @@
   margin: 0 auto;
 }
 
-/* Process Panel */
+/* Process Panel —— 面板头使用 pro 独立样式 .pro-pipeline-header / .pro-pipeline-title /
+ * .pro-pipeline-collapse-btn（48px 高度、折叠按钮与任务模式视觉一致），内容样式保留在下方 */
 .process-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  /* 覆盖 .pro-pipeline 继承的 white-space:nowrap，使推理步骤文本可正常换行 */
+  white-space: normal;
+  /* 标题栏 .pro-pipeline-header 紧贴面板顶部（48px），与任务模式 .task-pipeline-header 对齐；
+   * 下方 .process-steps / .process-empty 以 flex:1 占满剩余高度，整体自适应外层容器 */
 }
 
-.process-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-light);
+.process-panel > .pro-pipeline-header {
   flex-shrink: 0;
-}
-
-.process-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
 }
 
 .process-live-dot {
@@ -283,7 +213,10 @@
 }
 
 .process-steps {
-  padding: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -369,8 +302,6 @@
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 /* Pro Empty State */
@@ -382,7 +313,7 @@
   height: 100%;
   gap: 16px;
   padding: 40px;
-  background: var(--bg-card);
+  background: var(--bg-secondary);
 }
 
 .pro-empty h2 {
@@ -410,4 +341,356 @@
 
 .pro-empty button:hover {
   filter: brightness(1.1);
+}
+
+/* =========================================================
+ * ProMode 独立组件样式（不依赖 task.css，避免与任务模式相互影响）
+ * 以下样式为任务模式对应组件样式的 pro 副本，类名统一前缀 .pro-*
+ * ========================================================= */
+
+/* 右侧推理面板外壳：结构与任务模式 .task-pipeline 一致
+ * —— flex 列布局、靠默认 align-items:stretch 自适应外层 .pro-layout 高度
+ * （与任务模式一样不写 height:100%，避免百分比高度解析链路的边界情况），
+ * 顶部 48px 标题栏 + 主体占满剩余高度 */
+.pro-pipeline {
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width var(--transition-normal), min-width var(--transition-normal),
+    padding var(--transition-normal);
+}
+
+.pro-pipeline--collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.pro-pipeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 20px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.pro-pipeline-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.pro-pipeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pro-pipeline-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-left: auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pro-pipeline-collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* 输入区卡片 / 文本框 / 工具栏 / 发送按钮 */
+.pro-input-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 24px;
+  padding: 6px 0 0;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 32px rgba(0, 0, 0, 0.06);
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.pro-input-card:focus-within {
+  border-color: var(--border-medium);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.03),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    0 12px 40px rgba(0, 0, 0, 0.08);
+}
+
+.pro-input-text {
+  width: 100%;
+  min-height: 44px;
+  max-height: 200px;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  resize: none;
+  padding: 14px 20px 8px;
+  outline: none;
+  font-family: inherit;
+  overflow-y: auto;
+  field-sizing: content;
+}
+
+.pro-input-text::placeholder {
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+
+.pro-input-text:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pro-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px 10px;
+  gap: 8px;
+}
+
+.pro-input-toolbar-left,
+.pro-input-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pro-input-toolbar-right {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.pro-input-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  padding: 0;
+}
+
+.pro-input-toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+
+.pro-input-toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 「更多工具」+ 按钮改为圆形 */
+.pro-input-more-btn {
+  border-radius: 50%;
+}
+
+.pro-input-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #1a1d23;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast);
+  padding: 0;
+  margin-left: 4px;
+}
+
+.pro-input-send-btn:hover:not(:disabled) {
+  background: #000000;
+  transform: scale(1.05);
+}
+
+.pro-input-send-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.pro-input-send-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  background: #1a1d23;
+}
+
+.pro-input-send-btn--stop {
+  background: #1a1d23;
+}
+
+.pro-input-send-btn--stop:hover {
+  background: #ef4444;
+}
+
+/* 暗色主题：pro 输入区 */
+[data-theme="dark"] .pro-input-card {
+  border-color: var(--border-light);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .pro-input-card:focus-within {
+  border-color: var(--border-medium);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .pro-input-send-btn {
+  background: #e8eaed;
+  color: #1a1d23;
+}
+
+[data-theme="dark"] .pro-input-send-btn:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+[data-theme="dark"] .pro-input-send-btn--stop:hover {
+  background: #f87171;
+  color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pro-input-card {
+    border-color: var(--border-light);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.04),
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  :root:not([data-theme="light"]) .pro-input-send-btn {
+    background: #e8eaed;
+    color: #1a1d23;
+  }
+
+  :root:not([data-theme="light"]) .pro-input-send-btn:hover:not(:disabled) {
+    background: #ffffff;
+  }
+}
+
+/* 分析模式「+」按钮弹出的「更多工具」下拉菜单（pro 独立副本） */
+.pro-input-more-pop {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  pointer-events: auto;
+}
+
+.pro-input-more-main,
+.pro-input-more-sub {
+  position: relative;
+  min-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 12px 40px rgba(0, 0, 0, 0.10);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pro-input-more-sub {
+  position: absolute;
+  left: calc(100% + 4px);
+  margin: 0;
+  min-width: 180px;
+}
+
+.pro-input-more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.pro-input-more-item:hover,
+.pro-input-more-item.active {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.pro-input-more-item.has-sub.active {
+  background: var(--bg-input);
+}
+
+.pro-input-more-item-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  stroke-width: 1.8;
+}
+
+.pro-input-more-item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.pro-input-more-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  stroke-width: 1.8;
+}
+
+[data-theme="dark"] .pro-input-more-main,
+[data-theme="dark"] .pro-input-more-sub {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 12px 40px rgba(0, 0, 0, 0.5);
 }

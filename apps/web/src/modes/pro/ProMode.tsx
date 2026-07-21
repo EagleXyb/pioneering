@@ -1,15 +1,18 @@
 import { useConversationStore } from '../../store/conversationStore';
+import { useAppStore } from '../../store/appStore';
 import { useAgentChat } from './hooks/useAgentChat';
 import { useChatSync } from './hooks/useChatSync';
-import { AnalysisLayout, ProMainHeader } from './components/AnalysisLayout';
+import { AnalysisLayout } from './components/AnalysisLayout';
 import { AnalysisMessageList } from './components/AnalysisMessageList';
 import { AnalysisInput } from './components/AnalysisInput';
 import { ProcessPanel } from './components/ProcessPanel';
+import { TaskResizer } from '../task/components/TaskResizer';
 import './pro.css';
 
 export default function ProMode() {
   const activeId = useConversationStore((s) => s.activeId);
   const create = useConversationStore((s) => s.create);
+  const pipelineOpen = useAppStore((s) => s.pipelineOpen);
 
   const { messages, status, stateMap, currentStateKey, sendMessage, abort } =
     useAgentChat(activeId, false);
@@ -32,7 +35,6 @@ export default function ProMode() {
   return (
     <AnalysisLayout>
       <AnalysisLayout.Main>
-        <ProMainHeader status={status} stateMap={stateMap} />
         <AnalysisMessageList messages={messages} status={status} />
         <AnalysisInput
           status={status}
@@ -40,6 +42,8 @@ export default function ProMode() {
           onStop={() => abort()}
         />
       </AnalysisLayout.Main>
+      {/* 右侧面板（推理过程）展开时显示可拖拽分隔条，折叠时隐藏 */}
+      {pipelineOpen && <TaskResizer />}
       <AnalysisLayout.Panel>
         <ProcessPanel stateMap={stateMap} currentStateKey={currentStateKey} />
       </AnalysisLayout.Panel>
