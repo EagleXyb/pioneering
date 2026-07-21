@@ -41,6 +41,15 @@ import {
   routeAfterPerception,
 } from './nodes.js'
 import { make_supervisor_node, route_from_supervisor } from './subgraph/supervisor.js'
+import {
+  makePlanContextInjector,
+  makePlannerNode,
+  makeStepDispatchNode,
+  makeStepFinalizeNode,
+  routeAfterPlan,
+  stepDispatch,
+} from './plan-execute/index.js'
+import { getRegistry } from '../core/registry.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph] ${msg}`, ...args),
@@ -114,6 +123,9 @@ export class ModuGraph {
  * @param hitlEnabled P3-12.3.2 是否启用人工审批节点；null 时从配置读取
  * @param multiAgentEnabled P3-12.3.1 是否启用多 Agent 协作；null 时从配置读取
  * @param judgeLlm P3-12.3.1 LLM 裁决器（仅 llm_judge 共识策略需要）
+ * @param planExecuteEnabled P4 是否启用 Plan-and-Execute 模式；null 时从配置读取
+ * @param rawLlm P4 未绑定工具的原始 LLM（Planner 节点专用，规划阶段禁止工具）；
+ *               null 时回退使用 llm 参数（若其已绑定工具，Planner 提示词仍约束其输出纯 JSON）
  * @returns 编译后的 StateGraph
  *
  * 图结构（multi_agent 关闭，HITL 关闭）：
@@ -142,6 +154,8 @@ export function buildModuGraph(
   hitlEnabled: boolean | null = null,
   multiAgentEnabled: boolean | null = null,
   judgeLlm: any = null,
+  planExecuteEnabled: boolean | null = null,
+  rawLlm: any = null,
 ): CompiledStateGraph<any, any> {
   // LLM 已经在 factory 中绑定了工具，此处直接使用
   const boundLlm = llm
@@ -164,6 +178,23 @@ export function buildModuGraph(
     }
   }
 
+  // 读取 Plan-and-Execute 配置（P4）
+  if (planExecuteEnabled === null) {
+    try {
+      planExecuteEnabled = Boolean(getConfig().get('plan_execute.enabled', false))
+    } catch {
+      planExecuteEnabled = false
+    }
+  }
+
+  // P4: multi_agent 与 plan_execute 互斥（multi_agent 优先，二者都消费 memory_query → 推理入口）
+  if (multiAgentEnabled && planExecuteEnabled) {
+    logger.warning(
+      'Both multi_agent and plan_execute are enabled; multi_agent takes precedence, plan_execute disabled',
+    )
+    planExecuteEnabled = false
+  }
+
   // 创建图
   // 注：LangGraph JS 的 StateGraph 类型系统无法追踪 builder 模式中通过 addNode
   // 注册的节点名，addEdge/addConditionalEdges 的字符串参数仅接受 "__start__"|"__end__"。
@@ -171,7 +202,10 @@ export function buildModuGraph(
   const graph: any = new StateGraph(ModuAgentStateAnnotation)
 
   // 创建节点函数
-  const agentNode = makeAgentNode(boundLlm, systemPrompt)
+  // P4: plan_execute 模式下为 agent 节点注入步骤上下文（默认 null 时行为不变）
+  const agentNode = planExecuteEnabled
+    ? makeAgentNode(boundLlm, systemPrompt, 0.5, 0.3, makePlanContextInjector())
+    : makeAgentNode(boundLlm, systemPrompt)
   const memoryNode = store ? makeMemoryQueryNode(store) : null
   // P0-3: 创建记忆更新节点（带 Store 时写入长期记忆，否则跳过）
   const memoryUpdate = store ? makeMemoryUpdateNode(store) : memoryUpdateNode
@@ -188,6 +222,19 @@ export function buildModuGraph(
     supervisorNode = make_supervisor_node()
     subagentNode = makeSubagentNode(boundLlm, systemPrompt)
     consensusNode = makeConsensusNode(null, judgeLlm)
+  }
+
+  // P4 Plan-and-Execute 节点（plan_execute 开启时挂载）
+  let plannerNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
+  let stepDispatchNodeFn: ((state: ModuAgentState) => Partial<ModuAgentState>) | null = null
+  let stepFinalizeNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
+  if (planExecuteEnabled) {
+    // Planner 使用未绑定工具的原始 LLM（规划阶段禁止工具）；
+    // rawLlm 为空时回退 boundLlm（提示词约束其输出纯 JSON，不产生 tool_calls）
+    const plannerLlm = rawLlm ?? boundLlm
+    plannerNode = makePlannerNode(plannerLlm, getRegistry())
+    stepDispatchNodeFn = makeStepDispatchNode()
+    stepFinalizeNode = makeStepFinalizeNode()
   }
 
   // 添加节点
@@ -220,6 +267,12 @@ export function buildModuGraph(
     graph.addNode('subagent_run', subagentNode!)
     graph.addNode('consensus', consensusNode!)
   }
+  // P4: Plan-and-Execute 节点接入图
+  if (plannerNode) {
+    graph.addNode('planner', plannerNode)
+    graph.addNode('step_dispatch', stepDispatchNodeFn!)
+    graph.addNode('step_finalize', stepFinalizeNode!)
+  }
 
   // 添加边
   graph.addEdge(START, 'perception')
@@ -234,7 +287,7 @@ export function buildModuGraph(
     },
   )
 
-  // 记忆查询后进入 agent 或 supervisor（P3-12.3.1 多 Agent 路由）
+  // 记忆查询后进入 agent / supervisor / planner（P3-12.3.1 多 Agent / P4 Plan-and-Execute 路由）
   if (supervisorNode) {
     graph.addConditionalEdges(
       'memory_query',
@@ -251,6 +304,27 @@ export function buildModuGraph(
     graph.addEdge('subagent_run', 'consensus')
     // consensus → response（进入响应阶段）
     graph.addEdge('consensus', 'response')
+  } else if (plannerNode) {
+    // P4: memory_query → planner → step_dispatch 执行循环
+    graph.addConditionalEdges(
+      'memory_query',
+      routeAfterMemoryQuery,
+      { agent: 'agent', planner: 'planner' },
+    )
+    // planner 后路由：plan 就绪 → step_dispatch；解析失败 → response（降级直答）
+    graph.addConditionalEdges(
+      'planner',
+      routeAfterPlan,
+      { step_dispatch: 'step_dispatch', response: 'response' },
+    )
+    // step_dispatch：有剩余步骤 → agent；全部完成 → response；失败可重规划 → planner
+    graph.addConditionalEdges(
+      'step_dispatch',
+      stepDispatch,
+      { agent: 'agent', response: 'response', planner: 'planner' },
+    )
+    // step_finalize：单步收尾后回到 step_dispatch 推进游标
+    graph.addEdge('step_finalize', 'step_dispatch')
   } else {
     graph.addEdge('memory_query', 'agent')
   }
@@ -258,14 +332,20 @@ export function buildModuGraph(
   // Agent 后条件路由：
   // - HITL 关闭: 有 tool_calls → tools，无 tool_calls → response（原行为）
   // - HITL 开启: 有 tool_calls → human_review，无 tool_calls → response（P3-12.3.2）
+  // Agent 后条件路由的目标映射。
+  // P4: plan_execute 模式下 routeAfterAgent 可能返回 'step_finalize'（当前步骤完成）。
+  const agentRouteTargets: Record<string, string> = humanReviewNode
+    ? { tools: 'human_review', __end__: 'response' }
+    : { tools: 'tools', __end__: 'response' }
+  if (stepFinalizeNode) {
+    agentRouteTargets['step_finalize'] = 'step_finalize'
+  }
+
   if (humanReviewNode) {
     graph.addConditionalEdges(
       'agent',
       routeAfterAgent,
-      {
-        tools: 'human_review',  // P3-12.3.2: 改路由到 human_review
-        __end__: 'response',
-      },
+      agentRouteTargets,
     )
     // human_review 后条件路由：通过 → tools，拒绝/错误 → response
     graph.addConditionalEdges(
@@ -280,10 +360,7 @@ export function buildModuGraph(
     graph.addConditionalEdges(
       'agent',
       routeAfterAgent,
-      {
-        tools: 'tools',
-        __end__: 'response',
-      },
+      agentRouteTargets,
     )
   }
 
@@ -329,17 +406,25 @@ export function buildModuGraph(
     if (supervisorNode) {
       baseLimit += 4  // 为 supervisor + subagent + consensus 预留递归预算
     }
+    if (planExecuteEnabled) {
+      // P4: 每步消耗 (agent + tools + tool_processor) * maxIterations + step_finalize，
+      // 外加 planner/step_dispatch 与重规划预算；replan_count 上限由业务层 max_replans 控制
+      const maxSteps = Number(config.get('plan_execute.max_steps', 10))
+      const maxReplans = Number(config.get('plan_execute.max_replans', 2))
+      baseLimit += maxSteps * (maxIterations * 3 + 2) + (maxReplans + 1) * 2 + 2
+    }
     compiledAny.recursionLimit = baseLimit
   }
 
   logger.info(
-    'ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d hitl=%s multi_agent=%s',
+    'ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d hitl=%s multi_agent=%s plan_execute=%s',
     tools.length,
     checkpointer ? checkpointer.constructor?.name : 'None',
     store ? store.constructor?.name : 'None',
     compiledAny.recursionLimit,
     humanReviewNode ? 'enabled' : 'disabled',
     supervisorNode ? 'enabled' : 'disabled',
+    plannerNode ? 'enabled' : 'disabled',
   )
 
   return compiled

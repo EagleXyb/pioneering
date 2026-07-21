@@ -47,6 +47,16 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       consensus_failure_as_evolution_signal: true,
     },
   },
+  // P4 Plan-and-Execute 模式（默认关闭，零侵入；与 multi_agent 互斥，multi_agent 优先）
+  plan_execute: {
+    enabled: false,
+    max_steps: 10,
+    max_replans: 2,
+    planner_temperature: 0.2,
+    continue_on_failure: false,
+    compact_completed_steps: false,
+    step_summary_max_chars: 500,
+  },
   tools: {
     default_timeout_ms: 1800000,
     retry: {

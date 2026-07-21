@@ -58,7 +58,7 @@ let _runnerConfigHash: string | null = null
 let _configCallbackRegistered = false
 
 // P2-12.2.4: 触发图重建的配置 key 前缀
-const _GRAPH_REBUILD_PREFIXES = ['llm.', 'tools.', 'memory.', 'orchestration.', 'streaming.']
+const _GRAPH_REBUILD_PREFIXES = ['llm.', 'tools.', 'memory.', 'orchestration.', 'streaming.', 'plan_execute.']
 
 /**
  * P1-12.2.6: 计算运行时配置的哈希，用于判断是否需要重建图。

@@ -94,6 +94,19 @@ export interface ModuAgentState {
   consensus_result?: Record<string, any> | null
   consensus_failed?: boolean
   current_subtask?: Record<string, any>
+
+  // === P4 Plan-and-Execute ===
+  plan?: Array<Record<string, any>>
+  current_step_index?: number
+  step_results?: Array<Record<string, any>>
+  replan_count?: number
+  plan_phase?: string
+  // transient: 当前步骤上下文（step_dispatch 注入，agent 节点读取）
+  current_step?: Record<string, any>
+  // transient: 本步开始时的 messages 基线长度（step_finalize 截取增量用）
+  step_msg_baseline?: number
+  // transient: PlanStateDelta，供 EventBridge 发 SSE
+  plan_delta?: Record<string, any> | null
 }
 
 /**
@@ -199,6 +212,19 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   consensus_result: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
   consensus_failed: Annotation<boolean>(_lw(() => false)),
   current_subtask: Annotation<Record<string, any>>(_lw(() => ({}))),
+
+  // === P4 Plan-and-Execute ===
+  plan: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
+  current_step_index: Annotation<number>(_lw(() => 0)),
+  step_results: Annotation<Array<Record<string, any>>>({
+    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    default: () => [],
+  }),
+  replan_count: Annotation<number>(_lw(() => 0)),
+  plan_phase: Annotation<string>(_lw(() => '')),
+  current_step: Annotation<Record<string, any>>(_lw(() => ({}))),
+  step_msg_baseline: Annotation<number>(_lw(() => 0)),
+  plan_delta: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
 })
 
 /**
@@ -248,5 +274,13 @@ export function makeInitialState(
     consensus_result: null,
     consensus_failed: false,
     current_subtask: {},
+    plan: [],
+    current_step_index: 0,
+    step_results: [],
+    replan_count: 0,
+    plan_phase: '',
+    current_step: {},
+    step_msg_baseline: 0,
+    plan_delta: null,
   }
 }

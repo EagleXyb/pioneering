@@ -347,6 +347,12 @@ export function routeAfterAgent(state: ModuAgentState): string {
   if (lastMsg.tool_calls && Array.isArray(lastMsg.tool_calls) && lastMsg.tool_calls.length > 0) {
     return 'tools'
   }
+  // P4 Plan-and-Execute：执行阶段中"无 tool_calls"表示当前步骤完成，
+  // 而非全局结束——转入 step_finalize 收尾本步。
+  // 纯 ReAct 路径下 plan_phase 恒为空串，行为不变。
+  if (state.plan_phase === 'executing') {
+    return 'step_finalize'
+  }
   return '__end__'
 }
 
@@ -371,6 +377,7 @@ export function makeAgentNode(
   systemPrompt: string | null = null,
   confidenceThreshold: number = 0.5,
   conservativeTemperature: number = 0.3,
+  planContextInjector: ((state: ModuAgentState) => SystemMessage | null) | null = null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
   // 获取原始 LLM 用于动态调整温度
   const _originalLlm = (boundLlm as any)._llm ?? boundLlm
@@ -420,6 +427,19 @@ export function makeAgentNode(
           0,
           new SystemMessage({ content: `Relevant knowledge from memory:\n${knowledgeText}` }),
         )
+      }
+    }
+
+    // P4 Plan-and-Execute：注入当前步骤上下文（仅 plan_execute 模式传入注入器时生效，
+    // 默认 null 时行为与原逻辑完全一致）
+    if (planContextInjector) {
+      try {
+        const stepMsg = planContextInjector(state)
+        if (stepMsg) {
+          messages.push(stepMsg)
+        }
+      } catch (e) {
+        logger.warning('planContextInjector failed, continuing without step context: %s', String(e))
       }
     }
 
@@ -987,6 +1007,10 @@ export function routeAfterMemoryQuery(state: ModuAgentState): string {
   const config = getConfig()
   if (config.get('orchestration.multi_agent.enabled', false)) {
     return 'supervisor'
+  }
+  // P4 Plan-and-Execute：与 multi_agent 互斥（multi_agent 优先）
+  if (config.get('plan_execute.enabled', false)) {
+    return 'planner'
   }
   return 'agent'
 }

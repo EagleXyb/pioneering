@@ -73,3 +73,6 @@ export * from './adapters/index.js'
 
 // subgraph（子包统一导出）
 export * from './subgraph/index.js'
+
+// plan-execute（P4 子包统一导出）
+export * from './plan-execute/index.js'

@@ -380,6 +380,8 @@ export async function create_agent(
     null,  // hitlEnabled: 从配置读取
     null,  // multiAgentEnabled: 从配置读取
     graphJudgeLlm,
+    null,  // planExecuteEnabled: 从配置读取
+    llm,   // P4: 未绑定工具的原始 LLM，供 Planner 节点使用（规划阶段禁止工具）
   )
 
   // P1-12.2.3: 通过 ModuGraph wrapper 显式持有 orchestrator 引用，

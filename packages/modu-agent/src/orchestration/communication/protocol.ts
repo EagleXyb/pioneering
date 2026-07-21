@@ -15,6 +15,8 @@ export const EventDomain = {
   TOOL: 'tool',
   NLP: 'nlp',
   VISION: 'vision',
+  // P4 Plan-and-Execute 规划域事件
+  PLAN: 'plan',
 } as const
 export type EventDomain = (typeof EventDomain)[keyof typeof EventDomain]
 
@@ -36,6 +38,11 @@ export const EventAction = {
   HUMAN_REVIEW_REQUIRED: 'human_review_required',
   HUMAN_REVIEW_APPROVED: 'human_review_approved',
   HUMAN_REVIEW_REJECTED: 'human_review_rejected',
+  // P4 Plan-and-Execute 规划与执行事件
+  PLAN_CREATED: 'plan_created',
+  STEP_STARTED: 'step_started',
+  STEP_COMPLETED: 'step_completed',
+  REPLANNED: 'replanned',
 } as const
 export type EventAction = (typeof EventAction)[keyof typeof EventAction]
 

@@ -38,6 +38,9 @@ const _NODE_DOMAIN_MAP: Record<string, string> = {
   memory_query: EventDomain.MEMORY,
   agent: EventDomain.REASONING,
   tools: EventDomain.TOOL,
+  // P4 Plan-and-Execute
+  planner: EventDomain.PLAN,
+  step_finalize: EventDomain.PLAN,
 }
 
 const _NODE_ACTION_MAP: Record<string, string> = {
@@ -45,10 +48,13 @@ const _NODE_ACTION_MAP: Record<string, string> = {
   memory_query: EventAction.QUERY,
   agent: EventAction.GENERATE,
   tools: EventAction.INVOKE,
+  // P4 Plan-and-Execute
+  planner: EventAction.PLAN_CREATED,
+  step_finalize: EventAction.STEP_COMPLETED,
 }
 
 // SSE 事件类型
-const _SSE_EVENT_TYPES = ['thinking', 'tool_call_start', 'tool_call_end', 'tool_result', 'response']
+const _SSE_EVENT_TYPES = ['thinking', 'tool_call_start', 'tool_call_end', 'tool_result', 'response', 'plan_created', 'step_update']
 
 /**
  * 将 LangGraph stream 事件桥接到现有 EventBus。
@@ -177,6 +183,17 @@ export class LangGraphEventBridge {
           metadata = LangGraphEventBridge._extractToolMetadata(data)
         } else if (node === 'agent' && typeof data === 'object') {
           metadata = LangGraphEventBridge._extractAgentMetadata(data)
+        } else if (node === 'planner' && typeof data === 'object') {
+          const plan = data.plan || []
+          metadata = {
+            step_count: String(Array.isArray(plan) ? plan.length : 0),
+            replan_count: String(data.replan_count ?? 0),
+          }
+        } else if (node === 'step_finalize' && typeof data === 'object') {
+          metadata = {
+            current_step_index: String(data.current_step_index ?? 0),
+            plan_phase: String(data.plan_phase ?? ''),
+          }
         }
 
         return new AgentEvent({
@@ -294,6 +311,32 @@ export class LangGraphEventBridge {
                 tool_name: toolName,
                 result: content,
               },
+            })
+          }
+        }
+      }
+
+      // P4 Plan-and-Execute：planner / step_finalize 节点的 SSE 细粒度事件。
+      // payload 对齐前端 PlanStateDelta（phase + plan / step_update），
+      // 供前端 planExecuteStore.applyPlanDelta 直接消费。
+      if ((node === 'planner' || node === 'step_finalize' || node === 'step_dispatch') && typeof data === 'object') {
+        const planDelta = data.plan_delta
+        if (planDelta && typeof planDelta === 'object') {
+          if (planDelta.phase === 'plan' && Array.isArray(planDelta.plan)) {
+            sseEvents.push({
+              type: 'plan_created',
+              data: planDelta,
+            })
+          } else if (planDelta.phase === 'execute' && planDelta.step_update) {
+            sseEvents.push({
+              type: 'step_update',
+              data: planDelta,
+            })
+          } else {
+            // 兜底：未知 phase 时透传原始 delta，保持前后端协议弹性
+            sseEvents.push({
+              type: 'step_update',
+              data: planDelta,
             })
           }
         }
