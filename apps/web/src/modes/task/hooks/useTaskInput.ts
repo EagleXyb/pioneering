@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 const MAX_DRAFT_LENGTH = 5000;
 const DRAFT_SAVE_DEBOUNCE_MS = 500;
 const TEXTAREA_MAX_HEIGHT = 200;
-const TEXTAREA_MIN_HEIGHT = 52;
+const TEXTAREA_MIN_HEIGHT = 44;
 
 /** Safari iOS 检测：compositionend 与 Enter keydown 会同时触发，需要时间戳二次校验 */
 const isSafari =

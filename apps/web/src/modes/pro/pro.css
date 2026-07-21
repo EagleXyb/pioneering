@@ -209,87 +209,21 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* Input Area */
+/* Input Area —— 复用 TaskMode 输入区（task-input-card / task-input-text /
+ * task-input-toolbar / task-input-send-btn 等由 task.css 提供，
+ * 由 AnalysisInput.tsx 显式 import，保证发送按钮、更多工具、宽高、图标完全一致）。
+ * 此处仅保留分析模式外层容器与内容居中定位。 */
 .pro-input-area {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-light);
+  padding: 16px 20px 24px;
   flex-shrink: 0;
+  min-width: 0;
   background: var(--bg-card);
 }
 
 .pro-input-inner {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  padding: 8px 8px 8px 16px;
-  transition: border-color var(--transition-fast);
-}
-
-.pro-input-inner:focus-within {
-  border-color: var(--accent-purple);
-}
-
-.pro-input-textarea {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  resize: none;
-  padding: 4px 0;
-  max-height: 150px;
-}
-
-.pro-input-textarea::placeholder {
-  color: var(--text-tertiary);
-}
-
-.pro-input-textarea:disabled {
-  opacity: 0.6;
-}
-
-.pro-input-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.pro-input-btn {
-  padding: 8px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-}
-
-.pro-input-btn-send {
-  background: var(--accent-purple);
-  color: white;
-}
-
-.pro-input-btn-send:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.pro-input-btn-send:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.pro-input-btn-stop {
-  background: var(--accent-red);
-  color: white;
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  gap: 4px;
+  width: 100%;
+  max-width: var(--task-content-width, 880px);
+  margin: 0 auto;
 }
 
 /* Process Panel */
