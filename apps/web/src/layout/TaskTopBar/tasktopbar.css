@@ -8,7 +8,7 @@
  * 不在此处重复媒体查询（避免与 important: '.tw-scope' 的优先级冲突）。
  */
 .task-top-bar {
-  height: var(--nav-height);
+  height: 48px;
   display: flex;
   align-items: center;
   padding: 0 20px;
