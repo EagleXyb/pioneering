@@ -243,9 +243,9 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* Input Area —— 胶囊式设计 */
+/* Input Area —— Apple 极简卡片式设计 */
 .task-input-area {
-  padding: 16px 20px;
+  padding: 16px 20px 24px;
   flex-shrink: 0;
   min-width: 0;
   background: var(--bg-secondary);
@@ -257,58 +257,50 @@
   margin: 0 auto;
 }
 
-.task-input-capsule {
+.task-input-card {
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
+  flex-direction: column;
   width: 100%;
   min-width: 0;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 9999px;
-  padding: 6px 6px 6px 12px;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.task-input-capsule:focus-within {
-  border-color: var(--accent-amber);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
-}
-
-.task-input-plus {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: 9999px;
   background: var(--bg-card);
-  color: var(--text-secondary);
   border: 1px solid var(--border-light);
+  border-radius: 24px;
+  padding: 6px 0 0;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 32px rgba(0, 0, 0, 0.06);
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
-.task-input-plus:hover {
-  background: var(--bg-sidebar-hover);
-  color: var(--text-primary);
+.task-input-card:focus-within {
+  border-color: var(--border-medium);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.03),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    0 12px 40px rgba(0, 0, 0, 0.08);
 }
 
 .task-input-text {
-  flex: 1;
-  min-width: 0;
-  min-height: 28px;
+  width: 100%;
+  min-height: 52px;
   max-height: 200px;
   border: none;
   background: transparent;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--text-primary);
   resize: none;
-  padding: 10px 4px;
+  padding: 14px 20px 8px;
   outline: none;
   font-family: inherit;
   overflow-y: auto;
+  field-sizing: content;
 }
 
 .task-input-text::placeholder {
   color: var(--text-tertiary);
+  font-size: 16px;
 }
 
 .task-input-text:disabled {
@@ -316,38 +308,152 @@
   cursor: not-allowed;
 }
 
-.task-input-actions {
+/* Toolbar */
+.task-input-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  justify-content: space-between;
+  padding: 4px 10px 10px;
+  gap: 8px;
 }
 
-.task-input-send {
-  width: 44px;
-  height: 44px;
-  border-radius: 9999px;
-  background: var(--accent-blue);
-  color: white;
-  transition: all var(--transition-fast);
+.task-input-toolbar-left,
+.task-input-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.task-input-send:hover:not(:disabled) {
-  background: var(--accent-blue);
-  filter: brightness(1.1);
+.task-input-toolbar-right {
+  gap: 4px;
 }
 
-.task-input-send:disabled {
-  opacity: 0.4;
+.task-input-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  padding: 0;
+}
+
+.task-input-toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+
+.task-input-toolbar-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.task-input-stop {
-  width: 44px;
-  height: 44px;
-  border-radius: 9999px;
-  background: var(--accent-red);
-  color: white;
+/* 「更多工具」+ 按钮改为圆形 */
+.task-input-more-btn {
+  border-radius: 50%;
+}
+
+.task-input-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-light);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* Send / Stop button */
+.task-input-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #1a1d23;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast);
+  padding: 0;
+  margin-left: 4px;
+}
+
+.task-input-send-btn:hover:not(:disabled) {
+  background: #000000;
+  transform: scale(1.05);
+}
+
+.task-input-send-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.task-input-send-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  background: #1a1d23;
+}
+
+.task-input-send-btn--stop {
+  background: #1a1d23;
+}
+
+.task-input-send-btn--stop:hover {
+  background: #ef4444;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .task-input-card {
+  border-color: var(--border-light);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .task-input-card:focus-within {
+  border-color: var(--border-medium);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .task-input-send-btn {
+  background: #e8eaed;
+  color: #1a1d23;
+}
+
+[data-theme="dark"] .task-input-send-btn:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+[data-theme="dark"] .task-input-send-btn--stop:hover {
+  background: #f87171;
+  color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .task-input-card {
+    border-color: var(--border-light);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.04),
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  :root:not([data-theme="light"]) .task-input-send-btn {
+    background: #e8eaed;
+    color: #1a1d23;
+  }
+
+  :root:not([data-theme="light"]) .task-input-send-btn:hover:not(:disabled) {
+    background: #ffffff;
+  }
 }
 
 /* Task Empty State */
@@ -389,4 +495,96 @@
 
 .task-empty button:hover {
   filter: brightness(1.1);
+}
+
+/* =========================================================
+ * 任务模式「+」按钮弹出的「更多工具」下拉菜单
+ *  - 容器 fixed 定位到按钮上方，避免被父级 overflow 裁剪
+ *  - 主菜单 7 项，带 ▸ 的 4 项悬停展开二级子菜单
+ * ========================================================= */
+.task-input-more-pop {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  pointer-events: auto;
+}
+
+.task-input-more-main,
+.task-input-more-sub {
+  position: relative;
+  min-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 12px 40px rgba(0, 0, 0, 0.10);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-input-more-sub {
+  position: absolute;
+  left: calc(100% + 4px);
+  margin: 0;
+  min-width: 180px;
+}
+
+.task-input-more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.task-input-more-item:hover,
+.task-input-more-item.active {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.task-input-more-item.has-sub.active {
+  background: var(--bg-input);
+}
+
+.task-input-more-item-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  stroke-width: 1.8;
+}
+
+.task-input-more-item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-input-more-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  stroke-width: 1.8;
+}
+
+[data-theme="dark"] .task-input-more-main,
+[data-theme="dark"] .task-input-more-sub {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 12px 40px rgba(0, 0, 0, 0.5);
 }

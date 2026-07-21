@@ -1,17 +1,25 @@
 import { useChat } from '@tdesign-react/chat';
 import { useConversationStore } from '../../store/conversationStore';
+import { useArtifactStore } from '../../store/artifactStore';
 import { useChatSync } from './hooks/useChatSync';
 import { TaskMessageList } from './components/TaskMessageList';
 import { TaskInput } from './components/TaskInput';
 import { TaskPipeline } from './components/TaskPipeline';
+import { ArtifactPanel } from '@/components/ArtifactPreview/ArtifactPanel';
+import '@/components/ArtifactPreview/artifactPanel.css';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
 import { getAuthHeader } from '../../api/client';
 import { getDefaultModel } from '../../config/models';
+import { useEffect } from 'react';
 import './task.css';
 
 export default function TaskMode() {
   const activeId = useConversationStore((s) => s.activeId);
   const create = useConversationStore((s) => s.create);
+  // 订阅 activeArtifact：当用户预览 artifact 时显示 ArtifactPanel，
+  // 否则显示原有的 TaskPipeline。二者互斥，避免布局挤压。
+  const hasActiveArtifact = useArtifactStore((s) => s.activeArtifact !== null);
+  const resetArtifact = useArtifactStore((s) => s.reset);
 
   const { chatEngine, messages, status } = useChat({
     chatServiceConfig: {
@@ -38,6 +46,11 @@ export default function TaskMode() {
 
   useChatSync(activeId, messages);
 
+  // 切换会话时清理 artifact 状态，避免上一个会话的预览残留
+  useEffect(() => {
+    resetArtifact();
+  }, [activeId, resetArtifact]);
+
   if (!activeId) {
     return (
       <div className="task-empty">
@@ -60,6 +73,7 @@ export default function TaskMode() {
           <>
             <TaskMessageList messages={messages} status={status} />
             <TaskInput
+              chatId={activeId}
               status={status}
               onSend={(text) => chatEngine.sendUserMessage({ prompt: text })}
               onStop={() => chatEngine.abortChat()}
@@ -77,7 +91,8 @@ export default function TaskMode() {
           </div>
         )}
       </div>
-      <TaskPipeline />
+      {/* 右侧面板：有 artifact 预览时显示 ArtifactPanel，否则显示原 TaskPipeline */}
+      {hasActiveArtifact ? <ArtifactPanel /> : <TaskPipeline />}
     </div>
   );
 }
