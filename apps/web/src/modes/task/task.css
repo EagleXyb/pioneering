@@ -56,10 +56,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--nav-height);
+  height: 48px;
   flex-shrink: 0;
   padding: 0 20px;
-  border-bottom: 1px solid var(--border-light);
   user-select: none;
   white-space: nowrap;
 }
@@ -500,6 +499,12 @@
   gap: 16px;
   padding: 40px;
   background: var(--bg-secondary);
+}
+
+/* 无活动会话时 task-empty 作为根元素直接渲染（父级 .main-content 为 block 非 flex），
+ * flex:1 无法生效，需显式占满父容器高度，使内容垂直居中于整块区域 */
+.task-empty--root {
+  height: 100%;
 }
 
 .task-empty h2 {

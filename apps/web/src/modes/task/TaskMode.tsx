@@ -58,7 +58,7 @@ export default function TaskMode() {
 
   if (!activeId) {
     return (
-      <div className="task-empty">
+      <div className="task-empty task-empty--root">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
           <rect x="1" y="1" width="22" height="22" rx="2"/>
           <path d="M7 8h10M7 12h6M7 16h8"/>
