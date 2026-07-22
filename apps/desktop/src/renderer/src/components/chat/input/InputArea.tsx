@@ -52,6 +52,12 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from '@/components/ui/tooltip'
 import { fileApi, notificationApi } from '@/services/ipc'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
 import {
@@ -143,17 +149,21 @@ function ModelSelect({
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="pro-input-model-btn"
-          title="选择模型"
-          disabled={disabled}
-        >
-          <span>{isCustomMode && custom ? custom : value === '自定义' ? '自定义模型' : value}</span>
-          <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
-        </button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="pro-input-model-btn"
+              disabled={disabled}
+            >
+              <span>{isCustomMode && custom ? custom : value === '自定义' ? '自定义模型' : value}</span>
+              <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>选择模型</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="start" side="top" className="pro-input-more-pop min-w-[200px]">
         {MODEL_OPTIONS.map((opt) => (
           <DropdownMenuItem key={opt.value} onSelect={() => onChange(opt.value)}>
@@ -513,8 +523,12 @@ export function InputArea({
   }, [agentMode, setAgentMode, onToggleAgent])
 
   return (
-    <div className="pro-input-area">
-      <div className="pro-input-inner">
+    // 顶层包裹本地 TooltipProvider：RootLayout 的全局 Provider 仅覆盖 TopBarActions，
+    // 而 InputArea 经 <Outlet/> 渲染、不在其内。Radix Tooltip 缺少 Provider 会在
+    // 渲染期抛错导致整树白屏，故此处自包含一层（与 ConversationList/ContextPanel 一致）。
+    <TooltipProvider>
+      <div className="pro-input-area">
+        <div className="pro-input-inner">
         {/* Slash 命令弹出层 */}
         <SlashCommandPopover
           open={slashOpen}
@@ -581,16 +595,20 @@ export function InputArea({
           <div className="pro-input-toolbar">
             <div className="pro-input-toolbar-left">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="pro-input-more-btn"
-                    title="添加附件 / 工具"
-                    disabled={isStreaming}
-                  >
-                    <Plus className="size-[18px]" />
-                  </button>
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="pro-input-more-btn"
+                        disabled={isStreaming}
+                      >
+                        <Plus className="size-[18px]" />
+                      </button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>添加附件 / 工具</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent align="start" side="top" className="pro-input-more-pop w-56">
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
@@ -632,36 +650,50 @@ export function InputArea({
               <ModelSelect value={model} onChange={setModel} disabled={isStreaming} />
 
               {/* 麦克风：与 web pro 端一致，暂未开放 */}
-              <button
-                type="button"
-                className="pro-input-toolbar-btn"
-                disabled
-                title="语音输入即将上线"
-              >
-                <Mic className="size-[18px]" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <button
+                      type="button"
+                      className="pro-input-toolbar-btn"
+                      disabled
+                    >
+                      <Mic className="size-[18px]" />
+                    </button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>语音输入即将上线</TooltipContent>
+              </Tooltip>
 
               {isStreaming ? (
-                <button
-                  type="button"
-                  className="pro-input-send-btn is-stop"
-                  onClick={onStop}
-                  title="停止生成"
-                  aria-label="停止生成"
-                >
-                  <Square size={16} className="fill-current" />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="pro-input-send-btn is-stop"
+                      onClick={onStop}
+                      aria-label="停止生成"
+                    >
+                      <Square size={16} className="fill-current" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>停止生成</TooltipContent>
+                </Tooltip>
               ) : (
-                <button
-                  type="button"
-                  className="pro-input-send-btn"
-                  onClick={handleSend}
-                  disabled={!canSend || disabled}
-                  title="发送 (Enter)"
-                  aria-label="发送"
-                >
-                  <ArrowUp size={18} strokeWidth={2.5} />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="pro-input-send-btn"
+                      onClick={handleSend}
+                      disabled={!canSend || disabled}
+                      aria-label="发送"
+                    >
+                      <ArrowUp size={18} strokeWidth={2.5} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>发送 (Enter)</TooltipContent>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -680,7 +712,8 @@ export function InputArea({
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
 
