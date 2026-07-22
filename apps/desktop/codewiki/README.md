@@ -12,6 +12,8 @@
 | [04-agent-capability-assessment.md](./04-agent-capability-assessment.md) | Agent 能力现状评估：对标成熟 AI Agent 应用的缺失分析 |
 | [05-agent-refactor-plan.md](./05-agent-refactor-plan.md) | Agent 架构重构与功能扩展方案 |
 | [06-file-index.md](./06-file-index.md) | 关键文件索引与阅读地图 |
+| [07-shadcn-message-feasibility.md](./07-shadcn-message-feasibility.md) | shadcn/ui 官方 AI 聊天组件替换可行性分析 |
+| [08-task-pipeline-timeline-ui.md](./08-task-pipeline-timeline-ui.md) | 任务模式右侧面板时间轴 UI 优化方案 |
 
 ## 代码版本
 
