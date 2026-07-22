@@ -54,11 +54,15 @@ interface PlanExecuteState {
   currentStepId: string | null;
   /** 错误信息 */
   error: string | null;
+  /** 步骤折叠状态：step_id → 是否折叠（true=折叠, false/undefined=展开） */
+  collapsedSteps: Record<string, boolean>;
 
   /** 应用 STATE_DELTA 事件 */
   applyPlanDelta: (delta: PlanStateDelta) => void;
   /** 设置阶段（供 hook 在 RUN_FINISHED / RUN_ERROR 时调用） */
   setPhase: (phase: Phase, error?: string | null) => void;
+  /** 切换单个步骤的折叠状态 */
+  toggleStep: (stepId: string) => void;
   /** 重置全部状态（切换会话时调用） */
   reset: () => void;
 }
@@ -69,6 +73,7 @@ const initialState = {
   phase: 'idle' as Phase,
   currentStepId: null,
   error: null,
+  collapsedSteps: {},
 };
 
 export const usePlanExecuteStore = create<PlanExecuteState>((set) => ({
@@ -131,6 +136,14 @@ export const usePlanExecuteStore = create<PlanExecuteState>((set) => ({
     }),
 
   setPhase: (phase, error = null) => set({ phase, error }),
+
+  toggleStep: (stepId) =>
+    set((state) => ({
+      collapsedSteps: {
+        ...state.collapsedSteps,
+        [stepId]: !state.collapsedSteps[stepId],
+      },
+    })),
 
   reset: () => set({ ...initialState }),
 }));

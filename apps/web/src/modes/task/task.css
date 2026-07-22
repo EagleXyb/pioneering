@@ -628,11 +628,11 @@
 }
 
 /* =========================================================
- * P4 Plan-and-Execute: 任务流水线步骤树样式
+ * P4 Plan-and-Execute: 任务流水线时间轴样式
  * ========================================================= */
 
 /* 空态 */
-.plan-tree-empty {
+.timeline-empty {
   flex: 1;
   display: flex;
   align-items: center;
@@ -641,193 +641,298 @@
   font-size: 13px;
 }
 
-/* 进度概览 */
-.plan-progress {
+/* 时间轴容器 */
+.timeline-tree {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 4px 12px;
-  border-bottom: 1px solid var(--border-light);
-  margin-bottom: 8px;
+  height: 100%;
+  min-height: 0;
 }
 
-.plan-progress-info {
+/* 摘要行 */
+.timeline-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 10px;
+  padding: 10px 4px 12px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 4px;
+  flex-shrink: 0;
 }
 
-.plan-progress-count {
+.timeline-summary-text {
+  font-size: 12px;
   color: var(--text-secondary);
+}
+
+.timeline-summary-text strong {
+  color: var(--text-primary);
   font-weight: 600;
 }
 
-.plan-progress-failed {
+.timeline-summary-failed {
+  font-size: 11px;
   color: var(--accent-red, #ef4444);
 }
 
-.plan-progress-bar-bg {
-  height: 4px;
-  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.plan-progress-bar-fill {
-  height: 100%;
-  background: var(--accent-blue, #3b82f6);
-  border-radius: 2px;
-  transition: width 300ms ease-out;
-}
-
-/* 步骤列表 */
-.plan-steps {
+/* 时间轴列表 */
+.timeline-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  padding: 4px 0 12px;
 }
 
-/* 单个步骤 */
-.plan-step {
+/* 单个时间轴步骤项 */
+.timeline-item {
   display: flex;
   gap: 10px;
-  padding: 8px 4px;
-  border-radius: 6px;
   transition: background var(--transition-fast, 150ms);
 }
 
-.plan-step:hover {
+.timeline-item:hover {
   background: var(--bg-hover, rgba(0, 0, 0, 0.03));
 }
 
-.plan-step-indicator {
+/* 时间轴指示器列（左侧圆点 + 连线） */
+.timeline-indicator {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
   flex-shrink: 0;
-  width: 20px;
+  width: 24px;
+  padding-top: 2px;
 }
 
-.plan-step-index {
-  font-size: 10px;
+.timeline-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--border-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   color: var(--text-tertiary);
-  font-weight: 500;
+  background: var(--bg-secondary);
+  transition: all var(--transition-fast);
+  z-index: 1;
 }
 
-.plan-step-icon {
-  font-size: 14px;
-  line-height: 1;
+.timeline-line {
+  width: 1px;
+  flex: 1;
+  min-height: 8px;
+  background: var(--border-light);
 }
 
-/* 状态变体 */
-.plan-step--pending .plan-step-icon { color: var(--text-tertiary); }
-.plan-step--running .plan-step-icon {
+.timeline-line--top {
+  margin-bottom: 0;
+}
+
+.timeline-line--bottom {
+  margin-top: 0;
+}
+
+/* 状态变体 - 节点颜色 */
+.timeline-item--pending .timeline-dot {
+  border-color: var(--border-medium);
+  background: var(--bg-secondary);
+}
+
+.timeline-item--running .timeline-dot {
+  border-color: var(--accent-blue, #3b82f6);
+  background: var(--accent-blue-light, #dbeafe);
   color: var(--accent-blue, #3b82f6);
-  animation: plan-spin 1s linear infinite;
+  animation: timeline-pulse 1.5s ease-in-out infinite;
 }
-.plan-step--done .plan-step-icon { color: var(--accent-green, #22c55e); }
-.plan-step--failed .plan-step-icon { color: var(--accent-red, #ef4444); }
-.plan-step--skipped .plan-step-icon { color: var(--accent-amber, #f59e0b); }
 
-@keyframes plan-spin {
+.timeline-item--done .timeline-dot {
+  border-color: var(--accent-green, #10b981);
+  background: var(--accent-green, #10b981);
+  color: #ffffff;
+}
+
+.timeline-item--failed .timeline-dot {
+  border-color: var(--accent-red, #ef4444);
+  background: var(--accent-red, #ef4444);
+  color: #ffffff;
+}
+
+.timeline-item--skipped .timeline-dot {
+  border-color: var(--accent-amber, #f59e0b);
+  background: var(--accent-amber-light, #fef3c7);
+  color: var(--accent-amber, #f59e0b);
+}
+
+@keyframes timeline-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
+}
+
+.timeline-dot-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: var(--accent-blue, #3b82f6);
+  border-radius: 50%;
+  animation: timeline-spin 0.8s linear infinite;
+}
+
+@keyframes timeline-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
-.plan-step-content {
+/* 内容区 */
+.timeline-content {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  padding-bottom: 4px;
 }
 
-.plan-step-header {
+/* 标题行（可点击折叠） */
+.timeline-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
+  padding: 2px 4px 2px 0;
+  cursor: pointer;
+  user-select: none;
+  min-height: 20px;
 }
 
-.plan-step-title {
+.timeline-header:focus {
+  outline: none;
+}
+
+.timeline-header:focus-visible {
+  outline: 2px solid var(--accent-blue, #3b82f6);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.timeline-title {
   font-size: 13px;
   color: var(--text-primary);
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
 }
 
-.plan-step-status {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 8px;
+.timeline-index {
+  color: var(--text-tertiary);
+  font-weight: 500;
   flex-shrink: 0;
+}
+
+.timeline-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.timeline-progress-badge {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.timeline-header:hover .timeline-chevron {
+  color: var(--text-secondary);
+}
+
+/* 状态变体 - 标题颜色 */
+.timeline-item--pending .timeline-title {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.timeline-item--running .timeline-title {
+  color: var(--accent-blue, #3b82f6);
+  font-weight: 600;
+}
+
+.timeline-item--done .timeline-title {
+  color: var(--text-primary);
   font-weight: 500;
 }
 
-.plan-step-status.plan-step--pending {
-  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
-  color: var(--text-tertiary);
-}
-.plan-step-status.plan-step--running {
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--accent-blue, #3b82f6);
-}
-.plan-step-status.plan-step--done {
-  background: rgba(34, 197, 94, 0.12);
-  color: var(--accent-green, #22c55e);
-}
-.plan-step-status.plan-step--failed {
-  background: rgba(239, 68, 68, 0.12);
+.timeline-item--failed .timeline-title {
   color: var(--accent-red, #ef4444);
-}
-.plan-step-status.plan-step--skipped {
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--accent-amber, #f59e0b);
+  font-weight: 500;
 }
 
-.plan-step-desc {
-  font-size: 11px;
+.timeline-item--skipped .timeline-title {
   color: var(--text-tertiary);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  font-weight: 400;
+  text-decoration: line-through;
+  text-decoration-color: var(--border-light);
 }
 
-.plan-step-result {
-  font-size: 11px;
+/* 展开内容区 */
+.timeline-body {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 200ms ease, opacity 200ms ease;
+  padding-right: 4px;
+}
+
+.timeline-item.is-expanded .timeline-body {
+  max-height: 600px;
+  opacity: 1;
+}
+
+.timeline-desc {
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.4;
-  padding: 4px 6px;
-  background: rgba(34, 197, 94, 0.06);
-  border-radius: 4px;
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  line-height: 1.5;
+  margin-top: 4px;
+  padding-bottom: 4px;
 }
 
-.plan-step-error {
-  font-size: 11px;
+.timeline-result {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: 6px 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 6px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.timeline-error {
+  font-size: 12px;
   color: var(--accent-red, #ef4444);
-  line-height: 1.4;
-  padding: 4px 6px;
-  background: rgba(239, 68, 68, 0.06);
-  border-radius: 4px;
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  line-height: 1.5;
+  padding: 6px 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 6px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* badge 状态变体 */
@@ -853,12 +958,12 @@
 }
 
 /* 暗色主题适配 */
-[data-theme="dark"] .plan-progress-bar-bg {
-  background: rgba(255, 255, 255, 0.08);
-}
-[data-theme="dark"] .plan-step:hover {
+[data-theme="dark"] .timeline-item:hover {
   background: rgba(255, 255, 255, 0.04);
 }
-[data-theme="dark"] .plan-step-status.plan-step--pending {
-  background: rgba(255, 255, 255, 0.08);
+[data-theme="dark"] .timeline-result {
+  background: rgba(16, 185, 129, 0.15);
+}
+[data-theme="dark"] .timeline-error {
+  background: rgba(239, 68, 68, 0.15);
 }
