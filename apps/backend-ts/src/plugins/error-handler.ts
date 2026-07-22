@@ -61,7 +61,8 @@ export class TooManyRequestsError extends HttpError {
 
 export const errorHandlerPlugin = fp(async (fastify) => {
   fastify.setErrorHandler((error: any, req, reply) => {
-    const requestId = (reply.getHeader('x-request-id') as string) ?? randomUUID()
+    // P2-2 修复：使用 Fastify 内部 req.id 作为 requestId，与请求日志保持一致
+    const requestId = req.id ?? randomUUID()
 
     // Zod 校验错误 → 400
     if (error instanceof ZodError) {

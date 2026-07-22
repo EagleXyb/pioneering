@@ -199,7 +199,9 @@ export function makePlannerNode(
       plan: plan as unknown as Array<Record<string, any>>,
       plan_phase: 'executing',
       current_step_index: 0,
-      step_results: [],  // 重规划时清空上一轮步骤结果（reducer 追加空列表等价 no-op，需显式覆盖语义由 _lw 字段保证）
+      // P1-6 修复：step_results reducer 已改为空数组清空语义
+      // 返回空列表会覆盖旧步骤结果（reducer 检测 next.length===0 时返回 []）
+      step_results: [],
       replan_count: isReplan ? replanCount + 1 : replanCount,
       // SSE: plan_created delta（phase='plan' 携带完整计划）
       plan_delta: {

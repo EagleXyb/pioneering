@@ -1,5 +1,6 @@
 // System 路由 —— 对应 Python app/api/v1/system.py
 import { FastifyPluginAsync } from 'fastify'
+import { env } from '../config/env.js'
 
 // 注意：不要为响应声明 `response` schema，否则 Fastify 的 fast-json-stringify
 // 在未指定 properties 时会把对象序列化为 {}（导致 version / models 等字段丢失）
@@ -7,19 +8,19 @@ const SCHEMA_MODELS = { tags: ['system'], summary: '获取支持的模型列表'
 const SCHEMA_CONFIG = { tags: ['system'], summary: '获取系统配置', security: [] }
 const SCHEMA_HEALTH = { tags: ['system'], summary: '健康检查', security: [] }
 
-// 对应 Python: SUPPORTED_MODELS
+// P1-9 修复：模型列表与 env.LLM_DEFAULT_MODEL / chat.ts 实际使用的模型对齐
 const SUPPORTED_MODELS = [
   {
-    id: 'deepseek-v4-flash',
-    name: 'DeepSeek V4 Flash',
-    description: 'DeepSeek 快速模型',
+    id: 'deepseek-chat',
+    name: 'DeepSeek Chat',
+    description: 'DeepSeek 标准对话模型（默认）',
     max_tokens: 128000,
     pricing: { input_price: 0.14, output_price: 0.28 },
   },
   {
-    id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro',
-    description: 'DeepSeek 专业模型',
+    id: 'deepseek-reasoner',
+    name: 'DeepSeek Reasoner',
+    description: 'DeepSeek 深度思考模型（deepThink 模式）',
     max_tokens: 128000,
     pricing: { input_price: 0.28, output_price: 0.56 },
   },
@@ -52,7 +53,7 @@ export const systemRoutes: FastifyPluginAsync = async (fastify) => {
       max_session_count: 100,
       supported_models: SUPPORTED_MODELS,
       file_upload: {
-        max_size: 10485760,
+        max_size: env.MAX_UPLOAD_SIZE,
         allowed_types: [
           'image/png',
           'image/jpeg',

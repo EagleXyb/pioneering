@@ -16,6 +16,7 @@
     "@fastify/static": "^8.0.0",
     "@fastify/swagger": "^9.8.0",
     "@fastify/swagger-ui": "^6.1.0",
+    "@pioneering/modu-agent": "file:../../packages/modu-agent",
     "@prisma/client": "^5.20.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.0",

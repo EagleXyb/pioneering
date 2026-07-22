@@ -17,8 +17,10 @@ export class EfficiencyMetrics {
     iterationCount: number,
     latencyMs: number,
   ): Record<string, number> {
-    const inputTokens = usage.input_tokens ?? 0
-    const outputTokens = usage.output_tokens ?? 0
+    // P1-13 修复：兼容 state.ts 中 usage 的 prompt_tokens/completion_tokens
+    // 与历史 input_tokens/output_tokens 两种字段命名
+    const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0
+    const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0
 
     // token_efficiency: output_tokens / input_tokens
     const tokenEfficiency = inputTokens > 0 ? outputTokens / inputTokens : 0.0

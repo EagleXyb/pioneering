@@ -115,7 +115,7 @@ export class LangGraphEventBridge {
       // 发送到 EvolutionSignalCollector
       if (this._evolutionCollector) {
         try {
-          this._evolutionCollector.on_agent_event(agentEvent)
+          this._evolutionCollector.onAgentEvent(agentEvent)
         } catch (e: any) {
           logger.error('EvolutionSignalCollector error: %s', String(e))
         }
@@ -129,6 +129,15 @@ export class LangGraphEventBridge {
 
       // 透传原始事件
       yield event
+    }
+
+    // P1-14 修复：流结束时若仍在 thinking 状态，发送 thinking: end 事件
+    if (this._inThinking) {
+      this._inThinking = false
+      yield {
+        type: 'thinking',
+        data: { status: 'ended' },
+      }
     }
   }
 

@@ -217,7 +217,15 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   plan: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
   current_step_index: Annotation<number>(_lw(() => 0)),
   step_results: Annotation<Array<Record<string, any>>>({
-    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    // P1-6 修复：next 为空数组时覆盖（清空语义），非空时追加
+    // dispatcher 正常返回 [stepResult]（非空）→ 追加
+    // planner 重规划返回 []（空）→ 清空旧步骤结果
+    reducer: (prev, next) => {
+      if (!next || next.length === 0) {
+        return []
+      }
+      return [...(prev ?? []), ...next]
+    },
     default: () => [],
   }),
   replan_count: Annotation<number>(_lw(() => 0)),

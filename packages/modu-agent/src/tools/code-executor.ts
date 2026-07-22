@@ -17,6 +17,28 @@ import { BaseTool } from '../core/interfaces/action.js'
 
 const execFileAsync = promisify(execFile)
 
+// 跨平台 Python 解释器命令解析（缓存结果）
+// Windows 下 `python3` 通常不存在，需回退到 `python` 或 `py`
+let _resolvedPythonCmd: string | null = null
+
+async function _resolvePythonCommand(): Promise<string> {
+  if (_resolvedPythonCmd) return _resolvedPythonCmd
+  const candidates =
+    process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
+  for (const cmd of candidates) {
+    try {
+      await execFileAsync(cmd, ['--version'], { timeout: 5000 })
+      _resolvedPythonCmd = cmd
+      return cmd
+    } catch {
+      // 尝试下一个候选命令
+    }
+  }
+  // 回退到 python3（Linux/macOS 默认）
+  _resolvedPythonCmd = 'python3'
+  return _resolvedPythonCmd
+}
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[code-executor] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[code-executor] ${msg}`, ...args),
@@ -197,7 +219,8 @@ export class CodeExecutorTool extends BaseTool {
         // 最小环境变量（对应 Python env = {"PATH": ...}）
         const env: Record<string, string> = { PATH: process.env.PATH ?? '/usr/bin' }
 
-        const { stdout, stderr } = await execFileAsync('python3', ['-I', tempPath], {
+        const pythonCmd = await _resolvePythonCommand()
+        const { stdout, stderr } = await execFileAsync(pythonCmd, ['-I', tempPath], {
           timeout: this._timeout * 1000,
           env,
           maxBuffer: 1024 * 64, // 64KB 限制

@@ -5,7 +5,8 @@ import { z } from 'zod'
 export const CreateAgentSessionRequestSchema = z.object({
   agentMode: z.enum(['react_agent', 'rag_agent']).default('react_agent'),
   title: z.string().nullable().optional(),
-  model: z.string().default('gpt-4o'),
+  // P1-12 修复：不设默认值，让 agent.ts 中 `dto.model || env.LLM_DEFAULT_MODEL` 生效
+  model: z.string().nullable().optional(),
   systemPrompt: z.string().nullable().optional(),
   tools: z.array(z.string()).nullable().optional(),
 })

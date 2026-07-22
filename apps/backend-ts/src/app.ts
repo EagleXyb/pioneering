@@ -93,6 +93,11 @@ export async function buildApp() {
   await fastify.register(errorHandlerPlugin)
   await fastify.register(staticPlugin)
 
+  // P2-2 修复：在每个响应中设置 x-request-id 头，与请求日志的 req.id 保持一致
+  fastify.addHook('onSend', async (req, reply) => {
+    reply.header('x-request-id', req.id)
+  })
+
   // 路由
   await registerRoutes(fastify)
 

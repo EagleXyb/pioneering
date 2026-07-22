@@ -49,6 +49,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       })
 
       // 对应 Python: 循环查询每个用户的 UserQuota
+      // P1-4 修复：脱敏处理，不返回 email/phone 等敏感字段，防止越权信息泄露
       const list = await Promise.all(
         users.map(async (u) => {
           const quota = await fastify.prisma.userQuota.findUnique({
@@ -58,8 +59,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
             id: u.id,
             username: u.username,
             nickname: u.nickname,
-            email: u.email,
-            phone: u.phone,
             avatar: u.avatar,
             status: u.status,
             totalTokens: quota ? Number(quota.totalTokens) : 0,
@@ -197,7 +196,8 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
 
       return {
         list: usages.map((u) => ({
-          id: Number(u.id),
+          // P2-4 修复：BigInt 转字符串避免 Number() 精度丢失
+          id: u.id.toString(),
           model: u.model,
           promptTokens: u.promptTokens,
           completionTokens: u.completionTokens,

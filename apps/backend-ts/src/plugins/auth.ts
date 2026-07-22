@@ -25,12 +25,3 @@ export async function authGuard(req: FastifyRequest, reply: FastifyReply) {
 
   req.user = user
 }
-
-// 对应 Python: get_optional_user（可选认证，失败不报错）
-export async function optionalAuthGuard(req: FastifyRequest, reply: FastifyReply) {
-  try {
-    await authGuard(req, reply)
-  } catch {
-    // 忽略认证错误
-  }
-}

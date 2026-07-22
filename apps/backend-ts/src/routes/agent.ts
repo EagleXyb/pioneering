@@ -204,8 +204,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
       }), async (req) => {
         const { executionId } = req.params as { executionId: string }
 
-        const execRecord = await fastify.prisma.agentToolExecution.findUnique({
-          where: { id: executionId },
+        // P1-1 修复 IDOR：加 userId 过滤，防止越权读取他人执行结果
+        const execRecord = await fastify.prisma.agentToolExecution.findFirst({
+          where: { id: executionId, userId: req.user.id },
         })
         if (!execRecord) {
           throw new NotFoundError('执行记录不存在')

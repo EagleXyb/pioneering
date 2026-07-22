@@ -170,12 +170,13 @@ export class MetricsRegistry {
   collect_text(): string {
     if (!this.enabled) return ''
     try {
-      // prom-client register.metrics() 返回 Promise<string>
+      // prom-client 15.x 的 register.metrics() 返回 Promise<string>
       const result = this._registry.metrics()
       if (typeof result === 'string') {
         return result
       }
-      // 如果是 Promise，无法同步返回——返回空串（调用方应改用 async 路径）
+      // P1-8 修复：Promise 无法同步返回，记录警告引导使用 collect_text_async
+      logger.warning('collect_text: registry.metrics() returned Promise, use collect_text_async() instead')
       return ''
     } catch (e) {
       logger.debug('collect_text failed: %s', String(e))

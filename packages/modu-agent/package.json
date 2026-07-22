@@ -26,6 +26,16 @@
     "@langchain/core": "*",
     "@langchain/langgraph": "*"
   },
+  "optionalDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.52.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.52.0",
+    "@opentelemetry/resources": "^1.25.0",
+    "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "better-sqlite3": "^11.0.0",
+    "chromadb": "^1.9.0",
+    "prom-client": "^15.0.0"
+  },
   "devDependencies": {
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"

@@ -175,6 +175,7 @@ export class PersistentEventLog {
   private _enabled = false
   private _write_queue: AgentEvent[] = []
   private _writer_running = false
+  private _writerPromise: Promise<void> | null = null
 
   constructor(
     log_file_path: string,
@@ -200,16 +201,18 @@ export class PersistentEventLog {
     this._enabled = true
     event_bus.subscribe(this._on_event.bind(this))
     this._writer_running = true
-    this._writerLoop()
+    this._writerPromise = this._writerLoop()
     logger.info('PersistentEventLog started: %s', this._log_file_path)
   }
 
   async stop(): Promise<void> {
     this._enabled = false
     this._writer_running = false
-    // 等待队列排空
-    while (this._write_queue.length > 0) {
-      await new Promise((r) => setTimeout(r, 50))
+    // 等待 writerLoop 处理完剩余队列后退出（writerLoop 在 _writer_running=false
+    // 后仍会处理完 _write_queue 中的事件再退出，避免死锁与数据丢失）
+    if (this._writerPromise) {
+      await this._writerPromise
+      this._writerPromise = null
     }
   }
 
@@ -224,7 +227,9 @@ export class PersistentEventLog {
   }
 
   private async _writerLoop(): Promise<void> {
-    while (this._writer_running) {
+    // 在 _writer_running 为 true 时持续运行；被 stop() 置为 false 后，
+    // 仍需处理完队列中剩余事件再退出，避免数据丢失
+    while (this._writer_running || this._write_queue.length > 0) {
       if (this._write_queue.length === 0) {
         await new Promise((r) => setTimeout(r, 1000))
         continue

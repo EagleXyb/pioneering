@@ -3,9 +3,9 @@ import { z } from 'zod'
 
 // 对应 Python: RegisterRequest
 export const RegisterRequestSchema = z.object({
-  username: z.string(),
-  email: z.string(),
-  password: z.string(),
+  username: z.string().min(1).max(100),
+  email: z.string().email(),
+  password: z.string().min(6).max(128),
 })
 export type RegisterRequest = z.infer<typeof RegisterRequestSchema>
 

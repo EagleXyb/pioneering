@@ -512,20 +512,36 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
       // P0-5 修复：配额校验辅助函数
       // 调用前校验 total/used 与 daily 限额；超限抛 429
+      // P1-5 修复：若 resetAt 已过期，先重置 dailyUsed 再校验
       async function checkQuota(userId: string): Promise<void> {
         const quota = await fastify.prisma.userQuota.findUnique({
           where: { userId },
         })
         if (!quota) return // 无配额记录视为不限制（兼容旧数据）
+
+        // P1-5 修复：resetAt 过期则重置 dailyUsed
+        let effectiveDailyUsed = Number(quota.dailyUsed)
+        if (quota.resetAt && quota.resetAt <= new Date()) {
+          await fastify.prisma.userQuota.update({
+            where: { userId },
+            data: {
+              dailyUsed: 0,
+              resetAt: null,
+            },
+          }).catch(() => {
+            // 重置失败不影响后续校验，使用原值
+          })
+          effectiveDailyUsed = 0
+        }
+
         const totalUsed = Number(quota.usedTokens)
         const totalLimit = Number(quota.totalTokens)
-        const dailyUsed = Number(quota.dailyUsed)
         const dailyLimit = Number(quota.dailyLimit)
         if (totalLimit > 0 && totalUsed >= totalLimit) {
           throw new TooManyRequestsError(`总 Token 配额已用尽（已用 ${totalUsed}/${totalLimit}）`)
         }
-        if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
-          throw new TooManyRequestsError(`今日 Token 配额已用尽（已用 ${dailyUsed}/${dailyLimit}）`)
+        if (dailyLimit > 0 && effectiveDailyUsed >= dailyLimit) {
+          throw new TooManyRequestsError(`今日 Token 配额已用尽（已用 ${effectiveDailyUsed}/${dailyLimit}）`)
         }
       }
 
@@ -557,14 +573,17 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               totalTokens,
             },
           }),
+          // P1-11 修复：配额更新失败时记录错误而非静默吞错
+          // 避免配额扣减失败被绕过
           fastify.prisma.userQuota.update({
             where: { userId },
             data: {
               usedTokens: { increment: BigInt(totalTokens) },
               dailyUsed: { increment: BigInt(totalTokens) },
             },
-          }).catch(() => {
-            // 配额记录可能不存在（旧用户），忽略更新失败
+          }).catch((e) => {
+            // 配额记录可能不存在（旧用户），记录警告但不阻断流程
+            fastify.log.warn({ err: e, userId }, '配额扣减失败（用户可能无配额记录）')
           }),
         ])
       }

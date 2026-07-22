@@ -87,15 +87,17 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
         throw new NotFoundError('文件不存在')
       }
 
+      // P2-3 修复：先删 DB 记录再删物理文件
+      // DB 删除失败时物理文件仍在，可后续清理；反之会产生悬空记录
+      await fastify.prisma.file.delete({ where: { id: fileId } })
+
       if (dbFile.filePath) {
         try {
           await fs.unlink(dbFile.filePath)
         } catch {
-          // 文件不存在则忽略
+          // 物理文件不存在则忽略（DB 记录已删除）
         }
       }
-
-      await fastify.prisma.file.delete({ where: { id: fileId } })
 
       return { message: '文件已删除' }
     })

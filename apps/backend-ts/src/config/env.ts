@@ -29,4 +29,14 @@ const EnvSchema = z.object({
 
 export const env = EnvSchema.parse(process.env)
 
+// P1-2 修复：JWT_SECRET 弱默认值守卫
+// 生产环境使用默认密钥时发出警告（不拒绝启动，避免破坏开发流程）
+const _WEAK_JWT_SECRETS = new Set(['default-secret-change-in-production', ''])
+if (_WEAK_JWT_SECRETS.has(env.JWT_SECRET)) {
+  console.warn(
+    '[config] WARNING: JWT_SECRET is using a default/empty value. '
+    + 'Set a strong secret via environment variable in production.',
+  )
+}
+
 export type Env = typeof env
