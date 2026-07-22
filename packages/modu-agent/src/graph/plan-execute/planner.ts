@@ -215,12 +215,12 @@ export function makePlannerNode(
 }
 
 /**
- * 规划后路由：plan 就绪 → step_dispatch；为空/解析失败 → response（降级直答）。
+ * 规划后路由：plan 就绪 → step_dispatch；为空/解析失败 → finalize_response（降级直答）。
  */
 export function routeAfterPlan(state: ModuAgentState): string {
   const plan = state.plan ?? []
   if (plan.length > 0 && state.plan_phase === 'executing') {
     return 'step_dispatch'
   }
-  return 'response'
+  return 'finalize_response'
 }

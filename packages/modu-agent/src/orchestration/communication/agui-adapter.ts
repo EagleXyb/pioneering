@@ -1020,6 +1020,30 @@ export class AGUIStreamAdapter {
       return sm.emit_tool_result(tc_id, tc_name, result_content, 'success')
     }
 
+    // --- P4 Plan-and-Execute 事件（由 LangGraphEventBridge 生成） ---
+    // event-bridge.ts 将 planner / step_dispatch / step_finalize 节点的 plan_delta
+    // 转成 plan_created / step_update 两种 SSE 事件类型。
+    // 此处统一转成 AG-UI 标准的 STATE_DELTA 事件输出，payload 携带 { phase, plan?, step_update? }，
+    // 与前端 Plan-and-Execute面板对接分析.md §2.2 约定一致。
+
+    if (event_type === 'plan_created') {
+      // planner 节点产出完整计划
+      const planDelta = event.data ?? {}
+      return [sm.emit_state_delta({
+        phase: 'plan',
+        plan: Array.isArray(planDelta.plan) ? planDelta.plan : [],
+      })]
+    }
+
+    if (event_type === 'step_update') {
+      // step_dispatch / step_finalize 产出步骤状态变更
+      const planDelta = event.data ?? {}
+      return [sm.emit_state_delta({
+        phase: planDelta.phase ?? 'execute',
+        step_update: planDelta.step_update ?? {},
+      })]
+    }
+
     return []
   }
 

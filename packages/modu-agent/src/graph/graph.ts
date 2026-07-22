@@ -72,7 +72,7 @@ const logger = {
  *
  * 用法与 CompiledStateGraph 一致：
  *   const graph = createAgent()        // 返回 ModuGraph
- *   for await (const ev of graph.astream(state, config)) { ... }
+ *   for await (const ev of graph.stream(state, config)) { ... }
  *   const orch = graph.orchestrator     // 显式属性，非 monkey-patch
  */
 export class ModuGraph {
@@ -250,7 +250,7 @@ export function buildModuGraph(
   graph.addNode('agent', agentNode)
   graph.addNode('tools', tools.length > 0 ? new ToolNode(tools) : _noopToolsNode)
   graph.addNode('tool_processor', toolResultProcessor)
-  graph.addNode('response', responseNode)
+  graph.addNode('finalize_response', responseNode)
   // P0-1: 反馈评估节点接入图
   if (feedbackNode) {
     graph.addNode('feedback', feedbackNode)
@@ -283,7 +283,7 @@ export function buildModuGraph(
     routeAfterPerception,
     {
       memory_query: 'memory_query',
-      __end__: 'response',
+      __end__: 'finalize_response',
     },
   )
 
@@ -303,7 +303,7 @@ export function buildModuGraph(
     // subagent_run 完成后进入 consensus
     graph.addEdge('subagent_run', 'consensus')
     // consensus → response（进入响应阶段）
-    graph.addEdge('consensus', 'response')
+    graph.addEdge('consensus', 'finalize_response')
   } else if (plannerNode) {
     // P4: memory_query → planner → step_dispatch 执行循环
     graph.addConditionalEdges(
@@ -315,13 +315,13 @@ export function buildModuGraph(
     graph.addConditionalEdges(
       'planner',
       routeAfterPlan,
-      { step_dispatch: 'step_dispatch', response: 'response' },
+      { step_dispatch: 'step_dispatch', response: 'finalize_response' },
     )
     // step_dispatch：有剩余步骤 → agent；全部完成 → response；失败可重规划 → planner
     graph.addConditionalEdges(
       'step_dispatch',
       stepDispatch,
-      { agent: 'agent', response: 'response', planner: 'planner' },
+      { agent: 'agent', response: 'finalize_response', planner: 'planner' },
     )
     // step_finalize：单步收尾后回到 step_dispatch 推进游标
     graph.addEdge('step_finalize', 'step_dispatch')
@@ -335,8 +335,8 @@ export function buildModuGraph(
   // Agent 后条件路由的目标映射。
   // P4: plan_execute 模式下 routeAfterAgent 可能返回 'step_finalize'（当前步骤完成）。
   const agentRouteTargets: Record<string, string> = humanReviewNode
-    ? { tools: 'human_review', __end__: 'response' }
-    : { tools: 'tools', __end__: 'response' }
+    ? { tools: 'human_review', __end__: 'finalize_response' }
+    : { tools: 'tools', __end__: 'finalize_response' }
   if (stepFinalizeNode) {
     agentRouteTargets['step_finalize'] = 'step_finalize'
   }
@@ -353,7 +353,7 @@ export function buildModuGraph(
       routeAfterHumanReview,
       {
         tools: 'tools',
-        response: 'response',
+        response: 'finalize_response',
       },
     )
   } else {
@@ -370,11 +370,11 @@ export function buildModuGraph(
 
   // P0-1/P0-3: response → feedback → memory_update → END
   if (feedbackNode) {
-    graph.addEdge('response', 'feedback')
+    graph.addEdge('finalize_response', 'feedback')
     graph.addEdge('feedback', 'memory_update')
   } else {
     // 无 orchestrator 时直接 response → memory_update
-    graph.addEdge('response', 'memory_update')
+    graph.addEdge('finalize_response', 'memory_update')
   }
   graph.addEdge('memory_update', END)
 

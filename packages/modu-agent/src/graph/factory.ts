@@ -380,7 +380,9 @@ export async function create_agent(
     null,  // hitlEnabled: 从配置读取
     null,  // multiAgentEnabled: 从配置读取
     graphJudgeLlm,
-    null,  // planExecuteEnabled: 从配置读取
+    // P4: 支持 per-request 启用 Plan-Execute（如 agent-bridge 传入
+    // configurable.plan_execute_enabled=true 时强制启用），否则从全局配置读取（默认 false）。
+    configurable['plan_execute_enabled'] ?? null,
     llm,   // P4: 未绑定工具的原始 LLM，供 Planner 节点使用（规划阶段禁止工具）
   )
 

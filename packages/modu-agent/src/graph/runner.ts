@@ -278,7 +278,9 @@ export async function* stream_response(
     )
   }
 
-  const rawStream = (graph as any).astream(initialState, {
+  // LangGraph JS 的 stream() 返回 Promise<IterableReadableStream>（Promise 包裹的 async iterable），
+  // 必须先 await 解包才能用 for await...of 遍历，否则会抛 "not async iterable" 错误。
+  const rawStream = await (graph as any).stream(initialState, {
     ...lgConfig,
     streamMode: ['messages', 'updates', 'values'],
   })
@@ -384,7 +386,8 @@ export async function run_sync(
     using span = _span('run_sync', traceId, { user_id: userId, session_id: sessionId })
 
     let finalState: Record<string, any> | null = null
-    const rawStream = (graph as any).astream(initialState, {
+    // stream() 返回 Promise<IterableReadableStream>，需 await 解包后再遍历
+    const rawStream = await (graph as any).stream(initialState, {
       ...lgConfig,
       streamMode: ['updates', 'values'],
     })
@@ -576,7 +579,7 @@ export async function process_request_compat(
   inputData: Record<string, any>,
   traceId?: string | null,
 ): Promise<Record<string, any>> {
-  if (typeof runner.astream === 'function' || typeof runner.invoke === 'function') {
+  if (typeof runner.stream === 'function' || typeof runner.invoke === 'function') {
     return await run_sync(runner, userId, sessionId, inputData, traceId)
   }
   throw new TypeError(`Unsupported runner type: ${typeof runner}`)
@@ -599,7 +602,7 @@ export async function* stream_request_compat(
   inputData: Record<string, any>,
   traceId?: string | null,
 ): AsyncGenerator<Record<string, any>> {
-  if (typeof runner.astream === 'function') {
+  if (typeof runner.stream === 'function') {
     for await (const event of stream_response(runner, userId, sessionId, inputData, traceId)) {
       yield event
     }
@@ -643,13 +646,14 @@ export async function resume_sync(
     using span = _span('resume_sync', traceId, { session_id: sessionId, approved })
 
     let finalState: Record<string, any> | null = null
-    const stream = (graph as any).astream(
+    // stream() 返回 Promise<IterableReadableStream>，需 await 解包后再遍历
+    const stream = await (graph as any).stream(
       new Command({ resume: resumePayload }),
       { ...lgConfig, streamMode: ['updates', 'values'] },
     )
 
     for await (const event of stream) {
-      // LangGraph JS astream 产出 [mode, chunk] 元组
+      // LangGraph JS stream 产出 [mode, chunk] 元组
       if (Array.isArray(event) && event.length === 2) {
         const [mode, chunk] = event
         if (mode === 'values' && chunk && typeof chunk === 'object') {
@@ -738,13 +742,13 @@ export async function* resume_stream(
 
   const streamStart = performance.now()
   try {
-    const stream = (graph as any).astream(
+    const stream = await (graph as any).stream(
       new Command({ resume: resumePayload }),
       { ...lgConfig, streamMode: ['messages', 'updates', 'values'] },
     )
 
     for await (const event of stream) {
-      // LangGraph JS astream 产出 [mode, chunk] 元组
+      // LangGraph JS stream 产出 [mode, chunk] 元组
       if (Array.isArray(event) && event.length === 2) {
         const [mode, chunk] = event
         yield { type: mode, data: chunk }

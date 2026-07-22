@@ -3,7 +3,8 @@ import { z } from 'zod'
 
 // 对应 Python: CreateAgentSessionRequest
 export const CreateAgentSessionRequestSchema = z.object({
-  agentMode: z.enum(['react_agent', 'rag_agent']).default('react_agent'),
+  // P4: 新增 plan_execute 模式，与前端任务模式对齐
+  agentMode: z.enum(['react_agent', 'rag_agent', 'plan_execute']).default('react_agent'),
   title: z.string().nullable().optional(),
   // P1-12 修复：不设默认值，让 agent.ts 中 `dto.model || env.LLM_DEFAULT_MODEL` 生效
   model: z.string().nullable().optional(),
@@ -30,6 +31,8 @@ export const AgentChatRequestSchema = z.object({
   sessionId: z.string().nullable().optional(),
   message: z.string(),
   stream: z.boolean().default(true),
+  // P4: 支持 per-request 指定 Agent 模式，前端任务模式传 'plan_execute' 启用 Plan-Execute 图
+  agentMode: z.enum(['react_agent', 'plan_execute']).default('react_agent'),
 })
 export type AgentChatRequest = z.infer<typeof AgentChatRequestSchema>
 

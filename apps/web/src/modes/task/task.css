@@ -110,10 +110,10 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  overflow: hidden;
+  flex-direction: column;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* 折叠：参照左侧侧边栏，整体完全收为 0 宽度，把水平空间让给左侧对话区；
@@ -625,4 +625,240 @@
     0 0 0 1px rgba(255, 255, 255, 0.05),
     0 4px 16px rgba(0, 0, 0, 0.4),
     0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* =========================================================
+ * P4 Plan-and-Execute: 任务流水线步骤树样式
+ * ========================================================= */
+
+/* 空态 */
+.plan-tree-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/* 进度概览 */
+.plan-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 4px 12px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 8px;
+}
+
+.plan-progress-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.plan-progress-count {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.plan-progress-failed {
+  color: var(--accent-red, #ef4444);
+}
+
+.plan-progress-bar-bg {
+  height: 4px;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.plan-progress-bar-fill {
+  height: 100%;
+  background: var(--accent-blue, #3b82f6);
+  border-radius: 2px;
+  transition: width 300ms ease-out;
+}
+
+/* 步骤列表 */
+.plan-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 单个步骤 */
+.plan-step {
+  display: flex;
+  gap: 10px;
+  padding: 8px 4px;
+  border-radius: 6px;
+  transition: background var(--transition-fast, 150ms);
+}
+
+.plan-step:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.03));
+}
+
+.plan-step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  width: 20px;
+}
+
+.plan-step-index {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.plan-step-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* 状态变体 */
+.plan-step--pending .plan-step-icon { color: var(--text-tertiary); }
+.plan-step--running .plan-step-icon {
+  color: var(--accent-blue, #3b82f6);
+  animation: plan-spin 1s linear infinite;
+}
+.plan-step--done .plan-step-icon { color: var(--accent-green, #22c55e); }
+.plan-step--failed .plan-step-icon { color: var(--accent-red, #ef4444); }
+.plan-step--skipped .plan-step-icon { color: var(--accent-amber, #f59e0b); }
+
+@keyframes plan-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.plan-step-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.plan-step-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-step-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.plan-step-status.plan-step--pending {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+  color: var(--text-tertiary);
+}
+.plan-step-status.plan-step--running {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-blue, #3b82f6);
+}
+.plan-step-status.plan-step--done {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--accent-green, #22c55e);
+}
+.plan-step-status.plan-step--failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--accent-red, #ef4444);
+}
+.plan-step-status.plan-step--skipped {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber, #f59e0b);
+}
+
+.plan-step-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.plan-step-result {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  padding: 4px 6px;
+  background: rgba(34, 197, 94, 0.06);
+  border-radius: 4px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.plan-step-error {
+  font-size: 11px;
+  color: var(--accent-red, #ef4444);
+  line-height: 1.4;
+  padding: 4px 6px;
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: 4px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* badge 状态变体 */
+.task-pipeline-badge--idle {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+  color: var(--text-tertiary);
+}
+.task-pipeline-badge--planning {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber, #f59e0b);
+}
+.task-pipeline-badge--executing {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-blue, #3b82f6);
+}
+.task-pipeline-badge--done {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--accent-green, #22c55e);
+}
+.task-pipeline-badge--error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--accent-red, #ef4444);
+}
+
+/* 暗色主题适配 */
+[data-theme="dark"] .plan-progress-bar-bg {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .plan-step:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+[data-theme="dark"] .plan-step-status.plan-step--pending {
+  background: rgba(255, 255, 255, 0.08);
 }

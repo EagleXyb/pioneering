@@ -982,13 +982,13 @@ export function makeHumanReviewNode(
 /**
  * P3-12.3.2: 审批后路由。
  *
- * - "rejected" / "error" → "response"（跳过工具执行，进入响应阶段）
+ * - "rejected" / "error" → "finalize_response"（跳过工具执行，进入响应阶段）
  * - 其他（approved / not_required / no_tool_calls / skipped）→ "tools"（执行 ToolNode）
  */
 export function routeAfterHumanReview(state: ModuAgentState): string {
   const approvalStatus = state.approval_status ?? ''
   if (approvalStatus === 'rejected' || approvalStatus === 'error') {
-    return 'response'
+    return 'finalize_response'
   }
   return 'tools'
 }

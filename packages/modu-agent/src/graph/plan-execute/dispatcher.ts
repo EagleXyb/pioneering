@@ -85,10 +85,10 @@ export function makeStepDispatchNode(): (
 /**
  * 步骤分发路由（条件边）：决定下一个去向。
  *
- *   - idx >= plan.length → 'response'（全部完成）
+ *   - idx >= plan.length → 'finalize_response'（全部完成）
  *   - 本代际末步失败且 continue_on_failure=false：
  *       replan_count < max_replans → 'planner'（重规划）
- *       否则 → 'response'（重规划耗尽，终止）
+ *       否则 → 'finalize_response'（重规划耗尽，终止）
  *   - 其他 → 'agent'（执行当前步）
  */
 export function stepDispatch(state: ModuAgentState): string {
@@ -97,7 +97,7 @@ export function stepDispatch(state: ModuAgentState): string {
   const idx = state.current_step_index ?? 0
 
   if (plan.length === 0 || idx >= plan.length) {
-    return 'response'
+    return 'finalize_response'
   }
 
   const genResults = _currentGenerationResults(state)
@@ -122,7 +122,7 @@ export function stepDispatch(state: ModuAgentState): string {
         'Step %s failed and replan budget exhausted (%d), terminating',
         lastResult?.['step_id'] ?? 'unknown', replanCount,
       )
-      return 'response'
+      return 'finalize_response'
     }
     // continue_on_failure=true：失败步骤记 skipped 语义由 step_finalize 落库后继续
     logger.info(

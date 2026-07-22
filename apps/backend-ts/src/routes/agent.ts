@@ -1,8 +1,9 @@
 // Agent 路由 —— 对应 Python app/api/v1/agent.py
 import { FastifyPluginAsync } from 'fastify'
-import type { PrismaClient, ChatSession, ChatMessage, AgentToolExecution } from '@prisma/client'
+import { Prisma, type PrismaClient, type ChatSession, type ChatMessage, type AgentToolExecution } from '@prisma/client'
 import { z } from 'zod'
 import { authGuard } from '../plugins/auth.js'
+import { isOriginAllowed } from '../plugins/cors.js'
 import { NotFoundError } from '../plugins/error-handler.js'
 import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
@@ -12,6 +13,7 @@ import {
   AgentChatRequestSchema,
   AgentFeedbackRequestSchema,
 } from '../schemas/agent.js'
+import { StreamContext, streamAgentCompletion } from '../core/agent-bridge.js'
 
 // 对应 Python: _verify_session_owner
 // 验证会话存在且属于当前用户，否则抛 NotFoundError("会话不存在")
@@ -80,6 +82,80 @@ function executionToDetail(e: AgentToolExecution) {
     startTime: e.startTime,
     endTime: e.endTime,
   }
+}
+
+// 对应 Python: _load_session_history
+// 从数据库加载会话历史消息，供 LLM 多轮上下文使用。
+// 最近 limit 条按时间倒序取，再反转为正序（旧→新）。
+async function loadSessionHistory(
+  prisma: PrismaClient,
+  sessionId: string,
+  limit = 20,
+): Promise<{ role: string; content: string }[]> {
+  const messages = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  })
+  messages.reverse()
+  return messages.map((m) => ({
+    role: m.role,
+    content: m.content ?? '',
+  }))
+}
+
+// 对应 Python: agent_completion 中的持久化逻辑
+// 流结束后持久化 assistant 消息 + 工具执行记录，并更新会话计数
+async function persistAssistantMessage(
+  prisma: PrismaClient,
+  opts: { sessionId: string; userId: string; ctx: StreamContext },
+): Promise<ChatMessage> {
+  const { sessionId, userId, ctx } = opts
+  const assistantMsgId = genId('msg_')
+
+  const assistantMsg = await prisma.chatMessage.create({
+    data: {
+      id: assistantMsgId,
+      sessionId,
+      userId,
+      role: 'assistant',
+      content: ctx.answerContent,
+      contentBlocks: ctx.contentBlocks.length > 0 ? ctx.contentBlocks : Prisma.JsonNull,
+      promptTokens: ctx.promptTokens || null,
+      completionTokens: ctx.completionTokens || null,
+      latencyMs: ctx.latencyMs || null,
+    },
+  })
+
+  // 持久化工具执行记录（对应 Python: for te in ctx.tool_executions: ...）
+  for (const te of ctx.toolExecutions) {
+    await prisma.agentToolExecution.create({
+      data: {
+        id: genId('exec_'),
+        messageId: assistantMsgId,
+        sessionId,
+        userId,
+        toolName: te.toolName ?? '',
+        toolCallId: te.executionId ?? null,
+        inputParams: te.inputParams ?? Prisma.JsonNull,
+        outputResult: te.outputResult ?? null,
+        outputSummary: te.outputSummary ?? null,
+        status: te.status ?? 'pending',
+        errorMessage: te.errorMessage ?? null,
+      },
+    })
+  }
+
+  // 更新会话计数（对应 Python: session.message_count += 1; session.last_message_id = ...）
+  await prisma.chatSession.update({
+    where: { id: sessionId },
+    data: {
+      messageCount: { increment: 1 },
+      lastMessageId: assistantMsgId,
+    },
+  })
+
+  return assistantMsg
 }
 
 export const agentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -154,18 +230,136 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
       // ========== 对话执行 ==========
 
       // 对应 Python: @router.post("/completions")
-      // 暂未迁移（依赖 ModuAgent 框架）—— 返回 501 Not Implemented
       app.post('/completions', buildSchema({
         body: AgentChatRequestSchema,
         tags: ['agent'],
-        summary: 'Agent 对话（暂未迁移）',
-        description: '依赖 ModuAgent 框架，待 packages/modu-agent 就绪后接入',
+        summary: 'Agent 对话',
+        description: 'AG-UI 流式/非流式 Agent 对话，基于 ModuAgent LangGraph 引擎',
         security: [{ BearerAuth: [] }],
       }), async (req, reply) => {
-        return reply.code(501).send({
-          code: 501,
-          message: 'Agent 对话端点暂未迁移，依赖 ModuAgent 框架（待 packages/modu-agent 就绪后接入）',
+        const dto = AgentChatRequestSchema.parse(req.body)
+        const userId = req.user.id
+
+        // 1. 无 sessionId 则创建会话（对应 Python agent.py:182-193）
+        let sessionId = dto.sessionId
+        let session: ChatSession | null = null
+        if (!sessionId) {
+          session = await fastify.prisma.chatSession.create({
+            data: {
+              id: genId('sess_'),
+              userId,
+              title: dto.message.slice(0, 50),
+              model: env.LLM_DEFAULT_MODEL,
+              // P4: 使用请求指定的 agentMode（plan_execute / react_agent）
+              agentMode: dto.agentMode,
+            },
+          })
+          sessionId = session.id
+        } else {
+          session = await verifySessionOwner(fastify.prisma, sessionId, userId)
+        }
+
+        // 2. 写入用户消息（对应 Python: user_msg = ChatMessage(...)）
+        const userMsg = await fastify.prisma.chatMessage.create({
+          data: {
+            id: genId('msg_'),
+            sessionId,
+            userId,
+            role: 'user',
+            content: dto.message,
+          },
         })
+
+        // 3. messageCount++（对应 Python: session.message_count += 1）
+        await fastify.prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { messageCount: { increment: 1 } },
+        })
+
+        // 4. 加载会话历史（包含刚写入的用户消息，对齐 Python）
+        const history = await loadSessionHistory(fastify.prisma, sessionId)
+
+        // 使用后端配置的默认模型（对齐 Python: model=None 忽略会话 model）
+        const systemPrompt = session?.systemPrompt ?? null
+
+        if (dto.stream) {
+          // ===== 流式 SSE =====
+          // Fastify SSE: hijack 后直接操作 raw response
+          // 注意：hijack 会绕过 onSend 钩子，需手动补 CORS 头
+          const reqOrigin = req.headers.origin
+          const corsHeaders: Record<string, string> = {}
+          if (reqOrigin && isOriginAllowed(reqOrigin)) {
+            corsHeaders['Access-Control-Allow-Origin'] = reqOrigin
+            corsHeaders['Access-Control-Allow-Credentials'] = 'true'
+          }
+          reply.hijack()
+          reply.raw.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            ...corsHeaders,
+          })
+
+          const ctx = new StreamContext()
+          let streamError = false
+
+          try {
+            // streamAgentCompletion 内部已通过 AGUIStreamAdapter 发出 RUN_STARTED/RUN_FINISHED
+            for await (const eventDict of streamAgentCompletion({
+              message: dto.message,
+              sessionId,
+              userId,
+              ctx,
+              model: null,
+              systemPrompt,
+              history,
+              // P4: 透传 agentMode 以启用 Plan-Execute 图
+              agentMode: dto.agentMode,
+            })) {
+              reply.raw.write(`data: ${eventDict.data}\n\n`)
+            }
+          } catch (e: any) {
+            // 防御 create_agent() 等流前异常（流中异常已在 streamAgentCompletion 内 catch）
+            streamError = true
+            reply.raw.write(
+              `data: ${JSON.stringify({ type: 'RUN_ERROR', code: 'INTERNAL', message: String(e) })}\n\n`,
+            )
+          }
+
+          // 5. 持久化 assistant 消息（对应 Python: 流结束后持久化）
+          // 流前异常时不持久化（对齐 Python: event_generator 抛错时持久化代码不执行）
+          if (!streamError) {
+            try {
+              await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+            } catch (e: any) {
+              // 持久化失败不影响已发送的 SSE 流
+              fastify.log.error({ err: e, sessionId }, 'Failed to persist agent assistant message')
+            }
+          }
+
+          reply.raw.end()
+          return
+        }
+
+        // ===== 非流式 =====
+        const ctx = new StreamContext()
+        for await (const _ of streamAgentCompletion({
+          message: dto.message,
+          sessionId,
+          userId,
+          ctx,
+          model: null,
+          systemPrompt,
+          history,
+          // P4: 透传 agentMode 以启用 Plan-Execute 图
+          agentMode: dto.agentMode,
+        })) {
+          // 仅消费，不输出
+        }
+
+        const assistantMsg = await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+        return messageToResponse(assistantMsg)
       })
 
       // ========== 工具执行轨迹查询 ==========
