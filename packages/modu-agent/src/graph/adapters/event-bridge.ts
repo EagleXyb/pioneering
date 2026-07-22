@@ -101,7 +101,19 @@ export class LangGraphEventBridge {
   async *consume(
     graphStream: AsyncGenerator<Record<string, any>>,
   ): AsyncGenerator<Record<string, any>> {
+    let eventIdx = 0
+    logger.info('consume.start trace_id=%s session_id=%s', this._traceId, this._sessionId)
+
     for await (const event of graphStream) {
+      eventIdx++
+      const evtType = (event as any)?.type ?? (Array.isArray(event) ? `[array:${event[0]}]` : typeof event)
+      const evtNode = (event as any)?.node ?? ''
+      logger.info(
+        'consume.event[%d] type=%s node=%s keys=%j',
+        eventIdx, evtType, evtNode,
+        Object.keys(event || {}),
+      )
+
       // 映射并发布到 EventBus
       const agentEvent = this._mapToAgentEvent(event)
       if (agentEvent) {
@@ -124,12 +136,19 @@ export class LangGraphEventBridge {
       // 发送 SSE 细粒度事件
       const sseEvents = this._emitSseEvents(event)
       for (const sseEvent of sseEvents) {
+        logger.info(
+          'consume.sse_yield type=%s',
+          (sseEvent as any)?.type ?? '',
+        )
         yield sseEvent
       }
 
       // 透传原始事件
+      logger.info('consume.raw_yield type=%s', evtType)
       yield event
     }
+
+    logger.info('consume.end total_events=%d', eventIdx)
 
     // P1-14 修复：流结束时若仍在 thinking 状态，发送 thinking: end 事件
     if (this._inThinking) {

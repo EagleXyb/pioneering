@@ -303,6 +303,12 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
           const ctx = new StreamContext()
           let streamError = false
+          let sseCount = 0
+
+          fastify.log.info(
+            { sessionId, userId, agentMode: dto.agentMode, messageLen: dto.message.length },
+            '[agent.completions] stream.start',
+          )
 
           try {
             // streamAgentCompletion 内部已通过 AGUIStreamAdapter 发出 RUN_STARTED/RUN_FINISHED
@@ -317,15 +323,25 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               // P4: 透传 agentMode 以启用 Plan-Execute 图
               agentMode: dto.agentMode,
             })) {
+              sseCount++
               reply.raw.write(`data: ${eventDict.data}\n\n`)
             }
           } catch (e: any) {
             // 防御 create_agent() 等流前异常（流中异常已在 streamAgentCompletion 内 catch）
             streamError = true
+            fastify.log.error(
+              { err: e, sessionId },
+              '[agent.completions] stream.pre_stream_error',
+            )
             reply.raw.write(
               `data: ${JSON.stringify({ type: 'RUN_ERROR', code: 'INTERNAL', message: String(e) })}\n\n`,
             )
           }
+
+          fastify.log.info(
+            { sessionId, sseCount, streamError, answerLen: ctx.answerContent.length },
+            '[agent.completions] stream.end',
+          )
 
           // 5. 持久化 assistant 消息（对应 Python: 流结束后持久化）
           // 流前异常时不持久化（对齐 Python: event_generator 抛错时持久化代码不执行）

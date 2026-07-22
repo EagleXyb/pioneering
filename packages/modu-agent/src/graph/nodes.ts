@@ -24,6 +24,7 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages'
 import { interrupt } from '@langchain/langgraph'
+import type { RunnableConfig } from '@langchain/core/runnables'
 
 import { getConfig } from '../config/runtime-config.js'
 import { getRegistry } from '../core/registry.js'
@@ -1001,15 +1002,29 @@ export function routeAfterHumanReview(state: ModuAgentState): string {
  * P3-12.3.1: memory_query 后路由——多 Agent 或单 Agent。
  *
  * - orchestration.multi_agent.enabled=true → "supervisor"
+ * - P4: per-request configurable.plan_execute_enabled=true → "planner"
+ * - 全局 plan_execute.enabled=true → "planner"
  * - 否则 → "agent"（原行为）
+ *
+ * P4 修复：除了全局配置外，还需检查 per-request 的 configurable.plan_execute_enabled，
+ * 否则即使 factory 构建了带 planner 的图，运行时路由仍会走 agent 分支。
+ * LangGraph JS 的条件路由函数支持第二参数 config: RunnableConfig。
  */
-export function routeAfterMemoryQuery(state: ModuAgentState): string {
-  const config = getConfig()
-  if (config.get('orchestration.multi_agent.enabled', false)) {
+export function routeAfterMemoryQuery(
+  state: ModuAgentState,
+  config?: RunnableConfig,
+): string {
+  const runtimeConfig = getConfig()
+  if (runtimeConfig.get('orchestration.multi_agent.enabled', false)) {
     return 'supervisor'
   }
-  // P4 Plan-and-Execute：与 multi_agent 互斥（multi_agent 优先）
-  if (config.get('plan_execute.enabled', false)) {
+  // P4: 优先检查 per-request configurable（agent-bridge 传入的 plan_execute_enabled=true）
+  const configurable = config?.configurable as Record<string, any> | undefined
+  if (configurable?.['plan_execute_enabled'] === true) {
+    return 'planner'
+  }
+  // P4 Plan-and-Execute：全局配置兜底
+  if (runtimeConfig.get('plan_execute.enabled', false)) {
     return 'planner'
   }
   return 'agent'

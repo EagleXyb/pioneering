@@ -102,10 +102,31 @@ export async function* streamAgentCompletion(
   const traceId = randomUUID()
   const adapter = new AGUIStreamAdapter(traceId)
 
+  logger.info(
+    'stream.start trace_id=%s session_id=%s agentMode=%s configurable=%j',
+    traceId, sessionId, agentMode ?? 'react_agent', configurable,
+  )
+
+  let eventCount = 0
   try {
+    // P4: 将 configurable 中的 plan_execute_enabled 透传到 stream_response，
+    // 使运行时路由函数（routeAfterMemoryQuery）能通过 config.configurable 读取 per-request 配置
+    const extraConfigurable: Record<string, any> = {}
+    if (agentMode === 'plan_execute') {
+      extraConfigurable.plan_execute_enabled = true
+    }
+
     for await (const eventDict of adapter.transform_langgraph_events(
-      stream_response(graph, userId, sessionId, inputData, traceId),
+      stream_response(graph, userId, sessionId, inputData, traceId, null, extraConfigurable),
     )) {
+      eventCount++
+      const dataStr = eventDict.data ?? ''
+      let aguiType = ''
+      try { aguiType = dataStr ? (JSON.parse(dataStr).type ?? '') : '' } catch {}
+      logger.info(
+        'stream.yield[%d] agui_type=%s data_len=%d',
+        eventCount, aguiType, dataStr.length,
+      )
       yield eventDict
       collectMetadataFromEvent(eventDict, ctx)
     }
@@ -118,6 +139,12 @@ export async function* streamAgentCompletion(
       message: String(e),
     })
   }
+
+  logger.info(
+    'stream.end total_events=%d answer_len=%d tool_count=%d plan_data=%d step_updates=%d',
+    eventCount, ctx.answerContent.length, ctx.toolExecutions.length,
+    ctx.planData.length, ctx.stepUpdates.length,
+  )
 
   // 流结束，填充元数据
   ctx.answerContent = adapter.collected_text

@@ -85,11 +85,15 @@ export function makeStepDispatchNode(): (
 /**
  * 步骤分发路由（条件边）：决定下一个去向。
  *
- *   - idx >= plan.length → 'finalize_response'（全部完成）
+ *   - idx >= plan.length → 'response'（全部完成，映射到 finalize_response 节点）
  *   - 本代际末步失败且 continue_on_failure=false：
  *       replan_count < max_replans → 'planner'（重规划）
- *       否则 → 'finalize_response'（重规划耗尽，终止）
+ *       否则 → 'response'（重规划耗尽，终止）
  *   - 其他 → 'agent'（执行当前步）
+ *
+ * 注意：返回值必须是 addConditionalEdges targets 映射的 key（'agent'/'response'/'planner'），
+ * 不是目标节点名（'finalize_response'）。graph.ts 中注册为：
+ *   { agent: 'agent', response: 'finalize_response', planner: 'planner' }
  */
 export function stepDispatch(state: ModuAgentState): string {
   const config = getConfig()
@@ -97,7 +101,7 @@ export function stepDispatch(state: ModuAgentState): string {
   const idx = state.current_step_index ?? 0
 
   if (plan.length === 0 || idx >= plan.length) {
-    return 'finalize_response'
+    return 'response'
   }
 
   const genResults = _currentGenerationResults(state)
@@ -122,7 +126,7 @@ export function stepDispatch(state: ModuAgentState): string {
         'Step %s failed and replan budget exhausted (%d), terminating',
         lastResult?.['step_id'] ?? 'unknown', replanCount,
       )
-      return 'finalize_response'
+      return 'response'
     }
     // continue_on_failure=true：失败步骤记 skipped 语义由 step_finalize 落库后继续
     logger.info(

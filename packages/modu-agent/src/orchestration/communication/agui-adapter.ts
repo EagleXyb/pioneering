@@ -865,14 +865,27 @@ export class AGUIStreamAdapter {
 
     const sm = new AGUIStateMachine(this._trace_id, this._message_id, 'dict')
     let final_response = ''
+    let eventIdx = 0
 
+    console.info('[agui-adapter] transform.start trace_id=%s message_id=%s', this._trace_id, this._message_id)
     yield sm.emit_run_started() as Record<string, string>
 
     for await (const event of langgraph_stream) {
+      eventIdx++
       const event_type = (event.type as string) ?? ''
+      console.info(
+        '[agui-adapter] transform.event[%d] type=%s node=%s keys=%j',
+        eventIdx, event_type, (event as any)?.node ?? '',
+        Object.keys(event || {}),
+      )
       let should_stop = false
 
-      for (const ev of AGUIStreamAdapter._process_langgraph_event(sm, event, event_type)) {
+      const processed = AGUIStreamAdapter._process_langgraph_event(sm, event, event_type)
+      console.info(
+        '[agui-adapter] transform.event[%d] processed_count=%d',
+        eventIdx, Array.isArray(processed) ? processed.length : 0,
+      )
+      for (const ev of processed) {
         if (ev === _STREAM_STOP_SENTINEL) {
           should_stop = true
           break
@@ -880,10 +893,14 @@ export class AGUIStreamAdapter {
         if (final_response === '' && sm.response_text) {
           final_response = sm.response_text
         }
+        const evData = (ev as any)?.data ?? ''
+        const evType = evData ? (JSON.parse(evData).type ?? '') : ''
+        console.info('[agui-adapter] transform.yield agui_type=%s', evType)
         yield ev as Record<string, string>
       }
 
       if (should_stop) {
+        console.info('[agui-adapter] transform.stop_sentinel at event[%d]', eventIdx)
         break
       }
 
@@ -898,7 +915,13 @@ export class AGUIStreamAdapter {
       }
     }
 
+    console.info(
+      '[agui-adapter] transform.loop_end total_events=%d text_started=%s final_response_len=%d collected_len=%d',
+      eventIdx, sm.text_message_started, final_response.length, sm.collected_text.length,
+    )
+
     if (sm.has_error) {
+      console.info('[agui-adapter] transform.has_error, returning early')
       this._sync_state_machine(sm)
       return
     }
@@ -909,6 +932,7 @@ export class AGUIStreamAdapter {
     }
 
     if (!sm.text_message_started && final_response) {
+      console.info('[agui-adapter] transform.fallback_text_content len=%d', final_response.length)
       for (const ev of sm.emit_text_content(final_response)) {
         yield ev as Record<string, string>
       }
@@ -919,6 +943,7 @@ export class AGUIStreamAdapter {
     }
 
     yield sm.emit_run_finished() as Record<string, string>
+    console.info('[agui-adapter] transform.run_finished')
 
     this._sync_state_machine(sm)
   }

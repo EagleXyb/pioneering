@@ -225,9 +225,79 @@ function _buildConfigWithOverrides(
 }
 
 /**
+ * 将 LangGraph JS stream 产出的 [mode, chunk] 元组归一化为 {type, node?, data} 对象格式。
+ *
+ * LangGraph JS 在 streamMode 为数组（如 ['messages', 'updates', 'values']）时，
+ * 每个事件产出为 [mode, chunk] 二元组。但下游 LangGraphEventBridge / AGUIStreamAdapter
+ * 期望 {type, node, data} 对象格式。此函数填补这一断层：
+ *
+ *   - updates 模式：chunk 是 {node_name: state_update}，拆分为 node + data
+ *   - messages 模式：chunk 是 message 对象，同时设置 event 和 data 兼容下游
+ *   - values / 其他：chunk 直接作为 data
+ *   - 非元组对象（已格式化）：直接透传
+ */
+async function* _normalizeLangGraphStream(
+  rawStream: AsyncIterable<any>,
+): AsyncGenerator<Record<string, any>> {
+  let rawIdx = 0
+  let normIdx = 0
+  console.info('[runner.normalize] start')
+
+  for await (const event of rawStream) {
+    rawIdx++
+    const isArray = Array.isArray(event)
+    console.info(
+      '[runner.normalize] raw[%d] isArray=%s type=%s',
+      rawIdx, isArray,
+      isArray ? `[${event[0]}]` : ((event as any)?.type ?? typeof event),
+    )
+
+    if (isArray && event.length === 2) {
+      const [mode, chunk] = event
+      if (mode === 'updates' && chunk && typeof chunk === 'object' && !Array.isArray(chunk)) {
+        for (const [node, data] of Object.entries(chunk)) {
+          normIdx++
+          console.info(
+            '[runner.normalize] yield[%d] type=updates node=%s',
+            normIdx, node,
+          )
+          yield { type: 'updates', node, data: data ?? {} }
+        }
+      } else if (mode === 'messages') {
+        // LangGraph JS messages streamMode 产出 [message_chunk, metadata] 元组
+        // message_chunk（如 AIMessageChunk）才是实际的消息对象，需提取后传递
+        const msgObj = Array.isArray(chunk) ? chunk[0] : chunk
+        normIdx++
+        const msgType = msgObj?._getType?.() ?? msgObj?.constructor?.name ?? typeof msgObj
+        console.info('[runner.normalize] yield[%d] type=messages msg_type=%s', normIdx, msgType)
+        yield { type: 'messages', event: msgObj, data: msgObj }
+      } else {
+        normIdx++
+        console.info('[runner.normalize] yield[%d] type=%s', normIdx, mode)
+        yield { type: mode, data: chunk }
+      }
+    } else if (event && typeof event === 'object' && !Array.isArray(event)) {
+      normIdx++
+      console.info(
+        '[runner.normalize] yield[%d] passthrough type=%s',
+        normIdx, (event as any)?.type ?? '',
+      )
+      yield event as Record<string, any>
+    } else {
+      console.warn(
+        '[runner.normalize] raw[%d] skipped unknown format: %s',
+        rawIdx, typeof event,
+      )
+    }
+  }
+
+  console.info('[runner.normalize] end raw=%d normalized=%d', rawIdx, normIdx)
+}
+
+/**
  * 替代 Coordinator.stream_request()。
  *
- * 使用 LangGraph 原生 astream 实现流式输出，
+ * 使用 LangGraph 原生 stream 实现流式输出，
  * 通过 EventBridge 桥接到现有 EventBus。
  *
  * @param graph ModuGraph 实例
@@ -236,6 +306,8 @@ function _buildConfigWithOverrides(
  * @param inputData 输入数据（input_type / prompt / required_fields 等）
  * @param traceId 链路追踪 ID（null=自动生成）
  * @param eventBridge 事件桥接器（null=自动创建）
+ * @param extraConfigurable P4: 额外的 configurable 字段（如 plan_execute_enabled），
+ *                          传入后会合并到 lgConfig.configurable，供运行时路由函数读取
  * @yields LangGraph stream 事件字典
  */
 export async function* stream_response(
@@ -245,6 +317,7 @@ export async function* stream_response(
   inputData: Record<string, any>,
   traceId?: string | null,
   eventBridge?: LangGraphEventBridge | null,
+  extraConfigurable?: Record<string, any> | null,
 ): AsyncGenerator<Record<string, any>> {
   // P1-6: 入口层输入校验
   _validateInputData(inputData)
@@ -262,7 +335,12 @@ export async function* stream_response(
     ;(initialState as any).config_overrides = configOverrides
   }
 
+  // P4: 合并 extraConfigurable（如 plan_execute_enabled）到 lgConfig.configurable，
+  // 使运行时路由函数（routeAfterMemoryQuery）能通过 config.configurable 读取 per-request 配置
   const lgConfig = _buildConfigWithOverrides(sessionId, configOverrides)
+  if (extraConfigurable && Object.keys(extraConfigurable).length > 0) {
+    Object.assign((lgConfig as any).configurable, extraConfigurable)
+  }
 
   let bridge = eventBridge
   if (bridge === null || bridge === undefined) {
@@ -285,10 +363,14 @@ export async function* stream_response(
     streamMode: ['messages', 'updates', 'values'],
   })
 
+  // LangGraph JS stream 产出 [mode, chunk] 元组，bridge.consume 期望 {type, node, data} 对象，
+  // 需通过 _normalizeLangGraphStream 归一化后才能交给 EventBridge 消费。
+  const normalizedStream = _normalizeLangGraphStream(rawStream)
+
   // P2-9: span 埋点——流式响应的总耗时（生成器生命周期由调用者控制，用 try/finally 确保结束记录）
   const streamStart = performance.now()
   try {
-    for await (const event of bridge.consume(rawStream)) {
+    for await (const event of bridge.consume(normalizedStream)) {
       yield event
     }
   } finally {
@@ -392,7 +474,9 @@ export async function run_sync(
       streamMode: ['updates', 'values'],
     })
 
-    for await (const event of bridge.consume(rawStream)) {
+    // 归一化 [mode, chunk] 元组为 {type, node, data} 对象后交给 EventBridge
+    const normalizedStream = _normalizeLangGraphStream(rawStream)
+    for await (const event of bridge.consume(normalizedStream)) {
       // event 是普通 JS 对象（非 Map），用方括号访问
       if (event['type'] === 'values') {
         finalState = event['data'] ?? {}

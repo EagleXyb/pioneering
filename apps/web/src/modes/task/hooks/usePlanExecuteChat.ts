@@ -73,7 +73,11 @@ export function usePlanExecuteChat(activeId: string | null) {
         );
       };
 
+      let eventCount = 0;
+      const eventTypes = new Set<string>();
+
       try {
+        console.info('[task.plan_execute] fetch.start session=%s prompt_len=%d', activeId, params.prompt.length);
         const response = await fetch('/api/agent/completions', {
           method: 'POST',
           headers: {
@@ -90,17 +94,35 @@ export function usePlanExecuteChat(activeId: string | null) {
           signal: controller.signal,
         });
 
+        console.info(
+          '[task.plan_execute] fetch.response status=%d ok=%s content_type=%s',
+          response.status, response.ok, response.headers.get('content-type'),
+        );
+
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          // 输出响应体便于排查 401/500 等错误
+          const errText = await response.text().catch(() => '<read body failed>');
+          console.error(
+            '[task.plan_execute] fetch.not_ok status=%d body=%s',
+            response.status, errText.slice(0, 500),
+          );
+          throw new Error(`HTTP ${response.status}: ${errText.slice(0, 200)}`);
         }
 
-        const reader = response.body!.getReader();
+        if (!response.body) {
+          throw new Error('response.body 为空（无 SSE 流）');
+        }
+
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.info('[task.plan_execute] stream.done total_events=%d types=%j', eventCount, [...eventTypes]);
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
@@ -115,17 +137,41 @@ export function usePlanExecuteChat(activeId: string | null) {
             let data: any;
             try {
               data = JSON.parse(dataStr);
-            } catch {
+            } catch (e) {
+              console.warn('[task.plan_execute] parse.fail data=%s err=%s', dataStr.slice(0, 200), String(e));
               continue;
             }
 
+            eventCount++;
             const eventType = data.type ?? '';
+            eventTypes.add(eventType);
+
+            // 调试日志：首次出现某事件类型时输出完整字段，便于排查字段不匹配
+            if (!eventTypes.has(eventType + '_logged')) {
+              console.info(
+                '[task.plan_execute] event.first type=%s keys=%j sample=%s',
+                eventType, Object.keys(data), JSON.stringify(data).slice(0, 300),
+              );
+              eventTypes.add(eventType + '_logged');
+            }
 
             switch (eventType) {
               case 'STATE_DELTA': {
                 // Plan-Execute 核心事件：plan 阶段全量替换，execute 阶段增量更新
+                const phase = data.phase ?? '';
+                if (phase === 'plan') {
+                  console.info(
+                    '[task.plan_execute] STATE_DELTA[plan] steps=%d',
+                    Array.isArray(data.plan) ? data.plan.length : 0,
+                  );
+                } else if (phase === 'execute' && data.step_update) {
+                  console.info(
+                    '[task.plan_execute] STATE_DELTA[execute] %s → %s',
+                    data.step_update.id, data.step_update.status,
+                  );
+                }
                 applyPlanDelta({
-                  phase: data.phase ?? '',
+                  phase,
                   plan: data.plan,
                   step_update: data.step_update,
                 });
@@ -141,12 +187,17 @@ export function usePlanExecuteChat(activeId: string | null) {
                 break;
               }
               case 'RUN_FINISHED': {
+                console.info('[task.plan_execute] RUN_FINISHED text_len=%d', accumulatedText.length);
                 setStatus('complete');
                 setPhase('done');
                 break;
               }
               case 'RUN_ERROR': {
                 const errMsg = data.message ?? '执行失败';
+                console.error(
+                  '[task.plan_execute] RUN_ERROR code=%s msg=%s',
+                  data.code ?? '', errMsg,
+                );
                 setStatus('error');
                 setPhase('error', errMsg);
                 if (!accumulatedText) {
@@ -165,10 +216,15 @@ export function usePlanExecuteChat(activeId: string | null) {
           // setPhase 是 Zustand 直接 set 不支持函数式更新，需先读取当前状态
           const currentPhase = usePlanExecuteStore.getState().phase;
           if (currentPhase === 'planning' || currentPhase === 'executing') {
+            console.info('[task.plan_execute] stream.end no RUN_FINISHED, fallback to done');
             setPhase('done');
           }
         }
       } catch (e: any) {
+        console.error(
+          '[task.plan_execute] catch.error name=%s msg=%s stack=%s events=%d types=%j',
+          e?.name, String(e), e?.stack, eventCount, [...eventTypes],
+        );
         if (e.name === 'AbortError') {
           // 用户主动中止，保留已累积的内容
           setStatus('complete');

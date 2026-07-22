@@ -385,6 +385,11 @@ export async function create_agent(
     configurable['plan_execute_enabled'] ?? null,
     llm,   // P4: 未绑定工具的原始 LLM，供 Planner 节点使用（规划阶段禁止工具）
   )
+  logger.info(
+    'create_agent plan_execute: configurable=%j plan_execute_enabled=%s',
+    configurable,
+    configurable['plan_execute_enabled'] ?? null,
+  )
 
   // P1-12.2.3: 通过 ModuGraph wrapper 显式持有 orchestrator 引用，
   // 替代在 CompiledStateGraph 上 monkey-patch `graph.orchestrator` 的做法。
