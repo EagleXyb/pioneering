@@ -65,8 +65,8 @@ const EDITOR_TEXT_CLASS = 'font-sans'
 // 两层共享的、像素级一致的排版样式（textarea 负责光标，遮罩负责可见文字，
 // 两者必须逐属性完全相同，光标才会精确落在可见文字的基线上）。
 const EDITOR_TEXT_STYLE: CSSProperties = {
-  fontSize: '15px',
-  // 固定像素 line-height（而非 unitless），跨浏览器稳定，避免 WebKit 对 textarea 的基线漂移
+  fontSize: '16px',
+  // 固定像素 line-height（16px × 1.5 = 24px，与 web/pro 输入框 .pro-input-text 完全一致），跨浏览器稳定
   lineHeight: '24px',
   letterSpacing: 'normal',
   wordSpacing: 'normal',
@@ -74,12 +74,12 @@ const EDITOR_TEXT_STYLE: CSSProperties = {
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
   overflowWrap: 'break-word',
-  // 编辑器整体内边距（上下 12px / 左右 16px）：同时覆盖「卡片留白 + 文本与边框间距」。
+  // 编辑器整体内边距（上 14px / 左右 20px / 下 8px）：与 web/pro 输入框 .pro-input-text 完全一致。
   // 两层（textarea + 遮罩 div）都 spread 此对象，因此共用完全相同的盒模型，
   // 文字与光标才能像素级对齐。注意：此 padding 必须同时作用于两层，
   // 不能只靠外层容器的 Tailwind padding——容器的内边距只影响正常流的 textarea，
   // 而 absolute inset-0 的遮罩层会无视它，从而导致两层文字错位。
-  padding: '12px 16px',
+  padding: '14px 20px 8px',
   border: '0',
   margin: '0',
   boxSizing: 'border-box',
