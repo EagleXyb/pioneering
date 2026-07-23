@@ -27,6 +27,7 @@
 6. [项目运行方式](#6-项目运行方式)
 7. [核心数据流](#7-核心数据流)
 8. [设计约定与关键决策](#8-设计约定与关键决策)
+9. [优化建议](#9-优化建议)
 
 ---
 
@@ -1427,6 +1428,240 @@ finalize_response
 | MCP 工具 qualifiedName | `${serverName}__${toolName}` | 双下划线分隔，避免跨 Server 冲突 |
 | 错误码 | `MCP_000`~`MCP_004` / `LLM_GENERATION_FAILED` / `TOOL_APPROVAL_REJECTED` | 模块前缀 + 大写下划线 |
 | 事件域 | `PERCEPTION` / `MEMORY` / `REASONING` / `TOOL` / `PLAN` | 大写枚举 |
+
+---
+
+## 9. 优化建议
+
+> 基于对 `packages/modu-agent` 全部源码的深度分析，按**优先级**和**影响面**排序，分为架构、模块、工程、安全、性能、文档六大类。
+
+### 9.1 架构层面（高优先级）
+
+#### 9.1.1 统一 barrel 导出策略
+
+**现状问题**：模块导出策略不一致，增加使用心智成本。
+
+| 模块 | 现状 | 问题 |
+|------|------|------|
+| [tools/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) | 仅导出 3 个符号（`SyncActionExecutor`/`CalculatorTool`/`SearchTool`） | 其余 5 个工具需直接 import 文件路径 |
+| [perception/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/index.ts) | 仅导出 2 个工具函数 | 非 barrel，不重导出 pipeline/fusion/子模块类 |
+| [reasoning/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/index.ts) | 完整 barrel | 一致 |
+| [mcp/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/index.ts) | 完整 barrel | 一致 |
+
+**建议**：
+- 统一为**完整 barrel**策略，所有公开 API 通过 `index.ts` 导出
+- `tools/index.ts` 补齐 `CodeExecutionTool` / `DateTimeTool` / `FileOpsTool` / `HttpRequestTool` / `SqlQueryTool` 导出
+- `perception/index.ts` 重导出 `runPerceptionPipeline` / `PerceptionFusion` / `SecurityGuard` 等核心类
+- 若有意限制公开 API，则用 `__internal__` 子路径区分（如 `@pioneering/modu-agent/tools/internal`）
+
+#### 9.1.2 消除 reasoning 与 graph/adapters 的能力重复
+
+**现状问题**：存在两套 LLM 调用实现，维护成本高且行为可能漂移。
+
+| 实现 | 位置 | 协议 |
+|------|------|------|
+| `BaseLLMReasoner` | [reasoning/llm/base-llm.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) | 原生 `fetch` 调用 `/chat/completions` |
+| `build_chat_model` | [graph/adapters/llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/llm-adapter.ts) | `ChatOpenAI`（LangChain 抽象） |
+
+两者都走 OpenAI 兼容协议，但：环境变量解析逻辑重复（`_PROVIDER_CONFIG` vs 子类构造函数）、错误处理策略可能不一致、重试逻辑只在 `apply_llm_retry` 中存在。
+
+**建议**：
+- **方案 A（推荐）**：`BaseLLMReasoner` 内部委托 `build_chat_model` 构建的 `ChatOpenAI`，统一 LLM 调用入口；保留 `reasoning/` 作为面向直接调用的薄封装
+- **方案 B**：若需保持 `reasoning/` 零 LangChain 依赖，则抽取共享的 provider 配置模块（`_PROVIDER_CONFIG` 提到 `config/` 中），确保两套实现的环境变量解析、默认值、错误码完全一致
+
+#### 9.1.3 清理占位空文件
+
+**现状问题**：[reasoning/symbolic/rule-engine.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/symbolic/rule-engine.ts) 为空文件，仅含注释，无任何导出。
+
+**建议**：
+- 若短期无实现计划，删除该文件并从目录结构中移除（避免误导）
+- 若作为未来扩展占位，在文件顶部添加 `// TODO(P3): 实现符号推理规则引擎` 并在 README/roadmap 中登记
+- 同步更新 `CODE_WIKI.md` 4.7 节对应描述
+
+#### 9.1.4 ModuGraph Proxy 的类型安全性
+
+**现状问题**：`ModuGraph` 使用 ES6 `Proxy` 透明代理 `CompiledStateGraph`，`get` trap 转发所有属性访问。但 Proxy 的类型推断在 TypeScript 中通常是 `any` 或宽泛类型，丢失类型安全。
+
+**建议**：
+- 显式声明 `ModuGraph` 实现一个继承 `CompiledStateGraph` 类型签名的接口
+- 或使用 `satisfies` 运算符确保 Proxy 的 `get` trap 返回类型与目标一致
+- 添加单元测试覆盖 `graph.invoke` / `graph.astream` / `graph.getState` / `graph.updateState` 等核心方法的类型正确性
+
+---
+
+### 9.2 模块层面（中优先级）
+
+#### 9.2.1 feedback 与 LangGraph 集成的异步边界
+
+**现状问题**：`FeedbackLoop.process` 在 `finalize_response` 节点后异步执行，不阻塞主流程。但异步异常若未捕获会变成 unhandledRejection，且进化结果（`config_overrides`）的回写时机不明确。
+
+**建议**：
+- 在 `finalize_response` 节点中显式 `.catch(err => log + emit ERROR event)` 包装 FeedbackLoop 调用
+- 明确 `config_overrides` 的持久化路径：是写入 checkpointer 的 state，还是独立的 store namespace？建议在 `CODE_WIKI.md` 7.4 节补充说明
+- 考虑为 FeedbackLoop 添加开关（`feedback.async`），允许同步模式用于调试
+
+#### 9.2.2 QualityMonitor 三模式的策略选择
+
+**现状问题**：`rule` / `llm` / `hybrid` 三种模式中，`hybrid` 的"rule 置信度低时回退 llm"阈值未明确文档化，且 rule 模式的启发式规则（长度/重复/格式/关键词）可能对某些领域（如代码生成）失效。
+
+**建议**：
+- 将 rule 评估的阈值（置信度下限）提取为配置项（`feedback.rule_confidence_threshold`）
+- 允许用户注入领域特定的 rule 评估器（通过 `registry.registerComponent('quality_evaluator', ...)`）
+- 在 `CODE_WIKI.md` 4.9 节补充 hybrid 模式的决策流程图
+
+#### 9.2.3 evolution 策略注册的可扩展性
+
+**现状问题**：`EvolutionOrchestrator` 维护 `Strategy[]`，但当前仅内置 3 种策略（ParameterTune/ComponentSwap/Rollback），用户无法在不修改源码的情况下注入自定义策略。
+
+**建议**：
+- 暴露 `registerStrategy(strategy)` 公开 API
+- 策略接口标准化（`{ name, priority, evaluate(signal, context): Action }`）
+- 在 `factory.ts` 的 `create_agent` 流程中从配置读取自定义策略路径并动态加载
+
+#### 9.2.4 orchestration EventBus 的背压处理
+
+**现状问题**：[communication/message-bus.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/message-bus.ts) 的 `publish` 为同步发布，若 handler 执行缓慢会阻塞发布方；`PersistentEventLog` 基于 better-sqlite3 同步写入，高并发场景下可能成为瓶颈。
+
+**建议**：
+- `publish` 改为微任务异步（`queueMicrotask` 或 `setImmediate`），handler 异常通过 `Promise.catch` 捕获
+- `PersistentEventLog` 引入写入队列（批量提交 + WAL 模式），或提供 `async` 模式开关
+- 添加背压指标（队列深度、丢弃数）暴露到 `MetricsRegistry`
+
+---
+
+### 9.3 工程层面（中优先级）
+
+#### 9.3.1 类型严格度提升
+
+**现状问题**：`tsconfig.json` 已开启 `strict: true`，但部分模块仍使用 `any` 或 `Record<string, any>`，削弱类型安全。
+
+| 位置 | 现状 | 建议 |
+|------|------|------|
+| `event-bridge.ts` 的 SSE payload | `Record<string, any>` | 定义 `SSEPayload` 联合类型，按事件类型区分 |
+| `agui-adapter.ts` 的 `_emit(eventType, data)` | `Record<string, any>` | 按事件类型建立映射，`_emit<T extends AGUIEventType>(type: T, data: EventPayload[T])` |
+| `nodes.ts` 的 state 操作 | 部分使用类型断言 | 利用 `Annotation.Root` 推导的 State 类型，减少 `as` 断言 |
+
+#### 9.3.2 测试覆盖与可测性
+
+**现状问题**：vitest 配置完善（`tsJsResolution` 插件可直接跑 `src/`），但测试覆盖情况未知，部分模块（如 plan-execute、evolution）逻辑复杂，缺乏测试会导致回归风险。
+
+**建议**：
+- 为 plan-execute 添加端到端测试：覆盖正常规划、重规划、降级直答、空 plan 四条路径
+- 为 evolution 添加 per-session 隔离测试：验证 `config_overrides` 不污染全局配置
+- 为 HITL 添加集成测试：覆盖 interrupt → resume → 完成流程
+- 引入覆盖率门槛（`vitest --coverage`，`thresholds: { lines: 80 }`）
+
+#### 9.3.3 配置 Schema 的运行时校验时机
+
+**现状问题**：`config/schemas.ts` 定义了 9 个 zod schema，但 `RuntimeConfig.set` 的校验时机不明确——是否每次 set 都校验？嵌套路径（`llm.temperature`）如何校验？
+
+**建议**：
+- 明确文档化校验时机（建议 set 时惰性校验，get 时不校验）
+- 为 `RuntimeConfig.set` 添加路径感知校验：根据 keyPath 前缀选择对应 schema
+- 提供 `validateAll()` 方法用于启动时全量校验
+
+#### 9.3.4 optionalDependencies 降级的可观测性
+
+**现状问题**：OTel/prom-client/better-sqlite3/chromadb 降级为 no-op 或内存实现时，调用方无感知，可能导致用户误以为功能已启用。
+
+**建议**：
+- 降级时通过 `JsonFormatter` 输出 `WARN` 级别日志（`"chromadb not installed, falling back to InMemoryStoreAdapter"`）
+- 在 `MetricsRegistry` 中注册 `modu_optional_dep_status` Gauge（label: dep_name, status: enabled|fallback）
+- 启动时汇总打印可选依赖状态摘要
+
+---
+
+### 9.4 安全层面（高优先级）
+
+#### 9.4.1 CodeExecutionTool 的 Python 依赖
+
+**现状问题**：[tools/code-executor.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/code-executor.ts) 通过 `execFileAsync` 调用 Python 子进程，假设运行环境已安装 Python。若 Python 未安装或版本不符，错误信息可能不友好。
+
+**建议**：
+- 启动时探测 Python 可用性（`_resolvePythonCommand` 已实现，但需在工具注册时主动检测并记录）
+- 提供配置项允许禁用 code_executor（`tools.disabled: ['code_executor']`）
+- 考虑支持 WebAssembly 沙箱作为 Python 不可用时的降级方案
+
+#### 9.4.2 SqlQueryTool 表名白名单的维护成本
+
+**现状问题**：表名白名单硬编码在源码中，新增表需修改代码重新发布。
+
+**建议**：
+- 表名白名单改为配置驱动（`tools.sql_query.allowed_tables: [...]`）
+- 支持正则模式（如 `^user_.*$` 允许所有 user 前缀表）
+- 在 `CODE_WIKI.md` 4.4 节补充白名单配置说明
+
+#### 9.4.3 HITL 审批超时机制
+
+**现状问题**：`interrupt` 暂停后等待 `resume_sync(approved=true)`，但若用户长时间不审批，interrupt 状态会一直占用 checkpointer 存储，且 LLM 会话上下文长期驻留。
+
+**建议**：
+- 为 interrupt 添加 TTL 配置（`hitl.timeout_seconds`，默认 3600s）
+- 超时后自动 `resume_sync(approved=false, feedback='timeout')` 并返回 `TOOL_APPROVAL_TIMEOUT`
+- 添加定期清理任务（基于 `PersistentEventLog` 的 timestamp）
+
+---
+
+### 9.5 性能层面（低优先级，长期优化）
+
+#### 9.5.1 LangGraph 图重建频率
+
+**现状问题**：配置热更新两层机制中，`_GRAPH_REBUILD_PREFIXES` 命中即 `reset_runner_cache()`，频繁变更 LLM 参数会导致图频繁重建。
+
+**建议**：
+- 引入去抖动（debounce 100ms），连续配置变更合并为一次重建
+- 对仅影响 LLM 参数的变更（`llm.temperature` / `llm.max_tokens`）考虑不重建图，而是通过 `RunnableConfig.configurable` per-request 注入（与 per-session 隔离机制复用）
+
+#### 9.5.2 perception 管线的并行度
+
+**现状问题**：`runPerceptionPipelineAsync` 首个感知器串行 + 后续 `Promise.all` 并行，但若首个感知器耗时较长，无法与其他并行。
+
+**建议**：
+- 评估是否所有感知器均可并行（通过 state 隔离避免写冲突）
+- 或允许配置 `perception.parallel_first: true` 跳过首串行假设
+
+#### 9.5.3 ChromaLongTermMemory 的嵌入缓存
+
+**现状问题**：`_simpleHashEmbedding` 使用 SHA-256 生成 384 维向量，每次查询都会重新计算嵌入，无缓存。
+
+**建议**：
+- 引入 LRU 缓存（key 为文本 hash，value 为嵌入向量）
+- 缓存命中率暴露到 `MetricsRegistry`
+
+---
+
+### 9.6 文档层面（低优先级）
+
+#### 9.6.1 CODE_WIKI.md 的版本化
+
+**建议**：在文档头部添加 `frontmatter`（`source_commit: <sha>` / `doc_version: 1.0`），CI 中校验文档与代码同步。
+
+#### 9.6.2 补充 ADR（Architecture Decision Records）
+
+**建议**：为关键决策（P0-2 per-session 隔离、P4 Plan-Execute 互斥、ESM 工厂注入）建立独立 ADR 文档，记录决策背景、方案对比、取舍理由。`CODE_WIKI.md` 8 章可链接到 ADR。
+
+---
+
+### 9.7 优化优先级矩阵
+
+| 建议 | 优先级 | 影响面 | 实施难度 |
+|------|--------|--------|----------|
+| 9.1.1 统一 barrel 导出 | 高 | 使用体验 | 低 |
+| 9.4.1 CodeExecution Python 探测 | 高 | 安全可用 | 低 |
+| 9.4.3 HITL 超时机制 | 高 | 生产稳定性 | 中 |
+| 9.3.1 类型严格度 | 高 | 代码质量 | 中 |
+| 9.1.2 消除 LLM 调用重复 | 高 | 维护成本 | 高 |
+| 9.2.1 feedback 异步边界 | 中 | 稳定性 | 低 |
+| 9.2.4 EventBus 背压 | 中 | 性能 | 中 |
+| 9.3.2 测试覆盖 | 中 | 质量保障 | 中 |
+| 9.3.4 optionalDep 可观测性 | 中 | 运维 | 低 |
+| 9.4.2 SqlQuery 白名单配置化 | 中 | 灵活性 | 低 |
+| 9.5.1 图重建去抖 | 低 | 性能 | 中 |
+| 9.5.3 嵌入缓存 | 低 | 性能 | 低 |
+| 9.1.3 清理空文件 | 低 | 整洁度 | 极低 |
+| 9.1.4 Proxy 类型安全 | 低 | 类型质量 | 中 |
+
+**建议落地顺序**：先做低难度高收益项（9.1.1、9.4.1、9.3.4、9.1.3），再处理中难度项（9.2.1、9.3.2、9.4.2），最后推进高难度架构项（9.1.2、9.1.4）。
 
 ---
 
