@@ -12,7 +12,10 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
  *   - 空态：phase='planning' 显示"正在规划任务..."，idle 显示"等待任务开始"
  *   - 有计划：时间轴列表 + 步骤折叠面板
  *   - 步骤状态：pending(灰) / running(蓝+脉冲) / done(绿+对勾) / failed(红+叉) / skipped(黄)
- *   - 默认折叠策略：running/failed 默认展开，其他默认折叠
+ *   - 折叠策略：
+ *       1. 用户手动折叠/展开优先级最高（存储在 collapsedSteps 中）
+ *       2. 执行中（存在 running 步骤）：仅 running / failed 步骤展开，已完成的自动折叠
+ *       3. 全部完成后：仅第一步保持展开，其余折叠
  */
 
 const STATUS_CONFIG: Record<
@@ -26,17 +29,28 @@ const STATUS_CONFIG: Record<
   skipped: { className: 'timeline-item--skipped', label: '已跳过' },
 };
 
-/** 判断步骤是否应展开：用户手动设置优先，否则按默认策略 */
+/**
+ * 判断步骤是否应展开。
+ *
+ * 优先级：用户手动折叠/展开 > 阶段自动策略
+ *
+ * 自动策略分两种模式：
+ *   - 执行中（存在 running 步骤）：仅 running / failed 步骤展开，已完成步骤自动折叠
+ *   - 全部完成（无 running 步骤）：仅第一步展开，其余折叠
+ */
 function isStepExpanded(
   step: PlanItem,
   userCollapsed: Record<string, boolean>,
   index: number,
+  allCompleted: boolean,
 ): boolean {
   if (userCollapsed[step.step_id] !== undefined) {
     return !userCollapsed[step.step_id];
   }
-  // 默认展开规则：第一个步骤 + running/failed 状态
-  return index === 0 || step.status === 'running' || step.status === 'failed';
+  if (allCompleted) {
+    return index === 0;
+  }
+  return step.status === 'running' || step.status === 'failed';
 }
 
 /**
@@ -216,6 +230,13 @@ export function PlanPipelineTree() {
   const done = rootIds.filter((id) => items[id]?.status === 'done').length;
   const failed = rootIds.filter((id) => items[id]?.status === 'failed').length;
 
+  const allCompleted =
+    total > 0 &&
+    rootIds.every((id) => {
+      const s = items[id];
+      return s && (s.status === 'done' || s.status === 'failed' || s.status === 'skipped');
+    });
+
   if (total === 0) {
     // 失败状态优先显示错误信息
     if (phase === 'error') {
@@ -261,7 +282,7 @@ export function PlanPipelineTree() {
         {rootIds.map((id, idx) => {
           const step = items[id];
           if (!step) return null;
-          const expanded = isStepExpanded(step, collapsedSteps, idx);
+          const expanded = isStepExpanded(step, collapsedSteps, idx, allCompleted);
           return (
             <TimelineItem
               key={id}

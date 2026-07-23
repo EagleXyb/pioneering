@@ -37,7 +37,7 @@
 
 .pro-messages-inner {
   width: 100%;
-  max-width: var(--task-content-width, 760px);
+  max-width: var(--task-content-width, 880px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;

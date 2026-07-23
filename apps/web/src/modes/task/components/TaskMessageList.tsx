@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ChatMessagesData, ChatStatus } from '../../../types/tdesign';
 import { useScrollToMessage } from '@/hooks/useScrollToMessage';
 import { extractCodeBlocks, isPreviewable } from '@/components/ArtifactPreview/extractCodeBlocks';
+import { Markdown } from '@/components/Markdown';
 import { useArtifactStore } from '@/store/artifactStore';
 
 interface Props {
@@ -40,9 +41,14 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
   const openArtifact = useArtifactStore((s) => s.openArtifact);
   const isAssistant = msg.role === 'assistant';
 
-  // 仅对 assistant 消息提取代码块；user 消息直接走纯文本
+  // 用户消息：保持纯文本
+  if (!isAssistant) {
+    return <div className="task-message-text">{text}</div>;
+  }
+
+  // 助手消息：扫描代码块，文本段走 markdown 渲染，代码块走预览卡片
   const segments = useMemo(() => {
-    if (!isAssistant || !text) return null;
+    if (!text) return null;
     const blocks = extractCodeBlocks(text);
     if (blocks.length === 0) return null;
 
@@ -60,11 +66,11 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
       segs.push({ type: 'text', value: text.slice(cursor) });
     }
     return segs;
-  }, [isAssistant, text]);
+  }, [text]);
 
-  // 无代码块时走原渲染路径
+  // 无代码块：整体 markdown 渲染
   if (!segments) {
-    return <div className="task-message-text">{text}</div>;
+    return <Markdown content={text} />;
   }
 
   const handlePreview = useCallback(
@@ -80,10 +86,10 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
   );
 
   return (
-    <div className="task-message-text">
+    <div className="task-message-markdown">
       {segments.map((seg, idx) => {
         if (seg.type === 'text') {
-          return <span key={idx}>{seg.value}</span>;
+          return <Markdown key={idx} content={seg.value} />;
         }
         const previewable = isPreviewable(seg.lang);
         return (
@@ -149,25 +155,9 @@ export function TaskMessageList({ messages, status }: Props) {
             data-message-id={msg.id}
             className={`task-message${isUser ? ' task-message-user' : ' task-message-assistant'}`}
           >
-            {!isUser && (
-              <div className="task-message-avatar task-message-avatar-ai">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M12 2a4 4 0 014 4c0 2.5-1.5 4-4 6-2.5-2-4-3.5-4-6a4 4 0 014-4z"/>
-                  <path d="M8 14c-3 1-6 3-6 6v1h20v-1c0-3-3-5-6-6"/>
-                </svg>
-              </div>
-            )}
             <div className={`task-message-content${isUser ? ' task-message-content-user' : ''}`}>
               <MessageContent msg={msg} text={text} />
             </div>
-            {isUser && (
-              <div className="task-message-avatar task-message-avatar-user">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="12" cy="8" r="4"/>
-                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                </svg>
-              </div>
-            )}
           </div>
         );
       })}
@@ -180,10 +170,12 @@ export function TaskMessageList({ messages, status }: Props) {
             </svg>
           </div>
           <div className="task-message-content">
-            <div className="task-thinking-indicator">
-              <span className="task-dot" />
-              <span className="task-dot" />
-              <span className="task-dot" />
+            <div className="task-message-text">
+              <div className="task-thinking-indicator">
+                <span className="task-dot" />
+                <span className="task-dot" />
+                <span className="task-dot" />
+              </div>
             </div>
           </div>
         </div>
