@@ -9,9 +9,13 @@ import type { ChatMessagesData } from '../types/tdesign';
  * 扩展的聊天消息类型，添加前端需要的反馈字段。
  * 历史消息从后端加载时通过 convertMessages 填充此字段；
  * 流式生成的新消息也兼容此类型（feedback 为 undefined 时等同于 'none'）。
+ *
+ * metadata 字段用于任务模式判断 assistant 消息是否含 plan 数据
+ * （metadata.plan_phase 存在则该消息关联了持久化的时间轴步骤）。
  */
 export type ChatMessageData = ChatMessagesData & {
   feedback?: FeedbackType;
+  metadata?: Record<string, any>;
 };
 
 /** 将后端 Message 转换为 ChatMessageData */
@@ -26,6 +30,7 @@ export function convertMessages(messages: Message[]): ChatMessageData[] {
           content: [{ type: 'text' as const, data: m.content }],
           datetime: m.createdAt,
           feedback: m.feedback,
+          metadata: m.metadata,
         } as ChatMessageData;
       }
 
@@ -56,6 +61,7 @@ export function convertMessages(messages: Message[]): ChatMessageData[] {
         content,
         datetime: m.createdAt,
         feedback: m.feedback,
+        metadata: m.metadata,
       } as ChatMessageData;
     });
 }

@@ -123,6 +123,7 @@ model ChatMessage {
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   parentMessage  ChatMessage?   @relation("MessageParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
   childMessages  ChatMessage[]  @relation("MessageParent")
+  planSteps      PlanStep[]
 
   @@map("chat_messages")
 }
@@ -224,3 +225,34 @@ model AgentToolExecution {
 
   @@map("agent_tool_executions")
 }
+
+// ===== 10. plan_steps =====
+// Plan-and-Execute 任务步骤终态持久化（时间轴恢复数据源）
+// 表结构由 Python init_db() 维护，TS 侧仅 generate Client，绝不 migrate / db push。
+model PlanStep {
+  id          String    @id @db.VarChar(64)
+  messageId   String    @map("message_id") @db.VarChar(64)
+  sessionId   String    @map("session_id") @db.VarChar(64)
+  userId      String    @map("user_id") @db.VarChar(64)
+  stepId      String    @map("step_id") @db.VarChar(100)
+  stepIndex   Int       @map("step_index")
+  title       String    @db.VarChar(500)
+  description String?   @db.Text
+  dependsOn   Json?     @map("depends_on")
+  status      String    @db.VarChar(20)
+  result      String?   @db.Text
+  error       String?   @db.Text
+  startedAt   DateTime? @map("started_at") @db.Timestamptz
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz
+  durationMs  Int?      @map("duration_ms")
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, stepIndex], map: "idx_plan_steps_message")
+  @@index([sessionId], map: "idx_plan_steps_session")
+  @@map("plan_steps")
+}
+

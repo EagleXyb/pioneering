@@ -37,6 +37,9 @@ export class StreamContext {
   // P4: Plan-Execute 元数据，供持久化与状态恢复
   planData: Record<string, any>[] = []
   stepUpdates: Record<string, any>[] = []
+  // P4: Plan 终态元数据（供 persistAssistantMessage 写入 chat_messages.metadata）
+  planPhase: 'done' | 'error' | null = null
+  planError: string | null = null
 
   finish(): void {
     this.latencyMs = Date.now() - this.startTime
@@ -245,9 +248,6 @@ function collectMetadataFromEvent(
         break
       }
     }
-  } else if (eventType === 'RUN_ERROR') {
-    ctx.hasError = true
-    ctx.errorInfo = { code: data.code ?? '', message: data.message ?? '' }
   } else if (eventType === 'STATE_DELTA') {
     // P4: 收集 Plan-Execute 元数据，供持久化与前端状态恢复
     const phase = data.phase ?? ''
@@ -256,5 +256,70 @@ function collectMetadataFromEvent(
     } else if (phase === 'execute' && data.step_update) {
       ctx.stepUpdates.push(data.step_update)
     }
+  } else if (eventType === 'RUN_FINISHED') {
+    // P4: Plan 终态阶段标记（供 persistAssistantMessage 写入 metadata.plan_phase）
+    ctx.planPhase = 'done'
+  } else if (eventType === 'RUN_ERROR') {
+    ctx.hasError = true
+    ctx.errorInfo = { code: data.code ?? '', message: data.message ?? '' }
+    // P4: Plan 终态阶段标记（error 时同时记录错误信息）
+    ctx.planPhase = 'error'
+    ctx.planError = data.message ?? null
   }
 }
+
+// ============================================================
+// mergePlanSteps: 将 planData + stepUpdates 合并为步骤终态
+// ============================================================
+
+export interface MergedPlanStep {
+  step_id: string
+  title: string
+  description: string
+  depends_on?: string[]
+  status: 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+  result?: string
+  error?: string
+  started_at?: number   // ms 时间戳
+  finished_at?: number  // ms 时间戳
+}
+
+/**
+ * 将 StreamContext 收集的 planData（最后一次 plan 快照）与
+ * stepUpdates（全量步骤更新日志，跨 replan 累积）合并为步骤终态。
+ *
+ * 合并规则：
+ *   1. 以最新 plan 快照为骨架（status 初始 pending）
+ *   2. 按顺序应用 step_update（同 id 后写覆盖前写）
+ *   3. 跳过不在最新 plan 中的 step_id（replan 前已失效的步骤不持久化）
+ *   4. 保序输出（planData 顺序即为 rootIds 顺序）
+ */
+export function mergePlanSteps(
+  planData: Record<string, any>[],
+  stepUpdates: Record<string, any>[],
+): MergedPlanStep[] {
+  const map = new Map<string, MergedPlanStep>()
+  for (const s of planData) {
+    const id = s.step_id ?? s.id ?? ''
+    if (!id) continue
+    map.set(id, {
+      step_id: id,
+      title: s.title ?? '',
+      description: s.description ?? '',
+      depends_on: s.depends_on,
+      status: s.status ?? 'pending',
+    })
+  }
+  for (const u of stepUpdates) {
+    const id = u.id ?? ''
+    const step = map.get(id)
+    if (!step) continue  // 跳过 replan 前已失效的 step_id
+    if (u.status) step.status = u.status
+    if (u.result !== undefined) step.result = u.result
+    if (u.error !== undefined) step.error = u.error
+    if (u.started_at !== undefined) step.started_at = u.started_at
+    if (u.finished_at !== undefined) step.finished_at = u.finished_at
+  }
+  return Array.from(map.values())
+}
+

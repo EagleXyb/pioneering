@@ -85,3 +85,32 @@ export const ExecutionResultResponseSchema = z.object({
   executionId: z.string(),
   outputResult: z.string().nullable().optional(),
 })
+
+// ============================================================
+// P4: Plan-and-Execute 时间轴快照响应（GET /agent/messages/:id/plan）
+// ============================================================
+
+// 单个持久化步骤（与 plan_steps 表对齐）
+export const PlanStepSnapshotSchema = z.object({
+  step_id: z.string(),
+  step_index: z.number(),
+  title: z.string(),
+  description: z.string(),
+  depends_on: z.array(z.string()).optional(),
+  status: z.enum(['pending', 'running', 'done', 'failed', 'skipped']),
+  result: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+  started_at: z.number().nullable().optional(),
+  finished_at: z.number().nullable().optional(),
+  duration_ms: z.number().nullable().optional(),
+})
+
+// GET /agent/messages/:id/plan 完整响应
+export const PlanSnapshotResponseSchema = z.object({
+  messageId: z.string(),
+  phase: z.enum(['done', 'error']).nullable(),
+  error: z.string().nullable(),
+  collapsedSteps: z.record(z.boolean()),
+  steps: z.array(PlanStepSnapshotSchema),
+})
+

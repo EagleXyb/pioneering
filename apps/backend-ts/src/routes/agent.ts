@@ -13,7 +13,7 @@ import {
   AgentChatRequestSchema,
   AgentFeedbackRequestSchema,
 } from '../schemas/agent.js'
-import { StreamContext, streamAgentCompletion } from '../core/agent-bridge.js'
+import { StreamContext, streamAgentCompletion, mergePlanSteps } from '../core/agent-bridge.js'
 
 // 对应 Python: _verify_session_owner
 // 验证会话存在且属于当前用户，否则抛 NotFoundError("会话不存在")
@@ -49,6 +49,8 @@ function sessionToResponse(s: ChatSession) {
 
 // 对应 Python: _message_to_response
 // 注意字段映射：promptTokens、completionTokens、latencyMs、userRating、userFeedback
+// P4: 补 metadata 字段（Prisma 字段名为 extraMetadata，映射到 DB 列 metadata），
+//     供前端判断该 assistant 消息是否含 plan 数据（metadata.plan_phase 存在即关联了持久化步骤）。
 function messageToResponse(m: ChatMessage) {
   return {
     id: m.id,
@@ -56,6 +58,7 @@ function messageToResponse(m: ChatMessage) {
     role: m.role,
     content: m.content ?? '',
     contentBlocks: m.contentBlocks,
+    metadata: m.extraMetadata,
     promptTokens: m.promptTokens,
     completionTokens: m.completionTokens,
     latencyMs: m.latencyMs,
@@ -105,13 +108,22 @@ async function loadSessionHistory(
 }
 
 // 对应 Python: agent_completion 中的持久化逻辑
-// 流结束后持久化 assistant 消息 + 工具执行记录，并更新会话计数
+// 流结束后持久化 assistant 消息 + 工具执行记录 + plan 步骤终态，并更新会话计数
+// P4: 新增 plan_steps 持久化（仅当本次产生过 plan 数据时），
+//     并在 chat_messages.metadata 写入 plan_phase / plan_error 终态元数据。
+//     注意：Prisma 字段名为 extraMetadata（映射到 DB 列 metadata），写入时使用 extraMetadata。
 async function persistAssistantMessage(
   prisma: PrismaClient,
   opts: { sessionId: string; userId: string; ctx: StreamContext },
-): Promise<ChatMessage> {
+): Promise<{ assistantMsg: ChatMessage; planStepsCount: number }> {
   const { sessionId, userId, ctx } = opts
   const assistantMsgId = genId('msg_')
+
+  // 仅当本次产生过 plan 数据时才写入 metadata（避免污染非 plan_execute 消息）
+  const hasPlanData = ctx.planData.length > 0
+  const extraMetadata = hasPlanData
+    ? { plan_phase: ctx.planPhase ?? 'done', plan_error: ctx.planError }
+    : undefined
 
   const assistantMsg = await prisma.chatMessage.create({
     data: {
@@ -124,8 +136,38 @@ async function persistAssistantMessage(
       promptTokens: ctx.promptTokens || null,
       completionTokens: ctx.completionTokens || null,
       latencyMs: ctx.latencyMs || null,
+      // P4: plan 终态元数据（Prisma 字段名 extraMetadata，映射 DB 列 metadata）
+      extraMetadata: extraMetadata ?? undefined,
     },
   })
+
+  // ===== P4 新增：持久化 plan 步骤终态 =====
+  let planStepsCount = 0
+  if (hasPlanData) {
+    const merged = mergePlanSteps(ctx.planData, ctx.stepUpdates)
+    for (let i = 0; i < merged.length; i++) {
+      const s = merged[i]
+      await prisma.planStep.create({
+        data: {
+          id: genId('pstep_'),
+          messageId: assistantMsgId,
+          sessionId,
+          userId,
+          stepId: s.step_id,
+          stepIndex: i,
+          title: s.title,
+          description: s.description ?? null,
+          dependsOn: s.depends_on ?? undefined,
+          status: s.status,
+          result: s.result ?? null,
+          error: s.error ?? null,
+          startedAt: s.started_at ? new Date(s.started_at) : null,
+          finishedAt: s.finished_at ? new Date(s.finished_at) : null,
+        },
+      })
+    }
+    planStepsCount = merged.length
+  }
 
   // 持久化工具执行记录（对应 Python: for te in ctx.tool_executions: ...）
   for (const te of ctx.toolExecutions) {
@@ -155,7 +197,7 @@ async function persistAssistantMessage(
     },
   })
 
-  return assistantMsg
+  return { assistantMsg, planStepsCount }
 }
 
 export const agentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -347,7 +389,13 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           // 流前异常时不持久化（对齐 Python: event_generator 抛错时持久化代码不执行）
           if (!streamError) {
             try {
-              await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+              const { planStepsCount } = await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+              if (planStepsCount > 0) {
+                fastify.log.info(
+                  { sessionId, planStepsCount },
+                  '[agent.completions] persist.plan_steps',
+                )
+              }
             } catch (e: any) {
               // 持久化失败不影响已发送的 SSE 流
               fastify.log.error({ err: e, sessionId }, 'Failed to persist agent assistant message')
@@ -374,8 +422,85 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           // 仅消费，不输出
         }
 
-        const assistantMsg = await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+        const { assistantMsg, planStepsCount } = await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+        if (planStepsCount > 0) {
+          fastify.log.info(
+            { sessionId, planStepsCount },
+            '[agent.completions] persist.plan_steps',
+          )
+        }
         return messageToResponse(assistantMsg)
+      })
+
+      // ========== Plan 步骤时间轴恢复 ==========
+
+      // GET /agent/messages/:messageId/plan
+      // 返回该 assistant 消息关联的 plan 步骤快照（按 step_index 升序），
+      // 供前端 hydrateFromHistory 恢复历史时间轴。
+      // 注意：Prisma 字段名为 extraMetadata（映射 DB 列 metadata）。
+      app.get('/messages/:messageId/plan', buildSchema({
+        params: z.object({ messageId: z.string() }),
+        tags: ['agent'],
+        summary: '获取消息的任务步骤时间轴（持久化恢复用）',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const { messageId } = req.params as { messageId: string }
+        const msg = await fastify.prisma.chatMessage.findFirst({
+          where: { id: messageId, userId: req.user.id },
+        })
+        if (!msg) throw new NotFoundError('消息不存在')
+
+        const steps = await fastify.prisma.planStep.findMany({
+          where: { messageId },
+          orderBy: { stepIndex: 'asc' },
+        })
+        const meta = (msg.extraMetadata as any) ?? {}
+        return {
+          messageId,
+          phase: meta.plan_phase ?? null,
+          error: meta.plan_error ?? null,
+          collapsedSteps: meta.collapsed_steps ?? {},
+          steps: steps.map((s) => ({
+            step_id: s.stepId,
+            step_index: s.stepIndex,
+            title: s.title,
+            description: s.description ?? '',
+            depends_on: s.dependsOn ?? [],
+            status: s.status,
+            result: s.result ?? undefined,
+            error: s.error ?? undefined,
+            started_at: s.startedAt ? new Date(s.startedAt).getTime() : undefined,
+            finished_at: s.finishedAt ? new Date(s.finishedAt).getTime() : undefined,
+            duration_ms: s.durationMs ?? undefined,
+          })),
+        }
+      })
+
+      // POST /agent/messages/:messageId/plan/collapsed
+      // 回传用户手动折叠状态快照（流结束后由前端调用，保视觉细节）。
+      // 合并现有 metadata（保留 plan_phase/plan_error），追加 collapsed_steps。
+      app.post('/messages/:messageId/plan/collapsed', buildSchema({
+        params: z.object({ messageId: z.string() }),
+        body: z.object({ collapsedSteps: z.record(z.boolean()) }),
+        tags: ['agent'],
+        summary: '回传时间轴折叠状态快照',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const { messageId } = req.params as { messageId: string }
+        const dto = req.body as { collapsedSteps: Record<string, boolean> }
+        const msg = await fastify.prisma.chatMessage.findFirst({
+          where: { id: messageId, userId: req.user.id },
+        })
+        if (!msg) throw new NotFoundError('消息不存在')
+
+        // 合并现有 metadata（保留 plan_phase/plan_error），追加 collapsed_steps
+        const existingMeta = (msg.extraMetadata as any) ?? {}
+        const newMeta = { ...existingMeta, collapsed_steps: dto.collapsedSteps }
+        await fastify.prisma.chatMessage.update({
+          where: { id: messageId },
+          data: { extraMetadata: newMeta },
+        })
+        return { message: '折叠状态已保存' }
       })
 
       // ========== 工具执行轨迹查询 ==========

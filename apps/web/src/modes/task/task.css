@@ -942,6 +942,16 @@
   animation: timeline-spin 0.8s linear infinite;
 }
 
+/* 历史恢复模式：禁用所有 running 脉冲/spinner 动画，保证展示与初次生成像素级一致。
+ * 触发：PlanPipelineTree 根节点 data-source="history"（来自 planExecuteStore.source）。
+ * 历史快照中不应出现 running 态，此处为防御性兜底。 */
+.timeline-tree[data-source="history"] .timeline-item--running .timeline-dot {
+  animation: none;
+}
+.timeline-tree[data-source="history"] .timeline-dot-spinner {
+  animation: none;
+}
+
 @keyframes timeline-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

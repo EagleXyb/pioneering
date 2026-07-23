@@ -35,15 +35,21 @@ export default function TaskMode() {
   const showResizer = hasActiveArtifact || pipelineOpen;
 
   // P4: 替换 useChat 为 usePlanExecuteChat，支持 STATE_DELTA 事件
-  const { messages, status, sendMessage, abort, reset } = usePlanExecuteChat(activeId);
+  const { messages, status, sendMessage, abort, reset, loadHistory } = usePlanExecuteChat(activeId);
 
   useChatSync(activeId, messages);
 
-  // 切换会话时清理 artifact 状态和 plan 状态，避免上一个会话的残留
+  // 切换会话时清理 artifact 状态；并从后端恢复历史消息与 plan 时间轴快照
+  // - temp_ 前缀的临时会话：仅 reset（后端尚未创建，无可恢复数据）
+  // - 真实会话：调 loadHistory 拉取消息并装配 plan 终态（source='history'）
   useEffect(() => {
     resetArtifact();
-    reset();
-  }, [activeId, resetArtifact, reset]);
+    if (activeId && !activeId.startsWith('temp_')) {
+      void loadHistory(activeId);
+    } else {
+      reset();
+    }
+  }, [activeId, resetArtifact, reset, loadHistory]);
 
   if (!activeId) {
     return (

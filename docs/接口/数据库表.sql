@@ -200,3 +200,50 @@ CREATE TABLE user_quotas (
     CONSTRAINT fk_quotas_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 COMMENT ON TABLE user_quotas IS '用户配额表';
+
+-- 9. Plan-and-Execute 任务步骤表
+CREATE TABLE plan_steps (
+    id VARCHAR(64) PRIMARY KEY,
+    message_id VARCHAR(64) NOT NULL,          -- 关联的 assistant 消息 ID
+    session_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+
+    -- 步骤规划信息（来自 planner 节点输出）
+    step_id VARCHAR(100) NOT NULL,             -- 逻辑 step_id（如 step_1）
+    step_index INT NOT NULL,                  -- 展示顺序（0-based，保序）
+
+    -- 步骤文案
+    title VARCHAR(500) NOT NULL,
+    description TEXT,
+    depends_on JSONB,                          -- 依赖步骤 ID 数组
+
+    -- 步骤执行状态与结果（来自 step_finalize 合并后的终态）
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending','running','done','failed','skipped')),
+    result TEXT,                               -- 步骤结果摘要（≤500 字符）
+    error TEXT,                                -- 失败原因
+
+    -- 时间戳（来自 step_update）
+    started_at TIMESTAMPTZ,                    -- step_update.started_at
+    finished_at TIMESTAMPTZ,                   -- step_update.finished_at
+    duration_ms INT GENERATED ALWAYS AS (
+        CASE WHEN started_at IS NOT NULL AND finished_at IS NOT NULL
+             THEN EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000
+             ELSE NULL END
+    ) STORED,
+
+    -- 扩展元数据（replan 代际、tool_refs 等）
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_plan_steps_message FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_steps_session FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+);
+COMMENT ON TABLE plan_steps IS 'Plan-and-Execute 任务步骤表（时间轴步骤终态持久化）';
+COMMENT ON COLUMN plan_steps.step_id IS '逻辑步骤 ID（planner 输出，如 step_1）';
+COMMENT ON COLUMN plan_steps.step_index IS '展示顺序（保序，0-based）';
+COMMENT ON COLUMN plan_steps.status IS '步骤终态：pending/running/done/failed/skipped';
+COMMENT ON COLUMN plan_steps.result IS '步骤结果摘要（step_finalize 输出，≤500 字符）';
+COMMENT ON COLUMN plan_steps.duration_ms IS '步骤执行耗时（毫秒），自动计算';
+CREATE INDEX idx_plan_steps_message ON plan_steps(message_id, step_index);
+CREATE INDEX idx_plan_steps_session ON plan_steps(session_id);

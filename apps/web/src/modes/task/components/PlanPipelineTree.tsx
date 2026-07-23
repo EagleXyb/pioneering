@@ -225,6 +225,8 @@ export function PlanPipelineTree() {
   const error = usePlanExecuteStore((s) => s.error);
   const collapsedSteps = usePlanExecuteStore((s) => s.collapsedSteps);
   const toggleStep = usePlanExecuteStore((s) => s.toggleStep);
+  // 数据来源标记：history 时禁用 running 脉冲动画，保证历史展示与初次生成像素级一致
+  const source = usePlanExecuteStore((s) => s.source);
 
   const total = rootIds.length;
   const done = rootIds.filter((id) => items[id]?.status === 'done').length;
@@ -260,7 +262,7 @@ export function PlanPipelineTree() {
   }
 
   return (
-    <div className="timeline-tree">
+    <div className="timeline-tree" data-source={source}>
       <div className="timeline-summary">
         <span className="timeline-summary-text">
           已完成 <strong>{done}</strong> / {total} 步
