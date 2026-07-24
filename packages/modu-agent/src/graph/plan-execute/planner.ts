@@ -80,11 +80,13 @@ function _parsePlan(raw: string, maxSteps: number): PlanStep[] | null {
   }
   const steps = parsed.data.steps.slice(0, maxSteps)
   // 规整化 step_id 为 step_{i}，保证游标与前端索引一致
+  // P2-优化修复: 保留 requires_tool 字段，使 step_finalize 的工具调用校验生效
   return steps.map((s, i) => ({
     step_id: `step_${i + 1}`,
     title: s.title,
     description: s.description,
     ...(s.depends_on ? { depends_on: s.depends_on } : {}),
+    ...(s.requires_tool !== undefined ? { requires_tool: s.requires_tool } : {}),
     status: 'pending' as const,
   }))
 }

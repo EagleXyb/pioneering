@@ -10,6 +10,14 @@ export interface PlanStep {
   description: string
   depends_on?: string[]
   status: 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+  /**
+   * P2-优化: 标记该步骤是否必须调用工具获取外部/实时数据。
+   * - true: step_finalize 会校验是否实际调用了工具，未调用则判失败触发重规划
+   * - false/undefined: 不强制工具调用（常规推理/总结类步骤）
+   *
+   * 由 Planner 根据 step description 内容判定（涉及天气/新闻/价格/日期等实时数据时置 true）。
+   */
+  requires_tool?: boolean
 }
 
 export const PlanStepSchema = z.object({
@@ -18,6 +26,7 @@ export const PlanStepSchema = z.object({
   description: z.string().min(1),
   depends_on: z.array(z.string()).optional(),
   status: z.enum(['pending', 'running', 'done', 'failed', 'skipped']).default('pending'),
+  requires_tool: z.boolean().optional(),
 })
 
 export const PlanSchema = z.object({

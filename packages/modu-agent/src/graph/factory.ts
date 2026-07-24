@@ -27,6 +27,7 @@ import { EvolutionOrchestrator } from '../evolution/evolution-orchestrator.js'
 import { getMcpClient } from '../mcp/client.js'
 import { SkillLoader } from '../skills/loader.js'
 import { SkillPromptAggregator } from '../skills/prompt-aggregator.js'
+import { CalculatorTool, DateTimeTool, SearchTool } from '../tools/index.js'
 import { build_chat_model } from './adapters/llm-adapter.js'
 import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
 import { apply_llm_retry } from './adapters/retry.js'
@@ -40,6 +41,24 @@ const logger = {
   error: (msg: string, ...args: any[]) => console.error(`[factory] ${msg}`, ...args),
   debug: (msg: string, ...args: any[]) => console.debug(`[factory] ${msg}`, ...args),
 }
+
+/**
+ * 默认防幻觉系统提示词（P0-优化）。
+ *
+ * 当宿主应用未传入 system_prompt 时使用，约束 LLM：
+ *   - 涉及实时/外部数据时必须调用工具获取，禁止凭参数化记忆编造
+ *   - 无可用工具时明确告知用户，而非猜测
+ *   - 时间敏感问题必须先调用 datetime 工具
+ *
+ * 仅作为底线约束，宿主传入的 system_prompt 优先级更高。
+ */
+const _DEFAULT_ANTI_HALLUCINATION_PROMPT = `You are a helpful AI assistant. Strict rules:
+1. NEVER fabricate real-time data (weather, news, stock prices, dates, current events, etc.). If the user asks about real-time information, you MUST call an available tool (e.g. search_engine, http_request, datetime) to obtain it.
+2. You MUST attempt to call an available tool first for any real-time/external data request. Only if NO tool in your toolset can possibly fulfill the request, explicitly state "I don't have real-time data access for this" — but first check all available tools carefully, as search_engine can fetch weather/news/prices and datetime can fetch current date/time.
+3. When executing a plan step that requires external data, you MUST call an appropriate tool. Do not produce the data from your parametric memory.
+4. Always use the datetime tool to obtain the current date/time before answering time-sensitive questions.
+5. If you are unsure whether information is real-time, treat it as real-time and call a tool.
+6. NEVER claim "I cannot access the internet" or "I cannot get real-time data" if you have tools available (especially search_engine). Calling search_engine IS your internet access.`
 
 /**
  * 构建检查点保存器。
@@ -298,6 +317,29 @@ export async function create_agent(
   )
 
   // 工具（支持运行时覆盖工具集；P2-8: 传入 config 启用工具重试）
+  // P0-优化: 默认注册无风险内置工具（DateTimeTool/SearchTool/CalculatorTool），
+  // 使防幻觉 system prompt 中引用的工具实际可用。受 tools.register_defaults 配置控制，
+  // 宿主可设为 false 关闭。注册幂等，已存在则跳过。
+  // HttpRequestTool/FileOpsTool/SqlQueryTool/CodeExecutionTool 因需审批或需配置，
+  // 不默认注册，由宿主按需注册。
+  if (runtimeConfig.get('tools.register_defaults', true)) {
+    const registry = getRegistry()
+    const defaults = [
+      { name: 'datetime', ctor: () => new DateTimeTool() },
+      { name: 'search_engine', ctor: () => new SearchTool() },
+      { name: 'calculator', ctor: () => new CalculatorTool() },
+    ]
+    for (const t of defaults) {
+      if (registry.getTool(t.name) === undefined) {
+        try {
+          registry.registerTool(t.ctor())
+        } catch (e: any) {
+          logger.warning("Failed to register default tool '%s': %s", t.name, String(e))
+        }
+      }
+    }
+  }
+
   // MCP 工具发现：从已连接的 MCP Server 发现远程工具并注册到 ComponentRegistry
   // gated by mcp.enabled（默认关闭，零侵入）；失败不影响 Agent 启动
   if (runtimeConfig.get('mcp.enabled', false)) {
@@ -329,8 +371,9 @@ export async function create_agent(
     runtimeConfig.get('memory.store_type', 'chroma')
   const store = build_store(storeType)
 
-  // 系统提示词
-  let effectiveSystemPrompt = configurable['system_prompt'] ?? systemPrompt ?? null
+  // 系统提示词（P0-优化: 宿主未传入时使用默认防幻觉 prompt 作为底线约束）
+  let effectiveSystemPrompt =
+    configurable['system_prompt'] ?? systemPrompt ?? _DEFAULT_ANTI_HALLUCINATION_PROMPT
 
   // P1: 聚合已注册 Skill 的提示片段（gated by skills.enabled；无 Skill 时返回原提示）
   if (runtimeConfig.get('skills.enabled', false)) {

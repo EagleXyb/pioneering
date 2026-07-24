@@ -412,15 +412,16 @@ async create_agent(config?, runtimeConfig?, systemPrompt?): Promise<ModuGraph>
 2. 解析 `config.configurable`（LLM provider/temperature/max_tokens/model/tools/checkpointer_type/store_type/system_prompt 等）
 3. Skills 动态加载（gated by `skills.enabled`）
 4. `build_chat_model()` 构建 LLM
-5. MCP 工具发现（gated by `mcp.enabled`）
-6. `build_langchain_tools()` 构建工具列表
-7. `llm.bindTools(tools)` + `apply_llm_retry()`（先绑定工具再应用重试）
-8. `build_checkpointer()` + `build_store()`
-9. 解析 systemPrompt + SkillPromptAggregator 聚合
-10. EvolutionOrchestrator（gated by `feedback.enable_evolution`）+ `_build_judge_llm()`
-11. 共识策略 judge LLM 注入
-12. `buildModuGraph()` 编译图（传入 `planExecuteEnabled` + `rawLlm`）
-13. `new ModuGraph(compiled, orchestrator)` 包装
+5. **默认工具注册**（P0-优化, gated by `tools.register_defaults` 默认 true）：幂等注册 `DateTimeTool` / `SearchTool` / `CalculatorTool`
+6. MCP 工具发现（gated by `mcp.enabled`）
+7. `build_langchain_tools()` 构建工具列表
+8. `llm.bindTools(tools)` + `apply_llm_retry()`（先绑定工具再应用重试）
+9. `build_checkpointer()` + `build_store()`
+10. 解析 systemPrompt：`configurable['system_prompt'] ?? systemPrompt ?? _DEFAULT_ANTI_HALLUCINATION_PROMPT`（P0-优化: 宿主未传入时使用默认防幻觉 prompt 约束 LLM 必须调用工具获取实时数据）+ SkillPromptAggregator 聚合
+11. EvolutionOrchestrator（gated by `feedback.enable_evolution`）+ `_build_judge_llm()`
+12. 共识策略 judge LLM 注入
+13. `buildModuGraph()` 编译图（传入 `planExecuteEnabled` + `rawLlm`）
+14. `new ModuGraph(compiled, orchestrator)` 包装
 
 辅助函数：
 - `build_checkpointer(type='memory')` — memory → `MemorySaver`；sqlite → 动态 `import('@langchain/langgraph-checkpoint-sqlite')` 取 `SqliteSaver.fromConnString('checkpoints.db')`，失败降级 MemorySaver；none → null
@@ -495,7 +496,7 @@ apiKey 解析优先级：`process.env[pcfg.api_key] || process.env.LLM_API_KEY |
 [plan-execute/](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/index.ts) 导出：types（`PlanStep` / `PlanStepSchema` / `PlanSchema` / `StepResult` / `PlanStateDelta`）、prompts（`buildToolCatalogText` / `buildPlannerSystemPrompt` / `buildReplanContext`）、planner（`makePlannerNode` / `routeAfterPlan`）、dispatcher（`makeStepDispatchNode` / `stepDispatch` / `makeStepFinalizeNode`）、context（`makePlanContextInjector`）。
 
 **核心类型**：
-- `PlanStep`：`{ step_id, title, description, depends_on?, status: 'pending'|'running'|'done'|'failed'|'skipped' }`
+- `PlanStep`：`{ step_id, title, description, depends_on?, status: 'pending'|'running'|'done'|'failed'|'skipped', requires_tool? }`（P2-优化: 新增 `requires_tool` 布尔字段，标记需要外部/实时数据的步骤，由 Planner 判定，step_finalize 据此校验是否实际调用了工具）
 - `PlanSchema`（zod）：`{ goal: string, steps: PlanStepSchema[].min(1).max(20) }`
 - `StepResult`：`{ step_id, status: 'done'|'failed', output, tool_refs, error?, started_at?, finished_at? }`
 - `PlanStateDelta`（SSE STATE_DELTA payload）：`{ phase: 'plan'|'execute'|'finalize', plan?, step_update? }`
@@ -519,13 +520,17 @@ apiKey 解析优先级：`process.env[pcfg.api_key] || process.env.LLM_API_KEY |
 
 **Step Finalize 节点**（`makeStepFinalizeNode()`）：
 - 以 `step_msg_baseline` 为基线截取本步新增消息
-- 失败判定：`!lastAiContent && toolRefs.length===0`
+- 失败判定（P2-优化: 增加 `requires_tool` 校验）：
+  - `requires_tool=true` 但 `toolRefs.length===0` → failed（防止 LLM 编造外部数据）
+  - `!lastAiContent && toolRefs.length===0` → failed（原有兜底）
+- 失败时 `stepResult.error` 区分原因：missingToolCall 注入"必须调用工具"提示，便于重规划
 - 返回 `{ plan: updatedPlan, step_results: [stepResult], current_step_index: idx+1, current_step: {}, plan_phase, plan_delta: { phase:'execute', step_update:{id, status, result, finished_at} } }`
 
 **Context Injector**（`makePlanContextInjector()`）：
 - 检查 `plan_phase==='executing'` 且 `current_step`/`plan` 非空
 - 构造 `Current step ${idx+1}/${plan.length} (${stepId}): ${title}\n${description}`
 - 前序步骤摘要（仅本代际，按 `replan_count` 过滤，maxChars 截断）
+- **P1-优化**: `requires_tool=true` 的步骤追加 IMPORTANT 提醒，显式约束 LLM 必须调用工具获取数据，禁止编造
 
 **与 multi_agent 互斥**：`buildModuGraph` 中 `multiAgentEnabled && planExecuteEnabled` 时强制 `planExecuteEnabled=false`（multi_agent 优先）。原因：两者都消费 `memory_query → 推理入口` 边。
 
@@ -537,7 +542,9 @@ apiKey 解析优先级：`process.env[pcfg.api_key] || process.env.LLM_API_KEY |
 
 **职责**: 提供开箱即用的工具实现，均继承 `BaseTool`（`SyncActionExecutor` 例外，继承 `BaseActionExecutor`）。
 
-[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) **仅导出 3 个核心符号**：`SyncActionExecutor` / `CalculatorTool` / `SearchTool`。其余 5 个工具需直接 import 文件路径。
+[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) **完整 barrel 导出全部 8 个工具**（P0-优化: 已从 3 个补齐为 8 个）：`SyncActionExecutor` / `CalculatorTool` / `SearchTool` / `DateTimeTool` / `HttpRequestTool` / `FileOpsTool` / `CodeExecutorTool` / `SqlQueryTool`。
+
+**默认工具注册**（P0-优化: factory.ts 中实现）：`create_agent()` 默认注册 3 个无风险工具（`DateTimeTool` / `SearchTool` / `CalculatorTool`），受 `tools.register_defaults` 配置控制（默认 true），幂等注册。`HttpRequestTool` / `FileOpsTool` / `SqlQueryTool` / `CodeExecutorTool` 因需审批或需配置，不默认注册，由宿主按需注册。
 
 | 工具 | 文件 | name() | requiresApproval | 说明 |
 |------|------|--------|------------------|------|
@@ -1443,7 +1450,7 @@ finalize_response
 
 | 模块 | 现状 | 问题 |
 |------|------|------|
-| [tools/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) | 仅导出 3 个符号（`SyncActionExecutor`/`CalculatorTool`/`SearchTool`） | 其余 5 个工具需直接 import 文件路径 |
+| [tools/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) | ✅ 完整 barrel 导出全部 8 个工具（P0-优化: 已从 3 个补齐为 8 个） | 已解决，无问题 |
 | [perception/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/index.ts) | 仅导出 2 个工具函数 | 非 barrel，不重导出 pipeline/fusion/子模块类 |
 | [reasoning/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/index.ts) | 完整 barrel | 一致 |
 | [mcp/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/index.ts) | 完整 barrel | 一致 |

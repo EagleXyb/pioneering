@@ -65,12 +65,14 @@ Rules:
       "title": "<short step title>",
       "description": "<concrete instruction for the executor>",
       "depends_on": ["step_0"],
-      "status": "pending"
+      "status": "pending",
+      "requires_tool": false
     }
   ]
 }
 4. step_id must follow the pattern step_<N> starting from step_1. depends_on is optional.
-5. Do NOT include any reasoning, commentary, or explanation outside the JSON object.${replanSection}`
+5. Do NOT include any reasoning, commentary, or explanation outside the JSON object.
+6. requires_tool (boolean, default false): Set to true if this step requires external/real-time data (e.g. weather, news, stock prices, current date/time, API data, database queries). For such steps, name the specific tool to use in the description (e.g. "Call search_engine to fetch ..."). The executor MUST call a tool for requires_tool=true steps and is forbidden from fabricating data. Set to false for pure reasoning/summarization/formatting steps.${replanSection}`
 }
 
 /**

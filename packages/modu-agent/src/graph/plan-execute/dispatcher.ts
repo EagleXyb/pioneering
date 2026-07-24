@@ -224,8 +224,13 @@ export function makeStepFinalizeNode(): (
       }
     }
 
-    // 失败判定：最终无 AI 输出且无任何工具产出
-    const failed = !lastAiContent && toolRefs.length === 0
+    // 失败判定（P2-优化: 增加 requires_tool 校验）：
+    //   1. requires_tool=true 但未调用任何工具 → failed（防止 LLM 编造外部数据）
+    //   2. 最终无 AI 输出且无任何工具产出 → failed（原有兜底判定）
+    const requiresTool = Boolean(step['requires_tool'])
+    const missingToolCall = requiresTool && toolRefs.length === 0
+    const noOutput = !lastAiContent && toolRefs.length === 0
+    const failed = missingToolCall || noOutput
     const status: StepResult['status'] = failed ? 'failed' : 'done'
 
     // 3. 组装步骤结果（replan 代际标签隔离重规划前旧结果）
@@ -238,7 +243,13 @@ export function makeStepFinalizeNode(): (
       finished_at: finishedAt,
     }
     if (failed) {
-      stepResult['error'] = 'Step produced no AI output and no tool results'
+      // P2-优化: 区分失败原因，便于重规划时注入精准上下文
+      if (missingToolCall) {
+        stepResult['error'] =
+          `Step "${String(step['title'] ?? stepId)}" requires tool invocation (requires_tool=true) but no tool was called. The executor MUST call an appropriate tool (e.g. search_engine, datetime, http_request) to obtain real-time/external data. Do not fabricate data.`
+      } else {
+        stepResult['error'] = 'Step produced no AI output and no tool results'
+      }
     }
 
     // 4. 更新 plan[i].status + 推进游标
