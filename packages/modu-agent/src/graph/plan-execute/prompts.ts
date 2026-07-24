@@ -3,6 +3,11 @@
 // 注入可用工具清单（name + description），约束 LLM 输出严格 JSON（PlanSchema）。
 // 重规划时追加"上一轮失败步骤及原因"上下文段。
 
+import {
+  PLAN_STEP_DESCRIPTION_MAX_CHARS,
+  PLAN_STEP_TITLE_MAX_CHARS,
+} from './types.js'
+
 /** 工具清单条目截断长度（字符）。 */
 const _TOOL_DESC_MAX_CHARS = 200
 
@@ -72,7 +77,13 @@ Rules:
 }
 4. step_id must follow the pattern step_<N> starting from step_1. depends_on is optional.
 5. Do NOT include any reasoning, commentary, or explanation outside the JSON object.
-6. requires_tool (boolean, default false): Set to true if this step requires external/real-time data (e.g. weather, news, stock prices, current date/time, API data, database queries). For such steps, name the specific tool to use in the description (e.g. "Call search_engine to fetch ..."). The executor MUST call a tool for requires_tool=true steps and is forbidden from fabricating data. Set to false for pure reasoning/summarization/formatting steps.${replanSection}`
+6. requires_tool (boolean, default false): Set to true if this step requires external/real-time data (e.g. weather, news, stock prices, current date/time, API data, database queries). For such steps, name the specific tool to use in the description (e.g. "Call search_engine to fetch ..."). The executor MUST call a tool for requires_tool=true steps and is forbidden from fabricating data. Set to false for pure reasoning/summarization/formatting steps.
+7. CRITICAL — title and description content constraints (violations will cause the plan to be rejected):
+   - title MUST be a short natural-language phrase (<= ${PLAN_STEP_TITLE_MAX_CHARS} characters), NOT a JSON object or a nested plan.
+   - description MUST be a concrete natural-language sentence (1-3 sentences, <= ${PLAN_STEP_DESCRIPTION_MAX_CHARS} characters, <= 10 lines), NOT a JSON object, NOT a nested plan, and MUST NOT contain plan-schema field names like "goal", "steps", "step_id", "depends_on".
+   - NEVER embed a plan object, a step object, or any JSON structure inside title or description. If you feel the urge to write a plan inside a description, STOP — that is wrong; write a single sentence instruction instead.
+   - Example of CORRECT description: "Call search_engine to fetch the latest AI Agent development news from the past 30 days, then summarize the top 5 trends."
+   - Example of WRONG description: '{"goal": "...", "steps": [...]}' (this is a nested plan, not an instruction).${replanSection}`
 }
 
 /**

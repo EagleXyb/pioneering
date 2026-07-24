@@ -19,7 +19,12 @@ import {
   buildReplanContext,
   buildToolCatalogText,
 } from './prompts.js'
-import { PlanSchema, type PlanStep } from './types.js'
+import {
+  PlanSchema,
+  type PlanStep,
+  PLAN_STEP_DESCRIPTION_MAX_CHARS,
+  PLAN_STEP_TITLE_MAX_CHARS,
+} from './types.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.plan_execute.planner] ${msg}`, ...args),
@@ -97,13 +102,66 @@ export function _inferRequiresTool(title: string, description: string): boolean 
 }
 
 /**
+ * 校验单个 step 的 description / title 内容合理性（schema 之外的语义校验）。
+ *
+ * 用于拦截 LLM 输出塌陷场景：description 被填入嵌套 JSON plan、title 过长等。
+ * schema 只能约束长度与类型，无法识别"格式合法但语义错误"的内容。
+ *
+ * 判定规则（命中任一即视为异常）：
+ *   1. description 以 `{` 开头（被填入 JSON 对象）
+ *   2. description 包含 plan schema 关键字段（"goal": / "steps": / "step_id":）
+ *   3. description 行数过多（> 10 行，疑似被填入结构化内容）
+ *
+ * @returns 合理返回 true；异常返回 false
+ */
+export function _isStepContentReasonable(step: { title: string; description: string }): boolean {
+  const desc = step.description?.trim() ?? ''
+  const title = step.title?.trim() ?? ''
+
+  // 1. 长度兜底（schema 已校验，此处防御性二次检查）
+  if (desc.length > PLAN_STEP_DESCRIPTION_MAX_CHARS) return false
+  if (title.length > PLAN_STEP_TITLE_MAX_CHARS) return false
+
+  // 2. description 以 `{` 开头：疑似被填入 JSON 对象
+  if (desc.startsWith('{')) {
+    logger.warning('Step description starts with "{" — suspected nested JSON (title=%s)', title)
+    return false
+  }
+
+  // 3. description 包含 plan schema 关键字段：疑似嵌套 plan 塌陷
+  const NESTED_PLAN_MARKERS = ['"goal":', '"steps":', '"step_id":', '"depends_on":']
+  const lowerDesc = desc.toLowerCase()
+  for (const marker of NESTED_PLAN_MARKERS) {
+    if (lowerDesc.includes(marker)) {
+      logger.warning(
+        'Step description contains plan schema marker "%s" — suspected nested plan (title=%s)',
+        marker, title,
+      )
+      return false
+    }
+  }
+
+  // 4. description 行数过多：疑似被填入结构化内容（正常 description 通常 1-3 句话）
+  const lineCount = desc.split('\n').length
+  if (lineCount > 10) {
+    logger.warning(
+      'Step description has %d lines — suspected structured content (title=%s)',
+      lineCount, title,
+    )
+    return false
+  }
+
+  return true
+}
+
+/**
  * 将 LLM 原始输出解析并校验为 PlanStep 列表。
  *
  * @param raw LLM 输出文本
  * @param maxSteps 步骤数硬上限
  * @returns 规整化后的 PlanStep 列表；解析/校验失败返回 null
  */
-function _parsePlan(raw: string, maxSteps: number): PlanStep[] | null {
+export function _parsePlan(raw: string, maxSteps: number): PlanStep[] | null {
   const obj = _extractJson(raw)
   if (!obj) {
     return null
@@ -114,6 +172,18 @@ function _parsePlan(raw: string, maxSteps: number): PlanStep[] | null {
     return null
   }
   const steps = parsed.data.steps.slice(0, maxSteps)
+
+  // 内容合理性后检：拦截 schema 通过但语义异常的步骤（如嵌套 plan 塌陷）
+  for (const s of steps) {
+    if (!_isStepContentReasonable(s)) {
+      logger.warning(
+        'Plan rejected by content sanity check (step_id=%s title=%s)',
+        s.step_id, s.title,
+      )
+      return null
+    }
+  }
+
   // 规整化 step_id 为 step_{i}，保证游标与前端索引一致
   // P2-优化修复: 保留 requires_tool 字段；若 LLM 未输出则自动推断（弱模型兜底）
   return steps.map((s, i) => {
@@ -148,6 +218,10 @@ export function makePlannerNode(
     const config = getConfig()
     const maxSteps = Number(config.get('plan_execute.max_steps', 10))
     const plannerTemperature = Number(config.get('plan_execute.planner_temperature', 0.2))
+    // P-修复: 显式绑定 max_tokens，防止 LLM 陷入自我重复循环时无限生成
+    // （嵌套 plan 塌陷场景下 LLM 会持续输出直到模型自身输出上限，导致超长破损内容）。
+    // 2000 tokens 足够覆盖 10 步以内的正常 plan（每步约 100-150 tokens）。
+    const plannerMaxTokens = Number(config.get('plan_execute.planner_max_tokens', 2000))
 
     const replanCount = state.replan_count ?? 0
     // 修复: 通过现有 plan 检测重规划，而非 replanCount > 0。
@@ -208,10 +282,16 @@ export function makePlannerNode(
       try {
         let effectiveLlm = llm
         const temperature = attempt === 0 ? plannerTemperature : 0
+        // P-修复: 同时绑定 temperature 和 max_tokens，防止塌陷时无限生成
         try {
-          effectiveLlm = llm.bind({ temperature })
+          effectiveLlm = llm.bind({ temperature, max_tokens: plannerMaxTokens })
         } catch {
-          effectiveLlm = llm
+          // 部分 LLM 实现不支持 max_tokens 绑定，退化为仅绑定 temperature
+          try {
+            effectiveLlm = llm.bind({ temperature })
+          } catch {
+            effectiveLlm = llm
+          }
         }
         const response = await effectiveLlm.invoke(messages)
         const raw = typeof response?.content === 'string'

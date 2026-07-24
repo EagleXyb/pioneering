@@ -20,10 +20,16 @@ export interface PlanStep {
   requires_tool?: boolean
 }
 
+/** 单步 description 长度上限（字符）。超出视为 LLM 输出异常（如嵌套 plan 塌陷）。 */
+export const PLAN_STEP_DESCRIPTION_MAX_CHARS = 500
+
+/** 单步 title 长度上限（字符）。 */
+export const PLAN_STEP_TITLE_MAX_CHARS = 120
+
 export const PlanStepSchema = z.object({
   step_id: z.string(),
-  title: z.string().min(1),
-  description: z.string().min(1),
+  title: z.string().min(1).max(PLAN_STEP_TITLE_MAX_CHARS),
+  description: z.string().min(1).max(PLAN_STEP_DESCRIPTION_MAX_CHARS),
   depends_on: z.array(z.string()).optional(),
   status: z.enum(['pending', 'running', 'done', 'failed', 'skipped']).default('pending'),
   requires_tool: z.boolean().optional(),
