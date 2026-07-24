@@ -44,7 +44,7 @@ export {
 } from './nodes.js'
 
 // graph
-export { ModuGraph, buildModuGraph } from './graph.js'
+export { ModuGraph, buildModuGraph, type ModuGraphInterface } from './graph.js'
 
 // factory
 export {
@@ -66,6 +66,8 @@ export {
   resume_sync,
   resume_stream,
   get_interrupt_state,
+  checkInterruptTimeout,
+  sweepExpiredInterrupts,
 } from './runner.js'
 
 // adapters（子包统一导出）

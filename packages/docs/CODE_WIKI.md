@@ -150,7 +150,7 @@ modu-agent/
 ├── src/
 │   ├── index.ts              # 顶层统一导出（13 个子模块）
 │   ├── core/                 # 组件注册中心 + 11 类基础接口
-│   │   ├── index.ts          # 导出 17 个符号
+│   │   ├── index.ts          # 导出 16 个符号
 │   │   ├── registry.ts       # ComponentRegistry 单例
 │   │   └── interfaces/       # action/feedback/memory/perception/reasoning/skill
 │   ├── config/               # RuntimeConfig + schemas（9 个 Schema + ValueError）
@@ -167,7 +167,7 @@ modu-agent/
 │   ├── memory/               # 短期记忆 + 长期记忆（Chroma）
 │   ├── perception/           # 感知管道 + 融合 + text/vision/audio/security
 │   ├── reasoning/            # LLM 推理器（DeepSeek/GLM/GPT/Qwen）+ symbolic（空实现）
-│   ├── mcp/                  # MCP Client/Transport/Discovery/Lifecycle（15 个导出）
+│   ├── mcp/                  # MCP Client/Discovery/Transport/Lifecycle/Errors（15 个导出）
 │   ├── feedback/             # FeedbackLoop/QualityMonitor/EvolutionSignal/Metrics
 │   ├── evolution/            # Orchestrator/ParameterTune/ComponentSwap/Rollback/VersionedStore
 │   ├── observability/        # OTel tracing + Prometheus metrics + 结构化日志
@@ -184,7 +184,7 @@ modu-agent/
 
 **职责**: 定义所有组件的抽象接口，提供全局组件注册中心，支持运行时热替换。
 
-[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/index.ts) 导出 **17 个符号**：11 个接口抽象基类 + `ComponentRegistry` + `getRegistry` / `resetRegistry` / `overrideRegistry` + `setSkillToolWrapperFactory`。
+[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/index.ts) 导出 **16 个符号**：11 个接口抽象基类 + `ComponentRegistry` + `getRegistry` / `resetRegistry` / `overrideRegistry` + `setSkillToolWrapperFactory`。
 
 #### ComponentRegistry
 
@@ -665,7 +665,7 @@ BaseReasoningEngine (abstract, core/interfaces/reasoning.ts)
 
 **职责**: 接入外部 MCP（Model Context Protocol）Server 获取远程工具，提供 Client 连接管理、传输层抽象、工具发现与生命周期管理。
 
-[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/index.ts) 导出 4 组：
+[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/index.ts) 导出 5 组：
 
 | 类别 | 导出 | 说明 |
 |------|------|------|
@@ -860,7 +860,7 @@ async evaluateAndEvolve(signal: EvolutionSignal, context): Promise<EvolutionResu
   - 思考（thinking）：`THINKING_START` / `THINKING_END` / `THINKING_TEXT_MESSAGE_START` / `THINKING_TEXT_MESSAGE_CONTENT` / `THINKING_TEXT_MESSAGE_END`
   - 工具调用：`TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` / `TOOL_CALL_CHUNK` / `TOOL_CALL_RESULT`
   - 状态：`STATE_SNAPSHOT` / `STATE_DELTA` / `MESSAGES_SNAPSHOT`
-- `AGUIStateMachine`（[agui-adapter.ts#L303](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/agui-adapter.ts#L303)）—— 状态机式事件编排器，封装 `_emit()` 维护当前阶段，按需发出 START/CONTENT/END 序列；提供 `start_run` / `finish_run` / `error` / `thinking` / `text_message` / `tool_call` / `tool_result` / `state_delta` 等方法
+- `AGUIStateMachine`（[agui-adapter.ts#L303](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/agui-adapter.ts#L303)）—— 状态机式事件编排器，封装 `_emit()` 维护当前阶段，按需发出 START/CONTENT/END 序列；提供 `emit_run_started` / `emit_run_finished` / `emit_run_error` / `emit_thinking` / `emit_thinking_end` / `emit_token` / `emit_text_content` / `emit_text_end` / `emit_tool_call_start` / `emit_tool_call_end` / `emit_state_delta` / `emit_tool_records_batch` / `emit_extra_tool_records` / `emit_closing` 等方法
 - `AGUIStreamAdapter`（[agui-adapter.ts#L531](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/agui-adapter.ts#L531)）—— 将 `EventBus` 的 `AgentEvent` 适配为 AG-UI 事件流
 
 #### SSEEncoder
@@ -1448,18 +1448,30 @@ finalize_response
 
 **现状问题**：模块导出策略不一致，增加使用心智成本。
 
+> ✅ **已实现（2026-07-24）**：`perception/index.ts` 已补齐为完整 barrel，所有核心模块均统一为完整 barrel 策略。
+
 | 模块 | 现状 | 问题 |
 |------|------|------|
 | [tools/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) | ✅ 完整 barrel 导出全部 8 个工具（P0-优化: 已从 3 个补齐为 8 个） | 已解决，无问题 |
-| [perception/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/index.ts) | 仅导出 2 个工具函数 | 非 barrel，不重导出 pipeline/fusion/子模块类 |
+| [perception/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/index.ts) | ✅ 完整 barrel（P9.1.1: 已补齐 pipeline/fusion/子模块核心类） | 已解决，无问题 |
 | [reasoning/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/index.ts) | 完整 barrel | 一致 |
 | [mcp/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/index.ts) | 完整 barrel | 一致 |
 
-**建议**：
-- 统一为**完整 barrel**策略，所有公开 API 通过 `index.ts` 导出
-- `tools/index.ts` 补齐 `CodeExecutionTool` / `DateTimeTool` / `FileOpsTool` / `HttpRequestTool` / `SqlQueryTool` 导出
-- `perception/index.ts` 重导出 `runPerceptionPipeline` / `PerceptionFusion` / `SecurityGuard` 等核心类
-- 若有意限制公开 API，则用 `__internal__` 子路径区分（如 `@pioneering/modu-agent/tools/internal`）
+**实现细节**：`perception/index.ts` 在原有 `buildPerceptionEventMetadata` / `extractPerceptionContext` 基础上，新增以下重导出：
+
+| 来源子模块 | 重导出符号 |
+|------------|------------|
+| `pipeline.ts` | `runPerceptionPipeline` / `runPerceptionPipelineAsync` |
+| `fusion.ts` | `PerceptionFusion` |
+| `text/rule-based.js` | `TextPreprocessor` |
+| `text/llm-parser.js` | `LLMParser`（含 `type LLMAdapter`） |
+| `vision/camera.js` | `CameraSensor` / `TimerSensor` / `MicrophoneSensor` |
+| `vision/image-processor.js` | `ImageProcessor` |
+| `audio/asr-processor.js` | `AudioProcessor` |
+| `security/guard.js` | `SecurityGuard` |
+
+**遗留建议**（未采纳，可选）：
+- 若未来有意限制公开 API，可用 `__internal__` 子路径区分（如 `@pioneering/modu-agent/perception/internal`）
 
 #### 9.1.2 消除 reasoning 与 graph/adapters 的能力重复
 
@@ -1489,10 +1501,72 @@ finalize_response
 
 **现状问题**：`ModuGraph` 使用 ES6 `Proxy` 透明代理 `CompiledStateGraph`，`get` trap 转发所有属性访问。但 Proxy 的类型推断在 TypeScript 中通常是 `any` 或宽泛类型，丢失类型安全。
 
-**建议**：
-- 显式声明 `ModuGraph` 实现一个继承 `CompiledStateGraph` 类型签名的接口
-- 或使用 `satisfies` 运算符确保 Proxy 的 `get` trap 返回类型与目标一致
-- 添加单元测试覆盖 `graph.invoke` / `graph.astream` / `graph.getState` / `graph.updateState` 等核心方法的类型正确性
+> ✅ **已实现（2026-07-24）**：在 [graph/graph.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) 引入 `ModuGraphInterface` 强类型接口、`satisfies` 约束 Proxy handler、并在类中显式实现核心方法；runner.ts 全面移除 `graph as any` 断言；新增 14 个单元测试覆盖类型与委托行为。
+
+**实现细节**：
+
+1. **`ModuGraphInterface` 接口（强类型契约）**：
+
+   ```typescript
+   export interface ModuGraphInterface {
+     readonly compiled: CompiledStateGraph<any, any>
+     orchestrator: any
+     readonly checkpointer: any
+     recursionLimit: number
+     stream(input: any, config?: RunnableConfig): Promise<IterableReadableStream<any>>
+     astream(input: any, config?: RunnableConfig): Promise<IterableReadableStream<any>>
+     invoke(input: any, config?: RunnableConfig): Promise<any>
+     getState(config?: RunnableConfig, options?: any): Promise<any>
+     updateState(input: any, config?: RunnableConfig, asNode?: string): Promise<void>
+   }
+   ```
+
+   `ModuGraph implements ModuGraphInterface`，编译期校验类是否满足接口契约。
+
+2. **`satisfies` 约束 Proxy handler**：
+
+   ```typescript
+   const handler: ProxyHandler<ModuGraph> = {
+     get(target, prop, receiver) { ... },
+     has(target, prop) { ... },
+   } satisfies ProxyHandler<ModuGraph>
+   ```
+
+   确保 handler 类型签名与目标一致，避免 `any` 推断。
+
+3. **类中显式实现核心方法（取代纯 Proxy 委托）**：
+
+   - `compiled` / `checkpointer` / `recursionLimit` getter/setter：直接访问底层编译图，类型精确。
+   - `stream` / `astream` / `invoke` / `getState` / `updateState`：在类中显式声明方法签名，内部委托给 `this._compiled` 并 `bind(this._compiled)`，runner.ts 无需 `as any`。
+   - 未在接口中声明的底层属性仍可通过 Proxy 访问（向后兼容）。
+
+4. **runner.ts 移除 `graph as any` 断言**：
+
+   | 位置 | 原代码 | 新代码 |
+   |------|--------|--------|
+   | `_loadPrevConfigOverrides` | `(graph as any).checkpointer` | `graph.checkpointer` |
+   | `stream_response` / `run_sync` / `resume_sync` | `(graph as any).stream(...)` | `graph.stream(...)` |
+   | `resume_stream` | `(graph as any).stream(...)` | `graph.stream(...)` |
+   | `get_interrupt_state` | `(graph as any).getState(lgConfig)` | `await graph.getState(lgConfig)`（同步改异步，匹配 LangGraph JS 真实返回类型） |
+   | `checkInterruptTimeout` | `const state = get_interrupt_state(...)` | `const state = await get_interrupt_state(...)` |
+   | `_withRecursionLimit` | `graph?._compiled?.recursionLimit` | `graph?.recursionLimit` |
+
+5. **单元测试（14 项，全部通过）**：
+
+   | 测试 | 覆盖点 |
+   |------|--------|
+   | `implements ModuGraphInterface` | 编译期类型检查 |
+   | `orchestrator 自身属性优先` | Proxy `get` trap 优先级 |
+   | `compiled getter` | 底层实例访问 |
+   | `checkpointer 透传` | 属性委托 |
+   | `recursionLimit getter/setter` | 读写双向透传 |
+   | `stream/astream/invoke/getState/updateState 委托` | 5 个核心方法签名与调用 |
+   | `Proxy has trap` | `in` 操作符同时检查自身与底层 |
+   | `未声明底层属性仍可访问` | 向后兼容性 |
+   | `方法 this 绑定` | 底层方法不丢失上下文 |
+
+**遗留建议**：
+- `CompiledStateGraph<any, any>` 中的 `any` 是 LangGraph 类型系统限制（builder 模式无法追踪节点名），暂保留。
 
 ---
 
@@ -1542,11 +1616,36 @@ finalize_response
 
 **现状问题**：`tsconfig.json` 已开启 `strict: true`，但部分模块仍使用 `any` 或 `Record<string, any>`，削弱类型安全。
 
-| 位置 | 现状 | 建议 |
-|------|------|------|
-| `event-bridge.ts` 的 SSE payload | `Record<string, any>` | 定义 `SSEPayload` 联合类型，按事件类型区分 |
-| `agui-adapter.ts` 的 `_emit(eventType, data)` | `Record<string, any>` | 按事件类型建立映射，`_emit<T extends AGUIEventType>(type: T, data: EventPayload[T])` |
-| `nodes.ts` 的 state 操作 | 部分使用类型断言 | 利用 `Annotation.Root` 推导的 State 类型，减少 `as` 断言 |
+> ✅ **已实现（2026-07-24）**：针对下表三处热点完成强类型改造，引入联合类型、泛型映射与扩展接口替代 `any` 断言。
+
+| 位置 | 现状 | 建议 | 实现状态 |
+|------|------|------|----------|
+| `event-bridge.ts` 的 SSE payload | `Record<string, any>` | 定义 `SSEPayload` 联合类型，按事件类型区分 | ✅ 已实现 |
+| `agui-adapter.ts` 的 `_emit(eventType, data)` | `Record<string, any>` | 按事件类型建立映射，`_emit<T extends AGUIEventType>(type: T, data: EventPayload[T])` | ✅ 已实现 |
+| `nodes.ts` 的 state 操作 | 部分使用类型断言 | 利用 `Annotation.Root` 推导的 State 类型，减少 `as` 断言 | ✅ 已实现（路由节点） |
+
+**实现细节**：
+
+1. **`event-bridge.ts` SSE payload 强类型化**：
+   - 新增字面量联合类型 `SSEEventType`（`'thinking' | 'tool_call_start' | 'tool_call_end' | 'tool_result' | 'response' | 'plan_created' | 'step_update'`）。
+   - 为每种事件类型定义独立 payload 接口：`ThinkingSSEPayload` / `ToolCallStartSSEPayload` / `ToolCallEndSSEPayload` / `ToolResultSSEPayload` / `ResponseSSEPayload` / `PlanCreatedSSEPayload` / `StepUpdateSSEPayload`。
+   - 通过 `SSEPayload = A | B | C ...` 联合类型约束 `_emitSseEvents` 返回值，替代原 `Record<string, any>[]`。
+   - 提供类型守卫 `isSSEPayload(value: unknown): value is SSEPayload` 供上游消费方做窄化。
+
+2. **`agui-adapter.ts` AGUI 事件 emit 泛型化**：
+   - 定义 `AGUIEventPayloadMap` 接口，为 20 种 `AGUIEventType` 一一映射 payload 结构（如 `RUN_STARTED: { threadId: string; runId: string }`、`TOOL_CALL_RESULT: { messageId?: string; toolCallId: string; ... }`）。
+   - 派生辅助类型 `AGUIEventPayload<T>` 与强类型事件 `AGUITypedEvent<T>`。
+   - `_emit` 方法改为泛型签名 `private _emit<T extends AGUIEventType>(eventType: T, data: AGUIEventPayloadMap[T])`，调用点（如 `emit_run_error(code, message)`）参数类型由映射表精确约束。各 `emit_*` 方法内部以 `data as Record<string, any>` 边界转换为 `AGUIEncoder.toSse` 入参（编码层仍保留宽类型以兼容 SSE 文本协议）。
+
+3. **`nodes.ts` 消息扩展字段强类型化**：
+   - 新增 `MessageExt` 接口，声明 `tool_calls` / `tool_call_id` / `name` / `content` / `usage_metadata` / `additional_kwargs` 等运行时所需的 LangChain 扩展字段。
+   - 提供 `asMessageExt(msg: BaseMessage): BaseMessage & MessageExt` 辅助函数，统一替代路由判断中的 `as any`。
+   - `routeAfterAgent` 中 `lastMsg.tool_calls` 的访问、`makeMemoryUpdateNode` 中 `ToolMessage` 的 `name` / `content` 访问均改走 `asMessageExt`，保留类型精确性。
+   - 新增 `ToolCallItem` 接口用于 HITL 节点 interrupt payload 与拒绝路径的类型约束。
+
+**遗留建议**：
+- `makeAgentNode` / `makeMemoryUpdateNode` 仍接收 `store: any` / `boundLlm: any`，建议后续结合 LangGraph `BaseStore` 与 `BaseChatModel` 接口进一步收紧。
+- `AGUIEncoder.toSse` / `toEventDict` 为兼容 SSE 文本协议保留 `Record<string, any>`，属边界类型，暂不收紧。
 
 #### 9.3.2 测试覆盖与可测性
 
@@ -1602,10 +1701,66 @@ finalize_response
 
 **现状问题**：`interrupt` 暂停后等待 `resume_sync(approved=true)`，但若用户长时间不审批，interrupt 状态会一直占用 checkpointer 存储，且 LLM 会话上下文长期驻留。
 
-**建议**：
-- 为 interrupt 添加 TTL 配置（`hitl.timeout_seconds`，默认 3600s）
-- 超时后自动 `resume_sync(approved=false, feedback='timeout')` 并返回 `TOOL_APPROVAL_TIMEOUT`
-- 添加定期清理任务（基于 `PersistentEventLog` 的 timestamp）
+> ✅ **已实现（2026-07-24）**：在 [graph/runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) 落地超时检查与自动拒绝，新增配套错误码 `TOOL_APPROVAL_TIMEOUT`，并在 [config/runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) 暴露 TTL 与自动拒绝开关。
+
+**实现细节**：
+
+1. **配置项（`tools.human_in_loop.*`）**：
+
+   | 配置键 | 默认值 | 说明 |
+   |--------|--------|------|
+   | `approval_timeout_seconds` | `300` | 审批超时阈值（秒）。`<=0` 视为禁用超时检查 |
+   | `auto_reject_on_timeout` | `true` | 超时后是否自动 `resume_sync(approved=false)`；`false` 时仅返回 `'expired'` 由调用方处理 |
+
+2. **超时判断依据**：
+   - `get_interrupt_state(graph, sessionId)` 从 `StateSnapshot.metadata.created_at` 读取 interrupt 创建时间。
+   - `createdAt` 兼容三种格式：Unix 秒、Unix 毫秒、ISO 字符串（统一解析为毫秒）。缺少 `created_at`（旧 checkpoint / LangGraph 版本差异）时保守返回 `'active'`，不误触发。
+
+3. **新增函数**：
+
+   | 函数 | 位置 | 职责 |
+   |------|------|------|
+   | `checkInterruptTimeout(graph, sessionId)` | runner.ts | 检查单 session 的 interrupt 是否超时；超时且 `auto_reject_on_timeout=true` 时调用 `resume_sync(approved=false, ..., { timeout: true })` 自动恢复 |
+   | `sweepExpiredInterrupts(graph, sessionIds)` | runner.ts | 批量扫描多个 session，适合外部 `setInterval` / cron 定时清理 |
+
+   `checkInterruptTimeout` 返回值：
+
+   | 返回值 | 语义 |
+   |--------|------|
+   | `'active'` | 仍在审批窗口内，未超时（或缺少 `created_at` 保守不触发） |
+   | `'expired'` | 已超时（若 `auto_reject_on_timeout=true`，已自动 resume 成功） |
+   | `'no_interrupt'` | 无 interrupt 暂停（无需处理） |
+   | `'no_config'` | 未启用超时配置（`approval_timeout_seconds <= 0`） |
+   | `'resume_failed'` | 自动 resume 调用失败或返回 error 状态 |
+
+4. **错误码（[protocol.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts)）**：
+
+   | 常量 | 码值 | 用途 |
+   |------|------|------|
+   | `TOOL_APPROVAL_REJECTED` | `TOOL_003` | 用户主动拒绝审批 |
+   | `TOOL_APPROVAL_TIMEOUT` | `TOOL_004` | 审批超时自动拒绝（P9.4.3 新增） |
+
+5. **超时标记传递**：
+   - `resume_sync` 新增可选参数 `options?: { timeout?: boolean }`。
+   - `checkInterruptTimeout` 自动拒绝时传入 `{ timeout: true }`，`resumePayload` 携带 `timeout` 标记。
+   - `human_review` 节点识别 `timeout === true` 后使用 `TOOL_APPROVAL_TIMEOUT`（区别于用户主动拒绝的 `TOOL_APPROVAL_REJECTED`）。
+
+**使用方式**：
+
+```typescript
+// 单 session 检查
+const status = await checkInterruptTimeout(graph, sessionId)
+
+// 定时清理任务（建议 60s 周期）
+setInterval(async () => {
+  const sessionIds = await listActiveInterruptSessions()  // 由调用方维护
+  await sweepExpiredInterrupts(graph, sessionIds)
+}, 60_000)
+```
+
+**遗留建议**：
+- `listActiveInterruptSessions()`（按 interrupt 创建时间反查 session 列表）需由调用方基于自身会话存储实现，LangGraph checkpointer 未直接暴露该枚举能力。
+- 可考虑后续在 `PersistentEventLog` 中按 `domain=TOOL / action=HITL_PENDING` 索引，支撑更高效的超时扫描。
 
 ---
 
@@ -1615,9 +1770,67 @@ finalize_response
 
 **现状问题**：配置热更新两层机制中，`_GRAPH_REBUILD_PREFIXES` 命中即 `reset_runner_cache()`，频繁变更 LLM 参数会导致图频繁重建。
 
-**建议**：
-- 引入去抖动（debounce 100ms），连续配置变更合并为一次重建
-- 对仅影响 LLM 参数的变更（`llm.temperature` / `llm.max_tokens`）考虑不重建图，而是通过 `RunnableConfig.configurable` per-request 注入（与 per-session 隔离机制复用）
+> ✅ **已实现（2026-07-24）**：在 [graph/runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) 落地两层优化——debounce 100ms 合并连续变更 + LLM 参数软失效（不触发重建，走 per-request 注入）；新增 7 个单元测试覆盖各场景。
+
+**实现细节**：
+
+1. **debounce 100ms（连续变更合并为一次重置）**：
+
+   - 新增模块级状态 `_debouncedResetTimer` / `_pendingChangeKeys`。
+   - `_onConfigChange` 匹配 `_GRAPH_REBUILD_PREFIXES` 后，将变更 keyPath 推入 `_pendingChangeKeys`，并通过 `setTimeout(_flushDebouncedCacheReset, 100)` 调度重置。
+   - 100ms 窗口内的后续变更复用同一 timer（仅追加 pending），不重复调度。
+   - 窗口结束时 `_flushDebouncedCacheReset` 统一判断是否触发 `reset_runner_cache()`。
+
+2. **LLM 参数软失效（不触发图重建）**：
+
+   | 软失效 key | 默认值 | 处理方式 |
+   |------------|--------|----------|
+   | `llm.temperature` | `0.7` | 通过 `configurable.llm_params.temperature` per-request 注入 |
+   | `llm.max_tokens` | `4096` | 通过 `configurable.llm_params.max_tokens` per-request 注入 |
+   | `llm.max_reasoning_iterations` | `3` | 通过 `configurable.llm_params.max_reasoning_iterations` per-request 注入 |
+
+   - 新增 `_LLM_PARAM_ONLY_KEYS = new Set([...])`。
+   - `_flushDebouncedCacheReset` 检查 pending 列表：若全部为软失效 key，跳过 `reset_runner_cache()`（仅记录 "Skipping" 日志）。
+   - 下次 `get_runner()` 的 hash 检测仍会兜底重建，保证最终一致。
+   - `_buildConfigWithOverrides` 新增 `_collectCurrentLLMParams()` 调用，将当前 LLM 参数注入 `configurable.llm_params`，供 agent 节点 per-request 读取（与 per-session `config_overrides` 隔离机制复用——per-session 优先级高于全局兜底）。
+
+3. **混合场景处理**：
+
+   - 若 debounce 窗口内同时含软失效 key 与非软失效 key（如 `llm.temperature` + `tools.calculator.enabled`），仍触发重置（保证非软失效 key 的变更传导）。
+   - 日志中记录非软失效 key 列表，便于排查。
+
+4. **流程对比**：
+
+   | 场景 | 改造前 | 改造后 |
+   |------|--------|--------|
+   | 单次 `tools.*` 变更 | 立即 `reset_runner_cache()` | debounce 100ms 后重置 |
+   | 连续 5 次 `tools.*` 变更（<100ms） | 5 次 `reset_runner_cache()` | 1 次重置（合并） |
+   | 单次 `llm.temperature` 变更 | 立即 `reset_runner_cache()`（重建图） | 不重置（per-request 注入） |
+   | `llm.temperature` + `tools.*` 混合（<100ms） | 2 次重置 | 1 次重置（混合场景仍触发） |
+   | `observability.*` 变更 | 不匹配前缀，不重置 | 不匹配前缀，不重置（行为不变） |
+
+5. **测试辅助函数（仅供测试用，导出）**：
+
+   | 函数 | 用途 |
+   |------|------|
+   | `_flushDebouncedResetForTest()` | 同步 flush debounce 队列，跳过 100ms 等待 |
+   | `_resetDebounceStateForTest()` | 清空 debounce 内部状态，确保测试隔离 |
+   | `_triggerConfigChangeForTest(keyPath, old, new)` | 直接调用 `_onConfigChange`，绕过 RuntimeConfig 回调注册 |
+
+6. **单元测试（7 项，全部通过）**：
+
+   | 测试 | 覆盖点 |
+   |------|--------|
+   | `单次非 LLM 配置变更触发缓存重置` | 基础路径 |
+   | `连续多次非 LLM 配置变更合并为一次重置` | debounce 合并 |
+   | `LLM 参数软失效不触发缓存重置` | 软失效 key 跳过 |
+   | `混合场景：LLM 参数 + 非 LLM 参数仍触发重置` | 混合判断 |
+   | `未匹配 _GRAPH_REBUILD_PREFIXES 的 key 不进入队列` | 前缀过滤 |
+   | `debounce 定时器在首次变更时创建，后续变更复用` | timer 复用 |
+   | `多次独立 debounce 窗口各自独立` | 窗口隔离 |
+
+**遗留建议**：
+- 若未来 LLM 参数需要更激进的"完全不重建"策略（连 hash 检测也跳过），可在 `_hashConfig` 中排除 `_LLM_PARAM_ONLY_KEYS` 对应字段。当前实现保留 hash 兜底，确保最终一致。
 
 #### 9.5.2 perception 管线的并行度
 
@@ -1651,24 +1864,31 @@ finalize_response
 
 ### 9.7 优化优先级矩阵
 
-| 建议 | 优先级 | 影响面 | 实施难度 |
-|------|--------|--------|----------|
-| 9.1.1 统一 barrel 导出 | 高 | 使用体验 | 低 |
-| 9.4.1 CodeExecution Python 探测 | 高 | 安全可用 | 低 |
-| 9.4.3 HITL 超时机制 | 高 | 生产稳定性 | 中 |
-| 9.3.1 类型严格度 | 高 | 代码质量 | 中 |
-| 9.1.2 消除 LLM 调用重复 | 高 | 维护成本 | 高 |
-| 9.2.1 feedback 异步边界 | 中 | 稳定性 | 低 |
-| 9.2.4 EventBus 背压 | 中 | 性能 | 中 |
-| 9.3.2 测试覆盖 | 中 | 质量保障 | 中 |
-| 9.3.4 optionalDep 可观测性 | 中 | 运维 | 低 |
-| 9.4.2 SqlQuery 白名单配置化 | 中 | 灵活性 | 低 |
-| 9.5.1 图重建去抖 | 低 | 性能 | 中 |
-| 9.5.3 嵌入缓存 | 低 | 性能 | 低 |
-| 9.1.3 清理空文件 | 低 | 整洁度 | 极低 |
-| 9.1.4 Proxy 类型安全 | 低 | 类型质量 | 中 |
+| 建议 | 优先级 | 影响面 | 实施难度 | 状态 |
+|------|--------|--------|----------|------|
+| 9.1.1 统一 barrel 导出 | 高 | 使用体验 | 低 | ✅ 已实现（2026-07-24） |
+| 9.4.1 CodeExecution Python 探测 | 高 | 安全可用 | 低 | 待实施 |
+| 9.4.3 HITL 超时机制 | 高 | 生产稳定性 | 中 | ✅ 已实现（2026-07-24） |
+| 9.3.1 类型严格度 | 高 | 代码质量 | 中 | ✅ 已实现（2026-07-24） |
+| 9.1.2 消除 LLM 调用重复 | 高 | 维护成本 | 高 | 待实施 |
+| 9.2.1 feedback 异步边界 | 中 | 稳定性 | 低 | 待实施 |
+| 9.2.4 EventBus 背压 | 中 | 性能 | 中 | 待实施 |
+| 9.3.2 测试覆盖 | 中 | 质量保障 | 中 | 待实施 |
+| 9.3.4 optionalDep 可观测性 | 中 | 运维 | 低 | 待实施 |
+| 9.4.2 SqlQuery 白名单配置化 | 中 | 灵活性 | 低 | 待实施 |
+| 9.5.1 图重建去抖 | 低 | 性能 | 中 | ✅ 已实现（2026-07-24） |
+| 9.5.3 嵌入缓存 | 低 | 性能 | 低 | 待实施 |
+| 9.1.3 清理空文件 | 低 | 整洁度 | 极低 | 待实施 |
+| 9.1.4 Proxy 类型安全 | 低 | 类型质量 | 中 | ✅ 已实现（2026-07-24） |
 
 **建议落地顺序**：先做低难度高收益项（9.1.1、9.4.1、9.3.4、9.1.3），再处理中难度项（9.2.1、9.3.2、9.4.2），最后推进高难度架构项（9.1.2、9.1.4）。
+
+**已落地项（2026-07-24）**：
+- ✅ 9.1.1 `perception/index.ts` 补齐 barrel 导出（runPerceptionPipeline / PerceptionFusion / SecurityGuard 等 12 个符号）
+- ✅ 9.4.3 HITL 审批超时机制（`checkInterruptTimeout` / `sweepExpiredInterrupts` + `TOOL_APPROVAL_TIMEOUT` 错误码）
+- ✅ 9.3.1 类型严格度提升（SSEPayload 联合类型 / AGUIEventPayloadMap 泛型映射 / MessageExt 扩展接口）
+- ✅ 9.1.4 ModuGraph Proxy 类型安全（`ModuGraphInterface` 强类型接口 + `satisfies` 约束 handler + runner.ts 移除 `as any`，14 项测试覆盖）
+- ✅ 9.5.1 图重建去抖（100ms debounce 合并连续变更 + LLM 参数软失效 per-request 注入，7 项测试覆盖）
 
 ---
 
@@ -1677,4 +1897,59 @@ finalize_response
 本文档基于 `packages/modu-agent/src/` 当前源码现状编写，与代码实际情况完全对齐。如代码结构发生变更，请同步更新本文档对应章节。
 
 **对应源码版本**：`@pioneering/modu-agent` 0.1.0
-**最后更新**：2026-07-23
+**最后更新**：2026-07-24（同步 9.1.1 / 9.3.1 / 9.4.3 / 9.1.4 / 9.5.1 五项优化落地状态）
+
+---
+
+## 更新记录
+
+### 2026-07-24 文档与代码对齐校准
+
+基于对 `packages/modu-agent/src/` 全部源码的深度复核，修正以下文档与实际代码不一致之处：
+
+| # | 位置 | 问题描述 | 修正内容 |
+|---|------|----------|----------|
+| 1 | §3 目录结构 — `core/index.ts` | 文档声称"导出 17 个符号"，实际仅导出 16 个（11 个抽象基类 + 5 个注册中心工具） | 修正为"导出 16 个符号" |
+| 2 | §4.1 core — `index.ts` 导出说明 | 同上，"导出 **17 个符号**" 与实际符号数不符（11 基类 + ComponentRegistry + getRegistry/resetRegistry/overrideRegistry + setSkillToolWrapperFactory = 16） | 修正为"导出 **16 个符号**" |
+| 3 | §3 目录结构 — `mcp/` 条目 | 类别列举遗漏 Errors，写为"Client/Transport/Discovery/Lifecycle（15 个导出）" | 补全为"Client/Discovery/Transport/Lifecycle/Errors（15 个导出）" |
+| 4 | §4.8 mcp — `index.ts` 导出说明 | 文本声称"导出 4 组"，但下方表格已列 5 行（Client/Discovery/Transport/Lifecycle/Errors），与代码实际 5 组 export 语句不符 | 修正为"导出 5 组"，与表格及 `mcp/index.ts` 实际导出一致 |
+| 5 | §4.12 orchestration — `AGUIStateMachine` 方法名 | 文档使用概念性方法名（`start_run` / `finish_run` / `error` / `thinking` / `text_message` / `tool_call` / `tool_result` / `state_delta`），与源码实际方法名（均带 `emit_` 前缀）不符 | 更正为实际方法名：`emit_run_started` / `emit_run_finished` / `emit_run_error` / `emit_thinking` / `emit_thinking_end` / `emit_token` / `emit_text_content` / `emit_text_end` / `emit_tool_call_start` / `emit_tool_call_end` / `emit_state_delta` / `emit_tool_records_batch` / `emit_extra_tool_records` / `emit_closing` |
+
+**校验通过项**（无需修改，已确认与代码一致）：
+
+- §2.1 `ComponentRegistry · 11 类基础接口` — registry.ts 实际管理 11 个 `Map`（reasoningEngines/reasoningStrategies/actionExecutors/tools/memories/storageAdapters/perceptions/sensors/feedbackLoops/evolutionSignals/skills），一致
+- §3 顶层 `index.ts` "13 个子模块" — 实际 13 条 `export *` 语句，一致
+- §4.3 graph/index.ts 导出分布（state 4 / nodes 21 / graph 2 / factory 5 / runner 9）— 逐项核对一致
+- §4.4 tools/index.ts "8 个工具" + "4 个 requiresApproval=true" — 一致
+- §4.6 SecurityGuard "14 条越狱正则 + 5 种 PII 类型" — 一致
+- §4.8 mcp "15 个导出" — 一致（4+2+3+1+5=15）
+- §4.12 AG-UI "20 种事件类型" — `AGUIEventType` 枚举实际 20 项，一致
+- §8.9 Python/TS 差异表 — 一致
+
+### 2026-07-24 优化建议落地（9.1.1 / 9.3.1 / 9.4.3）
+
+按 §9 优化建议矩阵推进三项高优先级建议的落地实现，同步更新对应章节与优先级矩阵状态列：
+
+| # | 建议编号 | 落地内容 | 涉及文件 |
+|---|----------|----------|----------|
+| 1 | 9.1.1 统一 barrel 导出 | `perception/index.ts` 补齐完整 barrel，新增 12 个符号重导出（pipeline/fusion/text/vision/audio/security 子模块核心类） | [perception/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/index.ts) |
+| 2 | 9.3.1 类型严格度提升 | SSE payload 联合类型（`SSEPayload` + 7 个子接口 + `isSSEPayload` 守卫）；AGUI 事件泛型映射（`AGUIEventPayloadMap` + `_emit<T>`）；`nodes.ts` 消息扩展接口（`MessageExt` + `asMessageExt` + `ToolCallItem`） | [graph/adapters/event-bridge.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/event-bridge.ts)、[orchestration/communication/agui-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/agui-adapter.ts)、[graph/nodes.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) |
+| 3 | 9.4.3 HITL 审批超时机制 | `checkInterruptTimeout` / `sweepExpiredInterrupts` 超时检查与批量清理；`resume_sync` 新增 `options.timeout` 标记；新增错误码 `TOOL_APPROVAL_REJECTED`(TOOL_003) / `TOOL_APPROVAL_TIMEOUT`(TOOL_004)；配置项 `tools.human_in_loop.approval_timeout_seconds`(默认 300) / `auto_reject_on_timeout`(默认 true) | [graph/runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts)、[orchestration/communication/protocol.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts)、[config/runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) |
+
+**§9.7 优先级矩阵**已新增"状态"列，上述三项标记为"✅ 已实现（2026-07-24）"。
+
+### 2026-07-24 优化建议落地（9.1.4 / 9.5.1）
+
+按 §9 优化建议矩阵继续推进两项建议的落地实现，同步更新对应章节与优先级矩阵状态列：
+
+| # | 建议编号 | 落地内容 | 涉及文件 |
+|---|----------|----------|----------|
+| 1 | 9.1.4 ModuGraph Proxy 类型安全 | 新增 `ModuGraphInterface` 强类型接口（compiled / orchestrator / checkpointer / recursionLimit + stream/astream/invoke/getState/updateState 5 方法）；Proxy handler 使用 `satisfies ProxyHandler<ModuGraph>` 约束类型签名；类中显式实现核心方法取代纯 Proxy 委托；runner.ts 全面移除 `graph as any` 断言（`_loadPrevConfigOverrides` / `stream_response` / `run_sync` / `resume_sync` / `resume_stream` / `get_interrupt_state` / `checkInterruptTimeout` / `_withRecursionLimit` 共 8 处）；`get_interrupt_state` 由同步改异步匹配 LangGraph JS 真实返回类型；`graph/index.ts` 导出 `ModuGraphInterface` 类型 | [graph/graph.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts)、[graph/runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts)、[graph/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/index.ts) |
+| 2 | 9.5.1 图重建去抖 | 两层优化：(a) debounce 100ms——`_onConfigChange` 匹配 `_GRAPH_REBUILD_PREFIXES` 后推入 `_pendingChangeKeys` 并 `setTimeout(_flushDebouncedCacheReset, 100)`，窗口内复用同一 timer；(b) LLM 参数软失效——`_LLM_PARAM_ONLY_KEYS`（temperature/max_tokens/max_reasoning_iterations）仅影响 LLM 行为不改变图拓扑，窗口结束时若 pending 全为软失效 key 则跳过 `reset_runner_cache()`，改由 `_buildConfigWithOverrides` 通过 `configurable.llm_params` per-request 注入（per-session `config_overrides` 优先级高于全局兜底）；混合场景（软失效 + 非软失效）仍触发重置；hash 检测兜底保证最终一致 | [graph/runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) |
+
+**单元测试**：新增 21 项测试全部通过——
+
+- [tests/graph/graph.test.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/tests/graph/graph.test.ts)（14 项）：覆盖 `ModuGraphInterface` 编译期检查、Proxy `get`/`has` trap 优先级、`compiled`/`checkpointer`/`recursionLimit` getter/setter、5 个核心方法签名与委托、方法 `this` 绑定、向后兼容性。
+- [tests/graph/runner-debounce.test.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/tests/graph/runner-debounce.test.ts)（7 项）：覆盖单次/连续非 LLM 变更合并、LLM 参数软失效跳过、混合场景仍触发、未匹配前缀过滤、timer 复用、多窗口隔离。
+
+**§9.7 优先级矩阵**两项标记为"✅ 已实现（2026-07-24）"。

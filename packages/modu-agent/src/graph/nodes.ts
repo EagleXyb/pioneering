@@ -46,6 +46,38 @@ import { create_consensus_strategy, ConsensusPattern } from '../orchestration/pa
 import { _getSystemPrompt } from './subgraph/builder.js'
 import type { ModuAgentState } from './state.js'
 
+// ============================================================
+// P9.3.1: LangChain 消息类型辅助（减少 as any 断言）
+// ============================================================
+
+/**
+ * LangChain 消息上的标准扩展字段。
+ *
+ * BaseMessage 的最小公共接口不含 tool_calls / usage_metadata / tool_call_id 等，
+ * 这些字段在 AIMessage / ToolMessage 上各自定义。为避免在路由判断中反复使用
+ * `as any`，统一通过该接口访问运行时所需的字段，类型保持精确。
+ */
+interface MessageExt {
+  tool_calls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }>
+  tool_call_id?: string
+  name?: string
+  content?: string
+  usage_metadata?: { input_tokens?: number; output_tokens?: number; total_tokens?: number }
+  additional_kwargs?: Record<string, unknown>
+}
+
+/** 将 BaseMessage 视为带扩展字段的消息（用于路由判断等只读场景）。 */
+function asMessageExt(msg: BaseMessage): BaseMessage & MessageExt {
+  return msg as BaseMessage & MessageExt
+}
+
+/** 工具调用条目（用于 HITL 节点 interrupt payload 与拒绝路径）。 */
+interface ToolCallItem {
+  id?: string
+  name?: string
+  args?: Record<string, unknown>
+}
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.nodes] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[graph.nodes] ${msg}`, ...args),
@@ -250,10 +282,12 @@ export function makeMemoryUpdateNode(
         } else if (msg instanceof AIMessage) {
           role = 'assistant'
           content = msg.content
-        } else if ((msg as any)._getType && (msg as any)._getType() === 'tool') {
+        } else if (msg instanceof ToolMessage) {
+          // P9.3.1: 直接使用 ToolMessage 类型判断，避免 as any 访问内部字段
           role = 'tool'
-          const toolName = (msg as any).name ?? 'unknown'
-          content = `[${toolName}] ${(msg as any).content}`
+          const ext = asMessageExt(msg)
+          const toolName = ext.name ?? 'unknown'
+          content = `[${toolName}] ${ext.content ?? ''}`
         } else {
           continue
         }
@@ -344,8 +378,11 @@ export function routeAfterAgent(state: ModuAgentState): string {
     return '__end__'
   }
 
-  const lastMsg = messages[messages.length - 1] as any
-  if (lastMsg.tool_calls && Array.isArray(lastMsg.tool_calls) && lastMsg.tool_calls.length > 0) {
+  // P9.3.1: 使用 asMessageExt 替代 as any，保留类型精确性
+  const lastMsg = asMessageExt(messages[messages.length - 1])
+  const toolCalls = lastMsg.tool_calls
+
+  if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
     return 'tools'
   }
   // P4 Plan-and-Execute：执行阶段中"无 tool_calls"表示当前步骤完成，
@@ -534,11 +571,16 @@ export function makeToolResultProcessor(): (state: ModuAgentState) => Partial<Mo
 
         const existingIds = new Set(toolResults.map((r) => r['execution_id']))
         if (!existingIds.has(toolCallId)) {
+          // 修复: 读取工具返回的真实 status，而非硬编码 'success'
+          // 工具返回格式: { status: 'success'|'error', error_code: string, data: {...} }
+          const toolStatus = (typeof parsedContent === 'object' && parsedContent !== null)
+            ? (parsedContent['status'] === 'error' ? 'failed' : 'success')
+            : 'success'
           toolResults.push({
             tool: toolName,
             execution_id: toolCallId,
             result: typeof parsedContent === 'object' && parsedContent !== null ? parsedContent : { data: parsedContent },
-            status: 'success',
+            status: toolStatus,
           })
         }
       }
@@ -917,12 +959,17 @@ export function makeHumanReviewNode(
     // 解析 resume payload
     let approved: boolean
     let feedback: string
+    let isTimeout: boolean
     if (resumePayload && typeof resumePayload === 'object') {
       approved = Boolean(resumePayload['approved'])
       feedback = String(resumePayload['feedback'] ?? '')
+      // P9.4.3: 超时自动拒绝时 resume_sync 携带 timeout=true 标记，
+      // human_review 据此使用 TOOL_APPROVAL_TIMEOUT 错误码
+      isTimeout = Boolean(resumePayload['timeout'] ?? false)
     } else {
       approved = false
       feedback = ''
+      isTimeout = false
     }
 
     if (approved) {
@@ -935,6 +982,8 @@ export function makeHumanReviewNode(
     }
 
     // 拒绝：为每个待审批工具调用生成降级 ToolMessage
+    // P9.4.3: 超时场景使用 TOOL_APPROVAL_TIMEOUT，普通拒绝使用 TOOL_APPROVAL_REJECTED
+    const rejectionErrorCode = isTimeout ? 'TOOL_APPROVAL_TIMEOUT' : 'TOOL_APPROVAL_REJECTED'
     const rejectionMessages: ToolMessage[] = []
     for (const tc of pending) {
       const toolName = tc['name'] ?? ''
@@ -943,21 +992,27 @@ export function makeHumanReviewNode(
 
       let rejectionResult: Record<string, any>
       const moduTool = reg ? reg.getTool(toolName) : null
-      if (moduTool) {
+      if (moduTool && !isTimeout) {
+        // 普通拒绝：调用工具的 onApprovalRejected 钩子
         try {
           rejectionResult = moduTool.onApprovalRejected(args)
         } catch (e) {
           rejectionResult = {
             status: 'error',
-            error_code: 'TOOL_APPROVAL_REJECTED',
+            error_code: rejectionErrorCode,
             data: { message: `Tool ${toolName} rejected: ${e}` },
           }
         }
       } else {
+        // 超时拒绝 / 无 moduTool：直接构造标准错误结果
         rejectionResult = {
           status: 'error',
-          error_code: 'TOOL_APPROVAL_REJECTED',
-          data: { message: `Tool ${toolName} rejected by reviewer` },
+          error_code: rejectionErrorCode,
+          data: {
+            message: isTimeout
+              ? `Tool ${toolName} rejected: approval timed out`
+              : `Tool ${toolName} rejected by reviewer`,
+          },
         }
       }
 
@@ -969,7 +1024,7 @@ export function makeHumanReviewNode(
     }
 
     return {
-      approval_status: 'rejected',
+      approval_status: isTimeout ? 'timeout' : 'rejected',
       approval_feedback: feedback,
       tool_requires_approval: false,
       pending_tool_calls: [],
@@ -983,12 +1038,17 @@ export function makeHumanReviewNode(
 /**
  * P3-12.3.2: 审批后路由。
  *
- * - "rejected" / "error" → "finalize_response"（跳过工具执行，进入响应阶段）
+ * - "rejected" / "timeout" / "error" → "finalize_response"（跳过工具执行，进入响应阶段）
+ *   （P9.4.3: timeout 也走 finalize_response 路径）
  * - 其他（approved / not_required / no_tool_calls / skipped）→ "tools"（执行 ToolNode）
  */
 export function routeAfterHumanReview(state: ModuAgentState): string {
   const approvalStatus = state.approval_status ?? ''
-  if (approvalStatus === 'rejected' || approvalStatus === 'error') {
+  if (
+    approvalStatus === 'rejected' ||
+    approvalStatus === 'timeout' ||
+    approvalStatus === 'error'
+  ) {
     return 'finalize_response'
   }
   return 'tools'

@@ -205,7 +205,9 @@ export function makeStepFinalizeNode(): (
     const stepMessages = _sliceStepMessages(state)
 
     // 2. 提取本步 tool_call_id 列表与最终 AIMessage 摘要
+    // 修复: 同时统计工具成功/失败状态，识别"调用了工具但全部失败"的情况
     const toolRefs: string[] = []
+    const failedToolRefs: string[] = []
     let lastAiContent = ''
     for (const msg of stepMessages) {
       const msgType = typeof (msg as any)._getType === 'function'
@@ -215,6 +217,16 @@ export function makeStepFinalizeNode(): (
         const callId = (msg as any).tool_call_id
         if (callId && !toolRefs.includes(callId)) {
           toolRefs.push(callId)
+          // 解析工具返回内容，判断是否失败
+          const content = (msg as any).content ?? ''
+          try {
+            const parsed = typeof content === 'string' ? JSON.parse(content) : content
+            if (parsed && typeof parsed === 'object' && parsed['status'] === 'error') {
+              failedToolRefs.push(callId)
+            }
+          } catch {
+            // 非 JSON content，视为成功
+          }
         }
       } else if (msg instanceof AIMessage || msgType === 'ai') {
         const content = (msg as any).content
@@ -224,13 +236,54 @@ export function makeStepFinalizeNode(): (
       }
     }
 
-    // 失败判定（P2-优化: 增加 requires_tool 校验）：
+    // 失败判定（P2-优化 + 修复: 增加 requires_tool 与工具失败校验）：
     //   1. requires_tool=true 但未调用任何工具 → failed（防止 LLM 编造外部数据）
-    //   2. 最终无 AI 输出且无任何工具产出 → failed（原有兜底判定）
+    //      例外：同代际前序步骤已成功调用工具且本步有 AI 输出时，LLM 基于已有工具
+    //      结果回答是合理的（如 step_1 已调用 datetime，step_2 不必重复调用）
+    //   2. requires_tool=true 且调用了工具但全部失败 → 降级判定（见下）
+    //   3. 最终无 AI 输出且无任何工具产出 → failed（原有兜底判定）
     const requiresTool = Boolean(step['requires_tool'])
-    const missingToolCall = requiresTool && toolRefs.length === 0
+    const missingToolCallRaw = requiresTool && toolRefs.length === 0
+    const allToolsFailedRaw = requiresTool && toolRefs.length > 0 && failedToolRefs.length === toolRefs.length
     const noOutput = !lastAiContent && toolRefs.length === 0
-    const failed = missingToolCall || noOutput
+
+    // 修复: 前序步骤已成功调用工具时，本步骤基于已有结果回答不应判 missingToolCall。
+    // 避免 LLM 在 step_1 已获取 datetime 后，step_2（获取日期时间）因未重复调用工具
+    // 而被误判 failed → 触发不必要的重规划 → 递归耗尽。
+    let missingToolCall = missingToolCallRaw
+    if (missingToolCallRaw && lastAiContent) {
+      const genResults = _currentGenerationResults(state)
+      const prevStepHasToolSuccess = genResults.some(
+        (r) => r?.['status'] === 'done' &&
+               Array.isArray(r?.['tool_refs']) &&
+               r['tool_refs'].length > 0,
+      )
+      if (prevStepHasToolSuccess) {
+        missingToolCall = false
+        logger.info(
+          'Step %s requires_tool=true but no tool called in this step; ' +
+          'allowing because previous steps have successful tool calls and AI output exists',
+          stepId,
+        )
+      }
+    }
+
+    // 修复: 工具全失败但 LLM 产出了实质性降级内容时，视为步骤完成（降级模式）。
+    // 工具失败 ≠ 步骤失败：LLM 基于工具失败状态生成降级回应（如告知用户工具不可用 +
+    // 提供常识性参考）是合理的执行行为。将其判 failed 会触发无意义的重规划（相同工具
+    // 仍会失败）并丢失降级输出。仅当工具失败且 LLM 无任何输出时才判 failed。
+    let allToolsFailed = allToolsFailedRaw
+    let degraded = false
+    if (allToolsFailedRaw && lastAiContent) {
+      allToolsFailed = false
+      degraded = true
+      logger.info(
+        'Step %s all tools failed but AI produced fallback content; marking as done (degraded mode)',
+        stepId,
+      )
+    }
+
+    const failed = missingToolCall || allToolsFailed || noOutput
     const status: StepResult['status'] = failed ? 'failed' : 'done'
 
     // 3. 组装步骤结果（replan 代际标签隔离重规划前旧结果）
@@ -242,11 +295,20 @@ export function makeStepFinalizeNode(): (
       replan: state.replan_count ?? 0,
       finished_at: finishedAt,
     }
-    if (failed) {
+    if (degraded) {
+      // 降级模式标记：工具失败但 LLM 产出了降级内容，便于后续步骤和 response 节点感知
+      stepResult['degraded'] = true
+      stepResult['error'] =
+        `Step "${String(step['title'] ?? stepId)}" tools all failed but AI produced fallback content. ` +
+        `The real-time data is unavailable; subsequent steps should treat the output as degraded/reference-only.`
+    } else if (failed) {
       // P2-优化: 区分失败原因，便于重规划时注入精准上下文
       if (missingToolCall) {
         stepResult['error'] =
           `Step "${String(step['title'] ?? stepId)}" requires tool invocation (requires_tool=true) but no tool was called. The executor MUST call an appropriate tool (e.g. search_engine, datetime, http_request) to obtain real-time/external data. Do not fabricate data.`
+      } else if (allToolsFailed) {
+        stepResult['error'] =
+          `Step "${String(step['title'] ?? stepId)}" called ${toolRefs.length} tool(s) but all failed. The required external data could not be obtained. Consider replanning with a different approach or tool.`
       } else {
         stepResult['error'] = 'Step produced no AI output and no tool results'
       }

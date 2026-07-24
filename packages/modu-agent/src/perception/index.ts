@@ -1,6 +1,16 @@
 // 对应 Python: components/perception/__init__.py
-// 感知层公共工具函数（对应问题 11：事件追踪信息标准化）
+// 感知层模块统一导出（P0-优化: 统一 barrel 策略，重导出 pipeline/fusion/子模块核心类）
+//
+// 导出内容：
+//   - 公共工具函数：buildPerceptionEventMetadata / extractPerceptionContext
+//   - 管线入口：runPerceptionPipeline / runPerceptionPipelineAsync（pipeline.ts）
+//   - 融合器：PerceptionFusion（fusion.ts）
+//   - 文本感知器：TextPreprocessor / LLMParser / LLMAdapter（text/）
+//   - 视觉感知器：CameraSensor / TimerSensor / MicrophoneSensor / ImageProcessor（vision/）
+//   - 音频感知器：AudioProcessor（audio/）
+//   - 安全守卫：SecurityGuard（security/）
 
+// 公共工具函数（对应问题 11：事件追踪信息标准化）
 /**
  * 从感知结果构建标准化事件 metadata。
  *
@@ -75,3 +85,27 @@ export function extractPerceptionContext(
     sensitivity_level: (perceptionResult['metadata'] ?? {})['sensitivity_level'] ?? 0,
   }
 }
+
+// 管线入口（pipeline.ts）
+export {
+  runPerceptionPipeline,
+  runPerceptionPipelineAsync,
+} from './pipeline.js'
+
+// 融合器（fusion.ts）
+export { PerceptionFusion } from './fusion.js'
+
+// 文本感知器（text/）
+export { TextPreprocessor } from './text/rule-based.js'
+export { LLMParser } from './text/llm-parser.js'
+export type { LLMAdapter } from './text/llm-parser.js'
+
+// 视觉感知器（vision/）
+export { CameraSensor, TimerSensor, MicrophoneSensor } from './vision/camera.js'
+export { ImageProcessor } from './vision/image-processor.js'
+
+// 音频感知器（audio/）
+export { AudioProcessor } from './audio/asr-processor.js'
+
+// 安全守卫（security/）
+export { SecurityGuard } from './security/guard.js'

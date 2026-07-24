@@ -45,10 +45,36 @@ const logger = {
   debug: (msg: string, ...args: any[]) => console.debug(`[runner] ${msg}`, ...args),
 }
 
+/**
+ * 从 ModuGraph 提取 recursionLimit 并注入 lgConfig。
+ *
+ * 修复：LangGraph JS 使用 camelCase `recursionLimit` 作为 RunnableConfig 键名
+ * （与 Python 版的 snake_case `recursion_limit` 不同）。ensureLangGraphConfig 仅保留
+ * 白名单内的键（含 `recursionLimit`），snake_case 键会被丢弃，回退到默认值 25。
+ * 此函数读取图上的 recursionLimit 并以正确的 camelCase 键注入到 stream 调用的 config 中。
+ *
+ * P9.1.4: 直接通过 ModuGraphInterface.recursionLimit 读取，无需访问 _compiled 或 as any。
+ */
+function _withRecursionLimit(graph: ModuGraph, lgConfig: Record<string, any>): Record<string, any> {
+  const limit = graph?.recursionLimit
+  if (limit && typeof limit === 'number' && limit > 0) {
+    return { ...lgConfig, recursionLimit: limit }
+  }
+  return lgConfig
+}
+
 // ============================================================
 // P1-12.2.6: CompiledStateGraph 实例缓存，避免每次 get_runner() 都重建图。
 // 配置变更（通过 hash 检测）时自动失效重建。
 // Node.js 单线程模型无需锁（Python threading.Lock 在此简化为直接访问）。
+//
+// P9.5.1: 引入两层优化降低图重建频率：
+//   1. debounce（100ms）：连续配置变更合并为一次 reset_runner_cache()
+//   2. LLM 参数软失效：llm.temperature / llm.max_tokens /
+//      llm.max_reasoning_iterations 仅影响 LLM 行为，不改变图拓扑，
+//      通过 RunnableConfig.configurable per-request 注入（复用
+//      config_overrides 机制），不触发缓存失效。下次 get_runner()
+//      的 hash 检测仍会兜底重建，保证最终一致。
 // ============================================================
 
 let _runnerCache: ModuGraph | null = null
@@ -59,6 +85,25 @@ let _configCallbackRegistered = false
 
 // P2-12.2.4: 触发图重建的配置 key 前缀
 const _GRAPH_REBUILD_PREFIXES = ['llm.', 'tools.', 'memory.', 'orchestration.', 'streaming.', 'plan_execute.']
+
+// P9.5.1: 仅影响 LLM 行为（不改变图拓扑）的配置 key——软失效，不触发缓存重置。
+// 这些参数通过 RunnableConfig.configurable 在 per-request 层注入（复用
+// config_overrides 机制），避免每次温度/max_tokens 调整都重建图。
+const _LLM_PARAM_ONLY_KEYS = new Set([
+  'llm.temperature',
+  'llm.max_tokens',
+  'llm.max_reasoning_iterations',
+])
+
+// P9.5.1: debounce 窗口（毫秒）。连续配置变更在窗口内合并为一次缓存重置。
+const _REBUILD_DEBOUNCE_MS = 100
+
+// P9.5.1: debounce 定时器句柄（null=无待触发的重置）
+let _debouncedResetTimer: ReturnType<typeof setTimeout> | null = null
+
+// P9.5.1: debounce 窗口内累计的配置变更 keyPath 列表，用于判断窗口结束时
+// 是否仍需重置（若全部为 LLM 参数软失效，则跳过）。
+let _pendingChangeKeys: string[] = []
 
 /**
  * P1-12.2.6: 计算运行时配置的哈希，用于判断是否需要重建图。
@@ -178,7 +223,8 @@ async function _loadPrevConfigOverrides(
   const configOverrides: Record<string, any> = {}
 
   try {
-    const checkpointer = (graph as any).checkpointer
+    // P9.1.4: 通过 ModuGraphInterface.checkpointer 访问，无需 as any
+    const checkpointer = graph.checkpointer
     if (checkpointer != null && typeof checkpointer.getTuple === 'function') {
       const config = { configurable: { thread_id: sessionId } }
       // LangGraph JS: getTuple 是异步的（Python 版为同步）
@@ -209,6 +255,10 @@ async function _loadPrevConfigOverrides(
  *
  * 将 config_overrides 合并到 configurable 中。
  *
+ * P9.5.1: 同时注入当前 LLM 参数（temperature / max_tokens / max_reasoning_iterations）
+ * 到 configurable.llm_params，使 agent 节点能 per-request 读取最新值——避免 LLM
+ * 参数热更新触发图重建（与软失效策略配套）。
+ *
  * @param sessionId 会话标识
  * @param configOverrides 配置覆盖字典
  * @returns 包含 configurable 字段的配置字典
@@ -221,7 +271,47 @@ function _buildConfigWithOverrides(
   if (configOverrides && Object.keys(configOverrides).length > 0) {
     Object.assign(configurable, configOverrides)
   }
+
+  // P9.5.1: 注入当前 LLM 参数到 per-request configurable，
+  // 供 agent 节点在 config_overrides 未覆盖时使用全局最新值
+  const llmParams = _collectCurrentLLMParams()
+  if (llmParams && Object.keys(llmParams).length > 0) {
+    // 已有的 config_overrides 优先（per-session 隔离），llm_params 仅作兜底
+    configurable.llm_params = { ...llmParams, ...(configOverrides.llm_params ?? {}) }
+  }
+
   return { configurable }
+}
+
+/**
+ * P9.5.1: 从 RuntimeConfig 收集当前 LLM 参数（temperature / max_tokens /
+ * max_reasoning_iterations）。
+ *
+ * 这些参数不触发图重建（见 `_LLM_PARAM_ONLY_KEYS`），而是通过 per-request
+ * `RunnableConfig.configurable.llm_params` 注入到 agent 节点。
+ *
+ * @returns LLM 参数字典（空对象表示无配置或读取失败）
+ */
+function _collectCurrentLLMParams(): Record<string, any> {
+  const params: Record<string, any> = {}
+  try {
+    const config = getConfig()
+    const temperature = config.get('llm.temperature', null)
+    if (temperature !== null && typeof temperature === 'number') {
+      params['temperature'] = temperature
+    }
+    const maxTokens = config.get('llm.max_tokens', null)
+    if (maxTokens !== null && typeof maxTokens === 'number') {
+      params['max_tokens'] = maxTokens
+    }
+    const maxReasoningIterations = config.get('llm.max_reasoning_iterations', null)
+    if (maxReasoningIterations !== null && typeof maxReasoningIterations === 'number') {
+      params['max_reasoning_iterations'] = maxReasoningIterations
+    }
+  } catch (e: any) {
+    logger.debug('Failed to collect current LLM params: %s', String(e))
+  }
+  return params
 }
 
 /**
@@ -345,7 +435,8 @@ export async function* stream_response(
   let bridge = eventBridge
   if (bridge === null || bridge === undefined) {
     // P0-1: 从图上读取 orchestrator 的 evolution_collector，激活 EventBridge 的信号收集
-    let evolutionCollector: any = (graph as any).orchestrator
+    // P9.1.4: 通过 ModuGraphInterface.orchestrator 访问，无需 as any
+    let evolutionCollector: any = graph.orchestrator
     evolutionCollector = evolutionCollector?.evolutionCollector ?? null
     bridge = new LangGraphEventBridge(
       null,
@@ -358,10 +449,13 @@ export async function* stream_response(
 
   // LangGraph JS 的 stream() 返回 Promise<IterableReadableStream>（Promise 包裹的 async iterable），
   // 必须先 await 解包才能用 for await...of 遍历，否则会抛 "not async iterable" 错误。
-  const rawStream = await (graph as any).stream(initialState, {
+  // 修复：显式注入 recursionLimit（camelCase），否则 LangGraph 回退到默认 25
+  // P9.1.4: 通过 ModuGraphInterface.stream() 调用，无需 as any
+  const streamConfig = _withRecursionLimit(graph, {
     ...lgConfig,
     streamMode: ['messages', 'updates', 'values'],
   })
+  const rawStream = await graph.stream(initialState, streamConfig)
 
   // LangGraph JS stream 产出 [mode, chunk] 元组，bridge.consume 期望 {type, node, data} 对象，
   // 需通过 _normalizeLangGraphStream 归一化后才能交给 EventBridge 消费。
@@ -452,7 +546,8 @@ export async function run_sync(
   let bridge = eventBridge
   if (bridge === null || bridge === undefined) {
     // P0-1: 从图上读取 orchestrator 的 evolution_collector
-    let evolutionCollector: any = (graph as any).orchestrator
+    // P9.1.4: 通过 ModuGraphInterface.orchestrator 访问，无需 as any
+    let evolutionCollector: any = graph.orchestrator
     evolutionCollector = evolutionCollector?.evolutionCollector ?? null
     bridge = new LangGraphEventBridge(
       null,
@@ -469,10 +564,13 @@ export async function run_sync(
 
     let finalState: Record<string, any> | null = null
     // stream() 返回 Promise<IterableReadableStream>，需 await 解包后再遍历
-    const rawStream = await (graph as any).stream(initialState, {
+    // 修复：显式注入 recursionLimit（camelCase）
+    // P9.1.4: 通过 ModuGraphInterface.stream() 调用，无需 as any
+    const streamConfig = _withRecursionLimit(graph, {
       ...lgConfig,
       streamMode: ['updates', 'values'],
     })
+    const rawStream = await graph.stream(initialState, streamConfig)
 
     // 归一化 [mode, chunk] 元组为 {type, node, data} 对象后交给 EventBridge
     const normalizedStream = _normalizeLangGraphStream(rawStream)
@@ -613,7 +711,16 @@ function _ensureConfigCallbackRegistered(): void {
 }
 
 /**
- * P2-12.2.4: 配置变更回调——影响图结构的配置变更时主动失效缓存。
+ * P2-12.2.4 + P9.5.1: 配置变更回调——影响图结构的配置变更时主动失效缓存。
+ *
+ * P9.5.1 优化：
+ *   1. **debounce（100ms）**：连续多次配置变更在 100ms 窗口内合并为一次
+ *      `reset_runner_cache()`，避免连续微调参数导致频繁重建。
+ *   2. **LLM 参数软失效**：`llm.temperature` / `llm.max_tokens` /
+ *      `llm.max_reasoning_iterations` 仅影响 LLM 推理行为，不改变图拓扑，
+ *      不触发缓存重置。这些参数通过 `RunnableConfig.configurable`
+ *      在 per-request 层注入（复用 config_overrides 机制）。
+ *      下次 `get_runner()` 的 hash 检测仍会兜底重建，保证最终一致。
  *
  * @param keyPath 变更的配置路径（如 "llm.temperature"）
  * @param _oldValue 旧值（未使用）
@@ -624,16 +731,106 @@ function _onConfigChange(
   _oldValue: any,
   _newValue: any,
 ): void {
+  // P9.5.1: 仅匹配 _GRAPH_REBUILD_PREFIXES 的 key 才进入 debounce 流程
+  let matched = false
   for (const prefix of _GRAPH_REBUILD_PREFIXES) {
     if (keyPath.startsWith(prefix)) {
-      logger.info(
-        "Config change detected ('%s'), invalidating runner cache for proactive rebuild",
-        keyPath,
-      )
-      reset_runner_cache()
-      return
+      matched = true
+      break
     }
   }
+  if (!matched) {
+    return
+  }
+
+  // P9.5.1: 记录变更 key 到 pending 列表（用于窗口结束时判断是否仍需重置）
+  _pendingChangeKeys.push(keyPath)
+  logger.info(
+    "Config change detected ('%s'), queued for debounced cache invalidation (pending=%d)",
+    keyPath, _pendingChangeKeys.length,
+  )
+
+  // 若已有待触发的 debounce 定时器，不重复创建（合并到同一次）
+  if (_debouncedResetTimer !== null) {
+    return
+  }
+
+  _debouncedResetTimer = setTimeout(_flushDebouncedCacheReset, _REBUILD_DEBOUNCE_MS)
+}
+
+/**
+ * P9.5.1: debounce 窗口结束时的回调——判断是否真正触发缓存重置。
+ *
+ * 遍历窗口内累计的变更 keyPath：
+ *   - 若存在任一非 LLM 参数软失效 key → 触发 reset_runner_cache()
+ *   - 若全部为 LLM 参数软失效 key → 跳过重置，由下次 get_runner() 的
+ *     hash 检测兜底（保证最终一致，但避免立即重建）
+ */
+function _flushDebouncedCacheReset(): void {
+  const pending = _pendingChangeKeys
+  _pendingChangeKeys = []
+  _debouncedResetTimer = null
+
+  if (pending.length === 0) {
+    return
+  }
+
+  // 判断是否全部为 LLM 参数软失效 key
+  const allSoftLLM = pending.every((k) => _LLM_PARAM_ONLY_KEYS.has(k))
+  if (allSoftLLM) {
+    logger.info(
+      'Skipping runner cache reset: all %d changes are LLM-param-only soft invalidation (%s)',
+      pending.length, pending.join(', '),
+    )
+    return
+  }
+
+  // 存在非软失效 key → 触发重置
+  const nonSoftKeys = pending.filter((k) => !_LLM_PARAM_ONLY_KEYS.has(k))
+  logger.info(
+    "Debounced cache reset triggered by %d config changes (non-soft: %s)",
+    pending.length, nonSoftKeys.join(', '),
+  )
+  reset_runner_cache()
+}
+
+/**
+ * P9.5.1: 同步刷新 debounce 队列（仅供测试用）。
+ *
+ * 取消待触发的定时器，立即执行 flush 逻辑。生产代码不应调用此函数——
+ * debounce 由 Node.js 事件循环自然驱动。
+ */
+export function _flushDebouncedResetForTest(): void {
+  if (_debouncedResetTimer !== null) {
+    clearTimeout(_debouncedResetTimer)
+    _debouncedResetTimer = null
+  }
+  _flushDebouncedCacheReset()
+}
+
+/**
+ * P9.5.1: 重置 debounce 内部状态（仅供测试用，确保测试隔离）。
+ */
+export function _resetDebounceStateForTest(): void {
+  if (_debouncedResetTimer !== null) {
+    clearTimeout(_debouncedResetTimer)
+    _debouncedResetTimer = null
+  }
+  _pendingChangeKeys = []
+}
+
+/**
+ * P9.5.1: 直接调用配置变更回调（仅供测试用）。
+ *
+ * 测试中可通过此函数直接触发 `_onConfigChange` 逻辑，无需依赖 RuntimeConfig
+ * 回调注册（避免与 `_configCallbackRegistered` 全局标志相互干扰）。
+ */
+export function _triggerConfigChangeForTest(
+  keyPath: string,
+  oldValue: any = null,
+  newValue: any = null,
+): void {
+  _onConfigChange(keyPath, oldValue, newValue)
 }
 
 /**
@@ -718,22 +915,33 @@ export async function resume_sync(
   approved: boolean,
   feedback: string = '',
   traceId?: string | null,
+  options?: { timeout?: boolean },
 ): Promise<Record<string, any>> {
   if (!traceId) {
     traceId = randomUUID()
   }
 
   const lgConfig = { configurable: { thread_id: sessionId } }
-  const resumePayload = { approved: Boolean(approved), feedback: String(feedback || '') }
+  // P9.4.3: options.timeout=true 时在 payload 中携带 timeout 标记，
+  // 供 human_review 节点识别超时场景并使用 TOOL_APPROVAL_TIMEOUT 错误码
+  const resumePayload: Record<string, any> = {
+    approved: Boolean(approved),
+    feedback: String(feedback || ''),
+  }
+  if (options?.timeout === true) {
+    resumePayload['timeout'] = true
+  }
 
   try {
     using span = _span('resume_sync', traceId, { session_id: sessionId, approved })
 
     let finalState: Record<string, any> | null = null
     // stream() 返回 Promise<IterableReadableStream>，需 await 解包后再遍历
-    const stream = await (graph as any).stream(
+    // 修复：显式注入 recursionLimit（camelCase）
+    // P9.1.4: 通过 ModuGraphInterface.stream() 调用，无需 as any
+    const stream = await graph.stream(
       new Command({ resume: resumePayload }),
-      { ...lgConfig, streamMode: ['updates', 'values'] },
+      _withRecursionLimit(graph, { ...lgConfig, streamMode: ['updates', 'values'] }),
     )
 
     for await (const event of stream) {
@@ -826,9 +1034,10 @@ export async function* resume_stream(
 
   const streamStart = performance.now()
   try {
-    const stream = await (graph as any).stream(
+    // P9.1.4: 通过 ModuGraphInterface.stream() 调用，无需 as any
+    const stream = await graph.stream(
       new Command({ resume: resumePayload }),
-      { ...lgConfig, streamMode: ['messages', 'updates', 'values'] },
+      _withRecursionLimit(graph, { ...lgConfig, streamMode: ['messages', 'updates', 'values'] }),
     )
 
     for await (const event of stream) {
@@ -860,13 +1069,15 @@ export async function* resume_stream(
  *   - null: 未暂停或无 checkpoint
  *   - dict: 暂停时的 interrupt payload（含 tool_calls / message 等）
  */
-export function get_interrupt_state(
+export async function get_interrupt_state(
   graph: ModuGraph,
   sessionId: string,
-): Record<string, any> | null {
+): Promise<Record<string, any> | null> {
   try {
     const lgConfig = { configurable: { thread_id: sessionId } }
-    const state = (graph as any).getState(lgConfig)
+    // P9.1.4: 通过 ModuGraphInterface.getState() 调用，无需 as any
+    // 注：LangGraph JS getState 返回 Promise<StateSnapshot>，需 await
+    const state = await graph.getState(lgConfig)
     if (state === null || state === undefined) {
       return null
     }
@@ -882,6 +1093,10 @@ export function get_interrupt_state(
     }
     // 从 state.values 提取 interrupt 上下文
     const values = (state.values ?? {}) as Record<string, any>
+    // 从 state.metadata 读取 interrupt 创建时间（LangGraph StateSnapshot.metadata.created_at）
+    // 用于 HITL 超时检查（对应 CODE_WIKI 9.4.3）
+    const meta = (state.metadata ?? {}) as Record<string, any>
+    const createdAt = meta['created_at'] ?? null
     return {
       session_id: sessionId,
       next_nodes: [...nextNodes],
@@ -889,9 +1104,144 @@ export function get_interrupt_state(
       tool_requires_approval: values['tool_requires_approval'] ?? false,
       trace_id: values['trace_id'] ?? '',
       user_id: values['user_id'] ?? '',
+      created_at: createdAt,
     }
   } catch (e: any) {
     logger.debug('Failed to query interrupt state: %s', String(e))
     return null
   }
+}
+
+// ============================================================
+// P9.4.3: HITL 审批超时机制
+// ============================================================
+
+/**
+ * P9.4.3: 检查指定 session 的 interrupt 是否已超时。
+ *
+ * 读取 `tools.human_in_loop.approval_timeout_seconds`（默认 300s）配置，
+ * 与 interrupt 创建时间（StateSnapshot.metadata.created_at）对比判断是否超时。
+ *
+ * 当 `auto_reject_on_timeout=true`（默认）时，超时后自动调用 resume_sync
+ * 以 `approved=false` 恢复图执行，返回 `TOOL_APPROVAL_TIMEOUT` 错误码，
+ * 避免长期占用 checkpointer 存储与会话上下文。
+ *
+ * @param graph ModuGraph 实例
+ * @param sessionId 会话标识
+ * @returns
+ *   - 'active': 仍在审批窗口内，未超时
+ *   - 'expired': 已超时（若 auto_reject_on_timeout=true，已自动 resume）
+ *   - 'no_interrupt': 无 interrupt 暂停（无需处理）
+ *   - 'no_config': 未启用超时配置（disabled）
+ *   - 'resume_failed': 自动 resume 调用失败
+ */
+export async function checkInterruptTimeout(
+  graph: ModuGraph,
+  sessionId: string,
+): Promise<'active' | 'expired' | 'no_interrupt' | 'no_config' | 'resume_failed'> {
+  const config = getConfig()
+  const hitlCfg = config.get('tools.human_in_loop', {}) ?? {}
+  const timeoutSeconds = Number(hitlCfg['approval_timeout_seconds'] ?? 300)
+  const autoReject = hitlCfg['auto_reject_on_timeout'] ?? true
+
+  // timeout<=0 视为禁用超时检查
+  if (!(timeoutSeconds > 0)) {
+    return 'no_config'
+  }
+
+  const state = await get_interrupt_state(graph, sessionId)
+  if (state === null) {
+    return 'no_interrupt'
+  }
+
+  const createdAt = state['created_at']
+  if (!createdAt) {
+    // 缺少 created_at（旧 checkpoint 或 LangGraph 版本差异），保守不触发
+    return 'active'
+  }
+
+  // createdAt 可能为 ISO 字符串、Unix 秒、Unix 毫秒；统一解析为毫秒
+  let createdAtMs: number
+  if (typeof createdAt === 'number') {
+    createdAtMs = createdAt > 1e12 ? createdAt : createdAt * 1000
+  } else {
+    const parsed = Date.parse(String(createdAt))
+    if (Number.isNaN(parsed)) {
+      return 'active'
+    }
+    createdAtMs = parsed
+  }
+
+  const nowMs = Date.now()
+  const elapsedSec = (nowMs - createdAtMs) / 1000
+  if (elapsedSec < timeoutSeconds) {
+    return 'active'
+  }
+
+  logger.warning(
+    'HITL interrupt timed out: session_id=%s elapsed=%.1fs timeout=%ds auto_reject=%s',
+    sessionId, elapsedSec, timeoutSeconds, autoReject,
+  )
+
+  if (!autoReject) {
+    // 未启用自动拒绝，仅标记为已过期，由调用方处理
+    return 'expired'
+  }
+
+  // 自动拒绝：调用 resume_sync(approved=false) 触发被拒工具降级路径
+  try {
+    const result = await resume_sync(
+      graph,
+      sessionId,
+      false,
+      `auto-rejected: approval timed out after ${timeoutSeconds}s`,
+      `hitl-timeout-${sessionId}-${Math.floor(nowMs)}`,
+      { timeout: true },  // P9.4.3: 携带 timeout 标记，human_review 使用 TOOL_APPROVAL_TIMEOUT
+    )
+    // resume_sync 成功（即使内部业务返回 error_code 也算图已恢复）
+    if (result && result['status'] === 'error') {
+      logger.error(
+        'HITL auto-reject resume returned error: session_id=%s error_code=%s',
+        sessionId, result['error_code'] ?? 'unknown',
+      )
+      return 'resume_failed'
+    }
+    return 'expired'
+  } catch (e: any) {
+    logger.error(
+      'HITL auto-reject resume failed: session_id=%s error=%s',
+      sessionId, String(e),
+    )
+    return 'resume_failed'
+  }
+}
+
+/**
+ * P9.4.3: 批量扫描并处理超时的 interrupt（清理任务入口）。
+ *
+ * 遍历给定的 session_id 列表，对每个 session 调用 checkInterruptTimeout。
+ * 适合由外部定时任务（setInterval / cron）定期触发，清理长期占用 checkpointer
+ * 存储的过期 interrupt 状态。
+ *
+ * @param graph ModuGraph 实例
+ * @param sessionIds 待检查的 session_id 列表
+ * @returns 每个 session 的检查结果汇总
+ */
+export async function sweepExpiredInterrupts(
+  graph: ModuGraph,
+  sessionIds: string[],
+): Promise<Record<string, 'active' | 'expired' | 'no_interrupt' | 'no_config' | 'resume_failed'>> {
+  const results: Record<string, 'active' | 'expired' | 'no_interrupt' | 'no_config' | 'resume_failed'> = {}
+  for (const sessionId of sessionIds) {
+    try {
+      results[sessionId] = await checkInterruptTimeout(graph, sessionId)
+    } catch (e: any) {
+      logger.error(
+        'sweepExpiredInterrupts: session_id=%s error=%s',
+        sessionId, String(e),
+      )
+      results[sessionId] = 'resume_failed'
+    }
+  }
+  return results
 }

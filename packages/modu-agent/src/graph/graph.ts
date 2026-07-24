@@ -19,6 +19,7 @@
 import type { StructuredTool } from '@langchain/core/tools'
 import { END, START, StateGraph, type CompiledStateGraph } from '@langchain/langgraph'
 import { ToolNode } from '@langchain/langgraph/prebuilt'
+import type { RunnableConfig } from '@langchain/core/runnables'
 
 import { getConfig } from '../config/runtime-config.js'
 import { ModuAgentStateAnnotation, type ModuAgentState } from './state.js'
@@ -59,7 +60,7 @@ const logger = {
 }
 
 /**
- * P1-12.2.3: CompiledStateGraph 包装类，显式持有 orchestrator 引用。
+ * P1-12.2.3 + P9.1.4: CompiledStateGraph 包装类，显式持有 orchestrator 引用。
  *
  * 替代在 CompiledStateGraph 实例上 monkey-patch `graph.orchestrator` 的做法：
  * 第三方对象（CompiledStateGraph）不应被附加非标准属性，否则会引入隐式契约、
@@ -70,12 +71,47 @@ const logger = {
  * 同时以普通实例属性形式持有 orchestrator，供 runner 读取以共享
  * evolution_collector。
  *
+ * P9.1.4: 显式声明 ModuGraphInterface 接口列出 runner 实际依赖的核心方法
+ * 与属性，并使用 `satisfies` 确保 Proxy handler 的类型签名与目标一致。
+ * 这样 runner.ts 可直接通过接口类型访问 graph.stream / getState 等，
+ * 无需 `as any` 断言。
+ *
  * 用法与 CompiledStateGraph 一致：
  *   const graph = createAgent()        // 返回 ModuGraph
  *   for await (const ev of graph.stream(state, config)) { ... }
  *   const orch = graph.orchestrator     // 显式属性，非 monkey-patch
  */
-export class ModuGraph {
+export interface ModuGraphInterface {
+  /** 底层编译图（用于显式访问原始实例）。 */
+  readonly compiled: CompiledStateGraph<any, any>
+  /** EvolutionOrchestrator 实例引用（无 orchestrator 时为 null）。 */
+  orchestrator: any
+  /** LangGraph 检查点保存器（透传自底层编译图）。 */
+  readonly checkpointer: any
+  /** 递归限制（透传自底层编译图，对应 maxIterations）。 */
+  recursionLimit: number
+  /** 流式调用：透传 stream() 至底层编译图。 */
+  stream(
+    input: any,
+    config?: RunnableConfig,
+  ): Promise<IterableReadableStream<any>>
+  /** 异步流式调用：透传 astream() 至底层编译图。 */
+  astream(
+    input: any,
+    config?: RunnableConfig,
+  ): Promise<IterableReadableStream<any>>
+  /** 同步调用：透传 invoke() 至底层编译图。 */
+  invoke(input: any, config?: RunnableConfig): Promise<any>
+  /** 查询线程状态：透传 getState() 至底层编译图。 */
+  getState(config?: RunnableConfig, options?: any): Promise<any>
+  /** 更新线程状态：透传 updateState() 至底层编译图。 */
+  updateState(input: any, config?: RunnableConfig, asNode?: string): Promise<void>
+}
+
+/** IterableReadableStream 类型别名（避免引入额外类型导入）。 */
+type IterableReadableStream<T> = AsyncGenerator<T, void, unknown>
+
+export class ModuGraph implements ModuGraphInterface {
   private _compiled: CompiledStateGraph<any, any>
   orchestrator: any
 
@@ -84,8 +120,9 @@ export class ModuGraph {
     this._compiled = compiled
     this.orchestrator = orchestrator
 
-    // 使用 Proxy 将未定义的属性访问委托给底层编译图
-    return new Proxy(this, {
+    // P9.1.4: 使用 `satisfies` 确保 Proxy handler 类型签名与目标一致。
+    // `target` 即 ModuGraph 实例本身，`prop` 类型为 string | symbol。
+    const handler: ProxyHandler<ModuGraph> = {
       get(target, prop, receiver) {
         if (prop in target) {
           return Reflect.get(target, prop, receiver)
@@ -101,12 +138,70 @@ export class ModuGraph {
       has(target, prop) {
         return prop in target || prop in (target._compiled as any)
       },
-    })
+    } satisfies ProxyHandler<ModuGraph>
+
+    // 使用 Proxy 将未定义的属性访问委托给底层编译图
+    return new Proxy(this, handler)
   }
 
   /** 返回底层编译图实例。 */
   get compiled(): CompiledStateGraph<any, any> {
     return this._compiled
+  }
+
+  /** 透传 checkpointer。 */
+  get checkpointer(): any {
+    return (this._compiled as any).checkpointer
+  }
+
+  /** 透传 recursionLimit。 */
+  get recursionLimit(): number {
+    return (this._compiled as any).recursionLimit
+  }
+
+  /** 透传 recursionLimit（写入）。 */
+  set recursionLimit(value: number) {
+    ;(this._compiled as any).recursionLimit = value
+  }
+
+  /** 透传 stream() 至底层编译图。 */
+  stream(
+    input: any,
+    config?: RunnableConfig,
+  ): Promise<IterableReadableStream<any>> {
+    const fn = (this._compiled as any).stream
+    return fn.call(this._compiled, input, config)
+  }
+
+  /** 透传 astream() 至底层编译图。 */
+  astream(
+    input: any,
+    config?: RunnableConfig,
+  ): Promise<IterableReadableStream<any>> {
+    const fn = (this._compiled as any).astream
+    return fn.call(this._compiled, input, config)
+  }
+
+  /** 透传 invoke() 至底层编译图。 */
+  invoke(input: any, config?: RunnableConfig): Promise<any> {
+    const fn = (this._compiled as any).invoke
+    return fn.call(this._compiled, input, config)
+  }
+
+  /** 透传 getState() 至底层编译图。 */
+  async getState(config?: RunnableConfig, options?: any): Promise<any> {
+    const fn = (this._compiled as any).getState
+    return fn.call(this._compiled, config, options)
+  }
+
+  /** 透传 updateState() 至底层编译图。 */
+  async updateState(
+    input: any,
+    config?: RunnableConfig,
+    asNode?: string,
+  ): Promise<void> {
+    const fn = (this._compiled as any).updateState
+    return fn.call(this._compiled, input, config, asNode)
   }
 }
 

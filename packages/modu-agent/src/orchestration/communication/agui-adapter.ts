@@ -38,6 +38,49 @@ export const AGUIEventType = {
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType]
 
 // ============================================================
+// P9.3.1: AGUIEvent payload 强类型映射（按事件类型区分 payload 结构）
+// ============================================================
+
+/** AG-UI 事件 → payload 数据结构映射表 */
+export interface AGUIEventPayloadMap {
+  RUN_STARTED: { threadId: string; runId: string }
+  RUN_FINISHED: { threadId: string; runId: string }
+  RUN_ERROR: { code: string; message: string }
+  TEXT_MESSAGE_START: { messageId: string; role: string }
+  TEXT_MESSAGE_CONTENT: { messageId: string; delta: string }
+  TEXT_MESSAGE_END: { messageId: string }
+  TEXT_MESSAGE_CHUNK: { messageId: string; delta: string }
+  THINKING_START: { title: string }
+  THINKING_END: Record<string, never>
+  THINKING_TEXT_MESSAGE_START: { messageId: string; role?: string }
+  THINKING_TEXT_MESSAGE_CONTENT: { delta: string }
+  THINKING_TEXT_MESSAGE_END: { messageId: string }
+  TOOL_CALL_START: { toolCallId: string; toolCallName: string; parentMessageId?: string }
+  TOOL_CALL_ARGS: { toolCallId: string; delta: string }
+  TOOL_CALL_END: { toolCallId: string }
+  TOOL_CALL_CHUNK: { toolCallId: string; delta: string }
+  TOOL_CALL_RESULT: {
+    messageId?: string
+    toolCallId: string
+    toolCallName?: string
+    content: string
+    status?: string
+  }
+  STATE_SNAPSHOT: Record<string, unknown>
+  STATE_DELTA: Record<string, unknown>
+  MESSAGES_SNAPSHOT: { messages: unknown[] }
+}
+
+/** 按事件类型提取对应 payload 类型的辅助类型 */
+export type AGUIEventPayload<T extends AGUIEventType> = AGUIEventPayloadMap[T]
+
+/** 强类型 AGUI 事件（type + payload） */
+export interface AGUITypedEvent<T extends AGUIEventType = AGUIEventType> {
+  type: T
+  data: AGUIEventPayloadMap[T]
+}
+
+// ============================================================
 // AGUIEncoder（对应 Python AGUIEncoder）
 // ============================================================
 
@@ -320,11 +363,14 @@ export class AGUIStateMachine {
     this.output_format = output_format
   }
 
-  private _emit(eventType: AGUIEventType, data: Record<string, any>): AGUIEvent | string {
+  private _emit<T extends AGUIEventType>(
+    eventType: T,
+    data: AGUIEventPayloadMap[T],
+  ): AGUIEvent | string {
     if (this.output_format === 'sse') {
-      return AGUIEncoder.toSse(eventType, data)
+      return AGUIEncoder.toSse(eventType, data as Record<string, any>)
     }
-    return AGUIEncoder.toEventDict(eventType, data)
+    return AGUIEncoder.toEventDict(eventType, data as Record<string, any>)
   }
 
   // ---- 生命周期事件 ----

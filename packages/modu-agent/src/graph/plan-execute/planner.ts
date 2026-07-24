@@ -62,6 +62,41 @@ function _extractJson(text: string): Record<string, any> | null {
 }
 
 /**
+ * 自动推断步骤是否需要工具调用（不依赖 LLM 输出 requires_tool 字段）。
+ *
+ * 弱模型（如 GLM-4-flash）不可靠地输出 requires_tool，因此在代码层面
+ * 基于 step title+description 的关键词匹配做兜底推断。
+ *
+ * 排除以"基于/根据/参考/结合"开头的 description（这些是引用前序步骤结果的步骤，
+ * 不需要自己调用工具获取数据）。
+ */
+const _REALTIME_DATA_KEYWORDS = [
+  // 中文关键词
+  '天气', '新闻', '股价', '股票', '价格', '汇率', '日期', '时间',
+  '今天', '今日', '当前', '现在', '最新', '实时', '查询', '获取', '搜索', '检索',
+  'API', '数据库', '网络', '联网', '在线', '爬取', '抓取', '请求',
+  // 英文关键词
+  'weather', 'news', 'price', 'stock', 'exchange', 'date', 'time', 'today',
+  'current', 'now', 'latest', 'real-time', 'realtime', 'query', 'fetch',
+  'search', 'retrieve', 'api', 'database', 'internet', 'online', 'scrape',
+]
+
+// 引用前序结果的引导词：以这些词开头的 description 是在基于前序步骤的数据做推理，不需要工具
+const _REFERENCE_PREFIXES = ['基于', '根据', '参考', '结合', '依据', '利用', '使用']
+
+/** 导出用于单元测试 */
+export function _inferRequiresTool(title: string, description: string): boolean {
+  const text = `${title} ${description}`.toLowerCase()
+  const hasKeyword = _REALTIME_DATA_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()))
+  if (!hasKeyword) return false
+  // 排除引用前序结果的步骤（"基于获取的天气数据..." / "根据气温推荐..."）
+  const descTrimmed = description.trim()
+  const isReference = _REFERENCE_PREFIXES.some((p) => descTrimmed.startsWith(p))
+  if (isReference) return false
+  return true
+}
+
+/**
  * 将 LLM 原始输出解析并校验为 PlanStep 列表。
  *
  * @param raw LLM 输出文本
@@ -80,15 +115,20 @@ function _parsePlan(raw: string, maxSteps: number): PlanStep[] | null {
   }
   const steps = parsed.data.steps.slice(0, maxSteps)
   // 规整化 step_id 为 step_{i}，保证游标与前端索引一致
-  // P2-优化修复: 保留 requires_tool 字段，使 step_finalize 的工具调用校验生效
-  return steps.map((s, i) => ({
-    step_id: `step_${i + 1}`,
-    title: s.title,
-    description: s.description,
-    ...(s.depends_on ? { depends_on: s.depends_on } : {}),
-    ...(s.requires_tool !== undefined ? { requires_tool: s.requires_tool } : {}),
-    status: 'pending' as const,
-  }))
+  // P2-优化修复: 保留 requires_tool 字段；若 LLM 未输出则自动推断（弱模型兜底）
+  return steps.map((s, i) => {
+    // 优先使用 LLM 输出的 requires_tool；未输出时自动推断
+    const llmRequiresTool = s.requires_tool
+    const inferred = llmRequiresTool !== undefined ? llmRequiresTool : _inferRequiresTool(s.title, s.description)
+    return {
+      step_id: `step_${i + 1}`,
+      title: s.title,
+      description: s.description,
+      ...(s.depends_on ? { depends_on: s.depends_on } : {}),
+      ...(inferred ? { requires_tool: true } : {}),
+      status: 'pending' as const,
+    }
+  })
 }
 
 /**
@@ -110,7 +150,13 @@ export function makePlannerNode(
     const plannerTemperature = Number(config.get('plan_execute.planner_temperature', 0.2))
 
     const replanCount = state.replan_count ?? 0
-    const isReplan = replanCount > 0
+    // 修复: 通过现有 plan 检测重规划，而非 replanCount > 0。
+    // 首次规划时 state.plan 为空；重规划时 state.plan 包含上一轮的计划。
+    // 原 logic (replanCount > 0) 是鸡生蛋问题：replanCount 从未递增（因为
+    // isReplan 永远 false），导致无限重规划循环 + replanContext 永不注入。
+    const existingPlan = state.plan ?? []
+    const isReplan = existingPlan.length > 0
+    const newReplanCount = isReplan ? replanCount + 1 : replanCount
 
     // 构建工具清单（失败时降级为空清单，不阻断规划）
     let toolCatalogText = '(no tools available)'
@@ -134,7 +180,7 @@ export function makePlannerNode(
     const goal = state.cleaned_text ?? state.input_data?.['prompt'] ?? ''
     if (!goal) {
       logger.warning('Planner received empty goal, degrading to direct response')
-      return { plan: [], plan_phase: '', replan_count: replanCount }
+      return { plan: [], plan_phase: '', replan_count: newReplanCount }
     }
 
     // 相关历史知识（memory_query 之后执行，knowledge 直接可用）
@@ -187,14 +233,14 @@ export function makePlannerNode(
       return {
         plan: [],
         plan_phase: '',
-        replan_count: replanCount,
+        replan_count: newReplanCount,
         plan_delta: null,
       }
     }
 
     logger.info(
-      'Plan created: %d step(s), replan=%s trace_id=%s',
-      plan.length, isReplan, state.trace_id ?? '',
+      'Plan created: %d step(s), replan=%s replan_count=%d trace_id=%s',
+      plan.length, isReplan, newReplanCount, state.trace_id ?? '',
     )
 
     return {
@@ -204,7 +250,7 @@ export function makePlannerNode(
       // P1-6 修复：step_results reducer 已改为空数组清空语义
       // 返回空列表会覆盖旧步骤结果（reducer 检测 next.length===0 时返回 []）
       step_results: [],
-      replan_count: isReplan ? replanCount + 1 : replanCount,
+      replan_count: newReplanCount,
       // SSE: plan_created delta（phase='plan' 携带完整计划）
       plan_delta: {
         phase: 'plan',
@@ -224,5 +270,6 @@ export function routeAfterPlan(state: ModuAgentState): string {
   if (plan.length > 0 && state.plan_phase === 'executing') {
     return 'step_dispatch'
   }
-  return 'finalize_response'
+  // 修复: 返回 path map key 'response'（对应节点 'finalize_response'），而非节点名
+  return 'response'
 }

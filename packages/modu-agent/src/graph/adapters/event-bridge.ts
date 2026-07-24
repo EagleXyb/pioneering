@@ -56,6 +56,86 @@ const _NODE_ACTION_MAP: Record<string, string> = {
 // SSE 事件类型
 const _SSE_EVENT_TYPES = ['thinking', 'tool_call_start', 'tool_call_end', 'tool_result', 'response', 'plan_created', 'step_update']
 
+// ============================================================
+// P9.3.1: SSE payload 强类型定义（按事件类型区分）
+// ============================================================
+
+/** SSE 事件类型字面量联合 */
+export type SSEEventType =
+  | 'thinking'
+  | 'tool_call_start'
+  | 'tool_call_end'
+  | 'tool_result'
+  | 'response'
+  | 'plan_created'
+  | 'step_update'
+
+/** thinking 事件 payload */
+export interface ThinkingSSEPayload {
+  type: 'thinking'
+  data: { status: 'started' | 'ended' }
+}
+
+/** tool_call_start 事件 payload */
+export interface ToolCallStartSSEPayload {
+  type: 'tool_call_start'
+  data: { tool_call_id: string; tool_name: string }
+}
+
+/** tool_call_end 事件 payload */
+export interface ToolCallEndSSEPayload {
+  type: 'tool_call_end'
+  data: { tool_call_id: string }
+}
+
+/** tool_result 事件 payload */
+export interface ToolResultSSEPayload {
+  type: 'tool_result'
+  data: { tool_call_id: string; tool_name: string; result: string }
+}
+
+/** response 事件 payload */
+export interface ResponseSSEPayload {
+  type: 'response'
+  data: { content: string }
+}
+
+/** plan_created 事件 payload（P4 Plan-Execute） */
+export interface PlanCreatedSSEPayload {
+  type: 'plan_created'
+  data: { phase: 'plan'; plan: unknown }
+}
+
+/** step_update 事件 payload（P4 Plan-Execute） */
+export interface StepUpdateSSEPayload {
+  type: 'step_update'
+  data: {
+    phase: 'execute' | string
+    step_update?: { id: string; status: string; result?: unknown; finished_at?: string }
+  }
+}
+
+/** SSE payload 联合类型——按事件类型区分 */
+export type SSEPayload =
+  | ThinkingSSEPayload
+  | ToolCallStartSSEPayload
+  | ToolCallEndSSEPayload
+  | ToolResultSSEPayload
+  | ResponseSSEPayload
+  | PlanCreatedSSEPayload
+  | StepUpdateSSEPayload
+
+/** SSE payload 类型守卫工厂 */
+export function isSSEPayload(value: unknown): value is SSEPayload {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Record<string, any>
+  return (
+    typeof v.type === 'string' &&
+    _SSE_EVENT_TYPES.includes(v.type) &&
+    typeof v.data === 'object'
+  )
+}
+
 /**
  * 将 LangGraph stream 事件桥接到现有 EventBus。
  *
@@ -266,8 +346,8 @@ export class LangGraphEventBridge {
    * - tool_call_start：工具调用开始
    * - tool_result：工具执行结果
    */
-  _emitSseEvents(event: Record<string, any>): Array<Record<string, any>> {
-    const sseEvents: Array<Record<string, any>> = []
+  _emitSseEvents(event: Record<string, any>): SSEPayload[] {
+    const sseEvents: SSEPayload[] = []
     const eventType = event.type || ''
 
     // messages stream 开始 → thinking 事件
