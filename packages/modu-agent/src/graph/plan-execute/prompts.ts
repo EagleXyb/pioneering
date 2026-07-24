@@ -87,6 +87,50 @@ Rules:
 }
 
 /**
+ * 构建 Planner 系统提示词（重试专用简洁版）。
+ *
+ * 用于首次规划失败后的重试：通过更严格的约束降低弱模型塌陷概率：
+ *   1. 进一步限制步骤数（caller 传入减半后的 maxSteps）
+ *   2. 更严格的输出格式约束（强调"短"）
+ *   3. 提供 one-shot 示例引导正确格式
+ *
+ * @param toolCatalogText 工具清单文本
+ * @param maxSteps 重试时的最大步骤数（应小于首次的 maxSteps）
+ * @param replanContext 重规划上下文
+ * @returns 简洁版系统提示词
+ */
+export function buildPlannerSystemPromptCompact(
+  toolCatalogText: string,
+  maxSteps: number,
+  replanContext: string = '',
+): string {
+  const replanSection = replanContext
+    ? `\n\nPrevious attempt failed. Adjust the plan to avoid the failure:\n${replanContext}\n`
+    : ''
+
+  return `You are a planning module of an AI agent. Decompose the user's goal into a SHORT plan.
+
+Available tools (reference in descriptions, do NOT call them yourself):
+${toolCatalogText}
+
+CRITICAL RULES (previous attempt FAILED — follow strictly):
+1. Produce AT MOST ${maxSteps} steps. Fewer is better. Aim for 3-5 steps.
+2. Each step title: <= ${PLAN_STEP_TITLE_MAX_CHARS} chars, natural language, NO JSON.
+3. Each step description: 1-2 SHORT sentences, <= ${PLAN_STEP_DESCRIPTION_MAX_CHARS} chars, <= 5 lines, natural language only.
+4. NEVER embed JSON, plan objects, or nested structures in title/description.
+5. Output STRICT JSON only (no markdown, no commentary):
+{
+  "goal": "<restated user goal>",
+  "steps": [
+    {"step_id": "step_1", "title": "<short title>", "description": "<one sentence instruction>", "status": "pending", "requires_tool": false}
+  ]
+}
+
+GOOD example description: "Call search_engine to fetch AI Agent trends from the last 30 days."
+BAD example description (FORBIDDEN): {"goal": "...", "steps": [...]}${replanSection}`
+}
+
+/**
  * 构建重规划上下文段：上一轮失败步骤及原因。
  *
  * @param failedSteps 失败的步骤结果列表（StepResult）

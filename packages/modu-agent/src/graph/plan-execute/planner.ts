@@ -16,6 +16,7 @@ import { getConfig } from '../../config/runtime-config.js'
 import type { ModuAgentState } from '../state.js'
 import {
   buildPlannerSystemPrompt,
+  buildPlannerSystemPromptCompact,
   buildReplanContext,
   buildToolCatalogText,
 } from './prompts.js'
@@ -271,20 +272,40 @@ export function makePlannerNode(
       }
     }
 
-    const messages = [
-      new SystemMessage({ content: systemPrompt }),
-      new HumanMessage({ content: `User goal: ${goal}${knowledgeSection}` }),
-    ]
+    // 用户消息（HumanMessage）在所有尝试中保持不变
+    const userMessage = new HumanMessage({ content: `User goal: ${goal}${knowledgeSection}` })
 
-    // 调用 LLM（最多 2 次：首次 + 降温重试 1 次）
+    // P-修复: 渐进式降级重试——首次用完整提示词，重试时用简洁提示词 + 减半 maxSteps
+    // 弱模型在长输出（10 步 plan）时易陷入"嵌套 plan 塌陷"。相同参数重试无法解决，
+    // 需要缩短输出长度 + 用更严格的提示词约束格式。
+    const retryMaxSteps = Math.max(3, Math.floor(maxSteps / 2))
+    const retrySystemPrompt = buildPlannerSystemPromptCompact(
+      toolCatalogText, retryMaxSteps, replanContext,
+    )
+
+    // 三阶段调用：attempt 0 = 首次（完整提示词 + maxSteps）
+    //             attempt 1 = 重试（简洁提示词 + 减半 maxSteps + temperature=0）
+    //             仍失败 → 降级直答（routeAfterPlan → response）
     let plan: PlanStep[] | null = null
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        const isRetry = attempt > 0
+        const temperature = isRetry ? 0 : plannerTemperature
+        const effectiveMaxSteps = isRetry ? retryMaxSteps : maxSteps
+        const effectiveSystemPrompt = isRetry ? retrySystemPrompt : systemPrompt
+        const effectiveMessages = [
+          new SystemMessage({ content: effectiveSystemPrompt }),
+          userMessage,
+        ]
+
         let effectiveLlm = llm
-        const temperature = attempt === 0 ? plannerTemperature : 0
         // P-修复: 同时绑定 temperature 和 max_tokens，防止塌陷时无限生成
+        // 重试时进一步降低 max_tokens（短输出降低塌陷概率）
+        const effectiveMaxTokens = isRetry
+          ? Math.floor(plannerMaxTokens / 2)
+          : plannerMaxTokens
         try {
-          effectiveLlm = llm.bind({ temperature, max_tokens: plannerMaxTokens })
+          effectiveLlm = llm.bind({ temperature, max_tokens: effectiveMaxTokens })
         } catch {
           // 部分 LLM 实现不支持 max_tokens 绑定，退化为仅绑定 temperature
           try {
@@ -293,15 +314,26 @@ export function makePlannerNode(
             effectiveLlm = llm
           }
         }
-        const response = await effectiveLlm.invoke(messages)
+
+        if (isRetry) {
+          logger.info(
+            'Planner retry: max_steps=%d (was %d) max_tokens=%d (was %d) temperature=0',
+            effectiveMaxSteps, maxSteps, effectiveMaxTokens, plannerMaxTokens,
+          )
+        }
+
+        const response = await effectiveLlm.invoke(effectiveMessages)
         const raw = typeof response?.content === 'string'
           ? response.content
           : String(response?.content ?? '')
-        plan = _parsePlan(raw, maxSteps)
+        plan = _parsePlan(raw, effectiveMaxSteps)
         if (plan) {
           break
         }
-        logger.warning('Planner attempt %d produced unparseable plan', attempt + 1)
+        logger.warning(
+          'Planner attempt %d produced unparseable plan (max_steps=%d)',
+          attempt + 1, effectiveMaxSteps,
+        )
       } catch (e) {
         logger.error('Planner LLM invoke failed (attempt %d): %s', attempt + 1, String(e))
       }
