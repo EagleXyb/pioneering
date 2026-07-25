@@ -30,6 +30,7 @@ export class DeepSeekLLMReasoner extends BaseLLMReasoner {
       resolvedModel,
       timeout,
       systemPrompt,
+      'deepseek',
     )
   }
 }

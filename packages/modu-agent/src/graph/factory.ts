@@ -23,6 +23,7 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 
 import { getConfig, type RuntimeConfig } from '../config/runtime-config.js'
 import { getRegistry } from '../core/registry.js'
+import type { LLMRouter, ModuLLM } from '../core/interfaces/llm.js'
 import { EvolutionOrchestrator } from '../evolution/evolution-orchestrator.js'
 import { getMcpClient } from '../mcp/client.js'
 import { SkillLoader } from '../skills/loader.js'
@@ -30,10 +31,12 @@ import { SkillPromptAggregator } from '../skills/prompt-aggregator.js'
 import { CalculatorTool, DateTimeTool, SearchTool } from '../tools/index.js'
 import { build_chat_model } from './adapters/llm-adapter.js'
 import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
+import { wrap_chat_model_as_modu } from './adapters/modu-llm-adapter.js'
 import { apply_llm_retry } from './adapters/retry.js'
 import { ChromaStore, InMemoryStoreAdapter } from './adapters/store-adapter.js'
 import { build_langchain_tools } from './adapters/tool-adapter.js'
 import { ModuGraph, buildModuGraph } from './graph.js'
+import { PassthroughLLMRouter, RuleBasedLLMRouter, type RouteTable } from '../reasoning/llm/router.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[factory] ${msg}`, ...args),
@@ -137,7 +140,7 @@ export function build_store(storeType: string = 'chroma'): any {
 }
 
 /**
- * P2-7: 构造 LLM-as-Judge 评估器。
+ * P2-7: 构造 LLM-as-Judge 评估器（统一 LLM 接口改造版）。
  *
  * 仅当 `feedback.quality_monitor_mode` 为 "llm" 或 "hybrid" 时构造，
  * 否则返回 null（rule 模式无需 LLM）。
@@ -146,14 +149,19 @@ export function build_store(storeType: string = 'chroma'): any {
  * 其次读取 `feedback.quality_monitor_llm_provider` 配置，
  * 最后复用 `llm.default_provider`。
  *
+ * 统一 LLM 接口改造（对应文档 §2.1）：
+ *   返回值从 LangChain ChatOpenAI 改为 ModuLLM 接口实例，
+ *   内部通过 wrap_chat_model_as_modu 包装，使 QualityMonitor 调用路径
+ *   统一面向 ModuLLM.invoke 消费，消除 areason/ainvoke 鸭子类型分支。
+ *
  * @param runtimeConfig 运行时配置
  * @param configurable RunnableConfig.configurable 字段
- * @returns ChatOpenAI 实例，或 null（rule 模式或构造失败）
+ * @returns ModuLLM 实例，或 null（rule 模式或构造失败）
  */
 export function _build_judge_llm(
   runtimeConfig: RuntimeConfig,
   configurable: Record<string, any>,
-): any | null {
+): ModuLLM | null {
   const mode = runtimeConfig.get('feedback.quality_monitor_mode', 'rule')
   if (mode !== 'llm' && mode !== 'hybrid') {
     return null
@@ -169,23 +177,113 @@ export function _build_judge_llm(
   const maxTokens = runtimeConfig.get('feedback.quality_monitor_llm_max_tokens', 256)
 
   try {
-    const judgeLlm = build_chat_model(
+    const chatModel = build_chat_model(
       provider,
       runtimeConfig,
       temperature,
       maxTokens,
     )
+    // 统一包装为 ModuLLM 接口（对应文档 §2.1 消除双轨抽象）
+    const moduLlm = wrap_chat_model_as_modu(chatModel, provider)
     logger.info(
-      'Built LLM-as-Judge evaluator: provider=%s temp=%.2f max_tokens=%d',
+      'Built LLM-as-Judge evaluator (ModuLLM): provider=%s temp=%.2f max_tokens=%d',
       provider, temperature, maxTokens,
     )
-    return judgeLlm
+    return moduLlm
   } catch (e: any) {
     logger.warning(
       'Failed to build judge LLM (provider=%s), QualityMonitor will fall back to rule: %s',
       provider, String(e),
     )
     return null
+  }
+}
+
+/**
+ * 构造主流程 LLM 的 ModuLLM 视图（对应文档 §2.1 统一 LLM 接口）。
+ *
+ * 主流程图节点仍消费 LangChain Runnable 接口（bind/invoke），
+ * 此函数提供同一 ChatOpenAI 实例的 ModuLLM 包装视图，供：
+ *   - LLMRouter 路由表工厂使用
+ *   - 外部消费者（如 CostDashboard / 调试工具）面向 ModuLLM 编程
+ *   - 未来逐步迁移 graph 节点至 ModuLLM 接口
+ *
+ * 注意：返回的 ModuLLM 与主流程 boundLlm 共享底层 ChatOpenAI 实例，
+ *       不会产生额外连接池或重复成本核算（成本核算在 invoke 内一次性发布）。
+ *
+ * @param chatModel LangChain ChatOpenAI 实例
+ * @param provider  Provider 标识
+ * @returns ModuLLM 包装实例
+ */
+export function _build_modu_llm(
+  chatModel: any,
+  provider: string,
+): ModuLLM {
+  return wrap_chat_model_as_modu(chatModel, provider)
+}
+
+/**
+ * 构造 LLMRouter（对应文档 §2.1 模型路由层建议）。
+ *
+ * 当 `llm.router.enabled=true` 时，根据配置构造 RuleBasedLLMRouter：
+ *   - 读取 llm.router.routes 配置，为每个命名路由构造 ModuLLM 实例
+ *   - 读取 llm.router.rules 配置，按顺序匹配 RouteRule
+ *   - 无规则命中时走 default_route
+ *
+ * 当 `llm.router.enabled=false`（默认）时，返回 PassthroughLLMRouter，
+ * 包装主流程 LLM，保持接口一致性但不做实际路由。
+ *
+ * @param mainLlm    主流程 ModuLLM 实例（PassthroughLLMRouter 使用）
+ * @param runtimeConfig 运行时配置
+ * @returns LLMRouter 实例
+ */
+export function _build_llm_router(
+  mainLlm: ModuLLM,
+  runtimeConfig: RuntimeConfig,
+): LLMRouter {
+  if (!runtimeConfig.get('llm.router.enabled', false)) {
+    return new PassthroughLLMRouter(mainLlm)
+  }
+
+  const routesConfig = runtimeConfig.get('llm.router.routes', {}) as Record<string, any>
+  const defaultRoute = runtimeConfig.get('llm.router.default_route', 'default')
+
+  // 构造路由表：路由名 → ModuLLM 工厂
+  const routeTable: RouteTable = {}
+  for (const [routeName, routeCfg] of Object.entries(routesConfig)) {
+    const provider = routeCfg?.provider ?? runtimeConfig.get('llm.default_provider', 'deepseek')
+    const model = routeCfg?.model ?? ''
+    const temperature = routeCfg?.temperature
+    const maxTokens = routeCfg?.max_tokens
+    routeTable[routeName] = () => {
+      const chatModel = build_chat_model(provider, runtimeConfig, temperature, maxTokens, model)
+      return wrap_chat_model_as_modu(chatModel, provider)
+    }
+  }
+
+  // 兜底：若 default_route 不在 routes 配置中，使用 mainLlm
+  if (!routeTable[defaultRoute]) {
+    logger.warning(
+      "llm.router.default_route '%s' not in routes config, using main LLM as default",
+      defaultRoute,
+    )
+    routeTable[defaultRoute] = () => mainLlm
+  }
+
+  try {
+    const router = new RuleBasedLLMRouter(routeTable, undefined, defaultRoute)
+    logger.info(
+      'LLMRouter enabled: routes=%s default=%s',
+      Object.keys(routeTable).join(','),
+      defaultRoute,
+    )
+    return router
+  } catch (e: any) {
+    logger.warning(
+      'Failed to build RuleBasedLLMRouter, falling back to Passthrough: %s',
+      String(e),
+    )
+    return new PassthroughLLMRouter(mainLlm)
   }
 }
 

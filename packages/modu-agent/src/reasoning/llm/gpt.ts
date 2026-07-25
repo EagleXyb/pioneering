@@ -29,6 +29,7 @@ export class GPTLLMReasoner extends BaseLLMReasoner {
       resolvedModel,
       timeout,
       systemPrompt,
+      'gpt',
     )
   }
 }

@@ -17,6 +17,8 @@ export const EventDomain = {
   VISION: 'vision',
   // P4 Plan-and-Execute 规划域事件
   PLAN: 'plan',
+  // 统一 LLM 接口层成本核算事件（对应文档 §2.1 成本核算建议）
+  LLM: 'llm',
 } as const
 export type EventDomain = (typeof EventDomain)[keyof typeof EventDomain]
 
@@ -43,6 +45,8 @@ export const EventAction = {
   STEP_STARTED: 'step_started',
   STEP_COMPLETED: 'step_completed',
   REPLANNED: 'replanned',
+  // 统一 LLM 接口层成本核算事件（对应文档 §2.1 成本核算建议）
+  COST: 'cost',
 } as const
 export type EventAction = (typeof EventAction)[keyof typeof EventAction]
 

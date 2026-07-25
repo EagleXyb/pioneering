@@ -1,5 +1,13 @@
 // 对应 Python: feedback/quality_monitor.py
 // QualityMonitor: 响应质量监控器（支持 rule/llm/hybrid 模式）
+//
+// 统一 LLM 接口改造（对应文档 §2.1）：
+//   - 评估器统一面向 ModuLLM 接口消费，消除调用路径上的鸭子类型分支
+//   - 构造函数接收 ModuLLM 实例；为保持向后兼容，也接受 LangChain ChatOpenAI
+//     或已实现 ModuLLM 的 BaseLLMReasoner，内部统一归一化为 ModuLLM
+//   - 调用路径 _invokeJudgeLlm 仅通过 ModuLLM.invoke 消费，不再分支 areason/ainvoke
+
+import type { LLMMessage, ModuLLM } from '../core/interfaces/llm.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[quality-monitor] ${msg}`, ...args),
@@ -16,9 +24,12 @@ const logger = {
  *    - "llm":     使用独立 LLM 调用进行语义级评估（异步）
  *    - "hybrid":  规则 + LLM 双路评估后加权融合（异步）
  *
- * LLM 模式需通过 evaluator_llm 注入一个具备异步推理能力的对象：
- *    - BaseLLMReasoner 子类（调用 areason(prompt, context, ...)）
- *    - LangChain ChatOpenAI（调用 ainvoke(messages)）
+ * LLM 模式需通过 evaluator_llm 注入一个 ModuLLM 实例：
+ *    - BaseLLMReasoner 子类（已实现 ModuLLM 接口）
+ *    - 通过 wrap_chat_model_as_modu 包装的 LangChain ChatOpenAI
+ *
+ * 为保持向后兼容，构造函数也接受未包装的 LangChain ChatOpenAI 实例，
+ * 内部通过 wrap_chat_model_as_modu 归一化为 ModuLLM。
  *
  * 当 LLM 评估失败（超时/解析错误）时，自动 fallback 到规则评估，确保闭环不中断。
  */
@@ -45,7 +56,7 @@ export class QualityMonitor {
   // 从 LLM 输出中提取 JSON 的正则（容忍 ```json ... ``` 包裹）
   static readonly _JSON_PATTERN = /\{[^{}]*\}/
 
-  private _evaluatorLlm: any
+  private _evaluatorLlm: ModuLLM | null
   private _mode: string
   private _llmTimeout: number
   private _llmTemperature: number
@@ -54,7 +65,7 @@ export class QualityMonitor {
   private _hybridLlmWeight: number
 
   constructor(
-    evaluatorLlm: any = null,
+    evaluatorLlm: ModuLLM | any = null,
     mode: string = 'rule',
     llmTimeout: number = 10.0,
     llmTemperature: number = 0.0,
@@ -67,21 +78,59 @@ export class QualityMonitor {
       mode = 'rule'
     }
 
-    if ((mode === 'llm' || mode === 'hybrid') && evaluatorLlm === null) {
+    // 统一归一化评估器为 ModuLLM 接口（消除调用路径鸭子类型）
+    const normalized = QualityMonitor._normalizeEvaluator(evaluatorLlm)
+
+    if ((mode === 'llm' || mode === 'hybrid') && normalized === null) {
       logger.warning(
-        "quality_monitor mode='%s' but evaluator_llm is None, falling back to 'rule'",
+        "quality_monitor mode='%s' but evaluator_llm is None/unnormalizable, falling back to 'rule'",
         mode,
       )
       mode = 'rule'
     }
 
-    this._evaluatorLlm = evaluatorLlm
+    this._evaluatorLlm = normalized
     this._mode = mode
     this._llmTimeout = llmTimeout
     this._llmTemperature = llmTemperature
     this._llmMaxTokens = llmMaxTokens
     this._hybridRuleWeight = hybridRuleWeight
     this._hybridLlmWeight = hybridLlmWeight
+  }
+
+  /**
+   * 将传入的评估器归一化为 ModuLLM 接口实例。
+   *
+   * 适配矩阵（对应文档 §2.1 消除鸭子类型建议）：
+   *   - null/undefined                         → null（rule 模式或后续降级）
+   *   - 已实现 ModuLLM（含 invoke/stream/bindTools）→ 原样返回
+   *   - 其他（如未包装的 LangChain ChatOpenAI）   → null + 警告，降级到 rule
+   *
+   * 注：
+   *   - BaseLLMReasoner 在统一 LLM 接口改造后已实现 ModuLLM，走第二分支
+   *   - LangChain ChatOpenAI 应由调用方（如 factory._build_judge_llm）通过
+   *     wrap_chat_model_as_modu 预先包装为 ModuLLM 后再注入，避免在构造函数
+   *     中引入异步 import 造成 constructor 异步化
+   */
+  private static _normalizeEvaluator(llm: any): ModuLLM | null {
+    if (llm === null || llm === undefined) {
+      return null
+    }
+    // 已实现 ModuLLM 接口（BaseLLMReasoner / ModuLLMAdapter / 已包装的 ChatOpenAI）
+    if (
+      typeof llm.invoke === 'function' &&
+      typeof llm.stream === 'function' &&
+      typeof llm.bindTools === 'function'
+    ) {
+      return llm as ModuLLM
+    }
+    logger.warning(
+      'evaluator_llm does not implement ModuLLM interface ' +
+      '(got %s). LangChain ChatOpenAI should be wrapped via ' +
+      "wrap_chat_model_as_modu() before injection. Falling back to rule.",
+      llm?.constructor?.name ?? typeof llm,
+    )
+    return null
   }
 
   /** 当前评估模式。 */
@@ -253,45 +302,32 @@ export class QualityMonitor {
   /**
    * 调用 evaluator_llm 获取 Judge 文本输出。
    *
-   * 通过鸭子类型兼容两种 LLM 接口：
-   *   - BaseLLMReasoner.areason(prompt, context, ...) → [content, usage, tool_calls]
-   *   - LangChain ChatOpenAI.ainvoke(messages) → AIMessage
+   * 统一通过 ModuLLM.invoke 消费（对应文档 §2.1 消除鸭子类型建议）：
+   *   - 构造函数已将评估器归一化为 ModuLLM 实例
+   *   - 这里不再分支 areason/ainvoke，仅构造 LLMMessage[] 后调用 invoke
+   *   - Judge 调用附带 taskType='quality_judge'，便于成本核算按任务维度统计
    */
   private async _invokeJudgeLlm(prompt: string, response: string): Promise<string> {
+    if (this._evaluatorLlm === null) {
+      throw new Error('No evaluator_llm available for LLM Judge mode')
+    }
+
     const userContent = this._formatJudgeUserPrompt(
       prompt.slice(0, 2000),   // 截断保护，避免超长输入
       response.slice(0, 4000),
     )
 
-    const llm = this._evaluatorLlm
+    const messages: LLMMessage[] = [
+      { role: 'system', content: QualityMonitor._JUDGE_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ]
 
-    // 优先使用 BaseLLMReasoner 的 areason 接口
-    if (typeof llm.areason === 'function') {
-      const result = await llm.areason(
-        userContent,
-        {},  // Judge 不需要历史/工具上下文
-        this._llmTemperature,
-        this._llmMaxTokens,
-      )
-      // areason 返回 [content, usage, tool_calls]
-      return Array.isArray(result) ? result[0] : result
-    }
-
-    // LangChain ChatOpenAI 接口
-    if (typeof llm.ainvoke === 'function') {
-      const { HumanMessage, SystemMessage } = await import('@langchain/core/messages')
-      const messages = [
-        new SystemMessage(QualityMonitor._JUDGE_SYSTEM_PROMPT),
-        new HumanMessage(userContent),
-      ]
-      const result = await llm.ainvoke(messages)
-      return (result as any).content ?? String(result)
-    }
-
-    throw new TypeError(
-      `evaluator_llm must implement 'areason' or 'ainvoke', got ` +
-      `${llm?.constructor?.name ?? typeof llm}`,
-    )
+    const result = await this._evaluatorLlm.invoke(messages, {
+      temperature: this._llmTemperature,
+      maxTokens: this._llmMaxTokens,
+      taskType: 'quality_judge',
+    })
+    return result.content
   }
 
   /** 构建 LLM Judge user prompt。 */

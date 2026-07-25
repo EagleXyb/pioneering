@@ -27,6 +27,34 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     retry: {
       max_attempts: 2,
     },
+    // 统一 LLM 接口层连接池配置（对应文档 §2.1 连接池显式化建议）
+    // 仅作用于 BaseLLMReasoner 自研 fetch 路径；LangChain ChatOpenAI 路径由 openai SDK 内部管理
+    connection_pool: {
+      enabled: false,           // 默认关闭，保持 undici 默认行为；启用后使用显式 Agent
+      max_connections: 100,     // undici Agent maxConnections（每主机连接上限）
+      keep_alive_timeout: 4000, // undici Agent keepAliveTimeout（毫秒）
+      keep_alive_max_timeout: 300000,
+    },
+    // 统一 LLM 接口层成本核算开关（对应文档 §2.1 成本核算建议）
+    // 启用后 invoke() 会发布 EventDomain.LLM + EventAction.COST 事件
+    cost_tracking: {
+      enabled: true,
+    },
+    // LLM 模型路由配置（对应文档 §2.1 模型路由层建议）
+    // RuleBasedLLMRouter 按 rules 顺序匹配，首个命中规则胜出
+    router: {
+      enabled: false,           // 默认关闭，启用后 create_agent 会包装为 LLMRouter
+      default_route: 'default', // 无规则命中时的兜底路由名
+      routes: {
+        // 路由名 → { provider, model, temperature?, max_tokens? }
+        default: { provider: 'deepseek', model: 'deepseek-chat' },
+      },
+      rules: [
+        // 示例规则：按 task_type 路由
+        // { when: { task_type: 'planning' }, route: 'pro' },
+        // { when: { estimated_complexity: 'high' }, route: 'pro' },
+      ],
+    },
   },
   memory: {
     default_strategy: 'cache',

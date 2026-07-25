@@ -29,6 +29,7 @@ export class QwenLLMReasoner extends BaseLLMReasoner {
       resolvedModel,
       timeout,
       systemPrompt,
+      'qwen',
     )
   }
 }

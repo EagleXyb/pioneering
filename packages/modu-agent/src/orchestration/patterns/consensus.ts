@@ -1,9 +1,15 @@
 // 对应 Python: orchestration/patterns/consensus.py
 // ConsensusPattern + ConsensusStrategy + create_consensus_strategy 工厂
+//
+// 统一 LLM 接口改造（对应文档 §2.1）：
+//   LLMJudgeStrategy 改为消费 ModuLLM.invoke(LLMMessage[]) 接口，
+//   与 QualityMonitor 共享同一 judge LLM 实例（ModuLLMAdapter 包装），
+//   消除 LangChain HumanMessage 与 BaseReasoner areason 双轨适配。
 import { createHash } from 'crypto'
 
 import { get_event_bus } from '../communication/message-bus.js'
 import { AgentEvent, EventAction, EventDomain, EventPriority } from '../communication/protocol.js'
+import type { LLMMessage, ModuLLM } from '../../core/interfaces/llm.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[consensus] ${msg}`, ...args),
@@ -136,10 +142,10 @@ export class LLMJudgeStrategy extends ConsensusStrategy {
     'Task: {task}\nCandidates:\n{candidates}\n' +
     'Respond with ONLY JSON: {"winner": <index>, "reason": "<brief>"}'
 
-  private _llm: any
+  private _llm: ModuLLM | null
   private _task: string
 
-  constructor(judge_llm: any, task_description: string = '') {
+  constructor(judge_llm: ModuLLM | null, task_description: string = '') {
     super()
     this._llm = judge_llm
     this._task = task_description
@@ -162,9 +168,10 @@ export class LLMJudgeStrategy extends ConsensusStrategy {
       .replace('{candidates}', candidates)
 
     try {
-      const { HumanMessage } = await import('@langchain/core/messages')
-      const resp = await this._llm.invoke([new HumanMessage({ content: prompt })])
-      const content = resp?.content ?? String(resp)
+      // 统一通过 ModuLLM.invoke 消费（对应文档 §2.1）
+      const messages: LLMMessage[] = [{ role: 'user', content: prompt }]
+      const result = await this._llm.invoke(messages, { taskType: 'consensus_judge' })
+      const content = result.content ?? ''
       const judge = JSON.parse(content)
       const idx = Number(judge.winner ?? 0)
       if (idx >= 0 && idx < results.length) {
@@ -197,7 +204,7 @@ export class LLMJudgeStrategy extends ConsensusStrategy {
 
 export function create_consensus_strategy(
   strategy_name: string,
-  judge_llm?: any,
+  judge_llm?: ModuLLM | null,
   task_description: string = '',
   weights?: Record<string, number> | null,
 ): ConsensusStrategy {
@@ -209,7 +216,7 @@ export function create_consensus_strategy(
     return new WeightedAggregateStrategy(weights)
   }
   if (name === 'llm_judge') {
-    return new LLMJudgeStrategy(judge_llm, task_description)
+    return new LLMJudgeStrategy(judge_llm ?? null, task_description)
   }
   throw new Error(`Unknown consensus strategy: ${strategy_name}`)
 }

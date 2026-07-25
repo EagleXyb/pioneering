@@ -29,6 +29,7 @@ export class GLMLLMReasoner extends BaseLLMReasoner {
       resolvedModel,
       timeout,
       systemPrompt,
+      'glm',
     )
   }
 }
