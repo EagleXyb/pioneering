@@ -133,7 +133,8 @@ export class EventBus {
     const request_id = event.event_id
 
     const responseHandler = (respEvent: AgentEvent): void => {
-      if (respEvent.metadata.request_id === request_id && !done) {
+      // metadata 已放宽为 Record<string, unknown>，按 key 读取并比较（对应文档 §2.2 建议2）
+      if (respEvent.metadata['request_id'] === request_id && !done) {
         done = true
         resolveFn(respEvent)
       }
@@ -168,23 +169,54 @@ export class EventBus {
 // PersistentEventLog（对应 Python PersistentEventLog）
 // ============================================================
 
+/**
+ * 持久化事件日志配置。
+ *
+ * 对应文档 §2.2 建议5：事件 TTL。
+ */
+export interface PersistentEventLogOptions {
+  /** 日志文件路径 */
+  log_file_path: string
+  /** 单文件最大大小（MB），超过后滚动 */
+  max_file_size_mb?: number
+  /** 仅持久化指定 domain 的事件；null/undefined 表示全部 */
+  domains?: string[] | null
+  /**
+   * 事件 TTL（毫秒），超过此时长的事件不入库。
+   * 0 或负数表示不启用 TTL（保留全部历史）。
+   * 对应文档 §2.2 建议5：事件 TTL。
+   */
+  event_ttl_ms?: number
+}
+
 export class PersistentEventLog {
   private _log_file_path: string
   private _max_file_size: number
   private _domains: Set<string> | null
+  private _event_ttl_ms: number
   private _enabled = false
   private _write_queue: AgentEvent[] = []
   private _writer_running = false
   private _writerPromise: Promise<void> | null = null
 
   constructor(
-    log_file_path: string,
+    log_file_path_or_opts: string | PersistentEventLogOptions,
     max_file_size_mb = 10.0,
     domains?: string[] | null,
   ) {
-    this._log_file_path = log_file_path
-    this._max_file_size = Math.floor(max_file_size_mb * 1024 * 1024)
-    this._domains = domains ? new Set(domains) : null
+    // 兼容旧签名（string, number, string[]）与新签名（PersistentEventLogOptions）
+    if (typeof log_file_path_or_opts === 'string') {
+      this._log_file_path = log_file_path_or_opts
+      this._max_file_size = Math.floor(max_file_size_mb * 1024 * 1024)
+      this._domains = domains ? new Set(domains) : null
+      this._event_ttl_ms = 0
+    } else {
+      const opts = log_file_path_or_opts
+      this._log_file_path = opts.log_file_path
+      this._max_file_size = Math.floor((opts.max_file_size_mb ?? 10.0) * 1024 * 1024)
+      this._domains = opts.domains ? new Set(opts.domains) : null
+      this._event_ttl_ms = opts.event_ttl_ms ?? 0
+    }
   }
 
   async start(event_bus: EventBus): Promise<void> {
@@ -223,6 +255,13 @@ export class PersistentEventLog {
     if (this._domains && !this._domains.has(event.domain)) {
       return
     }
+    // TTL 过滤（对应文档 §2.2 建议5）：超过 TTL 的事件直接丢弃，不入库
+    if (this._event_ttl_ms > 0) {
+      const age = Date.now() - event.timestamp.getTime()
+      if (age > this._event_ttl_ms) {
+        return
+      }
+    }
     this._write_queue.push(event)
   }
 
@@ -252,6 +291,7 @@ export class PersistentEventLog {
           action: event.action,
           priority: event.priority,
           metadata: event.metadata,
+          schema_version: event.schema_version,
         }
         const line = JSON.stringify(event_dict) + '\n'
         await appendFile(this._log_file_path, line, 'utf-8')

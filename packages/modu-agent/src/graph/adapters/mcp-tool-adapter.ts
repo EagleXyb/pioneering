@@ -16,6 +16,7 @@
 //   → MCPClient.call_tool → MCPSession.call_tool → Transport.request
 //   → JSON-RPC → MCP Server → 返回结果
 import { BaseTool } from '../../core/interfaces/action.js'
+import { getConfig } from '../../config/runtime-config.js'
 import { getMcpClient } from '../../mcp/client.js'
 import type { ToolInfo } from '../../mcp/discovery.js'
 import { MCPError, MCPTimeoutError } from '../../mcp/errors.js'
@@ -113,15 +114,47 @@ export class MCPToolAdapter extends BaseTool {
   /**
    * 异步调用 MCP 工具。
    *
+   * v1.2 §4.3 建议6 修复：超时不再硬编码 30s，改为从配置 `mcp.default_timeout`
+   * 读取（默认 30s）。Server 级配置 `mcp.servers[].timeout` 优先于全局默认。
+   *
    * @param params 工具参数
    * @returns MCP 标准返回格式
    */
   private async _invokeAsync(params: Record<string, any>): Promise<Record<string, any>> {
+    const timeout = this._resolveTimeout()
     return await this._mcpClient.callTool(
       this._toolInfo.qualifiedName,
       params,
-      30.0,
+      timeout,
     )
+  }
+
+  /**
+   * 解析 MCP 工具调用超时（对应文档 §4.3 建议6）。
+   *
+   * 优先级：
+   *   1. `mcp.servers[].timeout`（Server 级，按 serverName 匹配）
+   *   2. `mcp.default_timeout`（全局默认，默认 30s）
+   *
+   * @returns 超时秒数
+   */
+  private _resolveTimeout(): number {
+    try {
+      const cfg = getConfig()
+      const defaultTimeout = Number(cfg.get('mcp.default_timeout', 30.0))
+      const servers = cfg.get('mcp.servers', []) ?? []
+      if (Array.isArray(servers)) {
+        for (const s of servers) {
+          if (s && s['name'] === this._toolInfo.serverName) {
+            const t = Number(s['timeout'] ?? defaultTimeout)
+            return t > 0 ? t : defaultTimeout
+          }
+        }
+      }
+      return defaultTimeout > 0 ? defaultTimeout : 30.0
+    } catch {
+      return 30.0
+    }
   }
 
   /**

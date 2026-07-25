@@ -16,6 +16,12 @@ import { getConfig } from '../../config/runtime-config.js'
 import type { ComponentRegistry } from '../../core/registry.js'
 import { getRegistry } from '../../core/registry.js'
 import { with_tool_retry } from './retry.js'
+import { get_tool_rate_limiter } from './rate-limiter.js'
+import {
+  computeCacheKey,
+  getToolResultCache,
+  isToolCacheEnabled,
+} from './tool-result-cache.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.tool_adapter] ${msg}`, ...args),
@@ -91,6 +97,51 @@ function _schema_to_zod(
 }
 
 /**
+ * 工具结果字符级截断（对应文档 §4.3 建议1）。
+ *
+ * 读取配置 `tools.max_result_chars.{tool_name}`，未单独配置时回退到 `default`。
+ * 截断时在结果末尾追加 `...[truncated]` 标记，让 LLM 感知结果不完整。
+ *
+ * 配置值含义：
+ *   - 0 或未配置：不截断（向后兼容，零开销）
+ *   - 正整数：截断到该字符数
+ *
+ * @param json      工具返回的 JSON 字符串
+ * @param toolName  工具名（用于读取 per-tool 配置）
+ * @param config    运行时配置（null=不截断）
+ * @returns 截断后的字符串
+ */
+function _truncateToolResult(
+  json: string,
+  toolName: string,
+  config?: RuntimeConfig | null,
+): string {
+  if (!config) return json
+  let maxCharsCfg: any
+  try {
+    maxCharsCfg = config.get('tools.max_result_chars', {}) ?? {}
+  } catch {
+    return json
+  }
+  if (!maxCharsCfg || typeof maxCharsCfg !== 'object') return json
+  const limits = (maxCharsCfg as Record<string, any>)['limits'] ?? {}
+  const toolLimit = typeof limits[toolName] === 'number' ? Number(limits[toolName]) : 0
+  const defaultLimit = typeof (maxCharsCfg as Record<string, any>)['default'] === 'number'
+    ? Number((maxCharsCfg as Record<string, any>)['default'])
+    : 0
+  // 工具名单独配置优先于 default；均为 0 时不截断
+  const maxChars = toolLimit > 0 ? toolLimit : defaultLimit
+  if (maxChars <= 0 || json.length <= maxChars) {
+    return json
+  }
+  logger.debug(
+    "Tool '%s' result truncated: %d → %d chars",
+    toolName, json.length, maxChars,
+  )
+  return json.slice(0, maxChars) + '...[truncated]'
+}
+
+/**
  * 将 ModuAgent BaseTool 包装为 LangChain StructuredTool。
  *
  * ModuAgent BaseTool 接口：
@@ -111,15 +162,75 @@ export function wrap_modu_tool(
   config?: RuntimeConfig | null,
 ): StructuredTool {
   const toolName = moduTool.name()
-  const toolDesc = moduTool.description()
+  const rawDesc = moduTool.description()
   const schema = moduTool.parametersSchema()
+
+  // v1.2 §4.3 建议8/9：将 version() 与 followUpTools() 元数据注入工具描述，
+  //   让 LLM 在工具选择决策时可见版本与组合关系（仅当非默认值时追加，避免噪声）
+  const descParts: string[] = [rawDesc]
+  // 建议8：版本元数据（非默认 '1.0.0' 时追加）
+  let version = '1.0.0'
+  try { version = moduTool.version() } catch { /* 默认 */ }
+  if (version && version !== '1.0.0') {
+    descParts.push(`[version: ${version}]`)
+  }
+  // 建议9：组合工具声明（非空时追加）
+  let followUps: string[] = []
+  try { followUps = moduTool.followUpTools() ?? [] } catch { /* 默认空 */ }
+  if (followUps.length > 0) {
+    descParts.push(`[followUp: ${followUps.join(', ')}]`)
+  }
+  const toolDesc = descParts.join(' ')
 
   const argsSchema = _schema_to_zod(`${toolName}_schema`, schema)
 
   // 同步/异步调用 ModuAgent 工具，返回 JSON 字符串结果
   const func = async (input: Record<string, any>): Promise<string> => {
+    // 工具限流（对应文档 §2.5 建议7）：
+    //   限流未启用或工具未配置 limits 时 tryAcquire 返回 true，零开销
+    //   限流触发时返回标准错误结构，不调用底层工具
+    const limiter = get_tool_rate_limiter()
+    if (!limiter.tryAcquire(toolName)) {
+      return JSON.stringify({
+        status: 'error',
+        error_code: 'TOOL_RATE_LIMITED',
+        data: {
+          message: `Tool '${toolName}' rate limit exceeded, please retry later`,
+          tool_name: toolName,
+        },
+      })
+    }
+
+    // 工具结果缓存（对应文档 §4.3 建议2）：
+    //   仅对显式配置的工具启用（tools.result_cache.tools.{tool_name}）
+    //   命中缓存时直接返回，不调用底层工具；未命中时正常调用并写入缓存
+    //   仅缓存成功结果（status === 'success'），错误结果不缓存
+    const cacheCfg = isToolCacheEnabled(toolName)
+    if (cacheCfg.enabled) {
+      const cacheKey = computeCacheKey(toolName, input)
+      const cache = getToolResultCache()
+      const cached = cache.get(cacheKey)
+      if (cached !== null) {
+        logger.debug("Tool '%s' cache hit: key=%s", toolName, cacheKey)
+        return cached
+      }
+      const result = await moduTool.invoke(input, {})
+      const json = JSON.stringify(result)
+      // 仅缓存成功结果，避免错误结果被反复返回
+      if (result?.['status'] === 'success') {
+        cache.set(cacheKey, json, cacheCfg.ttlMs)
+        logger.debug("Tool '%s' cache set: key=%s ttl=%dms", toolName, cacheKey, cacheCfg.ttlMs)
+      }
+      return _truncateToolResult(json, toolName, config)
+    }
+
     const result = await moduTool.invoke(input, {})
-    return JSON.stringify(result)
+    const json = JSON.stringify(result)
+    // 工具结果字符级截断（对应文档 §4.3 建议1）：
+    //   按 tools.max_result_chars.{tool_name} 截断，避免大响应撑爆 LLM 上下文
+    //   - 工具名未单独配置时回退到 default（default=0 表示不截断）
+    //   - 截断时在末尾追加 "[truncated]" 标记，让 LLM 感知结果不完整
+    return _truncateToolResult(json, toolName, config)
   }
 
   // P2-8: 应用指数退避重试包装

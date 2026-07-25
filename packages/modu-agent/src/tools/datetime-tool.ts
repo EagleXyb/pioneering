@@ -80,6 +80,12 @@ export class DateTimeTool extends BaseTool {
     }
   }
 
+  // P4 Plan-Execute: 声明本工具提供实时/外部数据（对应文档 §4.1 建议7）
+  // now/convert 操作返回系统实时时钟，Planner 据此推断 step.requires_tool=true
+  providesRealtimeData(): boolean {
+    return true
+  }
+
   invoke(
     params: Record<string, any>,
     _context: Record<string, any>,

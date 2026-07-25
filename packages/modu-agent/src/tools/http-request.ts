@@ -13,6 +13,7 @@
 // 需要人工审批（requiresApproval() = true）。
 import { promises as dns } from 'dns'
 import { BaseTool } from '../core/interfaces/action.js'
+import { inject_trace_context } from '../observability/trace-context.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[http-request] ${msg}`, ...args),
@@ -138,6 +139,58 @@ export class HttpRequestTool extends BaseTool {
 
   requiresApproval(): boolean {
     return true
+  }
+
+  // P4 Plan-Execute: 声明本工具提供实时/外部数据（对应文档 §4.1 建议7）
+  // HTTP 请求必然返回外部实时数据，Planner 据此推断 step.requires_tool=true
+  providesRealtimeData(): boolean {
+    return true
+  }
+
+  /**
+   * 动态敏感性判定（对应文档 §2.5 建议6）。
+   *
+   * HttpRequestTool 默认所有请求都需审批（requiresApproval() = true），
+   * 此方法进一步细化：
+   *   - URL 解析失败或指向内网 IP → 需审批（高敏感）
+   *   - URL 不在域名白名单内 → 需审批
+   *   - 其余情况回退到 requiresApproval()（默认 true）
+   *
+   * 注意：同步方法不执行 DNS 解析（避免阻塞），仅做 URL 字符串分析。
+   * 实际 DNS 解析与 SSRF 防护在 invoke() 内执行。
+   */
+  requiresApprovalFor(
+    params: Record<string, any>,
+    _context: Record<string, any>,
+  ): boolean {
+    const url = params?.url
+    if (typeof url !== 'string' || !url.trim()) {
+      return true  // 无效 URL，按需审批处理
+    }
+
+    try {
+      const parsed = new URL(url)
+      const hostname = parsed.hostname
+
+      // 同步检测：hostname 直接是 IP 且为内网 → 高敏感
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && this._isPrivateIp(hostname)) {
+        return true
+      }
+      // IPv6 loopback
+      if (hostname === '::1' || hostname.startsWith('[') || hostname === 'localhost') {
+        return true
+      }
+      // 域名白名单：若配置且 hostname 不在白名单 → 需审批
+      if (this._allowedDomains !== null && !this._allowedDomains.has(hostname.toLowerCase())) {
+        return true
+      }
+    } catch {
+      // URL 解析失败，按需审批处理
+      return true
+    }
+
+    // 回退到静态判定
+    return this.requiresApproval()
   }
 
   onApprovalRejected(params: Record<string, any>): Record<string, any> {
@@ -270,9 +323,18 @@ export class HttpRequestTool extends BaseTool {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), this._timeout * 1000)
 
+      // 对应文档 §2.4 建议2：W3C TraceContext 注入
+      // 将当前 OTel span 的 traceparent + 业务层 trace_id header 注入到请求中，
+      // 实现跨服务分布式追踪（tracing 未启用时 inject_trace_context 为 no-op）
+      const finalHeaders: Record<string, string> =
+        typeof headers === 'object' && headers !== null
+          ? { ...headers }
+          : {}
+      inject_trace_context(finalHeaders)
+
       const fetchOptions: RequestInit = {
         method,
-        headers: typeof headers === 'object' ? headers as Record<string, string> : undefined,
+        headers: finalHeaders,
         redirect: 'manual',  // 禁用重定向
         signal: controller.signal,
       }

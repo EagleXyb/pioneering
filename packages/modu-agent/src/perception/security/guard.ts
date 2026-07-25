@@ -55,6 +55,37 @@ const _INJECTION_RISK_PATTERNS: Record<string, RegExp> = {
   shell_meta: /(?:;\s*(?:rm|cat|wget|curl|bash|sh)\b|\$\(|`|\|\|\s*\w+)/,
 }
 
+// ---------------------------------------------------------------------------
+// 输出敏感信息模式（对应文档 §2.5 建议5：输出敏感信息检测）
+// ---------------------------------------------------------------------------
+
+// 密钥/凭证模式（常见格式）
+const _SECRET_PATTERNS: Record<string, RegExp> = {
+  // AWS Access Key ID（20 位大写字母数字）
+  aws_access_key_id: /(?:^|[^A-Z0-9])(AKIA[0-9A-Z]{16})(?:[^A-Z0-9]|$)/g,
+  // AWS Secret Access Key（40 位 base64）
+  aws_secret_key: /(?:aws_secret_access_key|aws_secret)[\s:=]+['"]?([A-Za-z0-9/+=]{40})['"]?/gi,
+  // GitHub Token（ghp_ / gho_ / ghs_ / ghu_ 前缀 + 36 位）
+  github_token: /\b(gh[pousr]_[A-Za-z0-9]{36})\b/g,
+  // Generic API Key（api_key=xxx 形式）
+  api_key_generic: /(?:api[_-]?key|apikey)[\s:=]+['"]?([A-Za-z0-9_\-]{32,})['"]?/gi,
+  // Bearer Token
+  bearer_token: /\b(Bearer\s+[A-Za-z0-9_\-\.=]{20,})\b/gi,
+  // Private Key PEM
+  private_key_pem: /-----BEGIN\s+(?:RSA\s+|EC\s+|OPENSSH\s+|PGP\s+)?PRIVATE\s+KEY-----/g,
+  // JWT（三段式 base64）
+  jwt: /\beyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b/g,
+}
+
+// 内网 IP 模式（用于输出检测，防止 LLM 泄漏内网拓扑）
+const _INTERNAL_IP_PATTERNS: RegExp[] = [
+  /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g,
+  /\b(?:172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/g,
+  /\b(?:192\.168\.\d{1,3}\.\d{1,3})\b/g,
+  /\b(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g,
+  /\b(?:169\.254\.\d{1,3}\.\d{1,3})\b/g,
+]
+
 /**
  * 统一安全检测器。
  * 对应 Python SecurityGuard。
@@ -84,6 +115,62 @@ export class SecurityGuard {
       detected: matched.length > 0,
       matched_patterns: matched,
       risk_level: riskLevel,
+    }
+  }
+
+  /**
+   * LLM-based Prompt 注入二次校验（对应文档 §2.5 建议1）。
+   *
+   * 策略：
+   *   1. 先执行关键词检测（detectInjection），命中高风险则直接返回
+   *   2. 关键词检测未命中或低风险时，调用 LLM judge 做语义级二次校验
+   *   3. LLM 失败时回退到关键词检测结果（不阻塞主流程）
+   *
+   * 设计要点：
+   *   - 不修改现有同步 detectInjection API，新增独立 async 方法
+   *   - LLM judge 通过参数注入（callable），不与 ModuLLM 硬耦合
+   *   - riskThreshold 控制是否触发 LLM（关键词已高风险时跳过，节省成本）
+   *
+   * @param text           待检测文本
+   * @param llmJudge       LLM 判定回调，返回 { detected, reason? }
+   * @param riskThreshold  关键词 risk_level >= 此值时跳过 LLM（默认 1）
+   * @returns 关键词检测结果 + 可选的 llm_judgment 字段
+   */
+  async detectInjectionWithLLMJudge(
+    text: string,
+    llmJudge: ((text: string) => Promise<{ detected: boolean; reason?: string }>) | null,
+    riskThreshold: number = 1,
+  ): Promise<Record<string, any>> {
+    const keywordResult = this.detectInjection(text)
+
+    // 关键词已判定高风险 → 直接返回，无需 LLM 二次校验
+    if (keywordResult.detected && (keywordResult.risk_level ?? 0) >= riskThreshold) {
+      return keywordResult
+    }
+
+    // 无 LLM judge → 返回关键词结果
+    if (llmJudge === null) {
+      return keywordResult
+    }
+
+    // LLM 二次校验
+    try {
+      const llmResult = await llmJudge(text)
+      return {
+        ...keywordResult,
+        // LLM 判定注入 → 合并结果，提升 risk_level
+        detected: keywordResult.detected || llmResult.detected,
+        risk_level: llmResult.detected
+          ? Math.max(keywordResult.risk_level ?? 0, 1)  // LLM 检出至少标记为疑似(1)
+          : keywordResult.risk_level,
+        llm_judgment: {
+          detected: llmResult.detected,
+          reason: llmResult.reason ?? '',
+        },
+      }
+    } catch {
+      // LLM 调用失败 → 回退到关键词结果，不阻塞主流程
+      return keywordResult
     }
   }
 
@@ -210,5 +297,100 @@ export class SecurityGuard {
       injection_detected: injection.detected ?? false,
       pii_detected: pii.detected ?? false,
     }
+  }
+
+  /**
+   * 检测输出中的敏感信息（对应文档 §2.5 建议5）。
+   *
+   * 检测维度：
+   *   - 密钥/凭证：AWS Key、GitHub Token、API Key、Bearer Token、PEM 私钥、JWT
+   *   - 内网 IP：10.x / 172.16-31.x / 192.168.x / 127.x / 169.254.x
+   *   - PII：复用 detectPii 结果
+   *
+   * @returns {detected, secret_types, pii_types, internal_ips, details}
+   */
+  detectOutputSensitive(text: string): Record<string, any> {
+    const secretTypes: string[] = []
+    const secretMatches: Record<string, string[]> = {}
+    for (const [secretType, pattern] of Object.entries(_SECRET_PATTERNS)) {
+      // 重置 lastIndex（全局正则复用）
+      pattern.lastIndex = 0
+      const found = text.match(pattern) ?? []
+      if (found.length > 0) {
+        // 脱敏：仅保留前 4 位 + ***
+        const masked = found.slice(0, 3).map((s) => `${s.slice(0, 4)}***`)
+        secretTypes.push(secretType)
+        secretMatches[secretType] = masked
+      }
+    }
+
+    const internalIps: string[] = []
+    for (const pattern of _INTERNAL_IP_PATTERNS) {
+      pattern.lastIndex = 0
+      const found = text.match(pattern) ?? []
+      if (found.length > 0) {
+        // 去重，最多保留 5 个
+        const unique = Array.from(new Set(found)).slice(0, 5)
+        internalIps.push(...unique)
+      }
+    }
+
+    const piiResult = this.detectPii(text)
+
+    const detected =
+      secretTypes.length > 0 ||
+      internalIps.length > 0 ||
+      piiResult.detected
+
+    return {
+      detected,
+      secret_types: secretTypes,
+      secret_matches: secretMatches,
+      pii_types: piiResult.types ?? [],
+      pii_matches: piiResult.matches ?? {},
+      internal_ips: internalIps,
+    }
+  }
+
+  /**
+   * 清洗输出中的敏感信息（对应文档 §2.5 建议5）。
+   *
+   * 策略：
+   *   - 密钥/凭证：替换为 [REDACTED:类型名]
+   *   - 内网 IP：替换为 [REDACTED:INTERNAL_IP]
+   *   - PII：手机号/身份证/银行卡替换为 [REDACTED:类型名]，邮箱保留（半结构化）
+   *
+   * 注意：此方法返回清洗后的副本，不修改原字符串。
+   * 命中后应发布 SECURITY.DENY 审计事件（由调用方决定）。
+   *
+   * @param text 待清洗的输出文本
+   * @returns [清洗后文本, 检测结果]
+   */
+  sanitizeOutput(text: string): [string, Record<string, any>] {
+    const result = this.detectOutputSensitive(text)
+    let sanitized = text
+
+    // 清洗密钥/凭证
+    for (const [secretType, pattern] of Object.entries(_SECRET_PATTERNS)) {
+      pattern.lastIndex = 0
+      sanitized = sanitized.replace(pattern, `[REDACTED:${secretType}]`)
+    }
+
+    // 清洗内网 IP
+    for (const pattern of _INTERNAL_IP_PATTERNS) {
+      pattern.lastIndex = 0
+      sanitized = sanitized.replace(pattern, '[REDACTED:INTERNAL_IP]')
+    }
+
+    // 清洗 PII（手机号、身份证、银行卡）
+    const piiTypesToRedact = ['phone_cn', 'id_card_cn', 'bank_card']
+    for (const piiType of piiTypesToRedact) {
+      const pattern = _PII_PATTERNS[piiType]
+      if (pattern) {
+        sanitized = sanitized.replace(pattern, `[REDACTED:${piiType}]`)
+      }
+    }
+
+    return [sanitized, result]
   }
 }

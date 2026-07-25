@@ -20,6 +20,11 @@ const logger = {
  *
  * 注：Python 版 execute 为同步方法；TS 版因 BaseTool.invoke 可返回 Promise，
  * 故 execute 标记为 async 以统一处理同步/异步工具。
+ *
+ * @deprecated 对应文档 §4.3 建议7：本类已被 LangGraph 的 ToolNode + wrap_modu_tool
+ *   完全取代，生产路径已不再使用。保留仅为向后兼容与旧 Coordinator 调用方过渡，
+ *   新代码请使用 `build_langchain_tools()` 构建工具并通过 ToolNode 调度。
+ *   计划在 v2.0 移除。
  */
 export class SyncActionExecutor extends BaseActionExecutor {
   private _registry: ComponentRegistry

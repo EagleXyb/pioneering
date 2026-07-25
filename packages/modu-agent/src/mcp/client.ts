@@ -21,7 +21,7 @@ import type { RuntimeConfig } from '../config/runtime-config.js'
 import { ToolDiscovery, ToolInfo } from './discovery.js'
 import { MCPConnectionError, MCPTimeoutError, MCPToolNotFoundError } from './errors.js'
 import { ServerLifecycleManager } from './lifecycle.js'
-import { SSETransport, StdioTransport, Transport } from './transport.js'
+import { SSETransport, StdioTransport, Transport, WebSocketTransport } from './transport.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[mcp] ${msg}`, ...args),
@@ -337,6 +337,12 @@ export class MCPClient {
       )
     } else if (transportType === 'sse' || transportType === 'streamable_http') {
       return new SSETransport(
+        serverCfg.url,
+        serverCfg.timeout ?? 30.0,
+      )
+    } else if (transportType === 'websocket' || transportType === 'ws') {
+      // v1.2 §4.3 建议11：支持 WebSocket transport
+      return new WebSocketTransport(
         serverCfg.url,
         serverCfg.timeout ?? 30.0,
       )

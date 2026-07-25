@@ -64,25 +64,27 @@ export async function publish_llm_cost_event(
   }
 
   try {
-    const payloadJson = JSON.stringify({
+    // payload 直接传结构化对象（对应文档 §2.2 建议1：消除 hex 编解码冗余）
+    const payload = {
       provider: ctx.provider,
       model: ctx.model,
       usage,
-    })
+    }
     const event = new AgentEvent({
       domain: EventDomain.LLM,
       action: EventAction.COST,
       session_id: ctx.sessionId || '',
       user_id: ctx.userId || 'unknown',
-      payload: new Uint8Array(Buffer.from(payloadJson, 'utf-8')),
+      payload,
       metadata: {
         provider: ctx.provider,
         model: ctx.model,
         task_type: ctx.taskType || '',
         trace_id: ctx.traceId || '',
-        prompt_tokens: String(usage.prompt_tokens),
-        completion_tokens: String(usage.completion_tokens),
-        total_tokens: String(usage.total_tokens),
+        // 数值类元数据保留为 number（对应文档 §2.2 建议2：metadata 放宽为 unknown）
+        prompt_tokens: usage.prompt_tokens,
+        completion_tokens: usage.completion_tokens,
+        total_tokens: usage.total_tokens,
       },
       priority: EventPriority.LOW,
     })

@@ -16,6 +16,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js'
 import { MCPConnectionError, MCPProtocolError } from './errors.js'
 
 const logger = {
@@ -257,6 +258,88 @@ export class SSETransport extends Transport {
   async notify(method: string, params: Record<string, any>): Promise<void> {
     if (!this._connected || this._client === null) {
       throw new MCPConnectionError('SSETransport not connected')
+    }
+    await this._client.notification({ method, params } as any)
+  }
+
+  get connected(): boolean {
+    return this._connected
+  }
+}
+
+/**
+ * WebSocket 传输：通过 WebSocket 连接远程 Server（对应文档 §4.3 建议11）。
+ *
+ * 适用于需要双向流式通信的场景（如服务器主动推送资源更新），
+ * 比 SSE 的单向流更灵活，比 stdio 的子进程模型更轻量。
+ *
+ * TS 版内部使用 @modelcontextprotocol/sdk 的 WebSocketClientTransport + Client。
+ *
+ * 运行时依赖 `ws` 包（Node.js WebSocket 实现）；
+ * SDK 已将 `ws` 列为 devDependency，使用方需自行安装 `ws` 到 dependencies。
+ */
+export class WebSocketTransport extends Transport {
+  private _url: string
+  private _timeout: number
+  private _sdkTransport: WebSocketClientTransport | null = null
+  private _client: Client | null = null
+  private _connected: boolean = false
+
+  constructor(url: string, timeout: number = 30.0) {
+    super()
+    this._url = url
+    this._timeout = timeout
+  }
+
+  /** 建立 WebSocket 连接（含 MCP 握手）。 */
+  async connect(): Promise<void> {
+    this._sdkTransport = new WebSocketClientTransport(new URL(this._url))
+    this._client = new Client(
+      { name: 'moduagent', version: '0.1.0' },
+      { capabilities: {} },
+    )
+    await this._client.connect(this._sdkTransport)
+    this._connected = true
+    logger.info('WebSocketTransport connected: url=%s', this._url)
+  }
+
+  /** 关闭 WebSocket 连接。 */
+  async disconnect(): Promise<void> {
+    this._connected = false
+    if (this._client) {
+      try {
+        await this._client.close()
+      } catch (e) {
+        logger.warning('WebSocketTransport disconnect error: %s', String(e))
+      }
+      this._client = null
+    }
+    this._sdkTransport = null
+  }
+
+  /** 发送 JSON-RPC 请求并等待响应。 */
+  async request(method: string, params: Record<string, any>): Promise<Record<string, any>> {
+    if (!this._connected || this._client === null) {
+      throw new MCPConnectionError('WebSocketTransport not connected')
+    }
+    try {
+      const result = await this._client.request(
+        { method, params } as any,
+        undefined as any,
+      )
+      return (result ?? {}) as Record<string, any>
+    } catch (e) {
+      if (e instanceof MCPConnectionError || e instanceof MCPProtocolError) {
+        throw e
+      }
+      throw new MCPProtocolError(`MCP request '${method}' failed: ${String(e)}`)
+    }
+  }
+
+  /** 发送 JSON-RPC 通知。 */
+  async notify(method: string, params: Record<string, any>): Promise<void> {
+    if (!this._connected || this._client === null) {
+      throw new MCPConnectionError('WebSocketTransport not connected')
     }
     await this._client.notification({ method, params } as any)
   }

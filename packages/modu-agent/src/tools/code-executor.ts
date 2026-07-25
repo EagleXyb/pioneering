@@ -62,6 +62,23 @@ const _FORBIDDEN_ATTRS: Set<string> = new Set([
   '__module__', '__import__',
 ])
 
+// 禁止的标识符片段（用于检测字符串拼接绕过，对应文档 §2.5 建议2）
+// 例如 __import__('o'+'s') 中 'o'+'s' 拼接出 'os'，需检测片段级匹配
+const _FORBIDDEN_FRAGMENTS: Set<string> = new Set([
+  '__import__',
+  'subprocess',
+  'os.system',
+  'os.popen',
+  'os.exec',
+  'os.spawn',
+  'shutil.rmtree',
+  'pathlib.Path',
+  'ctypes.CDLL',
+  'pickle.loads',
+  'marshal.loads',
+  'importlib.import_module',
+])
+
 /**
  * 代码校验器：拒绝所有禁止的标识符与属性访问。
  *
@@ -70,6 +87,9 @@ const _FORBIDDEN_ATTRS: Set<string> = new Set([
  *   - 检测 import / from-import 语句
  *   - 检测禁止的标识符名称
  *   - 检测禁止的属性访问
+ *   - 检测字符串拼接绕过（对应文档 §2.5 建议2）：
+ *       检测代码中所有字符串字面量，拼接后检查是否包含禁止片段
+ *       例如 'o'+'s' 拼接为 'os'，'__imp'+'ort__' 拼接为 '__import__'
  */
 class CodeValidator {
   errors: string[] = []
@@ -97,6 +117,42 @@ class CodeValidator {
       const pattern = new RegExp(`\\.${attr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\w]|$)`)
       if (pattern.test(code)) {
         this.errors.push(`attribute '${attr}' is forbidden`)
+      }
+    }
+
+    // 检测字符串拼接绕过（对应文档 §2.5 建议2）
+    this._detectStringConcatenation(code)
+  }
+
+  /**
+   * 检测字符串拼接绕过。
+   *
+   * 提取代码中所有字符串字面量（单引号/双引号），拼接后检查是否包含禁止片段。
+   * 例如：'__imp' + 'ort__' 拼接为 '__import__'，触发拦截。
+   *
+   * 注意：此为启发式检测，可能存在误报（如代码中合法使用 'os' 字符串），
+   * 但安全场景下误报优于漏报。
+   */
+  private _detectStringConcatenation(code: string): void {
+    // 提取所有字符串字面量（简化匹配，覆盖常见引号形式）
+    const stringLiterals: string[] = []
+    const stringPattern = /(['"])((?:\\.|(?!\1).)*)\1/g
+    let m: RegExpExecArray | null
+    while ((m = stringPattern.exec(code)) !== null) {
+      stringLiterals.push(m[2])
+    }
+
+    if (stringLiterals.length === 0) {
+      return
+    }
+
+    // 拼接所有字符串字面量，检查是否包含禁止片段
+    const concatenated = stringLiterals.join('')
+    for (const fragment of _FORBIDDEN_FRAGMENTS) {
+      if (concatenated.includes(fragment)) {
+        this.errors.push(
+          `string concatenation detected producing forbidden fragment '${fragment}'`,
+        )
       }
     }
   }

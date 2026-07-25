@@ -86,6 +86,34 @@ export class FileOpsTool extends BaseTool {
     return true
   }
 
+  /**
+   * 动态敏感性判定（对应文档 §2.5 建议6）。
+   *
+   * FileOpsTool 按操作类型动态判定：
+   *   - write / delete：需审批（破坏性操作）
+   *   - read / list：不需要审批（只读操作）
+   *   - 无效 op：按需审批处理（保守策略）
+   *
+   * 注意：此方法不替代路径校验（_validatePath 仍在 invoke 内执行），
+   * 仅用于 HITL 决策是否需要人工介入。
+   */
+  requiresApprovalFor(
+    params: Record<string, any>,
+    _context: Record<string, any>,
+  ): boolean {
+    const op = params?.op
+    if (typeof op !== 'string') {
+      return true  // 无效 op，保守按需审批
+    }
+    const normalized = op.toLowerCase().trim()
+    // 只读操作不需要审批
+    if (normalized === 'read' || normalized === 'list') {
+      return false
+    }
+    // 写操作 / 删除操作 / 未知操作 → 需审批
+    return true
+  }
+
   onApprovalRejected(params: Record<string, any>): Record<string, any> {
     const op = params.op ?? ''
     const p = params.path ?? ''

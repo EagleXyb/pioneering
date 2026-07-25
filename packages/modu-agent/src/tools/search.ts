@@ -42,6 +42,17 @@ export class SearchTool extends BaseTool {
     }
   }
 
+  // P4 Plan-Execute: 声明本工具提供实时/外部数据（对应文档 §4.1 建议7）
+  // Planner 节点读取此元方法推断 step.requires_tool=true，step_finalize 据此校验
+  providesRealtimeData(): boolean {
+    return true
+  }
+
+  // v1.2 §4.3 建议9：搜索结果中常含 URL，推荐用 http_request 继续抓取详情
+  followUpTools(): string[] {
+    return ['http_request']
+  }
+
   async invoke(
     params: Record<string, any>,
     _context: Record<string, any>,

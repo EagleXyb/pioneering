@@ -106,6 +106,18 @@ export interface ModuGraphInterface {
   getState(config?: RunnableConfig, options?: any): Promise<any>
   /** 更新线程状态：透传 updateState() 至底层编译图。 */
   updateState(input: any, config?: RunnableConfig, asNode?: string): Promise<void>
+  /** 查询状态历史：透传 getStateHistory() 至底层编译图（对应文档 §2.3 建议6）。 */
+  getStateHistory(
+    config?: RunnableConfig,
+    filter?: any,
+    limit?: number,
+    before?: any,
+  ): Promise<Iterable<any>>
+  /**
+   * 状态回滚：基于 Checkpointer 历史快照回滚到 N 步之前的状态
+   * （对应文档 §2.3 建议6）。
+   */
+  rollback(threadId: string, steps?: number): Promise<any>
 }
 
 /** IterableReadableStream 类型别名（避免引入额外类型导入）。 */
@@ -203,6 +215,88 @@ export class ModuGraph implements ModuGraphInterface {
     const fn = (this._compiled as any).updateState
     return fn.call(this._compiled, input, config, asNode)
   }
+
+  /**
+   * 透传 getStateHistory() 至底层编译图（对应文档 §2.3 建议6）。
+   *
+   * 返回按时间倒序的状态历史快照迭代器，每个快照对应一次节点执行后的状态。
+   */
+  async getStateHistory(
+    config?: RunnableConfig,
+    filter?: any,
+    limit?: number,
+    before?: any,
+  ): Promise<Iterable<any>> {
+    const fn = (this._compiled as any).getStateHistory
+    if (typeof fn !== 'function') {
+      throw new Error('Underlying compiled graph does not support getStateHistory')
+    }
+    return fn.call(this._compiled, config, filter, limit, before)
+  }
+
+  /**
+   * 状态回滚 API（对应文档 §2.3 建议6）。
+   *
+   * 基于 Checkpointer 历史快照回滚到 N 步之前的状态：
+   *   1. 通过 getStateHistory 获取状态历史
+   *   2. 取第 N 个快照（steps=1 表示上一步，steps=2 表示上上步，依此类推）
+   *   3. 通过 updateState 将状态恢复到该快照
+   *
+   * 注意：
+   *   - 回滚后 checkpointer 会新增一条快照记录（而非删除后续历史）
+   *   - 仅支持内存/sqlite/postgres checkpointer，无 checkpointer 时抛错
+   *   - steps 超过历史长度时回滚到最早可用快照
+   *
+   * @param threadId 会话 ID（对应 checkpointer 的 thread_id）
+   * @param steps    回滚步数（1=回滚到上一步）
+   * @returns 回滚后的状态快照
+   */
+  async rollback(threadId: string, steps: number = 1): Promise<any> {
+    if (steps < 1) {
+      throw new Error(`steps must be >= 1, got ${steps}`)
+    }
+    const checkpointer = this.checkpointer
+    if (checkpointer == null) {
+      throw new Error('Cannot rollback: no checkpointer configured')
+    }
+
+    const config: RunnableConfig = { configurable: { thread_id: threadId } } as RunnableConfig
+
+    // 获取状态历史（按时间倒序，最新在前）
+    const historyIter = await this.getStateHistory(config)
+    const history: any[] = []
+    for await (const snapshot of historyIter) {
+      history.push(snapshot)
+      // 多取 1 条以防最新快照为当前状态
+      if (history.length > steps + 1) {
+        break
+      }
+    }
+
+    if (history.length === 0) {
+      throw new Error(`Cannot rollback: no state history found for thread_id=${threadId}`)
+    }
+
+    // 索引 0 通常是当前状态，steps=1 取索引 1（上一步）
+    // 若 steps 超过历史长度，取最后一个可用快照
+    const targetIdx = Math.min(steps, history.length - 1)
+    if (targetIdx < 1 && history.length === 1) {
+      // 仅一条历史，无法回滚
+      throw new Error(`Cannot rollback: only 1 state snapshot available for thread_id=${threadId}`)
+    }
+    const targetSnapshot = history[targetIdx]
+    const targetValues = targetSnapshot?.values ?? {}
+
+    // 通过 updateState 恢复状态（asNode=null 表示作为外部更新）
+    await this.updateState(targetValues, config)
+    logger.info(
+      'Rolled back thread_id=%s by %d steps (target snapshot checkpoint_id=%s)',
+      threadId, steps, targetSnapshot?.checkpoint_id ?? 'unknown',
+    )
+
+    // 返回回滚后的最新状态
+    return await this.getState(config)
+  }
 }
 
 /**
@@ -282,12 +376,17 @@ export function buildModuGraph(
     }
   }
 
-  // P4: multi_agent 与 plan_execute 互斥（multi_agent 优先，二者都消费 memory_query → 推理入口）
+  // v1.2 #6: 解除 plan_execute 与 multi_agent 互斥（对应文档 §4.1 建议6）
+  // 允许组合模式：plan_execute 模式下 task_type=delegation 的步骤路由到 supervisor 节点
+  // - plan_execute 优先：memory_query → planner → step_dispatch
+  // - task_type=delegation 步骤：step_dispatch → supervisor → subagent_run → consensus → step_finalize
+  // - task_type=reasoning/tool_use 步骤：step_dispatch → agent → step_finalize
+  // - 纯 multi_agent 模式（plan_execute 关闭）：memory_query → supervisor → ... → response
   if (multiAgentEnabled && planExecuteEnabled) {
-    logger.warning(
-      'Both multi_agent and plan_execute are enabled; multi_agent takes precedence, plan_execute disabled',
+    logger.info(
+      'Both multi_agent and plan_execute enabled (combined mode): ' +
+      'plan_execute takes precedence for entry; task_type=delegation steps route to supervisor',
     )
-    planExecuteEnabled = false
   }
 
   // 创建图
@@ -310,12 +409,17 @@ export function buildModuGraph(
   // P3-12.3.2: 人工审批节点（HITL 开启时插入 agent → tools 之间）
   const humanReviewNode = hitlEnabled ? makeHumanReviewNode() : null
   // P3-12.3.1: 多 Agent 协作节点（multi_agent 开启时替代单 agent 路径）
-  let supervisorNode: ((state: ModuAgentState) => Partial<ModuAgentState>) | null = null
+  let supervisorNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
   let subagentNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
   let consensusNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
   if (multiAgentEnabled) {
-    supervisorNode = make_supervisor_node()
-    subagentNode = makeSubagentNode(boundLlm, systemPrompt)
+    // v1.4 §4.4 建议1：传入 plannerLlm 启用 LLM 驱动任务拆分
+    //   use_llm_decompose 配置默认开启，plannerLlm 为空时自动 fallback 到规则化拆分
+    const supervisorPlannerLlm = rawLlm ?? boundLlm
+    supervisorNode = make_supervisor_node(null, null, supervisorPlannerLlm)
+    // v1.4 §4.4 建议2：传入 tools 启用子 Agent 工具能力
+    // 子 Agent 按 task_type 过滤工具（research→search/http，coding→calculator/code_executor）
+    subagentNode = makeSubagentNode(boundLlm, systemPrompt, tools)
     consensusNode = makeConsensusNode(null, judgeLlm)
   }
 
@@ -382,24 +486,9 @@ export function buildModuGraph(
     },
   )
 
-  // 记忆查询后进入 agent / supervisor / planner（P3-12.3.1 多 Agent / P4 Plan-and-Execute 路由）
-  if (supervisorNode) {
-    graph.addConditionalEdges(
-      'memory_query',
-      routeAfterMemoryQuery,
-      { agent: 'agent', supervisor: 'supervisor' },
-    )
-    // Supervisor 通过 Send API 并行分发到 subagent_run
-    graph.addConditionalEdges(
-      'supervisor',
-      route_from_supervisor,
-      ['subagent_run'],
-    )
-    // subagent_run 完成后进入 consensus
-    graph.addEdge('subagent_run', 'consensus')
-    // consensus → response（进入响应阶段）
-    graph.addEdge('consensus', 'finalize_response')
-  } else if (plannerNode) {
+  // 记忆查询后进入 agent / supervisor / planner
+  // v1.2 #6: 组合模式（plan_execute + multi_agent）下，plan_execute 优先，task_type=delegation 步骤路由到 supervisor
+  if (plannerNode) {
     // P4: memory_query → planner → step_dispatch 执行循环
     graph.addConditionalEdges(
       'memory_query',
@@ -412,14 +501,54 @@ export function buildModuGraph(
       routeAfterPlan,
       { step_dispatch: 'step_dispatch', response: 'finalize_response' },
     )
-    // step_dispatch：有剩余步骤 → agent；全部完成 → response；失败可重规划 → planner
+    // step_dispatch 路由目标：
+    //   - agent（task_type=reasoning/tool_use 或单步就绪）
+    //   - supervisor（task_type=delegation，组合模式）
+    //   - response（全部完成）
+    //   - planner（重规划）
+    //   - Send[]（DAG 并行分发）
+    const stepDispatchTargets: Record<string, string> = {
+      agent: 'agent',
+      response: 'finalize_response',
+      planner: 'planner',
+    }
+    if (supervisorNode) {
+      stepDispatchTargets['supervisor'] = 'supervisor'
+    }
     graph.addConditionalEdges(
       'step_dispatch',
       stepDispatch,
-      { agent: 'agent', response: 'finalize_response', planner: 'planner' },
+      stepDispatchTargets,
     )
     // step_finalize：单步收尾后回到 step_dispatch 推进游标
     graph.addEdge('step_finalize', 'step_dispatch')
+
+    // v1.2 #6: 组合模式下 supervisor → subagent_run → consensus → step_finalize
+    if (supervisorNode) {
+      graph.addConditionalEdges(
+        'supervisor',
+        route_from_supervisor,
+        ['subagent_run'],
+      )
+      graph.addEdge('subagent_run', 'consensus')
+      // 组合模式：consensus → step_finalize（回到 plan_execute 循环）
+      graph.addEdge('consensus', 'step_finalize')
+    }
+  } else if (supervisorNode) {
+    // 纯 multi_agent 模式：memory_query → supervisor → subagent_run → consensus → response
+    graph.addConditionalEdges(
+      'memory_query',
+      routeAfterMemoryQuery,
+      { agent: 'agent', supervisor: 'supervisor' },
+    )
+    graph.addConditionalEdges(
+      'supervisor',
+      route_from_supervisor,
+      ['subagent_run'],
+    )
+    graph.addEdge('subagent_run', 'consensus')
+    // 纯 multi_agent 模式：consensus → response（进入响应阶段）
+    graph.addEdge('consensus', 'finalize_response')
   } else {
     graph.addEdge('memory_query', 'agent')
   }
@@ -502,11 +631,24 @@ export function buildModuGraph(
       baseLimit += 4  // 为 supervisor + subagent + consensus 预留递归预算
     }
     if (planExecuteEnabled) {
-      // P4: 每步消耗 (agent + tools + tool_processor) * maxIterations + step_finalize，
-      // 外加 planner/step_dispatch 与重规划预算；replan_count 上限由业务层 max_replans 控制
+      // 递归预算动态计算（对应文档 §2.3 建议5）：
+      //   旧版粗放估算：maxSteps * (maxIterations * 3 + 2) 假设每步最多 ReAct maxIterations 轮
+      //   新版按 plan 中各步骤的 estimated_iterations 动态累加：
+      //     - 若 plan 已生成且步骤含 estimated_iterations 字段，按 sum(estimated_iterations) 计算
+      //     - 否则回退到旧版上限估算（保持向后兼容）
+      //   每步节点消耗：agent + tools + tool_processor + step_finalize = 4 个节点
+      //   外加 planner/step_dispatch 与重规划预算
       const maxSteps = Number(config.get('plan_execute.max_steps', 10))
       const maxReplans = Number(config.get('plan_execute.max_replans', 2))
-      baseLimit += maxSteps * (maxIterations * 3 + 2) + (maxReplans + 1) * 2 + 2
+
+      // 尝试读取已持久化的 plan 估算总迭代数（动态计算路径）
+      const estimatedTotalIters = _estimatePlanTotalIterations(config, maxSteps, maxIterations)
+
+      // 每步固定开销：4 节点 * iterations + step_finalize 1 节点
+      const stepBudget = estimatedTotalIters * 4 + maxSteps * 1
+      // planner + step_dispatch + 重规划预算
+      const plannerBudget = (maxReplans + 1) * 2 + 2
+      baseLimit += stepBudget + plannerBudget
     }
     compiledAny.recursionLimit = baseLimit
   }
@@ -528,4 +670,44 @@ export function buildModuGraph(
 /** 空工具节点（无工具时使用）。 */
 function _noopToolsNode(_state: ModuAgentState): Partial<ModuAgentState> {
   return {}
+}
+
+/**
+ * 估算 plan 总迭代数（对应文档 §2.3 建议5：递归预算动态计算）。
+ *
+ * 策略：
+ *   1. 若 runtimeConfig 中缓存了已生成的 plan（key: 'plan_execute._cached_plan'），
+ *      且步骤含 estimated_iterations 字段，则按 sum(estimated_iterations) 计算
+ *   2. 否则回退到旧版上限估算：maxSteps * maxIterations
+ *
+ * 注意：plan 在运行时由 planner 节点生成，buildModuGraph 阶段通常无 plan；
+ *       此函数主要供后续按需重建图时使用，多数场景仍走回退路径。
+ *       业务层如需精确预算，可在 planner 后调用 graph.recalculateRecursionLimit()。
+ */
+function _estimatePlanTotalIterations(
+  config: ReturnType<typeof getConfig>,
+  maxSteps: number,
+  maxIterations: number,
+): number {
+  // 尝试读取已缓存 plan（由 planner 节点写入 runtimeConfig）
+  const cachedPlan = config.get('plan_execute._cached_plan', null) as Array<Record<string, any>> | null
+  if (Array.isArray(cachedPlan) && cachedPlan.length > 0) {
+    let total = 0
+    let hasEstimate = false
+    for (const step of cachedPlan) {
+      const est = step?.['estimated_iterations']
+      if (typeof est === 'number' && est > 0) {
+        total += est
+        hasEstimate = true
+      } else {
+        // 单步无估算时按 maxIterations 兜底
+        total += maxIterations
+      }
+    }
+    if (hasEstimate) {
+      return total
+    }
+  }
+  // 回退：上限估算（每步最多 maxIterations 轮）
+  return maxSteps * maxIterations
 }

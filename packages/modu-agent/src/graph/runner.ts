@@ -36,7 +36,7 @@ import { get_span_manager } from '../observability/tracing.js'
 import { get_metrics_registry } from '../observability/metrics.js'
 import { LangGraphEventBridge } from './adapters/event-bridge.js'
 import type { ModuGraph } from './graph.js'
-import { makeInitialState } from './state.js'
+import { makeInitialState, migrate_state } from './state.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[runner] ${msg}`, ...args),
@@ -232,12 +232,16 @@ async function _loadPrevConfigOverrides(
       if (stateTuple != null) {
         const stateValues = stateTuple.values ?? null
         if (stateValues && typeof stateValues === 'object') {
-          const prevOverrides = (stateValues as any).config_overrides ?? {}
+          // 状态 schema 迁移（对应文档 §2.3 建议3）：
+          //   历史 checkpoint 可能缺少新字段（如 state_schema_version），
+          //   migrate_state 按版本号补齐/清理，保证运行时状态结构一致
+          const migrated = migrate_state(stateValues as Record<string, any>)
+          const prevOverrides = (migrated as any).config_overrides ?? {}
           if (prevOverrides && typeof prevOverrides === 'object') {
             Object.assign(configOverrides, prevOverrides)
             logger.info(
-              'Loaded config overrides from previous state for session %s: %s',
-              sessionId, Object.keys(prevOverrides),
+              'Loaded config overrides from previous state for session %s (schema_version=%d): %s',
+              sessionId, migrated.state_schema_version, Object.keys(prevOverrides),
             )
           }
         }

@@ -139,6 +139,8 @@ export class OtelSpanManager {
   private _provider: any = null
   private _tracer: any = null
   private _otelApi: any = null
+  // 对应文档 §2.4 建议1：保存 _initOtel 的 Promise，供 ready() 显式等待
+  private _initPromise: Promise<void> = Promise.resolve()
 
   constructor(service_name: string = 'modu-agent', enabled?: boolean | null) {
     this._service_name = service_name
@@ -152,7 +154,23 @@ export class OtelSpanManager {
       return
     }
 
-    this._initOtel()
+    this._initPromise = this._initOtel()
+  }
+
+  /**
+   * 显式等待 OTel SDK 初始化完成（对应文档 §2.4 建议1）。
+   *
+   * OTel SDK 动态 import 是异步的，首次调用 span() 时 SDK 可能尚未就绪。
+   * 调用方可通过 `await get_span_manager().ready()` 显式等待初始化完成，
+   * 确保后续 span() 调用能正常创建 OTel span（而非退化为 no-op）。
+   *
+   * 注意：此方法不改变默认行为（仍为异步初始化），仅提供显式等待选项。
+   * 若 tracing 未启用，此方法立即返回。
+   *
+   * @returns 初始化 Promise（resolve 后 SDK 就绪或已降级为 no-op）
+   */
+  async ready(): Promise<void> {
+    await this._initPromise
   }
 
   private async _initOtel(): Promise<void> {

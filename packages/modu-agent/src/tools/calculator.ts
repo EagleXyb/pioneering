@@ -34,7 +34,11 @@ export class CalculatorTool extends BaseTool {
         expression: {
           type: 'string',
           description: '数学表达式（仅支持+-*/和括号）',
-          pattern: '^[0-9+\\-*/\\\\s().]+$',
+          // 修复 schema 正则 bug（对应文档 §2.5 建议8）：
+          //   旧值 '^[0-9+\\-*/\\\\s().]+$' 在 JSON Schema 中被解析为 \\s（字面反斜杠+s），
+          //   与 _EXPRESSION_PATTERN（L13）的 \s（空白符）不一致。
+          //   修正为 '^[0-9+\\-*/\\s().]+$'，使 schema 校验与实际校验一致。
+          pattern: '^[0-9+\\-*/\\s().]+$',
         },
       },
       required: ['expression'],

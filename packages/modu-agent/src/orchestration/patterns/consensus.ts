@@ -50,38 +50,99 @@ export abstract class ConsensusStrategy {
 // MajorityVoteStrategy
 // ============================================================
 
+/**
+ * 文本相似度阈值（对应文档 §4.4 建议12）。
+ *
+ * v1.3 前 MajorityVoteStrategy 使用 SHA-256 完全匹配分组，导致语义等价但字面
+ * 不同的输出无法归为一组（如 "42" 与 "The answer is 42"）。v1.4 改用 Jaccard
+ * 词元相似度：相似度 >= 该阈值的结果归入同一组。
+ *
+ * 不引入 embedding 依赖（避免新 deps + 网络调用），用词袋 Jaccard 相似度
+ * 作为零依赖近似——对短文本结果（如计算结果、事实性答案）足够有效。
+ */
+const _MAJORITY_VOTE_SIMILARITY_THRESHOLD = 0.6
+
 export class MajorityVoteStrategy extends ConsensusStrategy {
   async aggregate(results: Record<string, any>[], quorum: number): Promise<Record<string, any>> {
     if (results.length === 0) {
       return { consensus: null, agreement_count: 0, strategy: 'majority_vote' }
     }
-    const groups: Map<string, Record<string, any>[]> = new Map()
+    // v1.4 §4.4 建议12：用 Jaccard 词元相似度替代严格内容哈希分组。
+    // 第一个结果开新组，后续结果与已有组的代表（首个元素）比较相似度，
+    // 高于阈值则归入该组；否则开新组。O(n * k)，k 为组数，通常很小。
+    const groups: Array<{ representative: Record<string, any>; members: Record<string, any>[] }> = []
     for (const r of results) {
-      const h = MajorityVoteStrategy._content_hash(r)
-      let list = groups.get(h)
-      if (!list) {
-        list = []
-        groups.set(h, list)
+      let matched = false
+      for (const g of groups) {
+        const sim = MajorityVoteStrategy._textSimilarity(g.representative, r)
+        if (sim >= _MAJORITY_VOTE_SIMILARITY_THRESHOLD) {
+          g.members.push(r)
+          matched = true
+          break
+        }
       }
-      list.push(r)
+      if (!matched) {
+        groups.push({ representative: r, members: [r] })
+      }
     }
-    let max_key = ''
-    let max_group: Record<string, any>[] = []
-    for (const [key, list] of groups) {
-      if (list.length > max_group.length) {
-        max_key = key
-        max_group = list
+    // 取成员最多的组
+    let maxGroup = groups[0]
+    for (const g of groups) {
+      if (g.members.length > maxGroup.members.length) {
+        maxGroup = g
       }
     }
     return {
-      consensus: max_group[0],
-      agreement_count: max_group.length,
+      consensus: maxGroup.members[0],
+      agreement_count: maxGroup.members.length,
       total_results: results.length,
       strategy: 'majority_vote',
-      group_count: groups.size,
+      group_count: groups.length,
     }
   }
 
+  /**
+   * 提取结果的文本表示用于相似度比较。
+   * 优先取 output 字段，其次取 content，最后整体 stringify。
+   */
+  static _extractText(result: Record<string, any>): string {
+    const output = result.output ?? result.content ?? result
+    if (typeof output === 'string') return output
+    try {
+      return stableStringify(output)
+    } catch {
+      return String(output)
+    }
+  }
+
+  /**
+   * 计算 Jaccard 词元相似度（对应文档 §4.4 建议12）。
+   *
+   * 将文本按非字母数字字符分词为小写词袋集合，计算 |A ∩ B| / |A ∪ B|。
+   * 完全相同 → 1.0；完全不同 → 0.0。零依赖、O(n) 复杂度。
+   */
+  static _textSimilarity(a: Record<string, any>, b: Record<string, any>): number {
+    const ta = new Set(MajorityVoteStrategy._tokenize(MajorityVoteStrategy._extractText(a)))
+    const tb = new Set(MajorityVoteStrategy._tokenize(MajorityVoteStrategy._extractText(b)))
+    if (ta.size === 0 && tb.size === 0) return 1.0
+    if (ta.size === 0 || tb.size === 0) return 0.0
+    let inter = 0
+    for (const w of ta) {
+      if (tb.has(w)) inter++
+    }
+    const union = ta.size + tb.size - inter
+    return union === 0 ? 0 : inter / union
+  }
+
+  /** 按非字母数字字符分词并转小写。 */
+  static _tokenize(text: string): string[] {
+    if (!text) return []
+    return text.toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/i).filter((t) => t.length > 0)
+  }
+
+  /**
+   * @deprecated v1.4 改用 _textSimilarity 进行模糊分组。保留仅为向后兼容/测试。
+   */
   static _content_hash(result: Record<string, any>): string {
     const output = result.output ?? result
     let content: string
@@ -142,6 +203,14 @@ export class LLMJudgeStrategy extends ConsensusStrategy {
     'Task: {task}\nCandidates:\n{candidates}\n' +
     'Respond with ONLY JSON: {"winner": <index>, "reason": "<brief>"}'
 
+  /**
+   * judge LLM 最大重试次数（对应文档 §4.4 建议10）。
+   *
+   * judge LLM 可能因网络抖动、JSON 解析失败、索引越界等瞬时故障失败。
+   * 失败时重试 1 次（即总共最多 2 次调用），仍失败则 fallback 到首个候选。
+   */
+  private static readonly _MAX_RETRIES = 1
+
   private _llm: ModuLLM | null
   private _task: string
 
@@ -167,33 +236,46 @@ export class LLMJudgeStrategy extends ConsensusStrategy {
       .replace('{task}', this._task || 'general task')
       .replace('{candidates}', candidates)
 
-    try {
-      // 统一通过 ModuLLM.invoke 消费（对应文档 §2.1）
-      const messages: LLMMessage[] = [{ role: 'user', content: prompt }]
-      const result = await this._llm.invoke(messages, { taskType: 'consensus_judge' })
-      const content = result.content ?? ''
-      const judge = JSON.parse(content)
-      const idx = Number(judge.winner ?? 0)
-      if (idx >= 0 && idx < results.length) {
-        const winner = results[idx]
-        return {
-          consensus: winner.output ?? winner,
-          agreement_count: 1,
-          total_results: results.length,
-          strategy: 'llm_judge',
-          judge_reason: judge.reason ?? '',
-          winner_index: idx,
+    // v1.4 §4.4 建议10：judge LLM 失败时重试 1 次
+    let lastError: string = ''
+    for (let attempt = 0; attempt <= LLMJudgeStrategy._MAX_RETRIES; attempt++) {
+      try {
+        const messages: LLMMessage[] = [{ role: 'user', content: prompt }]
+        const result = await this._llm.invoke(messages, { taskType: 'consensus_judge' })
+        const content = result.content ?? ''
+        const judge = JSON.parse(content)
+        const idx = Number(judge.winner ?? 0)
+        if (idx >= 0 && idx < results.length) {
+          const winner = results[idx]
+          return {
+            consensus: winner.output ?? winner,
+            agreement_count: 1,
+            total_results: results.length,
+            strategy: 'llm_judge',
+            judge_reason: judge.reason ?? '',
+            winner_index: idx,
+            judge_attempts: attempt + 1,
+          }
+        }
+        lastError = `winner index out of range: ${idx} (results=${results.length})`
+      } catch (e) {
+        lastError = String(e)
+        if (attempt < LLMJudgeStrategy._MAX_RETRIES) {
+          logger.warning(
+            'LLM judge attempt %d failed, retrying: %s',
+            attempt + 1, lastError,
+          )
         }
       }
-    } catch (e) {
-      logger.warning('LLM judge failed: %s', String(e))
     }
 
+    logger.warning('LLM judge failed after %d attempts: %s', LLMJudgeStrategy._MAX_RETRIES + 1, lastError)
     return {
       consensus: results[0].output ?? results[0],
       agreement_count: 1,
       total_results: results.length,
       strategy: 'llm_judge_fallback',
+      judge_error: lastError,
     }
   }
 }

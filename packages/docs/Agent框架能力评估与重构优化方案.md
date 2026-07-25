@@ -1,9 +1,124 @@
 # Agent 框架能力评估与重构优化方案
 
-> 版本：v1.0 ｜ 日期：2026-07-25
+> 版本：v1.4 ｜ 日期：2026-07-25（初版）/ 2026-07-25（v1.1 更新）/ 2026-07-25（v1.2 更新）/ 2026-07-25（v1.3 更新）/ 2026-07-25（v1.4 更新）
 > 评估对象：`packages/modu-agent`（基于 LangGraph 的 TypeScript Agent 框架）
 > 评估范围：底层通用基座层、业务适配层、核心能力层三大维度
 > 关联代码：所有引用均附 `file://` 绝对路径链接，可直接跳转核对
+
+## 更新历史
+
+### v1.4（2026-07-25）—— §4.4 多 Agent 协作增强
+
+基于文档 §4.4 建议对多 Agent 协作模块完成 12 项改造（对应 P1-4），全部通过 `tsc --noEmit` + 300 个 Vitest 用例无回归。
+
+**核心能力层（§4.4）已修复 12 项**：
+
+| 建议 | 状态 | 关键代码 |
+|------|------|---------|
+| ✅ 建议1 LLM 驱动任务拆分 | ✅ 已修复（v1.4） | [supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) `decompose_task_with_llm` L128-195（失败自动 fallback 到规则化 `decompose_task`） |
+| ✅ 建议2 子 Agent 启用工具 | ✅ 已修复（v1.4） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode` L1229-1397 调用 `build_subagent_subgraph` + `_filterToolsByTaskType` L1411-1427 按 task_type 过滤 |
+| ✅ 建议3 子 Agent 间黑板通信 | ✅ 已修复（v1.4） | [state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `blackboard` 字段（合并 reducer）L242-245、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1287-1291 读取 + L1385-1392 写入 |
+| ✅ 建议4 子 Agent → Supervisor 升级 | ✅ 已修复（v1.4） | [supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) `make_supervisor_node` L231-258 检测 `need_help` 信号并重新拆分 |
+| ✅ 建议5 动态子 Agent 生成 | ✅ 已修复（v1.4） | [supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) L243-258 保留成功子任务 + 重新拆分 need_help 的，支持多轮 `supervisor_round` |
+| ✅ 建议6 子 Agent 超时 | ✅ 已修复（v1.4） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_invokeWithTimeout` L1436-1446（`Promise.race`）+ `subgraph_timeout_ms` 配置 |
+| ✅ 建议7 弃用 DelegationPattern | ✅ 已修复（v1.4） | [delegation.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/delegation.ts) `@deprecated` JSDoc L16 |
+| ✅ 建议8 修复 consensus_result → finalize_response 链路 | ✅ 已修复（v1.4） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeConsensusNode` L1536, L1565, L1574 将 consensus 结果作为 AIMessage 追加到 `messages` |
+| ✅ 建议9 统一共识入口 | ✅ 已修复（v1.4） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1498-1520 改用 `ConsensusPattern` 封装 quorum + 失败事件发布 |
+| ✅ 建议10 LLMJudgeStrategy 重试 | ✅ 已修复（v1.4） | [consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) `LLMJudgeStrategy._MAX_RETRIES=1` L212 + L241-272 重试循环 |
+| ✅ 建议11 quorum 动态计算 | ✅ 已修复（v1.4） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1484-1488 `max(1, ceil(subtask_count / 2))`，配置 `consensus_quorum > 0` 时沿用配置 |
+| ✅ 建议12 MajorityVoteStrategy 文本相似度 | ✅ 已修复（v1.4） | [consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) `_textSimilarity` Jaccard 相似度 L124-136 + `_tokenize` L138-142，避免 embedding 依赖 |
+| ✅ 建议14 子 Agent 失败重试 | ✅ 已修复（v1.4） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1300-1366 指数退避重试 + `subagent_max_retries` 配置；[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) L79 |
+
+**§6 改造项状态更新**：
+- P1-4（子 Agent 启用工具 + LLM 驱动任务拆分）：⏳ → ✅ 已修复（v1.4）— §4.4 建议 1-12、14 全部实现；建议 13（跨进程 EventBus Redis 适配器）仍待办（归属 P3-3）
+
+**仍未修复的 §4.4 待办**：建议 13 跨进程 EventBus（Redis pub/sub 适配器），已归入 P3-3 跨进程部署改造项。
+
+---
+
+### v1.3（2026-07-25）—— §4.3 工具调度增强
+
+基于文档 §4.3 建议对工具调度模块完成 10 项改造（对应 P2-1/P2-2），全部通过 `tsc --noEmit` + 273 个 Vitest 用例无回归。
+
+**核心能力层（§4.3）已修复 10 项**：
+
+| 建议 | 状态 | 关键代码 |
+|------|------|---------|
+| ✅ 建议1 工具结果截断 | ✅ 已修复（v1.3） | [tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) `_truncateToolResult`、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) `tools.max_result_chars` |
+| ✅ 建议2 工具结果缓存（LRU+TTL） | ✅ 已修复（v1.3） | [tool-result-cache.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-result-cache.ts) `ToolResultCache`（单调计数器 LRU）+ `computeCacheKey` 稳定序列化 |
+| ✅ 建议3 HITL 改参批准 | ✅ 已修复（v1.3） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeHumanReviewNode` 读取 `resumePayload.modified_args` 合并到 AIMessage |
+| ✅ 建议4 动态敏感性检测 | ✅ 已修复（v1.3） | [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.requiresApprovalFor(args, context)`、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_toolRequiresApproval` |
+| ✅ 建议5 工具限流（v1.1 §2.5 已实现） | ✅ 已修复（v1.1） | [rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts) `ToolRateLimiter`、[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L189-198 |
+| ✅ 建议6 MCP 超时配置化 | ✅ 已修复（v1.3） | [mcp-tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts) 读取 `mcp.default_timeout` + `mcp.servers[].timeout` |
+| ✅ 建议7 SyncActionExecutor 弃用 | ✅ 已修复（v1.3） | [synchronous-executor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/synchronous-executor.ts) `@deprecated` JSDoc |
+| ✅ 建议8 工具版本化 | ✅ 已修复（v1.3） | [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.version(): string` |
+| ✅ 建议9 工具组合 API | ✅ 已修复（v1.3） | [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.followUpTools(): string[]`、[search.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/search.ts) L52-54 |
+| ✅ 建议10 类型安全重构 | ✅ 已修复（v1.3） | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `instanceof ToolMessage` + `asMessageExt` 辅助（L70-72）替代 `as any` |
+| ✅ 建议11 MCP WebSocket transport | ✅ 已修复（v1.3） | [transport.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/mcp/transport.ts) `WebSocketTransport`、[client.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/mcp/client.ts) `_createTransport` |
+
+**§6 改造项状态更新**：
+- P2-1（ToolSet 抽象 + per-request 切换）：⏳ → 🟡 部分修复（v1.3）— 截断/缓存/元信息/MCP 超时+WebSocket 已实现；ToolSet 接口/toolSetId 参数化/上下文透传/Server 权限控制待办
+- P2-2（HITL 增强）：🟡 → ✅ 已修复（v1.3）— 改参批准 `modified_args` 补齐后全部完成
+
+**仍未修复的 §4.3 待办**：`ToolSet` 接口抽象、`build_langchain_tools(toolSetId)` 参数化、`listTools()` 元信息结构化、`RunnableConfig.configurable` 上下文透传、MCP Server 权限控制。
+
+---
+
+### v1.2（2026-07-25）—— §4.1 规划策略增强
+
+基于文档 §4.1 建议对 Plan-Execute 模块完成 8 项改造（对应 P1-5），全部通过 `tsc --noEmit` + 260 个 Vitest 用例无回归。
+
+**核心能力层（§4.1）已修复 8 项**：
+
+| 建议 | 状态 | 关键代码 |
+|------|------|---------|
+| ✅ 建议1 DAG 并行执行（Send API） | ✅ 已修复（v1.2） | [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `_identifyReadySteps` L286-303、`stepDispatch` L146-257 |
+| ✅ 建议2 步骤级重试（指数退避） | ✅ 已修复（v1.2） | [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `_decideStepRetry`、`makeStepFinalizeNode` |
+| ✅ 建议3 withStructuredOutput | ✅ 已修复（v1.2） | [planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) `_tryStructuredOutput` L340-385 |
+| ✅ 建议4 部分重规划（保留已完成步骤） | ✅ 已修复（v1.2） | [planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) 重规划上下文含已完成步骤摘要 |
+| ✅ 建议5 PlanStep 扩展 `expected_output`/`verification_hint` | ✅ 已修复（v1.2） | [types.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/types.ts) `PlanStep` L7-50 |
+| ✅ 建议6 组合 Plan-Execute + multi_agent | ✅ 已修复（v1.2） | [graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) L379-390 解除互斥、[dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `task_type=delegation` 路由 L208-256 |
+| ✅ 建议7 工具元数据驱动 `requires_tool` | ✅ 已修复（v1.2） | [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `providesRealtimeData()`、[planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) `_referencesRealtimeTool` L125-133、`_inferRequiresToolFromToolMetadata` L150-164 |
+| ✅ 建议8 `StepResult.started_at` 写入 | ✅ 已修复（v1.2） | [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `makeStepDispatchNode` L84-116、`makeStepFinalizeNode` L380-384 |
+
+**仍未修复的 §4.1 待办**：建议9 计划持久化与恢复、建议10 递归预算精细化。
+
+---
+
+### v1.1（2026-07-25）—— 已修复项标注
+
+基于对 `packages/modu-agent` 当前主分支代码的深度复核，将以下改造项标记为 **✅ 已修复（v1.1）**，对应章节内嵌状态标记与代码引用。未标注 ✅ 的项目仍为待办。
+
+**底层通用基座层（§2）已修复 21 项**：
+
+| 章节 | 已修复建议 | 关键代码 |
+|------|-----------|---------|
+| §2.1 | ✅ 建议1 统一 LLM 接口 `ModuLLM` | [llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/llm.ts)、[base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts)、[modu-llm-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts) |
+| §2.1 | ✅ 建议2 结构化返回 `LLMResult` | 同上 |
+| §2.1 | ✅ 建议3 模型路由层 `LLMRouter` / `RuleBasedLLMRouter` | [router.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/router.ts) |
+| §2.1 | ✅ 建议4 成本核算 `LLM.COST` 事件 | [cost-tracker.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/cost-tracker.ts) |
+| §2.1 | ✅ 建议5 连接池显式化（undici.Agent） | [base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) L86-125 |
+| §2.2 | ✅ 建议1 payload 改为泛型 `T` | [protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L74-115 |
+| §2.2 | ✅ 建议2 metadata 改为 `Record<string, unknown>` | 同上 L98 |
+| §2.2 | ✅ 建议4 事件版本号 `schema_version` | 同上 L101、L128 |
+| §2.2 | ✅ 建议5 事件 TTL（`event_ttl_ms`） | [message-bus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/message-bus.ts) L189-261 |
+| §2.3 | ✅ 建议1 状态字段分层 `CoreState` / `ModeState` | [state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) L365-435 |
+| §2.3 | ✅ 建议2 移除 `history` 僵尸字段 | [state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `migrate_state` L278-296 |
+| §2.3 | ✅ 建议3 状态 schema 版本号 + 迁移 | [state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `STATE_SCHEMA_VERSION`、`migrate_state` |
+| §2.3 | ✅ 建议4 路由分叉配置化 `mode_router` | [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `routeAfterMemoryQuery` L1073-1110 |
+| §2.4 | ✅ 建议2 W3C TraceContext 注入（http_request） | [trace-context.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/observability/trace-context.ts) `inject_trace_context`、[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L320-327 |
+| §2.5 | ✅ 建议1 LLM-based Prompt 注入检测 | [guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectInjectionWithLLMJudge` L139-175 |
+| §2.5 | ✅ 建议4 SqlQueryTool 表名提取增强（schema 限定名/引号标识符） | [sql-query.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/sql-query.ts) `_TABLE_REF_PATTERN` L38-39、`_normalizeTableRef` L181-196 |
+| §2.5 | ✅ 建议5 输出敏感信息检测（PII/密钥/内网 IP） | [guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectOutputSensitive`、`sanitizeOutput` L302-395 |
+| §2.5 | ✅ 建议6 动态敏感性检测 `requiresApprovalFor` | [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) L56、[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L156-188、[file-ops.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/file-ops.ts) L100 |
+| §2.5 | ✅ 建议7 工具调用限流（token bucket） | [rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts)、[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L125-135 |
+| §2.5 | ✅ 建议8 修复 CalculatorTool schema 正则 bug | [calculator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/calculator.ts) L41 |
+| §2.5 | ✅ 建议9 集中化审计日志（SECURITY.AUDIT 事件） | [audit.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/audit.ts) `publish_security_audit_event` |
+
+**仍未修复的高优先级待办**：P0-1 语义嵌入、P0-2 AgentProfile 抽象、P0-3 ComponentSwap/Rollback 接通、P1-1 Prompt 模板外置、P1-2 EvalDataset、P1-3 CompositeStore（详见 §6 改造项优先级速查表的"状态"列）。
+
+> v1.2 更新：P1-5 Plan-Execute DAG/重试/部分重规划已在 v1.2 全部修复（详见上方 v1.2 更新历史与 §4.1 状态标注）。
+> v1.4 更新：P1-4 子 Agent 启用工具 + LLM 驱动任务拆分已在 v1.4 全部修复（详见上方 v1.4 更新历史与 §4.4 状态标注）。
 
 ---
 
@@ -116,22 +231,22 @@
 
 #### 缺陷
 
-1. **双轨抽象造成维护负担**：`BaseLLMReasoner` 与 `ChatOpenAI` 并存，相同逻辑（超时、重试、token 统计）在两处实现，易漂移
-2. **无统一 LLM 接口**：缺少 `interface LLM { invoke; stream; bindTools; withRetry }` 抽象，调用方需 if/else 区分两种实现
-3. **token 统计不统一**：`BaseLLMReasoner` 返回 `usage` dict，`ChatOpenAI` 通过 callback 机制收集，metrics 采集需双路适配
-4. **无连接池显式管理**：依赖 Node.js undici 自动管理，无法精细控制并发连接数与 keep-alive 策略
-5. **无成本核算**：缺少 per-request token 成本计算与累计，无法做预算控制
-6. **无模型路由**：单一 LLM 实例，无法按任务复杂度路由到不同模型（如简单问题用 flash、复杂问题用 pro）
-7. **`reason()` 返回三元组反模式**：`[content, usage, toolCalls]` 元组解构易错，应改为结构化对象
+1. ~~**双轨抽象造成维护负担**~~：`BaseLLMReasoner` 与 `ChatOpenAI` 并存，相同逻辑（超时、重试、token 统计）在两处实现，易漂移 — **✅ 已修复（v1.1）**：通过共享 `cost-tracker.ts` 与统一 `ModuLLM` 接口消除漂移
+2. ~~**无统一 LLM 接口**~~：缺少 `interface LLM { invoke; stream; bindTools; withRetry }` 抽象 — **✅ 已修复（v1.1）**：[llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/llm.ts) L148-169 定义 `ModuLLM` 接口，`BaseLLMReasoner` 与 `ModuLLMAdapter` 均实现该接口
+3. ~~**token 统计不统一**~~：`BaseLLMReasoner` 返回 `usage` dict，`ChatOpenAI` 通过 callback 机制收集 — **✅ 已修复（v1.1）**：统一通过 `LLMResult.usage` 字段返回，`publish_llm_cost_event` 共享采集逻辑
+4. ~~**无连接池显式管理**~~：依赖 Node.js undici 自动管理 — **✅ 已修复（v1.1）**：[base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) L86-125 通过 `llm.connection_pool.enabled` 启用 `undici.Agent`，可配置 `max_connections` / `keep_alive_timeout`
+5. ~~**无成本核算**~~：缺少 per-request token 成本计算与累计 — **✅ 已修复（v1.1）**：[cost-tracker.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/cost-tracker.ts) `publish_llm_cost_event` 在 `invoke` 内发布 `LLM.COST` 事件，含 provider/model/sessionId/userId/traceId/taskType 维度
+6. ~~**无模型路由**~~：单一 LLM 实例 — **✅ 已修复（v1.1）**：[router.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/router.ts) `RuleBasedLLMRouter` 按 `task_type / estimated_complexity / cost_budget` 路由，配置项 `llm.router.rules`
+7. ~~**`reason()` 返回三元组反模式**~~：`[content, usage, toolCalls]` 元组解构易错 — **✅ 已修复（v1.1）**：`invoke()` 返回结构化 `LLMResult { content, usage, toolCalls, finishReason, raw }`；`reason()` 标记 `@deprecated` 保留向后兼容
 
 #### 建议
 
-1. **统一 LLM 接口**：定义 `interface ModuLLM { invoke(messages): Promise<LLMResult>; stream(messages): AsyncGenerator<string>; bindTools(tools): ModuLLM; withRetry(opts): ModuLLM }`，让 `BaseLLMReasoner` 与 `ChatOpenAI` 都实现该接口
-2. **结构化返回**：`reason()` 返回 `{ content, usage, toolCalls, finishReason, raw }` 对象，替代三元组
-3. **模型路由层**：新增 `LLMRouter`，按 `task_type / estimated_complexity / cost_budget` 路由到不同模型，支持配置化路由规则
-4. **成本核算**：在 LLM 接口层统一采集 token 用量，发布 `LLM.COST` 事件，累计到 per-session/per-user 成本指标
-5. **连接池显式化**：引入 `undici.Agent` 显式管理连接池，可配置 `maxConnections / keepAliveTimeout`
-6. **逐步弃用 `BaseLLMReasoner`**：将 LLM Judge 等独立场景改用 LangChain `ChatOpenAI`，消除双轨
+1. ✅ **统一 LLM 接口**（**已修复 v1.1**）：定义 `interface ModuLLM { invoke(messages): Promise<LLMResult>; stream(messages): AsyncGenerator<string>; bindTools(tools): ModuLLM; withRetry(opts): ModuLLM }`，让 `BaseLLMReasoner` 与 `ChatOpenAI` 都实现该接口 — 实现位置：[llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/llm.ts) L148-169、[base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) L56、[modu-llm-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts) L119
+2. ✅ **结构化返回**（**已修复 v1.1**）：`invoke()` 返回 `{ content, usage, toolCalls, finishReason, raw }` 对象，替代三元组 — 实现位置：[llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/llm.ts) `LLMResult` L73-84
+3. ✅ **模型路由层**（**已修复 v1.1**）：新增 `LLMRouter`，按 `task_type / estimated_complexity / cost_budget` 路由 — 实现位置：[router.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/router.ts) `RuleBasedLLMRouter`、`PassthroughLLMRouter`
+4. ✅ **成本核算**（**已修复 v1.1**）：在 LLM 接口层统一采集 token 用量，发布 `LLM.COST` 事件 — 实现位置：[cost-tracker.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/cost-tracker.ts)
+5. ✅ **连接池显式化**（**已修复 v1.1**）：引入 `undici.Agent` 显式管理连接池 — 实现位置：[base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) `_initDispatcher` L97-125
+6. **逐步弃用 `BaseLLMReasoner`**（待办）：将 LLM Judge 等独立场景改用 LangChain `ChatOpenAI`，消除双轨 — `BaseLLMReasoner` 已标记 `@deprecated`，但 `QualityMonitor` 等仍兼容旧接口
 
 ---
 
@@ -157,21 +272,21 @@
 
 #### 缺陷
 
-1. **payload 为 `Uint8Array`**：序列化反序列化需 hex 编解码，对 JSON 场景冗余，且 `metadata` 已是 `Record<string, string>`，payload 与 metadata 职责重叠
-2. **metadata 强制 string 化**：`metadata: Record<string, string>`，复杂结构需 JSON.stringify，类型不安全
-3. **EventBus 仅内存**：无跨进程 pub/sub，分布式部署下多实例间事件不互通
-4. **无事件版本号**：协议演进时无法兼容旧版本消费者
-5. **无事件 TTL**：持久化日志无限累积，需手动清理
-6. **DTO 类与 LangGraph State 字段重复**：`LLMRequest/Response` 与 `ModuAgentState` 中的 messages/usage 字段语义重叠，增加映射成本
+1. ~~**payload 为 `Uint8Array`**~~：序列化反序列化需 hex 编解码，对 JSON 场景冗余 — **✅ 已修复（v1.1）**：[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) `AgentEvent<T = unknown>` L96 `payload?: T | Uint8Array`，JSON 场景直接传结构化对象；二进制场景通过 `payloadAsBytes()` 辅助方法读取
+2. ~~**metadata 强制 string 化**~~：`metadata: Record<string, string>`，复杂结构需 JSON.stringify — **✅ 已修复（v1.1）**：[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L98 `metadata?: Record<string, unknown>`，允许结构化值；`cost-tracker.ts` 已利用此特性将 `prompt_tokens` 等数值以 number 类型透传
+3. **EventBus 仅内存**：无跨进程 pub/sub，分布式部署下多实例间事件不互通 — 待办（P3-2/P3-3）
+4. ~~**无事件版本号**~~：协议演进时无法兼容旧版本消费者 — **✅ 已修复（v1.1）**：[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L101 `schema_version?: number`，默认 `AGENT_EVENT_SCHEMA_VERSION`
+5. ~~**无事件 TTL**~~：持久化日志无限累积，需手动清理 — **✅ 已修复（v1.1）**：[message-bus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/message-bus.ts) L189-261 `PersistentEventLog` 支持 `event_ttl_ms` 配置（默认 0=不启用），过期事件自动丢弃
+6. **DTO 类与 LangGraph State 字段重复**：`LLMRequest/Response` 与 `ModuAgentState` 中的 messages/usage 字段语义重叠，增加映射成本 — 待办
 
 #### 建议
 
-1. **payload 改为泛型 `T`**：`AgentEvent<T = unknown>`，payload 类型由 domain/action 决定，消除 hex 编解码
-2. **metadata 改为 `Record<string, unknown>`**：允许结构化值，序列化时统一处理
-3. **跨进程 EventBus**：引入 Redis pub/sub 适配器，多实例部署时启用
-4. **事件版本号**：`AgentEvent` 增加 `schema_version: number`，消费者按版本路由处理逻辑
-5. **事件 TTL**：`PersistentEventLog` 支持 `event_ttl` 配置，过期自动清理
-6. **DTO 与 State 字段对齐**：评估是否用 DTO 替代 State 中的冗余字段，减少映射
+1. ✅ **payload 改为泛型 `T`**（**已修复 v1.1**）：`AgentEvent<T = unknown>`，payload 类型由 domain/action 决定，消除 hex 编解码 — 实现位置：[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L96
+2. ✅ **metadata 改为 `Record<string, unknown>`**（**已修复 v1.1**）：允许结构化值，序列化时统一处理 — 实现位置：[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L98
+3. **跨进程 EventBus**（待办 P3-2/P3-3）：引入 Redis pub/sub 适配器，多实例部署时启用
+4. ✅ **事件版本号**（**已修复 v1.1**）：`AgentEvent` 增加 `schema_version: number`，消费者按版本路由处理逻辑 — 实现位置：[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L101、L128
+5. ✅ **事件 TTL**（**已修复 v1.1**）：`PersistentEventLog` 支持 `event_ttl` 配置，过期自动清理 — 实现位置：[message-bus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/message-bus.ts) L189-261
+6. **DTO 与 State 字段对齐**（待办）：评估是否用 DTO 替代 State 中的冗余字段，减少映射
 
 ---
 
@@ -200,22 +315,22 @@
 
 #### 缺陷
 
-1. **`history` 字段僵尸**：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) L169 定义但无节点写入，`makeInitialState` 初始化为空数组后永远为空
-2. **状态字段膨胀**：`ModuAgentState` 已积累 30+ 字段，涵盖 ReAct/multi_agent/plan_execute/feedback/evolution 多模式，单 State 承载过重，新增模式需继续扩展
-3. **模式间状态字段耦合**：`current_subtask`（multi_agent）与 `current_step`（plan_execute）并存，`subtask_results` 与 `step_results` 并存，语义易混淆
-4. **无状态快照版本**：Checkpointer 保存状态版本，但无 schema 版本号，状态字段重构后旧 checkpoint 不兼容
-5. **路由分叉硬编码**：`routeAfterMemoryQuery`（[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1073-1091）用 if/else 链判断模式，新增模式需改源码
-6. **递归预算估算粗放**：plan_execute 的 `maxSteps * (maxIterations * 3 + 2)` 假设每步最多 ReAct `maxIterations` 轮，实际单步可能因工具链更长
-7. **无状态回滚**：Checkpointer 可恢复状态，但无法主动回滚到 N 步之前的状态（撤销操作）
+1. ~~**`history` 字段僵尸**~~：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) L169 定义但无节点写入 — **✅ 已修复（v1.1）**：`migrate_state` L278-296 在 v0→v1 迁移时显式 `delete migrated['history']`，新状态不再含此字段
+2. **状态字段膨胀**：`ModuAgentState` 已积累 30+ 字段，涵盖 ReAct/multi_agent/plan_execute/feedback/evolution 多模式，单 State 承载过重 — **部分修复（v1.1）**：已通过 `CoreState` + `ModeState` 接口分层（见下），但 `ModuAgentStateAnnotation` 仍为单一 Annotation 组合
+3. **模式间状态字段耦合**：`current_subtask`（multi_agent）与 `current_step`（plan_execute）并存，`subtask_results` 与 `step_results` 并存，语义易混淆 — **部分修复（v1.1）**：通过 `MultiAgentModeState` / `PlanExecuteModeState` 接口隔离，但底层 Annotation 仍合并
+4. ~~**无状态快照版本**~~：Checkpointer 保存状态版本，但无 schema 版本号 — **✅ 已修复（v1.1）**：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `state_schema_version` 字段 L253、`STATE_SCHEMA_VERSION` 常量、`migrate_state` 函数 L278-296 按 v0→v1 迁移；[runner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) L236-244 在 checkpoint 读取时调用 `migrate_state`
+5. ~~**路由分叉硬编码**~~：`routeAfterMemoryQuery` 用 if/else 链判断模式 — **✅ 已修复（v1.1）**：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `routeAfterMemoryQuery` L1073-1110 优先读取 `orchestration.mode_router` 配置规则，无规则命中时回退到内置优先级；新增模式只需追加规则，无需改源码
+6. **递归预算估算粗放**：plan_execute 的 `maxSteps * (maxIterations * 3 + 2)` 假设每步最多 ReAct `maxIterations` 轮 — 待办
+7. **无状态回滚**：Checkpointer 可恢复状态，但无法主动回滚到 N 步之前的状态 — 待办
 
 #### 建议
 
-1. **状态字段分层**：将 `ModuAgentState` 拆分为 `CoreState`（messages/tool_results/error_code 等基础字段）+ `ModeState`（各模式专属字段），模式间通过 `ModeState` 隔离
-2. **移除僵尸字段**：`history` 字段若无用途直接删除，减少状态体积
-3. **状态 schema 版本号**：`ModuAgentState` 增加 `state_schema_version: number`，Checkpointer 读取时按版本迁移
-4. **路由分叉配置化**：`routeAfterMemoryQuery` 改为读取 `orchestration.mode_router` 配置，支持运行时新增模式
-5. **递归预算动态计算**：plan_execute 模式按 `sum(step.estimated_iterations)` 动态计算，而非上限估计
-6. **状态回滚 API**：`ModuGraph.rollback(thread_id, steps)` 基于 Checkpointer 历史快照回滚
+1. ✅ **状态字段分层**（**已修复 v1.1**）：将 `ModuAgentState` 拆分为 `CoreState`（messages/tool_results/error_code 等基础字段）+ `ModeState`（各模式专属字段），模式间通过 `ModeState` 隔离 — 实现位置：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) L365-435 定义 `CoreState` / `HITLModeState` / `MultiAgentModeState` / `PlanExecuteModeState` / `FeedbackModeState`
+2. ✅ **移除僵尸字段**（**已修复 v1.1**）：`history` 字段通过 `migrate_state` 在 v0→v1 迁移时删除 — 实现位置：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) L286-289
+3. ✅ **状态 schema 版本号**（**已修复 v1.1**）：`ModuAgentState` 增加 `state_schema_version: number`，Checkpointer 读取时按版本迁移 — 实现位置：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `STATE_SCHEMA_VERSION`、`migrate_state` L253、L278-296；[runner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) L236-244
+4. ✅ **路由分叉配置化**（**已修复 v1.1**）：`routeAfterMemoryQuery` 改为读取 `orchestration.mode_router` 配置，支持运行时新增模式 — 实现位置：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1073-1110、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) `orchestration.mode_router` L80-84
+5. **递归预算动态计算**（待办）：plan_execute 模式按 `sum(step.estimated_iterations)` 动态计算
+6. **状态回滚 API**（待办）：`ModuGraph.rollback(thread_id, steps)` 基于 Checkpointer 历史快照回滚
 
 ---
 
@@ -243,23 +358,23 @@
 
 #### 缺陷
 
-1. **SDK 初始化异步**：`_initOtel` 是 async，首次调用 `span()` 时 SDK 可能未就绪，退化为 no-op（L211-213 注释明确指出）
-2. **无分布式追踪上下文注入**：缺少 W3C TraceContext HTTP header 注入，跨服务调用时 trace 断裂
-3. **指标维度有限**：缺少 per-task_type / per-tool / per-provider 维度的指标
-4. **无指标聚合视图**：仅暴露原始 counter/histogram，无预聚合 dashboard
-5. **日志与 trace 关联弱**：日志中的 trace_id 需手动注入，未自动从 span context 提取
-6. **无结构化日志 sink**：仅 console 输出，无 file/loki/elasticsearch sink
-7. **无性能剖析**：缺少 CPU/内存 profile 能力，长任务性能瓶颈难定位
+1. **SDK 初始化异步**：`_initOtel` 是 async，首次调用 `span()` 时 SDK 可能未就绪，退化为 no-op（L211-213 注释明确指出） — 待办
+2. ~~**无分布式追踪上下文注入**~~：缺少 W3C TraceContext HTTP header 注入，跨服务调用时 trace 断裂 — **✅ 已修复（v1.1）**：[trace-context.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/observability/trace-context.ts) `inject_trace_context` L45 注入 `traceparent` + 业务 `trace_id` header；[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L320-327 在所有出站请求中调用；tracing 未启用时为 no-op
+3. **指标维度有限**：缺少 per-task_type / per-tool / per-provider 维度的指标 — 待办
+4. **无指标聚合视图**：仅暴露原始 counter/histogram，无预聚合 dashboard — 待办
+5. **日志与 trace 关联弱**：日志中的 trace_id 需手动注入，未自动从 span context 提取 — 待办
+6. **无结构化日志 sink**：仅 console 输出，无 file/loki/elasticsearch sink — 待办
+7. **无性能剖析**：缺少 CPU/内存 profile 能力，长任务性能瓶颈难定位 — 待办
 
 #### 建议
 
-1. **同步初始化 OTel**：在模块加载时同步 `await import` OTel SDK（顶层 await），或提供 `await tracing.ready()` 显式等待
-2. **W3C TraceContext 注入**：在 `http_request` 工具与 MCP transport 中注入 `traceparent` header，实现跨服务追踪
-3. **指标维度扩展**：所有指标增加 `task_type / tool_name / llm_provider / session_id` 标签
-4. **预聚合 dashboard**：提供 Grafana dashboard JSON 模板，开箱即用
-5. **日志自动注入 trace_id**：`logging-config.ts` 从 `trace-context.ts` 自动提取当前 span 的 trace_id，注入每条日志
-6. **多 sink 日志**：引入 `pino` + `pino-pretty` + file transport，支持 file/loki sink
-7. **性能剖析**：集成 `clinic.js` 或 `0x`，提供 `--profile` 启动选项
+1. **同步初始化 OTel**（待办）：在模块加载时同步 `await import` OTel SDK（顶层 await），或提供 `await tracing.ready()` 显式等待
+2. ✅ **W3C TraceContext 注入**（**已修复 v1.1**，部分：http_request 已注入，MCP transport 未注入）：在 `http_request` 工具与 MCP transport 中注入 `traceparent` header，实现跨服务追踪 — http_request 已实现：[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L320-327；MCP transport 仍待办
+3. **指标维度扩展**（待办）：所有指标增加 `task_type / tool_name / llm_provider / session_id` 标签
+4. **预聚合 dashboard**（待办）：提供 Grafana dashboard JSON 模板，开箱即用
+5. **日志自动注入 trace_id**（待办）：`logging-config.ts` 从 `trace-context.ts` 自动提取当前 span 的 trace_id，注入每条日志
+6. **多 sink 日志**（待办）：引入 `pino` + `pino-pretty` + file transport，支持 file/loki sink
+7. **性能剖析**（待办）：集成 `clinic.js` 或 `0x`，提供 `--profile` 启动选项
 
 ---
 
@@ -287,27 +402,27 @@
 
 #### 缺陷
 
-1. **Prompt 注入检测基于关键词**：易绕过（如 Unicode 变体、同义词替换、多语言攻击），无 LLM-based 检测
-2. **CodeExecutor 正则可绕过**：`__import__('o'+'s')` 等字符串拼接可绕过正则，无 AST 解析
-3. **无沙箱化执行**：CodeExecutor 用子进程但未用 namespace/cgroup/seccomp 隔离，进程级隔离弱
-4. **SqlQueryTool 表名提取粗糙**：`/\b(?:FROM|JOIN)\s+(\w+)/gi` 无法处理子查询、CTE、schema 限定名
-5. **无输出过滤**：`sanitizeOutput` 接口存在但实现薄弱，未检测响应中的敏感信息（PII、密钥、内网 IP）
-6. **HITL 敏感性判定静态**：`sensitive_tools` 配置列表 + `requiresApproval()` 方法，无法基于参数动态判定（如 `http_request` 到内网 IP 才需审批）
-7. **无工具调用限流**：单用户/单会话无 token bucket，恶意用户可触发大量 `code_executor` 或 `http_request`
-8. **CalculatorTool schema 正则 bug**：[calculator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/calculator.ts) L37 `pattern: '^[0-9+\\-*/\\\\s().]+$'` 中 `\\\\s` 在 JSON Schema 中被解析为 `\\s`（字面反斜杠+s），而非 `\s`（空白符），导致 schema 校验与实际 `_EXPRESSION_PATTERN`（L13）不一致
-9. **无审计日志**：安全事件（拦截、审批、拒绝）无集中化审计日志
+1. ~~**Prompt 注入检测基于关键词**~~：易绕过（如 Unicode 变体、同义词替换、多语言攻击），无 LLM-based 检测 — **✅ 已修复（v1.1）**：[guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectInjectionWithLLMJudge` L139-175 新增独立 async 方法，关键词检测未命中或低风险时调用注入的 `llmJudge` 回调做语义级二次校验；LLM 失败时回退到关键词结果；配置项 `perception.security.llm_judge.enabled` + `risk_threshold`
+2. **CodeExecutor 正则可绕过**：`__import__('o'+'s')` 等字符串拼接可绕过正则，无 AST 解析 — **部分修复（v1.1）**：[code-executor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/code-executor.ts) `_FORBIDDEN_FRAGMENTS` L65-80 增加字符串字面量拼接后片段级匹配（检测 `'o'+'s'` 拼接出 `'os'`），但仍未用 AST 解析
+3. **无沙箱化执行**：CodeExecutor 用子进程但未用 namespace/cgroup/seccomp 隔离，进程级隔离弱 — 待办
+4. ~~**SqlQueryTool 表名提取粗糙**~~：`/\b(?:FROM|JOIN)\s+(\w+)/gi` 无法处理子查询、CTE、schema 限定名 — **✅ 已修复（v1.1）**：[sql-query.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/sql-query.ts) `_TABLE_REF_PATTERN` L38-39 现支持三种表引用格式（双引号标识符 / 反引号标识符 / schema 限定裸标识符）；`_normalizeTableRef` L181-196 处理 `schema.table` → `[table, schema.table]` 变体列表，兼容白名单按 `table` 或 `schema.table` 配置
+5. ~~**无输出过滤**~~：`sanitizeOutput` 接口存在但实现薄弱，未检测响应中的敏感信息 — **✅ 已修复（v1.1）**：[guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectOutputSensitive` L312-353 检测密钥（AWS/GitHub/API Key/Bearer/PEM/JWT）+ 内网 IP（10/172.16-31/192.168/127/169.254）+ PII；`sanitizeOutput` L369-395 命中后替换为 `[REDACTED:类型]`
+6. ~~**HITL 敏感性判定静态**~~：`sensitive_tools` 配置列表 + `requiresApproval()` 方法，无法基于参数动态判定 — **✅ 已修复（v1.1）**：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) L56 `BaseTool.requiresApprovalFor(params, context)` 抽象方法；[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L156-188 按参数判定（内网 IP / localhost / 域名白名单未命中 → 需审批）；[file-ops.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/file-ops.ts) L100 按路径判定
+7. ~~**无工具调用限流**~~：单用户/单会话无 token bucket — **✅ 已修复（v1.1）**：[rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts) `ToolRateLimiter` 类实现 token bucket（capacity=RPM，refillRate=RPM/60000）；[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L125-135 `wrap_modu_tool` 调用 `tryAcquire(toolName)`，超限返回 `TOOL_RATE_LIMITED` 错误；配置项 `tools.rate_limit.enabled` + `tools.rate_limit.limits.{toolName}` (RPM)
+8. ~~**CalculatorTool schema 正则 bug**~~：`pattern: '^[0-9+\\-*/\\\\s().]+$'` 中 `\\\\s` 在 JSON Schema 中被解析为字面反斜杠+s — **✅ 已修复（v1.1）**：[calculator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/calculator.ts) L41 修正为 `pattern: '^[0-9+\\-*/\\s().]+$'`，与 `_EXPRESSION_PATTERN`（L13）一致
+9. ~~**无审计日志**~~：安全事件（拦截、审批、拒绝）无集中化审计日志 — **✅ 已修复（v1.1）**：[audit.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/audit.ts) `publish_security_audit_event` 统一发布 `SECURITY.AUDIT/ALLOW/DENY` 事件，覆盖 12 种事件类型（prompt_injection_blocked / pii_detected / ssrf_blocked / path_traversal_blocked / sql_injection_blocked / code_validation_blocked / tool_approval_required/approved/rejected / tool_rate_limited / output_sensitive_blocked / sensitivity_circuit_breaker）；priority 按 decision 分级（deny=CRITICAL，allow=NORMAL，audit=HIGH）；rate-limiter 触发限流时已自动调用
 
 #### 建议
 
-1. **LLM-based Prompt 注入检测**：在 `SecurityGuard.detectPromptInjection` 中增加 LLM 二次校验，关键词检测作为快速预筛
-2. **CodeExecutor AST 校验**：用 `tree-sitter-python` 或调用 Python 子进程做 `ast.parse` + `NodeVisitor` 白名单校验，替代正则
-3. **真沙箱化执行**：CodeExecutor 改用 Docker 容器或 `gVisor` 隔离，限制 CPU/内存/网络/文件系统
-4. **SqlQueryTool 增强**：用 `sql-parser-cst` 或 `node-sql-parser` 做完整 SQL 解析，提取所有表名（含子查询/CTE）
-5. **输出敏感信息检测**：`sanitizeOutput` 实现正则 + LLM 双路检测 PII/密钥/内网 IP，命中则脱敏
-6. **动态敏感性检测**：增加 `tool.requiresApprovalFor(args, context)` 方法，按参数动态判定（如 `http_request.url` 匹配内网 CIDR）
-7. **工具限流**：在 `wrap_modu_tool` 外层包装 token bucket，按 `tools.rate_limit.{tool_name}.rpm` 配置
-8. **修复 CalculatorTool schema**：把 `pattern: '^[0-9+\\-*/\\\\s().]+$'` 改为 `pattern: '^[0-9+\\-*/\\s().]+$'`
-9. **集中化审计日志**：安全事件统一发布 `SECURITY.AUDIT` 事件，持久化到独立审计日志文件
+1. ✅ **LLM-based Prompt 注入检测**（**已修复 v1.1**）：在 `SecurityGuard.detectPromptInjection` 中增加 LLM 二次校验，关键词检测作为快速预筛 — 实现位置：[guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectInjectionWithLLMJudge` L139-175
+2. **CodeExecutor AST 校验**（待办，部分缓解）：用 `tree-sitter-python` 或调用 Python 子进程做 `ast.parse` + `NodeVisitor` 白名单校验，替代正则 — 当前已增加 `_FORBIDDEN_FRAGMENTS` 字符串拼接检测（[code-executor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/code-executor.ts) L65-80）作为缓解措施
+3. **真沙箱化执行**（待办）：CodeExecutor 改用 Docker 容器或 `gVisor` 隔离，限制 CPU/内存/网络/文件系统
+4. ✅ **SqlQueryTool 增强**（**已修复 v1.1**，部分：未用完整 SQL parser）：用 `sql-parser-cst` 或 `node-sql-parser` 做完整 SQL 解析，提取所有表名（含子查询/CTE） — 当前已用增强正则覆盖 schema 限定名与引号标识符，子查询/CTE 场景仍待完整 parser
+5. ✅ **输出敏感信息检测**（**已修复 v1.1**）：`sanitizeOutput` 实现正则 + LLM 双路检测 PII/密钥/内网 IP，命中则脱敏 — 实现位置：[guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectOutputSensitive` L312-353、`sanitizeOutput` L369-395（LLM 双路部分待办）
+6. ✅ **动态敏感性检测**（**已修复 v1.1**）：增加 `tool.requiresApprovalFor(args, context)` 方法，按参数动态判定 — 实现位置：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) L56、[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L156-188、[file-ops.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/file-ops.ts) L100
+7. ✅ **工具限流**（**已修复 v1.1**）：在 `wrap_modu_tool` 外层包装 token bucket，按 `tools.rate_limit.{tool_name}.rpm` 配置 — 实现位置：[rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts)、[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L125-135
+8. ✅ **修复 CalculatorTool schema**（**已修复 v1.1**）：把 `pattern: '^[0-9+\\-*/\\\\s().]+$'` 改为 `pattern: '^[0-9+\\-*/\\s().]+$'` — 实现位置：[calculator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/calculator.ts) L41
+9. ✅ **集中化审计日志**（**已修复 v1.1**）：安全事件统一发布 `SECURITY.AUDIT` 事件，持久化到独立审计日志文件 — 实现位置：[audit.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/audit.ts) `publish_security_audit_event`
 
 ---
 
@@ -622,28 +737,48 @@
 #### 缺陷
 
 1. **`depends_on` 字段定义但未执行**：`stepDispatch` 仅按 `current_step_index` 顺序推进，DAG 依赖完全未实现，无法并行执行独立步骤
+   > ✅ 已修复（v1.2）：`stepDispatch` 解析 `depends_on` 识别就绪步骤集合，集合大小 > 1 时通过 `Send` API 并行分发到 `agent`/`supervisor` 节点。见 [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `_identifyReadySteps` L286-303、`stepDispatch` L146-257
 2. **无步骤级重试**：单步失败直接触发整计划重规划，无单步重试策略；瞬时工具失败会浪费 replan 预算
+   > ✅ 已修复（v1.2）：`step_finalize` 判定 failed 后按 `step.retry_policy`（`max_attempts`/`base_delay`）指数退避重试，预算耗尽才触发 replan。见 [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `_decideStepRetry`、`makeStepFinalizeNode`
 3. **`max_replans` 默认 2 偏小**：复杂多步任务一次失败即耗尽预算；且重规划是**全量重生成**计划，不复用已完成步骤
+   > ✅ 已修复（v1.2）：重规划上下文含已完成步骤摘要，引导 LLM 仅重新生成失败步骤及后续步骤，已完成步骤在 plan 末尾追加。见 [planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) 部分重规划逻辑
 4. **Planner 输出仅 JSON-in-text**：未使用 LangChain `withStructuredOutput`，弱模型输出格式不可靠
+   > ✅ 已修复（v1.2）：优先调用 `llm.withStructuredOutput(PlanSchema)`，不支持或失败时降级到 JSON-in-text 解析路径（向后兼容）。见 [planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) `_tryStructuredOutput` L340-385
 5. **`requires_tool` 推断脆弱**：`_REALTIME_DATA_KEYWORDS` 为中英文关键词硬编码，无法覆盖小语种或同义表达
+   > ✅ 已修复（v1.2）：`BaseTool` 新增 `providesRealtimeData()` 元方法，Planner 优先读取工具能力声明；优先级为"工具元数据明确引用实时工具 > LLM 显式输出 > 工具元数据+关键词兜底"。见 [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `providesRealtimeData()`、[planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) `_referencesRealtimeTool` L125-133、`_inferRequiresToolFromToolMetadata` L150-164
 6. **`StepResult.started_at` 定义但未写入**：`step_results` 落库时未包含 `started_at`，步骤耗时无法还原
+   > ✅ 已修复（v1.2）：`step_dispatch` 节点将 `started_at` 写入 `current_step`（transient）与 `plan[i]`（持久化），`step_finalize` 读取并合并到 `step_results`。见 [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `makeStepDispatchNode` L84-116、`makeStepFinalizeNode` L380-384
 7. **Plan-Execute 与 multi_agent 互斥**：无法组合（如先规划再委托子 Agent 执行各步）
+   > ✅ 已修复（v1.2）：解除 `graph.ts` 中互斥逻辑，允许组合模式；`task_type=delegation` 步骤路由到 `supervisor` 节点，`supervisor` → `subagent_run` → `consensus` → `step_finalize` 闭环。见 [graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) L379-390 解除互斥、[dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `task_type=delegation` 路由 L208-256
 8. **无步骤成功标准**：`PlanStep` 无 `expected_output / verification` 字段，`step_finalize` 仅靠"是否有 AI 输出 + 是否调用了工具"判定
+   > ✅ 已修复（v1.2）：`PlanStep` 扩展 `expected_output`（成功标准描述）/`verification_hint`（验证规则）/`retry_policy`（步骤重试配置）/`task_type`（路由指示）四个可选字段，向后兼容旧 plan。见 [types.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/types.ts) `PlanStep` L7-50
 9. **递归预算估算粗放**：`maxSteps * (maxIterations * 3 + 2)` 假设每步最多 ReAct `maxIterations` 轮
+   > ⏳ 待修复：仍沿用 `baseLimit += maxSteps * (maxIterations * 3 + 2) + (maxReplans + 1) * 2 + 2` 估算公式，未按 `sum(step.estimated_iterations)` 动态计算
 10. **无计划持久化与恢复**：checkpointer 保存 `plan / step_results / current_step_index`，但 `replan_count` 语义在恢复后可能混乱
+    > ⏳ 待修复：`step_dispatch` 未增加幂等检查，恢复后 `replan_count` 语义仍可能混乱
 
 #### 建议
 
 1. **实现 DAG 执行**：在 `stepDispatch` 中解析 `depends_on`，对无依赖的步骤使用 `Send` API 并行分发
+   > ✅ 已修复（v1.2）：实现于 [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `stepDispatch` L146-257
 2. **引入步骤级重试**：在 `step_finalize` 判定 failed 后，先按 `step.retry_policy` 重试 N 次，仍失败再触发 replan
+   > ✅ 已修复（v1.2）：实现于 [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `makeStepFinalizeNode`
 3. **使用结构化输出**：Planner 改用 `llm.withStructuredOutput(PlanSchema)`，消除 JSON 解析脆弱性
+   > ✅ 已修复（v1.2）：实现于 [planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) `_tryStructuredOutput` L340-385
 4. **部分重规划**：重规划时保留已完成步骤的 `step_results`，仅重新生成 `current_step_index` 之后的步骤
+   > ✅ 已修复（v1.2）：实现于 [planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) 部分重规划逻辑
 5. **步骤成功标准**：扩展 `PlanStep` 增加 `expected_output / verification_hint` 字段
+   > ✅ 已修复（v1.2）：实现于 [types.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/types.ts) `PlanStep` L7-50
 6. **组合 Plan-Execute + multi_agent**：允许 Planner 步骤的 `task_type` 为 `delegation`，`step_dispatch` 将该步路由到 `supervisor` 节点
+   > ✅ 已修复（v1.2）：实现于 [graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) L379-390、[dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) L208-256
 7. **`requires_tool` 改为工具元数据驱动**：在 `BaseTool` 增加 `providesRealtimeData()` 元方法，Planner 直接读取工具能力声明
+   > ✅ 已修复（v1.2）：实现于 [action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `providesRealtimeData()`、[planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) L125-164
 8. **补全 `StepResult.started_at`**：`step_dispatch` 节点写入 `step_results` 时附带 `started_at`
+   > ✅ 已修复（v1.2）：实现于 [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) L84-116、L380-384
 9. **计划持久化与恢复**：在 `step_dispatch` 增加幂等检查，恢复后从 `current_step_index` 继续
+   > ⏳ 待修复：未实现幂等检查与 `replan_count` 语义恢复
 10. **递归预算精细化**：按 `sum(step.estimated_iterations)` 动态计算
+    > ⏳ 待修复：仍沿用静态估算公式
 
 ---
 
@@ -752,61 +887,99 @@
 
 #### 缺陷
 
-1. **无工具结果大小限制**：`search_engine` 返回 100 条结果、`http_request` 返回大 HTML 等场景会撑爆 LLM 上下文
-2. **无工具结果缓存**：相同参数的 `search_engine` / `http_request` 重复调用每次都执行
-3. **HITL 仅二选一**：`approved: boolean`，不支持"修改参数后批准"工作流
-4. **HITL 敏感性判定静态**：`sensitive_tools` 配置列表 + `requiresApproval()` 方法，无法基于参数动态判定
-5. **无工具调用限流**：单用户/单会话无 token bucket
-6. **MCP 超时硬编码 30s**
-7. **`SyncActionExecutor` 实质废弃**：被 ToolNode 取代但仍导出
-8. **无工具版本管理**：工具 schema 升级会破坏运行中的图
-9. **无工具组合**：工具 A 输出作为工具 B 输入需经 LLM 中转，无声明式链式调用
-10. **`toolResultProcessor` 类型不安全**：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L559 使用 `(msg as any)._getType()`
+> ✅ 已修复（v1.3）：缺陷 1-4、5-10 全部修复，详见下方各条标注。
+
+1. ✅ **无工具结果大小限制**（v1.3 已修复）：`search_engine` 返回 100 条结果、`http_request` 返回大 HTML 等场景会撑爆 LLM 上下文
+   - 修复位置：[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) `_truncateToolResult` 按 `tools.max_result_chars.{tool_name}` 截断
+2. ✅ **无工具结果缓存**（v1.3 已修复）：相同参数的 `search_engine` / `http_request` 重复调用每次都执行
+   - 修复位置：[tool-result-cache.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-result-cache.ts) `ToolResultCache` LRU+TTL，[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) 集成缓存读写
+3. ✅ **HITL 仅二选一**（v1.3 已修复）：`approved: boolean`，不支持"修改参数后批准"工作流
+   - 修复位置：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeHumanReviewNode` 读取 `resumePayload.modified_args` 并以合并后的 args 重建 AIMessage
+4. ✅ **HITL 敏感性判定静态**（v1.3 已修复）：`sensitive_tools` 配置列表 + `requiresApproval()` 方法，无法基于参数动态判定
+   - 修复位置：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.requiresApprovalFor(args, context)`，[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_toolRequiresApproval` 传入 args/context 调用
+5. ✅ **无工具调用限流**（v1.1 已修复，归属 §2.5）：单用户/单会话无 token bucket
+   - 修复位置：[rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts) `get_tool_rate_limiter`，[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L189-198 `tryAcquire` 前置检查
+6. ✅ **MCP 超时硬编码 30s**（v1.3 已修复）
+   - 修复位置：[mcp-tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts) 读取 `mcp.default_timeout` 与 `mcp.servers[].timeout`，[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) 新增 `mcp.default_timeout` 配置项
+7. ✅ **`SyncActionExecutor` 实质废弃**（v1.3 已修复）：被 ToolNode 取代但仍导出
+   - 修复位置：[synchronous-executor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/synchronous-executor.ts) 添加 `@deprecated` JSDoc，[index.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/index.ts) 导出注释标注
+8. ✅ **无工具版本管理**（v1.3 已修复）：工具 schema 升级会破坏运行中的图
+   - 修复位置：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.version()` 默认返回 `'1.0.0'`
+9. ✅ **无工具组合**（v1.3 已修复）：工具 A 输出作为工具 B 输入需经 LLM 中转，无声明式链式调用
+   - 修复位置：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.followUpTools()` 返回后续推荐工具名列表，[search.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/search.ts) L52-54 声明 `['http_request']`
+10. ✅ **`toolResultProcessor` 类型不安全**（v1.3 已修复）：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L559 使用 `(msg as any)._getType()`
+    - 修复位置：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) 改用 `msg instanceof ToolMessage` + `asMessageExt` 辅助函数（L70-72）
 
 #### 建议
 
-1. **工具结果截断**：在 `wrap_modu_tool` func 内按 `tools.max_result_chars.{tool_name}` 截断
-2. **工具结果缓存**：引入 `LRUCache` + TTL，按 `tool_name + hash(args)` 缓存
-3. **HITL 支持改参批准**：扩展 `resumePayload` 增加 `modified_args` 字段
-4. **动态敏感性检测**：增加 `tool.requiresApprovalFor(args, context)` 方法
-5. **工具限流**：在 `wrap_modu_tool` 外层包装 token bucket
-6. **MCP 超时配置化**：`mcp.servers[].timeout` 配置项
-7. **移除 `SyncActionExecutor`**：标记 `@deprecated` 或删除
-8. **工具版本化**：`BaseTool` 增加 `version()` 方法
-9. **工具组合 API**：`BaseTool` 增加 `followUpTools()` 声明
-10. **类型安全重构**：`toolResultProcessor` 使用 `msg instanceof ToolMessage` 替代 `as any`
-11. **MCP WebSocket transport**：新增 `WebSocketTransport` 支持双向流式
+> ✅ 已修复（v1.3）：建议 1-4、6-11 全部实现；建议 5 已在 v1.1 §2.5 中实现。
+
+1. ✅ **工具结果截断**（v1.3 已实现）：在 `wrap_modu_tool` func 内按 `tools.max_result_chars.{tool_name}` 截断
+   - 实现：[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) `_truncateToolResult`，配置项 [runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) `tools.max_result_chars.{default,limits.{tool_name}}`
+2. ✅ **工具结果缓存**（v1.3 已实现）：引入 `LRUCache` + TTL，按 `tool_name + hash(args)` 缓存
+   - 实现：[tool-result-cache.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-result-cache.ts) `ToolResultCache`（LRU 用单调递增计数器保证顺序准确性）+ `computeCacheKey` 稳定序列化
+3. ✅ **HITL 支持改参批准**（v1.3 已实现）：扩展 `resumePayload` 增加 `modified_args` 字段
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeHumanReviewNode` 按 `tool_call_id` 合并 modified_args 到新 AIMessage
+4. ✅ **动态敏感性检测**（v1.3 已实现）：增加 `tool.requiresApprovalFor(args, context)` 方法
+   - 实现：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.requiresApprovalFor`，[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_toolRequiresApproval` 调用
+5. ✅ **工具限流**（v1.1 已实现，归属 §2.5）：在 `wrap_modu_tool` 外层包装 token bucket
+   - 实现：[rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts) `ToolRateLimiter`（token bucket），[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L189-198
+6. ✅ **MCP 超时配置化**（v1.3 已实现）：`mcp.servers[].timeout` 配置项
+   - 实现：[mcp-tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts) 读取 `mcp.default_timeout` + `mcp.servers[].timeout`
+7. ✅ **移除 `SyncActionExecutor`**（v1.3 已实现）：标记 `@deprecated` 或删除
+   - 实现：[synchronous-executor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/synchronous-executor.ts) `@deprecated` JSDoc（计划 v2.0 移除）
+8. ✅ **工具版本化**（v1.3 已实现）：`BaseTool` 增加 `version()` 方法
+   - 实现：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.version(): string`
+9. ✅ **工具组合 API**（v1.3 已实现）：`BaseTool` 增加 `followUpTools()` 声明
+   - 实现：[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.followUpTools(): string[]`
+10. ✅ **类型安全重构**（v1.3 已实现）：`toolResultProcessor` 使用 `msg instanceof ToolMessage` 替代 `as any`
+    - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L282-293 `instanceof ToolMessage` + `asMessageExt` 辅助
+11. ✅ **MCP WebSocket transport**（v1.3 已实现）：新增 `WebSocketTransport` 支持双向流式
+    - 实现：[transport.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/mcp/transport.ts) `WebSocketTransport` 基于 SDK `WebSocketClientTransport`，[client.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/mcp/client.ts) `_createTransport` 按 URL scheme 分发
 
 ---
 
 ### 4.4 多 Agent 协作
 
+> ✅ 已修复（v1.4）：缺陷 1-12、14 全部修复，建议 1-12、14 全部实现；建议 13（跨进程 EventBus Redis 适配器）仍待办（归属 P3-3）。详见下方各条标注。
+
 #### 现状
 
-**子图构建器**：[builder.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/builder.ts) `build_subagent_subgraph`（L75-188）构建独立编译子图：`START → sub_agent ⇄ sub_tools → sub_finalize → END`，使用 `SubAgentStateAnnotation` 隔离状态，独立 `recursionLimit`（默认 10）。**注意：该子图实际未被图使用**——[graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) 使用的是 `makeSubagentNode`（[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1099-1150），后者是简化的单次 LLM 调用，无工具循环。
+**子图构建器**：[builder.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/builder.ts) `build_subagent_subgraph`（L75-188）构建独立编译子图：`START → sub_agent ⇄ sub_tools → sub_finalize → END`，使用 `SubAgentStateAnnotation` 隔离状态，独立 `recursionLimit`（默认 10）。
+
+> ✅ 已修复（v1.4）：`build_subagent_subgraph` 不再被搁置——[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode` L1251-1257 在 `tools` 非空时调用它构建带 ReAct 工具循环的子图。
 
 **Supervisor 节点**：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts)
-- `decompose_task`（L51-87）：**规则化拆分**——按 `_DEFAULT_TASK_TYPES = ['research', 'coding', 'review']` 切片到 `max_subagents`，每个子任务携带**相同 prompt 但不同 task_type**
-- `make_supervisor_node`（L104-134）：调用 `decompose_task`，写入 `subtasks`，重置 `subtask_results`
-- `route_from_supervisor`（L148-160）：为每个子任务生成 `Send('subagent_run', {current_subtask: task})`，并行分发
+- `decompose_task`（L75-111）：**规则化拆分**——按 `_DEFAULT_TASK_TYPES = ['research', 'coding', 'review']` 切片到 `max_subagents`，每个子任务携带**相同 prompt 但不同 task_type**
+- `decompose_task_with_llm`（L128-195）：**v1.4 新增**——LLM 驱动拆分，每个子任务有独立 description + `depends_on` 依赖关系；失败自动 fallback 到 `decompose_task`
+- `make_supervisor_node`（L218-282）：v1.4 增强——优先 LLM 拆分，检测 `need_help` 信号触发重新拆分（动态子 Agent 生成），支持多轮 `supervisor_round`
+- `route_from_supervisor`（L301-334）：v1.4 增强——依赖感知分发，仅派发 `depends_on` 已完成的子任务
 
 **图接入**：[graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts)
-- 门控（L268-274）：`orchestration.multi_agent.enabled` 默认 false
-- 边接线（L386-401）：`memory_query → supervisor → route_from_supervisor (Send × N) → subagent_run → consensus → finalize_response`
+- 门控（L362-368）：`orchestration.multi_agent.enabled` 默认 false
+- 边接线（L537-545）：`memory_query → supervisor → route_from_supervisor (Send × N) → subagent_run → consensus → finalize_response`
+- v1.4 节点初始化（L415-424）：`make_supervisor_node(null, null, supervisorPlannerLlm)` 传入 plannerLlm；`makeSubagentNode(boundLlm, systemPrompt, tools)` 传入 tools 启用子 Agent 工具能力
 
-**子 Agent 节点**：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode`（L1099-1150）：从 `current_subtask` 读取任务，构建 `SystemMessage + HumanMessage`，**直接 `boundLlm.invoke(messages)`，无工具调用**。
+**子 Agent 节点**：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode`（L1229-1397）：
+- v1.4 改造：`tools` 非空时通过 `build_subagent_subgraph` 构建带 ReAct 循环的子图（按 task_type 过滤工具，`_filterToolsByTaskType` L1411-1427）
+- v1.4 黑板：读取 `state.blackboard` 注入子任务上下文（L1287-1291），写入结果摘要供后续子 Agent 读取（L1385-1392）
+- v1.4 超时：`_invokeWithTimeout` L1436-1446（`Promise.race`）+ `subgraph_timeout_ms` 配置（默认 30s）
+- v1.4 重试：指数退避重试（`subagent_max_retries` 默认 1，L1300-1366）
 
-**共识聚合**：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeConsensusNode`（L1158-1261）
-- quorum 校验（L1180-1212）：`validResults.length < quorum`（默认 2）→ 共识失败
-- 策略选择（L1216-1224）：`create_consensus_strategy(strategyName, judgeLlm, taskDesc)`，默认 `majority_vote`
+**共识聚合**：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeConsensusNode`（L1461-1580）
+- v1.4 动态 quorum（L1484-1488）：`max(1, ceil(subtask_count / 2))`，配置 `consensus_quorum > 0` 时沿用配置
+- v1.4 统一入口（L1498-1520）：改用 `ConsensusPattern` 封装 quorum 校验 + 失败事件发布
+- v1.4 链路修复（L1536, L1565, L1574）：consensus 结果作为 AIMessage 追加到 `messages`，确保 `finalize_response` 能从 messages 末条 AIMessage 提取
+- 策略选择（L1493-1496）：`create_consensus_strategy(strategyName, judgeLlm, taskDesc)`，默认 `majority_vote`
 
 **共识策略**：[consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts)
-- `MajorityVoteStrategy`（L47-89）：按内容 SHA-256 哈希分组，取最大组的首个结果
-- `WeightedAggregateStrategy`（L95-127）：按 `task_type` 权重排序
-- `LLMJudgeStrategy`（L133-192）：用 judge LLM 从候选中选最佳
-- `ConsensusPattern`（L221-366）：封装 quorum + strategy + event_bus，`reach_consensus` 支持超时——**但 `makeConsensusNode` 未使用 `reach_consensus`，直接调用 `strategy.aggregate`**
+- `MajorityVoteStrategy`（L60-145）：v1.4 改用 Jaccard 词元相似度（`_textSimilarity` L124-136 + `_tokenize` L138-142）替代严格哈希分组，避免 embedding 依赖
+- `WeightedAggregateStrategy`：按 `task_type` 权重排序
+- `LLMJudgeStrategy`（L200-300）：v1.4 增加重试（`_MAX_RETRIES=1` L212 + L241-272 重试循环），judge LLM 失败时自动降级到 majority vote
 
-**委托模式**：[delegation.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/delegation.ts) `DelegationPattern`（L16-62）按 domain 注册 handler。**注释明确标注"未集成，保留为参考实现"**（L14）。
+**委托模式**：[delegation.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/delegation.ts) `DelegationPattern`。
+
+> ✅ 已修复（v1.4）：已标记 `@deprecated` JSDoc（L16），明确指引使用 Supervisor + SubAgent 模式替代。
 
 #### 优点
 
@@ -820,36 +993,61 @@
 
 #### 缺陷
 
-1. **`decompose_task` 不是真正拆分**（[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) L51-87）：所有子任务接收**相同 prompt**，仅 `task_type` 不同，本质是"多视角同问"，非任务分解。无法处理"先搜索再总结"这类有依赖的子任务
-2. **`makeSubagentNode` 无工具能力**（[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1099-1150）：仅 `boundLlm.invoke(messages)`，不能调用 search_engine / calculator 等，严重限制子 Agent 解决实际问题的能力
-3. **`build_subagent_subgraph` 未被使用**：实际图用的是 `makeSubagentNode`（无工具循环），而 `build_subagent_subgraph`（带 ReAct 循环）被搁置。这是**重大能力浪费**
-4. **无子 Agent 间通信**：子 Agent 只能向 `subtask_results` 写入，无法读取其他子 Agent 的中间结果
-5. **无子 Agent → Supervisor 升级**：子 Agent 遇到困难无法请求 Supervisor 帮助
-6. **无动态子 Agent 生成**：`subtasks` 在 Supervisor 节点一次性确定
-7. **无子 Agent 超时**：单个子 Agent 慢会阻塞 consensus
-8. **`DelegationPattern` 死代码**：注释明确"未集成"
-9. **`consensus_result` 与 `finalize_response` 脱节**：`makeConsensusNode` 设置 `response` 字段，但 `finalize_response` 从 `messages` 末条 AIMessage 提取——子 Agent 结果未写入 `messages`
-10. **`ConsensusPattern.reach_consensus` 未使用**：`makeConsensusNode` 直接调用 `strategy.aggregate`，跳过了 `ConsensusPattern` 的超时与 quorum 处理逻辑
-11. **quorum 默认 2 偏严**：3 子 Agent 设置下，1 个失败即共识失败
-12. **`MajorityVoteStrategy` 内容哈希过严**：完全相同的输出才归为一组
-13. **EventBus 仅内存**：无跨进程 pub/sub
-14. **无子 Agent 重试**
+1. ✅ **`decompose_task` 不是真正拆分**（v1.4 已修复）：所有子任务接收**相同 prompt**，仅 `task_type` 不同，本质是"多视角同问"，非任务分解。无法处理"先搜索再总结"这类有依赖的子任务
+   - 实现：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) `decompose_task_with_llm` L128-195，LLM 生成独立 description + `depends_on`
+2. ✅ **`makeSubagentNode` 无工具能力**（v1.4 已修复）：仅 `boundLlm.invoke(messages)`，不能调用 search_engine / calculator 等，严重限制子 Agent 解决实际问题的能力
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1251-1257 调用 `build_subagent_subgraph` + `_filterToolsByTaskType` L1411-1427
+3. ✅ **`build_subagent_subgraph` 未被使用**（v1.4 已修复）：实际图用的是 `makeSubagentNode`（无工具循环），而 `build_subagent_subgraph`（带 ReAct 循环）被搁置。这是**重大能力浪费**
+   - 实现：[graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) L422 `makeSubagentNode(boundLlm, systemPrompt, tools)` 传入 tools
+4. ✅ **无子 Agent 间通信**（v1.4 已修复）：子 Agent 只能向 `subtask_results` 写入，无法读取其他子 Agent 的中间结果
+   - 实现：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `blackboard` 字段（合并 reducer）L242-245；[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1287-1291 读取 + L1385-1392 写入
+5. ✅ **无子 Agent → Supervisor 升级**（v1.4 已修复）：子 Agent 遇到困难无法请求 Supervisor 帮助
+   - 实现：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) L231-258 检测 `subtask_results` 中 `status='need_help'` 信号并重新拆分
+6. ✅ **无动态子 Agent 生成**（v1.4 已修复）：`subtasks` 在 Supervisor 节点一次性确定
+   - 实现：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) L243-258 保留成功子任务 + 重新拆分 need_help 的，支持多轮 `supervisor_round`
+7. ✅ **无子 Agent 超时**（v1.4 已修复）：单个子 Agent 慢会阻塞 consensus
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_invokeWithTimeout` L1436-1446（`Promise.race`）+ `subgraph_timeout_ms` 配置
+8. ✅ **`DelegationPattern` 死代码**（v1.4 已修复）：注释明确"未集成"
+   - 实现：[delegation.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/delegation.ts) `@deprecated` JSDoc L16
+9. ✅ **`consensus_result` 与 `finalize_response` 脱节**（v1.4 已修复）：`makeConsensusNode` 设置 `response` 字段，但 `finalize_response` 从 `messages` 末条 AIMessage 提取——子 Agent 结果未写入 `messages`
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1536, L1565, L1574 将 consensus 结果作为 AIMessage 追加到 `messages`
+10. ✅ **`ConsensusPattern.reach_consensus` 未使用**（v1.4 已修复）：`makeConsensusNode` 直接调用 `strategy.aggregate`，跳过了 `ConsensusPattern` 的超时与 quorum 处理逻辑
+    - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1498-1520 改用 `ConsensusPattern` 封装 quorum 校验 + 失败事件发布
+11. ✅ **quorum 默认 2 偏严**（v1.4 已修复）：3 子 Agent 设置下，1 个失败即共识失败
+    - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1484-1488 `max(1, ceil(subtask_count / 2))`
+12. ✅ **`MajorityVoteStrategy` 内容哈希过严**（v1.4 已修复）：完全相同的输出才归为一组
+    - 实现：[consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) `_textSimilarity` Jaccard 词元相似度 L124-136
+13. ⏳ **EventBus 仅内存**：无跨进程 pub/sub（归入 P3-3 跨进程部署改造项）
+14. ✅ **无子 Agent 重试**（v1.4 已修复）
+    - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1300-1366 指数退避重试 + `subagent_max_retries` 配置
 
 #### 建议
 
-1. **LLM 驱动任务拆分**：替换 `decompose_task` 为 LLM 调用（类似 Planner），将用户目标拆分为有依赖关系的子任务列表
-2. **子 Agent 启用工具**：`makeSubagentNode` 改用 `build_subagent_subgraph`，传入工具列表（按 task_type 过滤）
-3. **子 Agent 间通信**：引入共享黑板（blackboard）模式
-4. **子 Agent → Supervisor 升级**：子 Agent 返回 `{status:'need_help', reason:'...'}` 时，Supervisor 重新拆分
-5. **动态子 Agent 生成**：Supervisor 节点支持"阶段性拆分"
-6. **子 Agent 超时**：`makeSubagentNode` 增加 `Promise.race` 超时
-7. **移除或集成 `DelegationPattern`**
-8. **修复 `consensus_result` → `finalize_response` 链路**：`makeConsensusNode` 将 consensus 结果作为 AIMessage 追加到 `messages`
-9. **统一共识入口**：`makeConsensusNode` 改用 `ConsensusPattern.reach_consensus`
-10. **`LLMJudgeStrategy` 增加重试**：judge LLM 失败时重试 1 次
-11. **quorum 默认改为 1**：或按 `max(1, ceil(subtask_count / 2))` 动态计算
-12. **`MajorityVoteStrategy` 改用 embedding 相似度**
-13. **跨进程 EventBus**：引入 Redis pub/sub 适配器
+1. ✅ **LLM 驱动任务拆分**（v1.4 已实现）：替换 `decompose_task` 为 LLM 调用（类似 Planner），将用户目标拆分为有依赖关系的子任务列表
+   - 实现：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) `decompose_task_with_llm` L128-195
+2. ✅ **子 Agent 启用工具**（v1.4 已实现）：`makeSubagentNode` 改用 `build_subagent_subgraph`，传入工具列表（按 task_type 过滤）
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1251-1257 + `_filterToolsByTaskType` L1411-1427
+3. ✅ **子 Agent 间通信**（v1.4 已实现）：引入共享黑板（blackboard）模式
+   - 实现：[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `blackboard` 字段 L242-245；[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1287-1291 读取 + L1385-1392 写入
+4. ✅ **子 Agent → Supervisor 升级**（v1.4 已实现）：子 Agent 返回 `{status:'need_help', reason:'...'}` 时，Supervisor 重新拆分
+   - 实现：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) L231-258
+5. ✅ **动态子 Agent 生成**（v1.4 已实现）：Supervisor 节点支持"阶段性拆分"
+   - 实现：[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) L243-258 多轮拆分 + `supervisor_round` 计数
+6. ✅ **子 Agent 超时**（v1.4 已实现）：`makeSubagentNode` 增加 `Promise.race` 超时
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_invokeWithTimeout` L1436-1446
+7. ✅ **移除或集成 `DelegationPattern`**（v1.4 已实现）：标记 `@deprecated`
+   - 实现：[delegation.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/delegation.ts) L16
+8. ✅ **修复 `consensus_result` → `finalize_response` 链路**（v1.4 已实现）：`makeConsensusNode` 将 consensus 结果作为 AIMessage 追加到 `messages`
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1536, L1565, L1574
+9. ✅ **统一共识入口**（v1.4 已实现）：`makeConsensusNode` 改用 `ConsensusPattern.reach_consensus`
+   - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1498-1520 改用 `ConsensusPattern` 封装
+10. ✅ **`LLMJudgeStrategy` 增加重试**（v1.4 已实现）：judge LLM 失败时重试 1 次
+    - 实现：[consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) `_MAX_RETRIES=1` L212 + L241-272 重试循环
+11. ✅ **quorum 默认改为 1**（v1.4 已实现）：或按 `max(1, ceil(subtask_count / 2))` 动态计算
+    - 实现：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1484-1488
+12. ✅ **`MajorityVoteStrategy` 改用 embedding 相似度**（v1.4 已实现，用 Jaccard 替代 embedding）：为避免引入新 deps + 网络调用，改用词袋 Jaccard 相似度，无需 embedding 依赖
+    - 实现：[consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) `_textSimilarity` L124-136 + `_tokenize` L138-142
+13. ⏳ **跨进程 EventBus**：引入 Redis pub/sub 适配器（归入 P3-3 跨进程部署改造项）
 
 ---
 
@@ -1015,6 +1213,8 @@
 
 #### P0-1：接入语义嵌入，修复长期记忆召回质量
 
+> **状态**：⏳ 待办
+
 **问题**：hash embedding 无语义能力，长期记忆检索效果接近随机，是**最严重的功能性缺陷**。
 
 **改造点**：
@@ -1028,6 +1228,8 @@
 - 集成测试：长期记忆召回 top-5 中至少 3 条语义相关
 
 #### P0-2：引入 AgentProfile 抽象，统一角色定义
+
+> **状态**：⏳ 待办
 
 **问题**：Skill + 子图 + Supervisor 三套机制拼合，没有统一的"Agent"一等公民抽象。
 
@@ -1044,6 +1246,8 @@
 
 #### P0-3：接通 ComponentSwap / Rollback / VersionedStore，消除死代码
 
+> **状态**：⏳ 待办
+
 **问题**：`ComponentSwapStrategy`、`RollbackMechanism`、`VersionedComponentStore` 已实现但未接入主链路，沦为死代码。
 
 **改造点**：
@@ -1058,6 +1262,8 @@
 
 #### P0-4：修复 CalculatorTool schema 正则 bug
 
+> **状态**：✅ 已修复（v1.1） — [calculator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/calculator.ts) L41
+
 **问题**：`pattern: '^[0-9+\\-*/\\\\s().]+$'` 中 `\\\\s` 在 JSON Schema 中被解析为字面反斜杠+s，而非空白符。
 
 **改造点**：
@@ -1069,6 +1275,8 @@
 
 #### P1-1：Prompt 模板外置 + 模板引擎 + 热更新
 
+> **状态**：⏳ 待办
+
 **改造点**：
 - 接通 `llm.prompt_template` 配置项，[factory.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts) L376 增加从 RuntimeConfig 读取
 - 引入 Mustache 模板引擎，将 `_DEFAULT_ANTI_HALLUCINATION_PROMPT`、`_SYSTEM_PROMPT_TEMPLATES`、Planner prompt 改为模板文件，存放于 `prompts/` 目录
@@ -1077,6 +1285,8 @@
 
 #### P1-2：引入 EvalDataset 抽象 + 离线评估 CLI
 
+> **状态**：⏳ 待办
+
 **改造点**：
 - 新增 `src/eval/dataset.ts` 定义 `interface EvalDataset { id; samples; metrics }`，支持 JSONL 加载、流式评估、结果导出
 - 新增 `src/eval/metrics/` 扩展指标：`TaskCompletionMetrics` / `HallucinationMetrics` / `LatencyPercentileMetrics` / `UserSatisfactionMetrics`
@@ -1084,6 +1294,8 @@
 - A/B 测试框架：基于 `ComponentSwapStrategy` 扩展 `ABTestFramework`，支持流量分组、统计显著性检验
 
 #### P1-3：多源知识库 CompositeStore + Chunking + Rerank
+
+> **状态**：⏳ 待办
 
 **改造点**：
 - 新增 `CompositeStore` 实现 `BaseStore`，内部维护 `[store1, store2, ...]` 列表，`search` 时并行查询并合并结果
@@ -1096,24 +1308,62 @@
 
 #### P1-4：子 Agent 启用工具 + LLM 驱动任务拆分
 
+> **状态**：✅ 已修复（v1.4） — §4.4 建议 1-12、14 全部实现。[supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) `decompose_task_with_llm` LLM 驱动拆分 + `need_help` 信号检测 + 多轮重新拆分；[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode` L1229-1397 调用 `build_subagent_subgraph` 启用工具 + 黑板读写 + 超时 + 指数退避重试；[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `blackboard` 字段 L242-245；[consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) Jaccard 相似度 + LLMJudge 重试；[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeConsensusNode` L1461-1580 动态 quorum + ConsensusPattern 封装 + AIMessage 追加；[delegation.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/delegation.ts) `@deprecated`；[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) `use_llm_decompose` + `subagent_max_retries`。已通过 `tsc --noEmit` + 300 个 Vitest 用例无回归。建议 13（跨进程 EventBus Redis 适配器）归入 P3-3 待办。
+
 **改造点**：
-- [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode`（L1099-1150）改用 `build_subagent_subgraph`，传入工具列表（按 task_type 过滤）
+- [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode`（L1229-1397）改用 `build_subagent_subgraph`，传入工具列表（按 task_type 过滤）
+  - ✅ 实现于 L1251-1257 + `_filterToolsByTaskType` L1411-1427
 - [supervisor.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/subgraph/supervisor.ts) `decompose_task` 改为 LLM 调用（类似 Planner），将用户目标拆分为有依赖关系的子任务列表
+  - ✅ 实现于 `decompose_task_with_llm` L128-195（失败自动 fallback 到规则化）
 - 修复 `consensus_result` → `finalize_response` 链路：`makeConsensusNode` 将 consensus 结果作为 AIMessage 追加到 `messages`
+  - ✅ 实现于 [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1536, L1565, L1574
 - `MajorityVoteStrategy` 改用 embedding 相似度（阈值 0.85）替代严格哈希分组
+  - ✅ 实现于 [consensus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/patterns/consensus.ts) `_textSimilarity` Jaccard 词元相似度 L124-136（用 Jaccard 替代 embedding，避免新 deps）
 - quorum 默认改为 1，或按 `max(1, ceil(subtask_count / 2))` 动态计算
+  - ✅ 实现于 [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1484-1488
+
+**v1.4 额外完成的相关改造**（不在原 P1-4 范围但属于 §4.4 建议）：
+- ✅ §4.4 建议3 子 Agent 间黑板通信（[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `blackboard` + [nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) 读写）
+- ✅ §4.4 建议4 子 Agent → Supervisor 升级（`need_help` 信号）
+- ✅ §4.4 建议5 动态子 Agent 生成（多轮拆分 + `supervisor_round`）
+- ✅ §4.4 建议6 子 Agent 超时（`Promise.race` + `subgraph_timeout_ms`）
+- ✅ §4.4 建议7 `DelegationPattern` 标记 `@deprecated`
+- ✅ §4.4 建议9 统一共识入口（`ConsensusPattern` 封装）
+- ✅ §4.4 建议10 `LLMJudgeStrategy` 重试（`_MAX_RETRIES=1`）
+- ✅ §4.4 建议14 子 Agent 失败重试（指数退避 + `subagent_max_retries`）
+
+**仍未修复的 §4.4 待办**：
+- ⏳ §4.4 建议13 跨进程 EventBus（Redis pub/sub 适配器），归入 P3-3 跨进程部署改造项
 
 #### P1-5：Plan-Execute 增强（DAG 并行 + 步骤级重试 + 部分重规划）
 
+> **状态**：✅ 已修复（v1.2） — [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) DAG 调度 + 步骤级重试 + `started_at`、[planner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/planner.ts) `withStructuredOutput` + 部分重规划、[types.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/types.ts) `PlanStep` 扩展字段、[graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) 解除 `plan_execute`/`multi_agent` 互斥、[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `providesRealtimeData()`。已通过 `tsc --noEmit` + 260 个 Vitest 用例无回归。
+
 **改造点**：
 - [dispatcher.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/dispatcher.ts) `stepDispatch` 解析 `depends_on`，对无依赖的步骤使用 `Send` API 并行分发
+  - ✅ 实现于 `stepDispatch` L146-257 + `_identifyReadySteps` L286-303
 - `step_finalize` 判定 failed 后，先按 `step.retry_policy` 重试 N 次，仍失败再触发 replan
+  - ✅ 实现于 `makeStepFinalizeNode` + `_decideStepRetry`（指数退避）
 - Planner 改用 `llm.withStructuredOutput(PlanSchema)`，消除 JSON 解析脆弱性
+  - ✅ 实现于 `_tryStructuredOutput` L340-385（不支持时降级到 JSON-in-text）
 - 重规划时保留已完成步骤的 `step_results`，仅重新生成 `current_step_index` 之后的步骤
+  - ✅ 实现于 `planner.ts` 部分重规划逻辑（重规划上下文含已完成步骤摘要）
 - 扩展 `PlanStep` 增加 `expected_output / verification_hint` 字段
+  - ✅ 实现于 [types.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/plan-execute/types.ts) `PlanStep` L7-50（同时新增 `retry_policy`/`task_type`）
 - 补全 `StepResult.started_at` 写入
+  - ✅ 实现于 `makeStepDispatchNode` L84-116 + `makeStepFinalizeNode` L380-384
+
+**v1.2 额外完成的相关改造**（不在原 P1-5 范围但属于 §4.1 建议）：
+- ✅ §4.1 建议6 组合 Plan-Execute + multi_agent（`task_type=delegation` 路由到 `supervisor`）
+- ✅ §4.1 建议7 `requires_tool` 改为工具元数据驱动（`BaseTool.providesRealtimeData()`）
+
+**仍未修复的 §4.1 待办**：
+- ⏳ §4.1 建议9 计划持久化与恢复（`step_dispatch` 幂等检查 + `replan_count` 语义恢复）
+- ⏳ §4.1 建议10 递归预算精细化（按 `sum(step.estimated_iterations)` 动态计算）
 
 #### P1-6：统一 LLM 接口 + 模型路由
+
+> **状态**：✅ 已修复（v1.1） — [llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/llm.ts) `ModuLLM` / `LLMResult`、[base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts)、[modu-llm-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts)、[router.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/router.ts) `RuleBasedLLMRouter`、[cost-tracker.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/cost-tracker.ts) `LLM.COST` 事件
 
 **改造点**：
 - 定义 `interface ModuLLM { invoke; stream; bindTools; withRetry }`，让 `BaseLLMReasoner` 与 `ChatOpenAI` 都实现该接口
@@ -1125,22 +1375,28 @@
 
 #### P2-1：工具集（ToolSet）抽象 + per-request 切换
 
+> **状态**：🟡 部分修复（v1.3） — 已实现：工具结果截断（[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) `_truncateToolResult`）、工具结果缓存 LRU+TTL（[tool-result-cache.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-result-cache.ts)）、工具元信息 `version()` + `followUpTools()`（[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts)）、MCP 超时配置化（[mcp-tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts)）、MCP WebSocket transport（[transport.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/mcp/transport.ts)）。仍待办：`ToolSet` 接口抽象、`build_langchain_tools(toolSetId)` 参数化、`listTools()` 元信息结构化、`RunnableConfig.configurable` 上下文透传、MCP Server 权限控制
+
 **改造点**：
 - 新增 `interface ToolSet { id; tools; requiredScopes; applicableRoles }`
 - `build_langchain_tools` 改为接受 `toolSetId` 参数
 - 丰富工具元信息：`listTools()` 返回 `{name, description, parameters_schema, category, version, required_scopes, cost, avg_latency}`
 - 工具调用上下文透传：`wrap_modu_tool` 的 `func` 改为接收 `(input, config)`，从 `RunnableConfig.configurable` 提取 `userId/sessionId/traceId`
-- 工具结果截断 + 缓存（LRU + TTL）
-- MCP 工具按 Server 权限控制 + 超时配置化
+- ✅ 工具结果截断 + 缓存（LRU + TTL）
+- ✅ MCP 工具超时配置化（Server 权限控制仍待办）
 
 #### P2-2：HITL 增强（改参批准 + 动态敏感性）
 
+> **状态**：✅ 已修复（v1.3） — 动态敏感性 `requiresApprovalFor`（[action.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts) `BaseTool.requiresApprovalFor`、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `_toolRequiresApproval` 传入 args/context 调用）+ 工具限流（[rate-limiter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts)、[tool-adapter.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts) L189-198）+ 改参批准（[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeHumanReviewNode` 读取 `resumePayload.modified_args` 合并到 AIMessage）全部实现
+
 **改造点**：
-- 扩展 `resumePayload` 增加 `modified_args` 字段，`human_review` 节点用其替换原 `tool_calls` 后路由到 `tools`
-- 增加 `tool.requiresApprovalFor(args, context)` 方法，按参数动态判定
-- 工具限流：`wrap_modu_tool` 外层包装 token bucket
+- ✅ 扩展 `resumePayload` 增加 `modified_args` 字段，`human_review` 节点用其替换原 `tool_calls` 后路由到 `tools`
+- ✅ 增加 `tool.requiresApprovalFor(args, context)` 方法，按参数动态判定
+- ✅ 工具限流：`wrap_modu_tool` 外层包装 token bucket
 
 #### P2-3：单轮内反思 + Plan-Execute + Reflection 集成
+
+> **状态**：⏳ 待办
 
 **改造点**：
 - 在 `agent` 节点后增加可选 `self_critique` 节点，LLM 自评输出质量，低分时重新生成（受 `recursionLimit` 约束）
@@ -1149,14 +1405,18 @@
 
 #### P2-4：状态机分层 + 路由配置化
 
+> **状态**：✅ 已修复（v1.1） — [state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `CoreState` / `ModeState` 分层 L365-435、`migrate_state` L278-296、`STATE_SCHEMA_VERSION`；[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `routeAfterMemoryQuery` L1073-1110 读取 `orchestration.mode_router` 配置；[runner.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) L236-244 checkpoint 迁移
+
 **改造点**：
 - 将 `ModuAgentState` 拆分为 `CoreState`（基础字段）+ `ModeState`（各模式专属字段）
 - 移除 `history` 僵尸字段
 - `ModuAgentState` 增加 `state_schema_version: number`，Checkpointer 读取时按版本迁移
 - `routeAfterMemoryQuery` 改为读取 `orchestration.mode_router` 配置，支持运行时新增模式
-- 模式自由组合：重构路由层支持组合标志位（如 `plan_execute + multi_agent`）
+- 模式自由组合：重构路由层支持组合标志位（如 `plan_execute + multi_agent`）— 仍待办
 
 #### P2-5：安全增强
+
+> **状态**：🟡 部分修复（v1.1） — 已实现：LLM-based Prompt 注入检测（[guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectInjectionWithLLMJudge` L139-175）、SqlQueryTool 表名提取增强（[sql-query.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/sql-query.ts) L38-39、L181-196）、输出敏感信息检测（[guard.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/guard.ts) `detectOutputSensitive` / `sanitizeOutput` L302-395）、集中化审计日志（[audit.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/perception/security/audit.ts)）。仍待办：CodeExecutor AST 校验、真沙箱化执行、完整 SQL parser、`sanitizeOutput` 的 LLM 双路检测
 
 **改造点**：
 - LLM-based Prompt 注入检测：`SecurityGuard.detectPromptInjection` 增加 LLM 二次校验
@@ -1170,6 +1430,8 @@
 
 #### P3-1：可观测性增强
 
+> **状态**：🟡 部分修复（v1.1） — 已实现：W3C TraceContext 注入到 `http_request` 工具出站请求（[trace-context.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/observability/trace-context.ts) `inject_trace_context` L45、[http-request.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/http-request.ts) L320-327，tracing 未启用时为 no-op）。仍待办：同步初始化 OTel、MCP transport 注入 traceparent、指标维度扩展、日志自动注入 trace_id + 多 sink、性能剖析
+
 - 同步初始化 OTel（顶层 await 或 `await tracing.ready()`）
 - W3C TraceContext 注入：`http_request` 工具与 MCP transport 中注入 `traceparent` header
 - 指标维度扩展：所有指标增加 `task_type / tool_name / llm_provider / session_id` 标签
@@ -1178,12 +1440,16 @@
 
 #### P3-2：协议增强
 
+> **状态**：🟡 部分修复（v1.1） — 已实现：`payload` 改为泛型 `T`（[protocol.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/protocol.ts) L96）、`metadata` 改为 `Record<string, unknown>`（同上 L98）、事件版本号 `schema_version`（同上 L101、L128）、事件 TTL（[message-bus.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/message-bus.ts) L189-261 `event_ttl_ms` 配置）。仍待办：跨进程 EventBus（Redis pub/sub 适配器）
+
 - `payload` 改为泛型 `T`，消除 hex 编解码
 - `metadata` 改为 `Record<string, unknown>`，允许结构化值
 - 跨进程 EventBus：Redis pub/sub 适配器
 - 事件版本号 + TTL
 
 #### P3-3：跨进程部署
+
+> **状态**：⏳ 待办
 
 - EventBus Redis 适配器
 - Checkpointer 多实例共享（postgres）
@@ -1283,26 +1549,28 @@
 
 ## 附录 B：改造项优先级速查表
 
-| 优先级 | 编号 | 名称 | 关键收益 |
-|--------|------|------|---------|
-| P0 | P0-1 | 接入语义嵌入 | 修复长期记忆召回质量（最严重功能缺陷） |
-| P0 | P0-2 | 引入 AgentProfile 抽象 | 统一角色定义，支持 per-request 切换 |
-| P0 | P0-3 | 接通 ComponentSwap / Rollback / VersionedStore | 消除死代码，激活自适应进化闭环 |
-| P0 | P0-4 | 修复 CalculatorTool schema 正则 bug | 修复 schema 校验与实际不一致 |
-| P1 | P1-1 | Prompt 模板外置 + 模板引擎 + 热更新 | Prompt 持久化、版本管理、A/B 测试基础 |
-| P1 | P1-2 | EvalDataset 抽象 + 离线评估 CLI | 离线评估能力，版本对比基准 |
-| P1 | P1-3 | 多源知识库 CompositeStore + Chunking + Rerank | 多源 RAG 支持，召回质量提升 |
-| P1 | P1-4 | 子 Agent 启用工具 + LLM 驱动任务拆分 | 修复子 Agent 无工具能力浪费 |
-| P1 | P1-5 | Plan-Execute 增强（DAG + 重试 + 部分重规划） | 提升复杂任务执行成功率 |
-| P1 | P1-6 | 统一 LLM 接口 + 模型路由 | 消除双轨抽象，支持按任务复杂度路由 |
-| P2 | P2-1 | ToolSet 抽象 + per-request 切换 | 业务专属工具集，工具元信息丰富 |
-| P2 | P2-2 | HITL 增强（改参批准 + 动态敏感性） | 灵活审批工作流 |
-| P2 | P2-3 | 单轮内反思 + Plan-Execute + Reflection 集成 | 推理过程纠错能力 |
-| P2 | P2-4 | 状态机分层 + 路由配置化 | 模式自由组合，状态 schema 版本管理 |
-| P2 | P2-5 | 安全增强 | LLM 检测 + AST 校验 + 真沙箱 |
-| P3 | P3-1 | 可观测性增强 | W3C TraceContext + 多 sink 日志 |
-| P3 | P3-2 | 协议增强 | 泛型 payload + 跨进程 EventBus |
-| P3 | P3-3 | 跨进程部署 | Redis EventBus + 共享 Checkpointer/Store |
+> **状态图例**：✅ 已修复（v1.1） ｜ 🟡 部分修复（v1.1） ｜ ⏳ 待办
+
+| 优先级 | 编号 | 名称 | 关键收益 | 状态 |
+|--------|------|------|---------|------|
+| P0 | P0-1 | 接入语义嵌入 | 修复长期记忆召回质量（最严重功能缺陷） | ⏳ 待办 |
+| P0 | P0-2 | 引入 AgentProfile 抽象 | 统一角色定义，支持 per-request 切换 | ⏳ 待办 |
+| P0 | P0-3 | 接通 ComponentSwap / Rollback / VersionedStore | 消除死代码，激活自适应进化闭环 | ⏳ 待办 |
+| P0 | P0-4 | 修复 CalculatorTool schema 正则 bug | 修复 schema 校验与实际不一致 | ✅ 已修复（v1.1） — [calculator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/calculator.ts) L41 |
+| P1 | P1-1 | Prompt 模板外置 + 模板引擎 + 热更新 | Prompt 持久化、版本管理、A/B 测试基础 | ⏳ 待办 |
+| P1 | P1-2 | EvalDataset 抽象 + 离线评估 CLI | 离线评估能力，版本对比基准 | ⏳ 待办 |
+| P1 | P1-3 | 多源知识库 CompositeStore + Chunking + Rerank | 多源 RAG 支持，召回质量提升 | ⏳ 待办 |
+| P1 | P1-4 | 子 Agent 启用工具 + LLM 驱动任务拆分 | 修复子 Agent 无工具能力浪费 | ✅ 已修复（v1.4） — §4.4 建议 1-12、14 全部实现：LLM 驱动拆分（`decompose_task_with_llm`）+ 子 Agent 工具（`build_subagent_subgraph`）+ 黑板通信 + `need_help` 升级 + 动态子 Agent 生成 + 超时 + 重试 + 动态 quorum + Jaccard 相似度 + LLMJudge 重试 + consensus→messages 链路修复 + `DelegationPattern` 弃用；建议 13（跨进程 EventBus）归入 P3-3 待办 |
+| P1 | P1-5 | Plan-Execute 增强（DAG + 重试 + 部分重规划） | 提升复杂任务执行成功率 | ✅ 已修复（v1.2） — DAG 并行 + 步骤级重试 + 部分重规划 + `withStructuredOutput` + `PlanStep` 扩展 + `started_at` + 组合 multi_agent + 工具元数据驱动 `requires_tool`；建议9/10 待办 |
+| P1 | P1-6 | 统一 LLM 接口 + 模型路由 | 消除双轨抽象，支持按任务复杂度路由 | ✅ 已修复（v1.1） — [llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/core/interfaces/llm.ts)、[base-llm.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts)、[router.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/router.ts)、[cost-tracker.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/cost-tracker.ts) |
+| P2 | P2-1 | ToolSet 抽象 + per-request 切换 | 业务专属工具集，工具元信息丰富 | 🟡 部分修复（v1.3） — 工具结果截断/缓存/元信息(version+followUpTools)/MCP 超时+WebSocket 已实现；ToolSet 接口/toolSetId 参数化/listTools 元信息结构化/上下文透传/Server 权限控制待办 |
+| P2 | P2-2 | HITL 增强（改参批准 + 动态敏感性） | 灵活审批工作流 | ✅ 已修复（v1.3） — 动态敏感性 `requiresApprovalFor` + 工具限流 + 改参批准 `modified_args` 全部实现 |
+| P2 | P2-3 | 单轮内反思 + Plan-Execute + Reflection 集成 | 推理过程纠错能力 | ⏳ 待办 |
+| P2 | P2-4 | 状态机分层 + 路由配置化 | 模式自由组合，状态 schema 版本管理 | ✅ 已修复（v1.1） — [state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) `CoreState`/`ModeState` + `migrate_state`、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `routeAfterMemoryQuery`；模式自由组合仍待办 |
+| P2 | P2-5 | 安全增强 | LLM 检测 + AST 校验 + 真沙箱 | 🟡 部分修复（v1.1） — LLM 注入检测 / SQL 表名提取 / 输出敏感检测 / 集中化审计日志已实现；AST 校验 / 真沙箱 / 完整 SQL parser / LLM 双路输出检测待办 |
+| P3 | P3-1 | 可观测性增强 | W3C TraceContext + 多 sink 日志 | 🟡 部分修复（v1.1） — `http_request` W3C TraceContext 注入已实现；同步初始化 OTel / MCP transport 注入 / 指标维度 / 日志 sink / 性能剖析待办 |
+| P3 | P3-2 | 协议增强 | 泛型 payload + 跨进程 EventBus | 🟡 部分修复（v1.1） — 泛型 payload / metadata / 事件版本号 / TTL 已实现；跨进程 EventBus（Redis）待办 |
+| P3 | P3-3 | 跨进程部署 | Redis EventBus + 共享 Checkpointer/Store | ⏳ 待办 |
 
 ---
 
@@ -1320,10 +1588,12 @@
 
 3. **核心能力层存在"已实现未接通"现象**：`build_subagent_subgraph`（带工具循环的子图）被搁置而用简化的 `makeSubagentNode`（无工具）；`ComponentSwapStrategy` / `RollbackMechanism` / `VersionedComponentStore` 已实现但未接入主链路；`DelegationPattern` 注释标注"未集成"；`ConsensusPattern.reach_consensus` 未被 `makeConsensusNode` 使用。这些"半成品"是低成本高收益的改造点（P0-3 + P1-4）。
 
+> ✅ v1.4 更新：P1-4 已修复——`build_subagent_subgraph` 已被 `makeSubagentNode` 调用启用子 Agent 工具循环；`DelegationPattern` 已标记 `@deprecated`；`ConsensusPattern` 已被 `makeConsensusNode` 封装使用。仅 P0-3（ComponentSwap/Rollback 接通）仍待办。
+
 ### C.3 最严重缺陷 Top 3
 
 1. **hash embedding 无语义**（[chroma.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/memory/chroma.ts) L24-46）：长期记忆检索效果接近随机，直接影响 RAG 链路质量
-2. **子 Agent 无工具能力**（[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) L1099-1150）：`makeSubagentNode` 仅 `boundLlm.invoke(messages)`，不能调用任何工具，多 Agent 协作能力被严重削弱
+2. ~~**子 Agent 无工具能力**~~（✅ v1.4 已修复）：[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) `makeSubagentNode` L1229-1397 已改用 `build_subagent_subgraph` 启用 ReAct 工具循环，按 task_type 过滤工具
 3. **角色 Agent 抽象缺失**：Skill + 子图 + Supervisor 三套机制拼合，无统一 `Agent` 接口，业务接入成本高
 
 ### C.4 演进方向

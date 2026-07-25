@@ -11,7 +11,13 @@ const logger = {
 type DelegateHandler = (task_data: Record<string, any>) => any
 
 /**
- * 按领域委托模式（P2-11 评估：未集成，保留为参考实现）。
+ * 按领域委托模式。
+ *
+ * @deprecated 对应文档 §4.4 建议7：本类自创建以来从未集成到主图中（注释明确
+ *   "未集成，保留为参考实现"），且其按 domain 静态分发的能力已被 Supervisor
+ *   + LLM 驱动任务拆分（decompose_task_with_llm）完全取代。
+ *   保留仅为向后兼容，新代码请使用 `make_supervisor_node` + 多 Agent 协作路径。
+ *   计划在 v2.0 移除。
  */
 export class DelegationPattern {
   private _delegates: Map<string, DelegateHandler> = new Map()

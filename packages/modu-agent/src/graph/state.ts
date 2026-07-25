@@ -27,10 +27,21 @@ export function mergeSubtaskResults(
  * 使用 Annotation.Root 构建带 reducer 的状态注解。
  *
  * 关键映射：
- *   原 context["history"]         → State.history
+ *   原 context["history"]         → 已移除（僵尸字段，无节点读取；长期记忆由 store/Chroma 承载）
  *   原 context["perception"]      → State.perception_result / cleaned_text
  *   原 context["native_tools"]    → 由 LangGraph bind_tools 接管
  *   原 context["tool_results"]    → State.tool_results
+ *
+ * 状态字段分层（对应文档 §2.3 建议1）：
+ *   - CoreState：基础字段（messages/tool_results/error_code 等所有模式共用）
+ *   - HITLModeState：Human-in-the-loop 专属字段
+ *   - MultiAgentModeState：多 Agent 协作专属字段
+ *   - PlanExecuteModeState：Plan-and-Execute 专属字段
+ *   - FeedbackModeState：反馈/进化专属字段
+ *   ModuAgentState 为上述类型的组合别名，保持向后兼容
+ *
+ * 状态 schema 版本号（对应文档 §2.3 建议3）：
+ *   新增 state_schema_version 字段，Checkpointer 读取时按版本迁移
  */
 export interface ModuAgentState {
   // 消息历史（LangGraph 内置 reducer，自动追加）
@@ -54,7 +65,6 @@ export interface ModuAgentState {
   pii_detected?: boolean
 
   // 记忆
-  history?: Array<Record<string, any>>
   knowledge?: Array<Record<string, any>>
 
   // 工具
@@ -94,6 +104,8 @@ export interface ModuAgentState {
   consensus_result?: Record<string, any> | null
   consensus_failed?: boolean
   current_subtask?: Record<string, any>
+  /** v1.4 §4.4 建议3：子 Agent 间共享黑板 */
+  blackboard?: Record<string, any>
 
   // === P4 Plan-and-Execute ===
   plan?: Array<Record<string, any>>
@@ -114,12 +126,17 @@ export interface ModuAgentState {
  *
  * 对应 Python:
  *   class ModuAgentState(TypedDict, total=False):
- *       messages: Annotated[List[BaseMessage], add_messages]
+ *       messages: Annotated[List[BaseMessage>, add_messages]
  *       subtask_results: Annotated[Dict, merge_subtask_results]
  *
  * JS 版使用 Annotation.Root 构建等效语义。
  */
 import { Annotation } from '@langchain/langgraph'
+
+// 状态 schema 版本号（对应文档 §2.3 建议3）
+// 必须在 ModuAgentStateAnnotation 之前声明，避免 Annotation.Root 初始化时 TDZ
+/** 当前状态 schema 版本号，字段重构时递增并补充 migrate_state 迁移逻辑 */
+export const STATE_SCHEMA_VERSION = 1 as const
 
 /**
  * Last-write-wins reducer 工厂（带默认值）。
@@ -166,7 +183,6 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   pii_detected: Annotation<boolean>(_lw(() => false)),
 
   // 记忆
-  history: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
   knowledge: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
 
   // 工具
@@ -212,6 +228,21 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   consensus_result: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
   consensus_failed: Annotation<boolean>(_lw(() => false)),
   current_subtask: Annotation<Record<string, any>>(_lw(() => ({}))),
+  /**
+   * v1.4 §4.4 建议3：子 Agent 间共享黑板。
+   *
+   * 子 Agent 可将中间结果写入黑板，其他子 Agent 可读取。
+   * 使用合并 reducer：每个子 Agent 写入自己的 key（如 task_id），
+   * 多个并行子 Agent 写入会合并而非覆盖。
+   *
+   * 典型用法：
+   *   - research 子 Agent 写入 {search_results: [...]}
+   *   - coding 子 Agent 读取黑板获取 search_results 作为上下文
+   */
+  blackboard: Annotation<Record<string, any>>({
+    reducer: (prev, next) => ({ ...(prev ?? {}), ...(next ?? {}) }),
+    default: () => ({}),
+  }),
 
   // === P4 Plan-and-Execute ===
   plan: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
@@ -233,7 +264,53 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   current_step: Annotation<Record<string, any>>(_lw(() => ({}))),
   step_msg_baseline: Annotation<number>(_lw(() => 0)),
   plan_delta: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
+
+  // 状态 schema 版本号（对应文档 §2.3 建议3）
+  // Checkpointer 持久化时一并保存；读取时由 migrate_state 按版本迁移
+  state_schema_version: Annotation<number>(_lw<number>(() => STATE_SCHEMA_VERSION)),
 })
+
+// ============================================================
+// 状态 schema 版本号（对应文档 §2.3 建议3）—— migrate_state 实现
+// ============================================================
+// 常量 STATE_SCHEMA_VERSION 已在 ModuAgentStateAnnotation 之前声明（避免 TDZ）
+
+/**
+ * 按版本号迁移历史 checkpoint 状态。
+ *
+ * 使用方式（在 Checkpointer 读取状态后调用）：
+ * ```ts
+ * const tuple = await checkpointer.getTuple(config)
+ * if (tuple?.values) {
+ *   const migrated = migrate_state(tuple.values as any)
+ *   // 使用 migrated 而非原始 tuple.values
+ * }
+ * ```
+ *
+ * 迁移规则按版本递增补充：
+ *   - v0 → v1：移除僵尸 history 字段；补齐 state_schema_version
+ *
+ * 未注册的版本号（高于当前 STATE_SCHEMA_VERSION）原样返回并记录警告。
+ */
+export function migrate_state<T extends Record<string, any>>(state: T): T & { state_schema_version: number } {
+  const current = (state as any).state_schema_version
+  if (typeof current === 'number' && current >= STATE_SCHEMA_VERSION) {
+    return state as T & { state_schema_version: number }
+  }
+
+  const migrated: Record<string, any> = { ...state }
+
+  // v0 → v1 迁移：移除僵尸 history 字段（对应文档 §2.3 建议2）
+  if ('history' in migrated) {
+    delete migrated['history']
+  }
+  // v0 → v1 迁移：补齐 schema 版本号
+  if (typeof migrated['state_schema_version'] !== 'number') {
+    migrated['state_schema_version'] = STATE_SCHEMA_VERSION
+  }
+
+  return migrated as T & { state_schema_version: number }
+}
 
 /**
  * 构建图初始状态。
@@ -258,7 +335,6 @@ export function makeInitialState(
     confidence: 1.0,
     injection_detected: false,
     pii_detected: false,
-    history: [],
     knowledge: [],
     tool_results: [],
     iteration: 0,
@@ -282,6 +358,7 @@ export function makeInitialState(
     consensus_result: null,
     consensus_failed: false,
     current_subtask: {},
+    blackboard: {},
     plan: [],
     current_step_index: 0,
     step_results: [],
@@ -290,5 +367,91 @@ export function makeInitialState(
     current_step: {},
     step_msg_baseline: 0,
     plan_delta: null,
+    state_schema_version: STATE_SCHEMA_VERSION,
   }
+}
+
+// ============================================================
+// 状态字段分层（对应文档 §2.3 建议1）
+// ============================================================
+//
+// 将 ModuAgentState 30+ 字段按模式拆分为 CoreState + 各 ModeState 组合，
+// 新增模式通过新增 ModeState 隔离，避免 CoreState 持续膨胀。
+// ModuAgentState 保留为组合别名，向后兼容现有 ~80 个使用点。
+
+/** 核心状态：所有模式共用的基础字段。 */
+export interface CoreState {
+  // 消息历史（LangGraph 内置 reducer，自动追加）
+  messages?: BaseMessage[]
+  // 会话标识
+  user_id?: string
+  session_id?: string
+  trace_id?: string
+  // 原始输入
+  input_data?: Record<string, any>
+  // 感知结果
+  perception_result?: Record<string, any> | null
+  cleaned_text?: string | null
+  detected_language?: string | null
+  sensitivity_level?: number
+  confidence?: number
+  injection_detected?: boolean
+  pii_detected?: boolean
+  // 记忆
+  knowledge?: Array<Record<string, any>>
+  // 工具
+  tool_results?: Array<Record<string, any>>
+  // 元数据
+  iteration?: number
+  // 最终响应
+  response?: string
+  error_code?: string
+  error_message?: string
+  usage?: Record<string, number>
+  // 记忆更新状态
+  memory_update_status?: string
+  memory_update_key?: string
+  memory_update_error?: string
+  // per-session 配置覆盖
+  config_overrides?: Record<string, any>
+  // 状态 schema 版本号
+  state_schema_version?: number
+}
+
+/** Human-in-the-loop 模式专属状态。 */
+export interface HITLModeState {
+  pending_tool_calls?: Array<Record<string, any>>
+  tool_requires_approval?: boolean
+  approval_status?: string
+  approval_feedback?: string
+}
+
+/** 多 Agent 协作模式专属状态。 */
+export interface MultiAgentModeState {
+  subtasks?: Array<Record<string, any>>
+  subtask_results?: Record<string, Record<string, any>>
+  consensus_result?: Record<string, any> | null
+  consensus_failed?: boolean
+  current_subtask?: Record<string, any>
+  /** v1.4 §4.4 建议3：子 Agent 间共享黑板 */
+  blackboard?: Record<string, any>
+}
+
+/** Plan-and-Execute 模式专属状态。 */
+export interface PlanExecuteModeState {
+  plan?: Array<Record<string, any>>
+  current_step_index?: number
+  step_results?: Array<Record<string, any>>
+  replan_count?: number
+  plan_phase?: string
+  current_step?: Record<string, any>
+  step_msg_baseline?: number
+  plan_delta?: Record<string, any> | null
+}
+
+/** 反馈/进化模式专属状态。 */
+export interface FeedbackModeState {
+  evaluation?: Record<string, any> | null
+  should_evolve?: boolean
+  evolution_action?: Record<string, any> | null
 }

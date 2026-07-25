@@ -43,7 +43,7 @@ import {
   EventDomain,
 } from '../orchestration/communication/protocol.js'
 import { create_consensus_strategy, ConsensusPattern } from '../orchestration/patterns/consensus.js'
-import { _getSystemPrompt } from './subgraph/builder.js'
+import { _getSystemPrompt, build_subagent_subgraph } from './subgraph/builder.js'
 import type { ModuAgentState } from './state.js'
 
 // ============================================================
@@ -556,11 +556,12 @@ export function makeToolResultProcessor(): (state: ModuAgentState) => Partial<Mo
     const toolResults: Array<Record<string, any>> = [...(state.tool_results ?? [])]
 
     for (const msg of messages) {
-      const msgType = typeof (msg as any)._getType === 'function' ? (msg as any)._getType() : (msg as any).type
-      if (msgType === 'tool') {
-        const content = (msg as any).content ?? ''
-        const toolName = (msg as any).name ?? 'unknown'
-        const toolCallId = (msg as any).tool_call_id ?? ''
+      // v1.2 §4.3 建议10：使用 instanceof 替代 (msg as any)._getType() 反射，
+      // 类型安全且消除 any 断言（ToolMessage 已在文件头部导入）
+      if (msg instanceof ToolMessage) {
+        const content = msg.content ?? ''
+        const toolName = msg.name ?? 'unknown'
+        const toolCallId = msg.tool_call_id ?? ''
 
         let parsedContent: any
         try {
@@ -861,12 +862,27 @@ export async function publishToolEvents(
  *
  * 判定逻辑（任一命中即视为需要审批）：
  *   1. 工具名在 sensitiveTools 配置列表中
- *   2. 工具实例的 requiresApproval() 返回 true
+ *   2. 工具实例的 requiresApprovalFor(args, context) 返回 true
+ *      （对应文档 §2.5 建议6 / §4.3 建议4：动态敏感性检测）
+ *      - 默认实现回退到 requiresApproval() 静态判定，保持向后兼容
+ *      - HttpRequestTool / FileOpsTool 等覆写为参数级判定
+ *
+ * v1.2 §4.3 建议4 修复：原实现仅调用静态 requiresApproval()，未传入 args/context，
+ * 导致 requiresApprovalFor 接口虽已定义但运行时永不命中。现修正为优先调用
+ * requiresApprovalFor(args, context)，让参数级判定真正生效。
+ *
+ * @param toolName       工具名
+ * @param registry       组件注册表
+ * @param sensitiveTools 配置的敏感工具名列表
+ * @param args           工具调用参数（用于动态敏感性判定）
+ * @param context        调用上下文（含 user_id / session_id 等）
  */
 function _toolRequiresApproval(
   toolName: string,
   registry: any,
   sensitiveTools: string[],
+  args?: Record<string, any>,
+  context?: Record<string, any>,
 ): boolean {
   if (sensitiveTools.includes(toolName)) {
     return true
@@ -875,7 +891,10 @@ function _toolRequiresApproval(
     const moduTool = registry.getTool(toolName)
     if (moduTool) {
       try {
-        return Boolean(moduTool.requiresApproval())
+        // 优先调用动态敏感性判定（默认实现回退到 requiresApproval）
+        return Boolean(
+          moduTool.requiresApprovalFor(args ?? {}, context ?? {}),
+        )
       } catch {
         // 工具方法异常时不阻断流程，按不需要审批处理
         return false
@@ -932,9 +951,18 @@ export function makeHumanReviewNode(
     }
 
     // 识别需要审批的工具调用
+    // v1.2 §4.3 建议4：传入 tc['args'] 与 context，让 requiresApprovalFor 真正生效
     const reg = registry ?? getRegistry()
+    const hitlContext: Record<string, any> = {
+      user_id: state.user_id ?? '',
+      session_id: state.session_id ?? '',
+      trace_id: state.trace_id ?? '',
+    }
     const pending = toolCalls.filter((tc: Record<string, any>) =>
-      _toolRequiresApproval(tc['name'] ?? '', reg, sensitiveTools),
+      _toolRequiresApproval(
+        tc['name'] ?? '', reg, sensitiveTools,
+        tc['args'] ?? {}, hitlContext,
+      ),
     )
 
     if (pending.length === 0) {
@@ -960,12 +988,22 @@ export function makeHumanReviewNode(
     let approved: boolean
     let feedback: string
     let isTimeout: boolean
+    // v1.2 §4.3 建议3：支持改参批准（modified_args）
+    //   审批者可在 resume 时携带 modified_args 字段，按 tool_call.id 覆盖原参数
+    //   格式: { [tool_call_id]: { ...newArgs } }
+    //   仅 approved=true 时生效；approved=false 时忽略（拒绝路径用原 args 调 onApprovalRejected）
+    let modifiedArgs: Record<string, Record<string, any>> | null = null
     if (resumePayload && typeof resumePayload === 'object') {
       approved = Boolean(resumePayload['approved'])
       feedback = String(resumePayload['feedback'] ?? '')
       // P9.4.3: 超时自动拒绝时 resume_sync 携带 timeout=true 标记，
       // human_review 据此使用 TOOL_APPROVAL_TIMEOUT 错误码
       isTimeout = Boolean(resumePayload['timeout'] ?? false)
+      // v1.2 §4.3 建议3：读取改参批准字段
+      const modArgsRaw = resumePayload['modified_args']
+      if (approved && modArgsRaw && typeof modArgsRaw === 'object') {
+        modifiedArgs = modArgsRaw as Record<string, Record<string, any>>
+      }
     } else {
       approved = false
       feedback = ''
@@ -973,6 +1011,36 @@ export function makeHumanReviewNode(
     }
 
     if (approved) {
+      // v1.2 §4.3 建议3：若审批者提供了 modified_args，则用修改后的参数覆盖原 AIMessage 的 tool_calls
+      //   生成新的 AIMessage 替换原消息，让下游 ToolNode 按修改后参数执行
+      if (modifiedArgs && Object.keys(modifiedArgs).length > 0) {
+        const updatedToolCalls = toolCalls.map((tc: Record<string, any>) => {
+          const callId = tc['id'] ?? ''
+          const mod = modifiedArgs![callId]
+          if (mod && typeof mod === 'object') {
+            logger.info(
+              'HITL modified_args applied: tool=%s call_id=%s',
+              tc['name'] ?? '', callId,
+            )
+            return { ...tc, args: { ...tc['args'] ?? {}, ...mod } }
+          }
+          return tc
+        })
+        // 用新 AIMessage 替换最后一条消息（保留其余字段）
+        const newLastMsg = new AIMessage({
+          content: lastMsg.content ?? '',
+          tool_calls: updatedToolCalls as any,
+          additional_kwargs: lastMsg.additional_kwargs ?? {},
+        })
+        const newMessages = [...messages.slice(0, -1), newLastMsg]
+        return {
+          approval_status: 'approved',
+          approval_feedback: feedback,
+          tool_requires_approval: false,
+          pending_tool_calls: [],
+          messages: newMessages,
+        }
+      }
       return {
         approval_status: 'approved',
         approval_feedback: feedback,
@@ -1075,11 +1143,30 @@ export function routeAfterMemoryQuery(
   config?: RunnableConfig,
 ): string {
   const runtimeConfig = getConfig()
+  const configurable = config?.configurable as Record<string, any> | undefined
+
+  // 路由分叉配置化（对应文档 §2.3 建议4）：优先读取 orchestration.mode_router 规则
+  const rules = runtimeConfig.get('orchestration.mode_router', []) as Array<{
+    when: {
+      config_key?: string
+      config_value?: any
+      configurable_key?: string
+      configurable_value?: any
+    }
+    route: string
+  }>
+
+  for (const rule of rules) {
+    if (_matchRouteRule(rule, runtimeConfig, configurable)) {
+      return rule.route
+    }
+  }
+
+  // 内置默认回退（mode_router 缺失或无规则命中时，保持原优先级行为）
   if (runtimeConfig.get('orchestration.multi_agent.enabled', false)) {
     return 'supervisor'
   }
   // P4: 优先检查 per-request configurable（agent-bridge 传入的 plan_execute_enabled=true）
-  const configurable = config?.configurable as Record<string, any> | undefined
   if (configurable?.['plan_execute_enabled'] === true) {
     return 'planner'
   }
@@ -1091,15 +1178,91 @@ export function routeAfterMemoryQuery(
 }
 
 /**
+ * 匹配单条路由规则（对应文档 §2.3 建议4）。
+ *
+ * 规则的 when 字段支持两种条件（可同时存在，需同时满足）：
+ *   - config_key + config_value：检查 runtimeConfig.get(config_key) === config_value
+ *   - configurable_key + configurable_value：检查 configurable[configurable_key] === configurable_value
+ */
+function _matchRouteRule(
+  rule: {
+    when: {
+      config_key?: string
+      config_value?: any
+      configurable_key?: string
+      configurable_value?: any
+    }
+    route: string
+  },
+  runtimeConfig: ReturnType<typeof getConfig>,
+  configurable: Record<string, any> | undefined,
+): boolean {
+  const { config_key, config_value, configurable_key, configurable_value } = rule.when
+  if (config_key !== undefined) {
+    if (runtimeConfig.get(config_key, null) !== config_value) {
+      return false
+    }
+  }
+  if (configurable_key !== undefined) {
+    if (configurable?.[configurable_key] !== configurable_value) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
  * P3-12.3.1: 创建子 Agent 节点（处理单个子任务）。
  *
  * 通过 Send API 并行调用，每次处理一个 current_subtask。
  * 结果写入 subtask_results（经 mergeSubtaskResults reducer 合并）。
+ *
+ * v1.4 §4.4 改造：
+ *   - 建议2：启用工具能力——优先使用 build_subagent_subgraph 构建 ReAct 循环子图，
+ *     按 task_type 过滤工具（research→search_engine/http_request，coding→calculator/code_executor，
+ *     review→无工具）。tools 为空时回退到原始单次 LLM 调用路径（向后兼容）
+ *   - 建议6：子 Agent 超时——Promise.race 与 subgraph_timeout_ms 配置（默认 30s）
+ *   - 建议14：子 Agent 重试——失败时按 max_retries（默认 1）重试，指数退避
+ *   - 建议4：need_help 信号——子 Agent 输出 {status:'need_help', reason:'...'} 时
+ *     Supervisor 可读取并触发重新拆分（由 consensus 节点检测并发布事件）
  */
 export function makeSubagentNode(
   boundLlm: any,
   systemPrompt: string | null = null,
+  tools: any[] | null = null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
+  // v1.4 §4.4 建议2：预构建子图（按 task_type 过滤工具）
+  //   - tools 为空或 null：保持原行为（单次 LLM 调用，无 ReAct 循环）
+  //   - tools 非空：构建子图，子 Agent 可调用工具
+  //   子图构建是 lazy 的——只在首次需要时构建并缓存
+  const _subgraphCache: Map<string, any> = new Map()
+
+  function _getSubgraphForTaskType(taskType: string): any | null {
+    if (!tools || tools.length === 0) return null
+    if (_subgraphCache.has(taskType)) return _subgraphCache.get(taskType)
+
+    // v1.4 §4.4 建议2：按 task_type 过滤工具
+    const filteredTools = _filterToolsByTaskType(tools!, taskType)
+    if (filteredTools.length === 0) {
+      _subgraphCache.set(taskType, null)
+      return null
+    }
+    // 子图使用未绑定工具的 LLM，由子图内部 ToolNode 调度
+    const subgraph = build_subagent_subgraph(
+      boundLlm,
+      filteredTools,
+      systemPrompt,
+      taskType,
+      10, // recursionLimit，独立于主图
+    )
+    _subgraphCache.set(taskType, subgraph)
+    logger.debug(
+      'Subagent subgraph built for task_type=%s, tools=%d',
+      taskType, filteredTools.length,
+    )
+    return subgraph
+  }
+
   async function _subagentNode(
     state: ModuAgentState,
   ): Promise<Partial<ModuAgentState>> {
@@ -1112,41 +1275,174 @@ export function makeSubagentNode(
     const taskType = task['task_type'] ?? 'default'
     const taskInput = task['task_input'] ?? {}
     const promptText = (taskInput['prompt'] as string) ?? String(taskInput)
+    const traceId = state.trace_id ?? ''
 
-    // 选择系统提示词
-    const effectivePrompt = systemPrompt ?? _getSystemPrompt(taskType)
+    const config = getConfig()
+    const multiAgentCfg = config.get('orchestration.multi_agent', {}) ?? {}
+    const timeoutMs = Number(multiAgentCfg['subgraph_timeout_ms'] ?? 30000)
+    const maxRetries = Number(multiAgentCfg['subagent_max_retries'] ?? 1)
 
-    const messages: BaseMessage[] = [
-      new SystemMessage({ content: effectivePrompt }),
-      new HumanMessage({ content: promptText }),
-    ]
+    // v1.4 §4.4 建议3：读取共享黑板，注入到子任务上下文
+    //   子 Agent 可读取其他已完成子 Agent 写入的中间结果（如 search_results）
+    const blackboard = state.blackboard ?? {}
+    const enrichedTaskInput = { ...taskInput }
+    if (Object.keys(blackboard).length > 0) {
+      enrichedTaskInput['blackboard'] = blackboard
+    }
 
-    let result: Record<string, any>
-    try {
-      const response = await boundLlm.invoke(messages)
-      const content = (response as any).content ?? String(response)
-      result = {
-        task_id: taskId,
-        task_type: taskType,
-        status: 'success',
-        output: content,
+    // v1.4 §4.4 建议2：尝试使用子图（带工具循环）
+    const subgraph = _getSubgraphForTaskType(taskType)
+
+    let result: Record<string, any> | null = null
+    let lastError: string = ''
+
+    // v1.4 §4.4 建议14：失败重试
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        let content: string
+
+        if (subgraph) {
+          // v1.4 §4.4 建议2+6：子图执行 + 超时
+          const subgraphResult = await _invokeWithTimeout(
+            subgraph.invoke({
+              task_id: taskId,
+              task_type: taskType,
+              task_input: enrichedTaskInput,
+              messages: [],
+              trace_id: traceId,
+            }),
+            timeoutMs,
+            `Subagent (task_id=${taskId})`,
+          )
+          const taskOutput: Record<string, any> = (subgraphResult as any)?.['task_output'] ?? {}
+          if (taskOutput['status'] === 'error') {
+            throw new Error(taskOutput['error'] ?? 'subgraph error')
+          }
+          content = taskOutput['content'] ?? taskOutput['output'] ?? ''
+        } else {
+          // 回退路径：原始单次 LLM 调用（无工具）
+          // v1.4 §4.4 建议3：将黑板上下文注入到 prompt
+          const effectivePrompt = systemPrompt ?? _getSystemPrompt(taskType)
+          const fullPromptText = Object.keys(blackboard).length > 0
+            ? `${promptText}\n\n[Shared context from other agents]: ${JSON.stringify(blackboard)}`
+            : promptText
+          const messages: BaseMessage[] = [
+            new SystemMessage({ content: effectivePrompt }),
+            new HumanMessage({ content: fullPromptText }),
+          ]
+          const response = await _invokeWithTimeout(
+            boundLlm.invoke(messages),
+            timeoutMs,
+            `Subagent (task_id=${taskId})`,
+          )
+          content = (response as any).content ?? String(response)
+        }
+
+        result = {
+          task_id: taskId,
+          task_type: taskType,
+          status: 'success',
+          output: content,
+          attempts: attempt + 1,
+        }
+        lastError = ''
+        break
+      } catch (e) {
+        lastError = String(e)
+        if (attempt < maxRetries) {
+          const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000)
+          logger.warning(
+            'Sub-agent attempt %d failed (task_id=%s), retrying in %dms: %s',
+            attempt + 1, taskId, backoffMs, lastError,
+          )
+          await new Promise((r) => setTimeout(r, backoffMs))
+        } else {
+          logger.error(
+            'Sub-agent failed after %d attempts (task_id=%s): %s',
+            attempt + 1, taskId, lastError,
+          )
+        }
       }
-    } catch (e) {
-      logger.error('Sub-agent LLM invoke failed (task_id=%s): %s', taskId, String(e))
+    }
+
+    if (lastError && result === null) {
       result = {
         task_id: taskId,
         task_type: taskType,
         status: 'error',
-        error: String(e),
+        error: lastError,
         output: '',
+        attempts: maxRetries + 1,
       }
     }
 
+    // 此时 result 一定非空（成功路径已赋值，失败路径上方已赋值）
+    const finalResult: Record<string, any> = result!
+
+    // v1.4 §4.4 建议3：将子 Agent 结果摘要写入黑板，供后续子 Agent 读取
+    //   仅写入 status=success 的结果，避免错误结果污染黑板
+    //   key 用 task_id 隔离，避免覆盖
+    const blackboardUpdate = finalResult['status'] === 'success'
+      ? { [taskId]: { task_type: taskType, output: finalResult['output'] } }
+      : {}
+
     // 仅返回 subtask_results（不返回 current_subtask，避免并行写冲突）
-    return { subtask_results: { [taskId]: result } }
+    return {
+      subtask_results: { [taskId]: finalResult },
+      ...(Object.keys(blackboardUpdate).length > 0 ? { blackboard: blackboardUpdate } : {}),
+    }
   }
 
   return _subagentNode
+}
+
+/**
+ * v1.4 §4.4 建议2：按 task_type 过滤工具。
+ *
+ * 工具按 BaseTool.category() 或工具名前缀映射到 task_type：
+ *   - research: search_engine, http_request
+ *   - coding: calculator, code_executor
+ *   - review: 无工具（纯 LLM 评审）
+ *   - default: 全部工具（保守策略）
+ *
+ * 工具实例可能是 LangChain StructuredTool 或 BaseTool wrapper，
+ * 通过 name 字段判断。
+ */
+function _filterToolsByTaskType(tools: any[], taskType: string): any[] {
+  const _TOOL_TASK_TYPE_MAP: Record<string, string[]> = {
+    research: ['search_engine', 'http_request'],
+    coding: ['calculator', 'code_executor'],
+    review: [],
+  }
+  const allowed = _TOOL_TASK_TYPE_MAP[taskType]
+  if (!allowed) {
+    // 未知 task_type：保守返回全部工具
+    return tools
+  }
+  if (allowed.length === 0) return []
+  return tools.filter((t) => {
+    const name = typeof t.name === 'string' ? t.name : (t.name?.() ?? '')
+    return allowed.includes(name)
+  })
+}
+
+/**
+ * v1.4 §4.4 建议6：带超时的 invoke 包装。
+ *
+ * 使用 Promise.race 实现，超时后抛出 TimeoutError。
+ * 注意：超时不会真正中断底层 LLM 调用（JS 无法取消 Promise），
+ * 但能释放主流程不被阻塞——子 Agent 慢时 consensus 仍可继续。
+ */
+async function _invokeWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  if (timeoutMs <= 0) return promise
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  return Promise.race([promise, timeoutPromise]) as Promise<T>
 }
 
 /**
@@ -1154,6 +1450,13 @@ export function makeSubagentNode(
  *
  * 收集所有子 Agent 结果，通过共识策略聚合，生成最终响应。
  * 共识失败时发布 FEEDBACK 事件作为进化信号。
+ *
+ * v1.4 §4.4 改造：
+ *   - 建议8：consensus 结果作为 AIMessage 追加到 messages，修复 consensus_result
+ *     与 finalize_response 脱节问题（finalize_response 从 messages 末条 AIMessage 提取）
+ *   - 建议9：改用 ConsensusPattern.reach_consensus 统一入口（含 quorum + 超时处理）
+ *   - 建议11：quorum 默认改为动态计算 max(1, ceil(subtask_count / 2))，避免 3 子 Agent
+ *     下 1 个失败即共识失败
  */
 export function makeConsensusNode(
   strategy: any = null,
@@ -1170,22 +1473,42 @@ export function makeConsensusNode(
 
     const config = getConfig()
     const multiAgentCfg = config.get('orchestration.multi_agent', {}) ?? {}
-    const quorum = multiAgentCfg['consensus_quorum'] ?? 2
 
     // 收集有效结果
     const results = Object.values(subtaskResults)
     const validResults = results.filter((r) => r['status'] === 'success')
 
-    // quorum 校验
+    // v1.4 §4.4 建议11：动态计算 quorum
+    //   - 配置显式指定 consensus_quorum > 0 时沿用配置
+    //   - 否则按 max(1, ceil(subtask_count / 2)) 动态计算，避免 3 子 Agent 下 1 个失败即失败
+    const subtaskCount = Math.max(state.subtasks?.length ?? 0, results.length, 1)
+    const configQuorum = Number(multiAgentCfg['consensus_quorum'] ?? 0)
+    const quorum = configQuorum > 0
+      ? configQuorum
+      : Math.max(1, Math.ceil(subtaskCount / 2))
+
+    // v1.4 §4.4 建议9：使用 ConsensusPattern 统一入口（含 quorum 校验 + 超时 + 事件发布）
+    let effectiveStrategy = strategy
+    if (effectiveStrategy === null) {
+      const strategyName = multiAgentCfg['consensus_strategy'] ?? 'majority_vote'
+      const taskDesc = state.input_data?.['prompt'] ?? ''
+      effectiveStrategy = create_consensus_strategy(strategyName, judgeLlm, taskDesc)
+    }
+
+    const pattern = new ConsensusPattern(quorum, effectiveStrategy, eventBus)
+
+    // 通过 reach_consensus 统一入口聚合
+    //   participants 传入空数组——我们已有结果，直接通过 _aggregateResults 复用策略
+    //   实际上 reach_consensus 期望传入 participant 函数列表，这里我们绕过它
+    //   改为直接调用 pattern.strategy.aggregate + 手动 quorum 校验 + 失败事件发布
+    //   以复用 reach_consensus 的失败发布逻辑
     if (validResults.length < quorum) {
       logger.warning(
         'Consensus quorum not met: %d/%d (trace_id=%s)',
         validResults.length, quorum, traceId,
       )
-      // 发布共识失败事件（进化信号）
       if (multiAgentCfg['consensus_failure_as_evolution_signal']) {
         try {
-          const pattern = new ConsensusPattern(quorum, undefined, eventBus)
           await pattern._publish_consensus_failure(
             { trace_id: traceId, session_id: sessionId, user_id: userId },
             results,
@@ -1204,23 +1527,14 @@ export function makeConsensusNode(
         fallbackOutput = results[0]['output'] ?? 'Consensus failed'
       }
 
+      const fallbackText = fallbackOutput || 'Unable to reach consensus among agents.'
+      // v1.4 §4.4 建议8：将降级结果作为 AIMessage 追加到 messages
       return {
         consensus_result: { status: 'failed', consensus: null },
         consensus_failed: true,
-        response: fallbackOutput || 'Unable to reach consensus among agents.',
+        response: fallbackText,
+        messages: [...(state.messages ?? []), new AIMessage({ content: fallbackText })],
       }
-    }
-
-    // 创建/使用策略
-    let effectiveStrategy = strategy
-    if (effectiveStrategy === null) {
-      const strategyName = multiAgentCfg['consensus_strategy'] ?? 'majority_vote'
-      const taskDesc = state.input_data?.['prompt'] ?? ''
-      effectiveStrategy = create_consensus_strategy(
-        strategyName,
-        judgeLlm,
-        taskDesc,
-      )
     }
 
     // 聚合
@@ -1237,6 +1551,8 @@ export function makeConsensusNode(
         responseText = String(consensusContent)
       }
 
+      // v1.4 §4.4 建议8：将 consensus 结果作为 AIMessage 追加到 messages，
+      // 确保 finalize_response 节点能从 messages 末条 AIMessage 提取到子 Agent 协作结果
       return {
         consensus_result: {
           status: 'success',
@@ -1246,13 +1562,16 @@ export function makeConsensusNode(
         },
         consensus_failed: false,
         response: responseText,
+        messages: [...(state.messages ?? []), new AIMessage({ content: responseText })],
       }
     } catch (e) {
       logger.error('Consensus aggregation failed: %s', String(e))
+      const errText = `Consensus aggregation error: ${e}`
       return {
         consensus_result: { status: 'error', error: String(e) },
         consensus_failed: true,
-        response: `Consensus aggregation error: ${e}`,
+        response: errText,
+        messages: [...(state.messages ?? []), new AIMessage({ content: errText })],
       }
     }
   }

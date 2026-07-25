@@ -16,7 +16,7 @@ export { MCPClient, MCPSession, getMcpClient, resetMcpClient } from './client.js
 // Discovery
 export { ToolInfo, ToolDiscovery } from './discovery.js'
 // Transport
-export { Transport, StdioTransport, SSETransport } from './transport.js'
+export { Transport, StdioTransport, SSETransport, WebSocketTransport } from './transport.js'
 // Lifecycle
 export { ServerLifecycleManager } from './lifecycle.js'
 // Errors

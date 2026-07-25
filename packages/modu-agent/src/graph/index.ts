@@ -13,9 +13,16 @@
 // state
 export {
   type ModuAgentState,
+  type CoreState,
+  type HITLModeState,
+  type MultiAgentModeState,
+  type PlanExecuteModeState,
+  type FeedbackModeState,
   ModuAgentStateAnnotation,
   makeInitialState,
   mergeSubtaskResults,
+  STATE_SCHEMA_VERSION,
+  migrate_state,
 } from './state.js'
 
 // nodes

@@ -27,6 +27,17 @@ const _FORBIDDEN_SQL_KEYWORDS = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNC
 // SELECT 语句前缀校验
 const _SELECT_PREFIX = /^\s*SELECT\b/i
 
+// 表名引用提取正则（对应文档 §2.5 建议4）：
+//   支持三种表引用格式：
+//     1. 引号标识符（双引号）："my table" 或 ""quoted"" 转义
+//     2. 引号标识符（反引号）：`my table` 或 ``quoted`` 转义
+//     3. 裸标识符（含 schema 限定）：schema.table 或 table
+//   相比原 /\b(?:FROM|JOIN)\s+(\w+)/gi 修复：
+//     - schema.table 不再只捕获 schema（会规范化为 table 部分）
+//     - "my table" / `my table` 不再被漏检
+const _TABLE_REF_PATTERN =
+  /\b(?:FROM|JOIN)\s+("(?:[^"]|"")*"|`(?:[^`]|``)*`|[\w]+(?:\.[\w]+)*)/gi
+
 /**
  * P3-12.3.4: SQL 查询工具。
  *
@@ -132,20 +143,56 @@ export class SqlQueryTool extends BaseTool {
       return [false, 'SQL comments not allowed']
     }
 
-    // 表名白名单检查
+    // 表名白名单检查（对应文档 §2.5 建议4 增强）
     if (this._allowedTables !== null) {
-      // 简化提取 FROM/JOIN 后的表名
-      const tableMatches = query.matchAll(/\b(?:FROM|JOIN)\s+(\w+)/gi)
+      // 重置正则 lastIndex（全局正则在 matchAll 中会自动管理，
+      // 但为防御性编程显式重置）
+      _TABLE_REF_PATTERN.lastIndex = 0
+      const tableMatches = query.matchAll(_TABLE_REF_PATTERN)
       for (const m of tableMatches) {
-        const table = m[1]
-        if (!this._allowedTables.has(table)) {
-          return [false, `Table '${table}' not in allowed list`
-          ]
+        // 规范化表引用：去引号、取 schema.table 的 table 部分
+        const variants = this._normalizeTableRef(m[1])
+        // 任一变体在白名单中即放行（兼容用户配置 table 或 schema.table 两种形式）
+        const allowed = variants.some((v) => this._allowedTables!.has(v))
+        if (!allowed) {
+          return [false, `Table '${variants[0]}' not in allowed list`]
         }
       }
     }
 
     return [true, '']
+  }
+
+  /**
+   * 规范化表名引用（对应文档 §2.5 建议4）。
+   *
+   * 处理：
+   *   - 去除双引号/反引号（含转义字符还原）
+   *   - schema 限定名取表名部分（schema.table → table）
+   *
+   * 返回所有需校验的变体（兼容白名单按 `table` 或 `schema.table` 配置）：
+   *   - "my table" → ['my table']
+   *   - `users` → ['users']
+   *   - public.users → ['users', 'public.users']
+   *
+   * @param ref 正则捕获的表引用字符串
+   * @returns 表名变体列表（保留原大小写以兼容大小写敏感的白名单配置）
+   */
+  private _normalizeTableRef(ref: string): string[] {
+    let name = ref
+    // 去除双引号（SQL 标准标识符引号，支持 "" 转义）
+    if (name.startsWith('"') && name.endsWith('"')) {
+      name = name.slice(1, -1).replace(/""/g, '"')
+    } else if (name.startsWith('`') && name.endsWith('`')) {
+      // 去除反引号（MySQL 风格，支持 `` 转义）
+      name = name.slice(1, -1).replace(/``/g, '`')
+    }
+    // schema.table → 同时返回 table 和 schema.table 两种形式
+    const parts = name.split('.')
+    const tableName = parts[parts.length - 1]
+    if (!tableName) return [name]
+    if (parts.length > 1) return [tableName, name]
+    return [tableName]
   }
 
   async invoke(

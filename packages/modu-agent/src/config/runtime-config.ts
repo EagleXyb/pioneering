@@ -73,7 +73,19 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       consensus_quorum: 2,
       subgraph_timeout_ms: 30000,
       consensus_failure_as_evolution_signal: true,
+      // v1.4 §4.4 建议1：LLM 驱动任务拆分（默认开启，plannerLlm 为空时自动 fallback）
+      use_llm_decompose: true,
+      // v1.4 §4.4 建议14：子 Agent 失败重试次数（0=不重试）
+      subagent_max_retries: 1,
     },
+    // 路由分叉配置化（对应文档 §2.3 建议4）
+    // 按顺序匹配，首个命中规则胜出；无规则命中时按内置默认优先级回退
+    // 运行时新增模式只需追加规则，无需改源码
+    mode_router: [
+      { when: { config_key: 'orchestration.multi_agent.enabled', config_value: true }, route: 'supervisor' },
+      { when: { configurable_key: 'plan_execute_enabled', configurable_value: true }, route: 'planner' },
+      { when: { config_key: 'plan_execute.enabled', config_value: true }, route: 'planner' },
+    ],
   },
   // P4 Plan-and-Execute 模式（默认关闭，零侵入；与 multi_agent 互斥，multi_agent 优先）
   plan_execute: {
@@ -98,6 +110,48 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       auto_reject_on_timeout: true,
       sensitive_tools: ['code_executor', 'sql_query', 'file_ops_write'],
     },
+    // 工具结果字符级截断（对应文档 §4.3 建议1）
+    // 启用后 wrap_modu_tool 在返回前按工具名截断结果，避免大响应撑爆 LLM 上下文
+    // - default: 全局默认上限（0 表示不截断）
+    // - limits.{tool_name}: 按工具名单独配置，覆盖 default
+    // 截断时在结果末尾追加 "[truncated]" 标记
+    max_result_chars: {
+      default: 0,  // 默认不截断；启用时建议设置为 8000~20000
+      limits: {
+        // 示例：
+        // search_engine: 4000,
+        // http_request: 8000,
+      },
+    },
+    // 工具结果缓存（对应文档 §4.3 建议2）
+    // 启用后 wrap_modu_tool 按 tool_name + hash(args) 缓存结果，避免重复调用
+    // - enabled: 全局开关（默认 false）
+    // - default_ttl_ms: 默认 TTL（毫秒），0 表示永不过期
+    // - max_entries: 全局最大缓存条目数（LRU 淘汰）
+    // - tools.{tool_name}.ttl_ms: 按工具名单独配置 TTL（覆盖 default_ttl_ms）
+    //   仅在 tools.{tool_name} 配置存在时该工具才启用缓存
+    //   （即仅对显式配置的工具启用，避免误缓存副作用工具如 file_ops_write）
+    result_cache: {
+      enabled: false,
+      default_ttl_ms: 60000,  // 60s
+      max_entries: 100,
+      tools: {
+        // 示例：
+        // search_engine: { ttl_ms: 120000 },
+        // http_request: { ttl_ms: 60000 },
+      },
+    },
+    // 工具限流配置（对应文档 §2.5 建议7）
+    // 启用后 wrap_modu_tool 外层包装 token bucket，按工具名配置 RPM 上限
+    // 缺失工具名的配置表示不限流
+    rate_limit: {
+      enabled: false,  // 默认关闭，启用后按工具名读取 limits
+      limits: {
+        // 示例：code_executor 60 RPM，http_request 120 RPM
+        // code_executor: 60,
+        // http_request: 120,
+      },
+    },
   },
   skills: {
     enabled: false,
@@ -109,6 +163,15 @@ export const DEFAULT_CONFIG: Record<string, any> = {
   },
   event_bus: {
     max_log_size: 1000,
+    // 事件 TTL（毫秒），0 表示不启用（对应文档 §2.2 建议5）
+    // 启用后 PersistentEventLog 会丢弃超过 TTL 的事件，避免日志无限累积
+    event_ttl_ms: 0,
+    // 持久化日志文件路径（空字符串表示不持久化到文件）
+    log_file_path: '',
+    // 持久化日志单文件最大大小（MB），超过后滚动
+    log_max_file_size_mb: 10.0,
+    // 仅持久化指定 domain 的事件；null 表示全部
+    log_domains: null,
   },
   perception: {
     default_processor: 'text_preprocessor',
@@ -127,6 +190,15 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       enable_guard: true,
       block_on_injection: false,
       block_on_pii: false,
+      // LLM-based Prompt 注入二次校验（对应文档 §2.5 建议1）
+      // 默认关闭：启用后会对关键词检测未命中（risk_level=0）的输入
+      // 调用 LLM 做语义级二次校验，增加延迟但提升对抗绕过能力
+      llm_judge: {
+        enabled: false,
+        // 仅在关键词检测 risk_level 低于此阈值时触发 LLM 二次校验
+        // （关键词已判定高风险时无需再调用 LLM，节省成本）
+        risk_threshold: 1,
+      },
     },
     deep_parsing: {
       enable: true,
