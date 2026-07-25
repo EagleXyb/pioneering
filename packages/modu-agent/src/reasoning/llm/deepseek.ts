@@ -3,8 +3,8 @@
 import { BaseLLMReasoner } from './base-llm.js'
 
 const _DEFAULT_BASE_URL = 'https://api.deepseek.com'
-// P2-3 修复：deepseek-v4-flash 非有效模型名，未配置环境变量时 API 调用必然失败
-const _DEFAULT_MODEL = 'deepseek-chat'
+// P2-3 修复：deepseek-chat 非有效模型名（API 仅支持 deepseek-v4-pro / deepseek-v4-flash），未配置环境变量时 API 调用必然失败
+const _DEFAULT_MODEL = 'deepseek-v4-flash'
 
 /**
  * DeepSeek LLM 推理器。

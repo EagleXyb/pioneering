@@ -47,7 +47,7 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       default_route: 'default', // 无规则命中时的兜底路由名
       routes: {
         // 路由名 → { provider, model, temperature?, max_tokens? }
-        default: { provider: 'deepseek', model: 'deepseek-chat' },
+        default: { provider: 'deepseek', model: 'deepseek-v4-flash' },
       },
       rules: [
         // 示例规则：按 task_type 路由

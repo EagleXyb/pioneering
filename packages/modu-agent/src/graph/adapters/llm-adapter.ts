@@ -32,7 +32,7 @@ const _PROVIDER_CONFIG: Record<string, Record<string, string>> = {
     base_url: 'MODU_DEEPSEEK_BASE_URL',
     model: 'MODU_DEEPSEEK_MODEL',
     default_base_url: 'https://api.deepseek.com',
-    default_model: 'deepseek-chat',
+    default_model: 'deepseek-v4-flash',
   },
   gpt: {
     api_key: 'OPENAI_API_KEY',

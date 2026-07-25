@@ -618,7 +618,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         // 深度思考 → 推理模型
         let model = dto.model || env.LLM_DEFAULT_MODEL
         if (dto.deepThink) {
-          model = 'deepseek-reasoner'
+          model = 'deepseek-v4-pro'
         }
 
         // 写入用户消息

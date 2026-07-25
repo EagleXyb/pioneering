@@ -11,16 +11,16 @@ const SCHEMA_HEALTH = { tags: ['system'], summary: '健康检查', security: [] 
 // P1-9 修复：模型列表与 env.LLM_DEFAULT_MODEL / chat.ts 实际使用的模型对齐
 const SUPPORTED_MODELS = [
   {
-    id: 'deepseek-chat',
-    name: 'DeepSeek Chat',
-    description: 'DeepSeek 标准对话模型（默认）',
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek V4 Flash',
+    description: 'DeepSeek 标准对话模型（默认，速度快、成本低）',
     max_tokens: 128000,
     pricing: { input_price: 0.14, output_price: 0.28 },
   },
   {
-    id: 'deepseek-reasoner',
-    name: 'DeepSeek Reasoner',
-    description: 'DeepSeek 深度思考模型（deepThink 模式）',
+    id: 'deepseek-v4-pro',
+    name: 'DeepSeek V4 Pro',
+    description: 'DeepSeek 深度思考模型（deepThink 模式，更强的推理能力）',
     max_tokens: 128000,
     pricing: { input_price: 0.28, output_price: 0.56 },
   },
