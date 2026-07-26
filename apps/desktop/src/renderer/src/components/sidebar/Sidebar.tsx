@@ -2,9 +2,9 @@
 // Sidebar — 左栏（会话历史）
 // ============================================================
 
-import { memo, useEffect } from 'react'
-import { useAtom } from 'jotai'
-import { userAtom } from '@/stores/atoms'
+import { memo, useEffect, useCallback } from 'react'
+import { useAtom, useSetAtom } from 'jotai'
+import { userAtom, settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
 import { useAppStore, type ThemeMode } from '@/stores/useAppStore'
 import { runMenuAction } from '@/menu/menuActions'
 import {
@@ -14,7 +14,8 @@ import {
   Monitor,
   HelpCircle,
   LogOut,
-  User
+  User,
+  ChevronRight
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -35,6 +36,8 @@ import { authService } from '@/services/api/auth'
 
 export const Sidebar = memo(function Sidebar() {
   const [user, setUser] = useAtom(userAtom)
+  const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const setSettingsCategory = useSetAtom(settingsCategoryAtom)
   // 订阅粒度细化：仅订阅 theme / setTheme（P2-3）
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
@@ -59,10 +62,27 @@ export const Sidebar = memo(function Sidebar() {
   }, [setUser])
 
   // 设置/帮助/检查更新 复用统一菜单动作（runMenuAction），避免与全局菜单逻辑重复
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     // logout 改为 async（S7），此处不阻塞 UI，best-effort 撤销后端 token
-    void authService.logout()
-  }
+    void authService.logout().finally(() => {
+      // 登出后重置本地用户信息，避免侧边栏仍显示旧头像/昵称
+      setUser({
+        id: '',
+        username: '未登录',
+        nickname: null,
+        email: null,
+        avatar: null
+      })
+    })
+  }, [setUser])
+
+  const openSettingsWithCategory = useCallback(
+    (categoryId: string) => {
+      setSettingsCategory(categoryId)
+      setSettingsOpen(true)
+    },
+    [setSettingsCategory, setSettingsOpen]
+  )
 
   const displayName = user.nickname || user.username || '未登录'
   const displayInitial = displayName.slice(0, 1).toUpperCase()
@@ -79,39 +99,59 @@ export const Sidebar = memo(function Sidebar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="flex items-center gap-2 rounded-md px-1.5 py-1 outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring"
               title="账户菜单"
             >
-              <Avatar className="h-6 w-6">
+              <Avatar className="h-7 w-7">
                 {user.avatar ? (
                   <AvatarImage src={user.avatar} alt={displayName} />
                 ) : null}
-                <AvatarFallback className="text-[10px] font-medium">
+                <AvatarFallback className="text-[11px] font-medium">
                   {displayInitial}
                 </AvatarFallback>
               </Avatar>
-              <span className="max-w-[110px] truncate text-xs text-foreground/80">
-                {displayName}
-              </span>
+              <div className="flex flex-col items-start min-w-0">
+                <span className="max-w-[120px] truncate text-xs font-medium text-foreground">
+                  {displayName}
+                </span>
+                <span className="max-w-[120px] truncate text-[10px] text-muted-foreground">
+                  {user.email || '未登录'}
+                </span>
+              </div>
             </button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent side="top" align="start" className="w-56">
+          <DropdownMenuContent side="top" align="start" className="w-60">
             <DropdownMenuLabel className="py-2">
-              <div className="truncate text-sm">{displayName}</div>
+              <div className="truncate text-sm font-medium">{displayName}</div>
               <div className="truncate text-[11px] font-normal text-muted-foreground">
-                {user.email || '—'}
+                {user.email || '未登录'}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem onSelect={() => runMenuAction('about')}>
-              <Settings />
-              设置
+            <DropdownMenuItem onSelect={() => openSettingsWithCategory('account')}>
+              <User />
+              个人中心
+              <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
             </DropdownMenuItem>
 
+            <DropdownMenuItem onSelect={() => openSettingsWithCategory('appearance')}>
+              <Sun className="size-4" />
+              外观设置
+              <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
+            </DropdownMenuItem>
+
+            <DropdownMenuItem onSelect={() => runMenuAction('openDocs')}>
+              <HelpCircle />
+              帮助与反馈
+              <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="flex items-center gap-2">
+              <DropdownMenuSubTrigger>
                 <Sun className="size-4" />
                 <span>主题</span>
                 <span className="ml-auto text-[11px] text-muted-foreground/60">
@@ -123,15 +163,15 @@ export const Sidebar = memo(function Sidebar() {
                   value={theme}
                   onValueChange={(v) => setTheme(v as ThemeMode)}
                 >
-                  <DropdownMenuRadioItem value="light" className="flex items-center gap-3 py-2 pl-3 pr-4">
+                  <DropdownMenuRadioItem value="light" className="flex items-center gap-2">
                     <Sun className="size-4 text-amber-500" />
                     <span>浅色</span>
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark" className="flex items-center gap-3 py-2 pl-3 pr-4">
+                  <DropdownMenuRadioItem value="dark" className="flex items-center gap-2">
                     <Moon className="size-4 text-blue-400" />
                     <span>深色</span>
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="system" className="flex items-center gap-3 py-2 pl-3 pr-4">
+                  <DropdownMenuRadioItem value="system" className="flex items-center gap-2">
                     <Monitor className="size-4 text-muted-foreground" />
                     <span>跟随系统</span>
                   </DropdownMenuRadioItem>
@@ -139,27 +179,29 @@ export const Sidebar = memo(function Sidebar() {
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
-            <DropdownMenuItem onSelect={() => runMenuAction('openDocs')}>
-              <HelpCircle />
-              帮助与反馈
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => runMenuAction('checkUpdate')}>
-              <User />
-              个人中心
+            <DropdownMenuItem onSelect={() => openSettingsWithCategory('about')}>
+              <Settings />
+              关于软件
+              <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={handleLogout}
-              className="text-destructive focus:text-destructive"
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
             >
               <LogOut />
               退出登录
             </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-center text-[10px] text-muted-foreground/50">
+              Pioneering v0.1.0
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <span className="text-[10px] text-muted-foreground/40">v0.1.0</span>
+        <span className="text-[10px] text-muted-foreground/60">v0.1.0</span>
       </div>
     </div>
   )

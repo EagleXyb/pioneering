@@ -21,6 +21,24 @@ import type { ApiResponse, AuthTokens } from '@shared/types'
 const DEFAULT_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://127.0.0.1:8088'
 
+const MAX_RETRIES = 3
+const RETRY_BASE_DELAY_MS = 500
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504])
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableError(error: { response?: { status?: number }; code?: string; config?: { method?: string } }): boolean {
+  if (!error.config) return false
+  const method = (error.config.method || 'get').toLowerCase()
+  if (method !== 'get') return false
+  if (error.response) {
+    return RETRYABLE_STATUS_CODES.has(error.response.status ?? 0)
+  }
+  return !!error.code && ['ECONNABORTED', 'ERR_NETWORK', 'ETIMEDOUT', 'ECONNRESET'].includes(error.code)
+}
+
 class ApiClient {
   private instance: AxiosInstance
   private accessToken: string | null = null
@@ -48,14 +66,14 @@ class ApiClient {
       (error) => Promise.reject(error)
     )
 
-    // 响应拦截器 — 统一错误处理 + Token 刷新
+    // 响应拦截器 — 统一错误处理 + Token 刷新 + 幂等重试
     this.instance.interceptors.response.use(
       (response: AxiosResponse<ApiResponse>) => {
         return response
       },
       async (error) => {
         const originalRequest = error.config as
-          | (InternalAxiosRequestConfig & { _retry?: boolean })
+          | (InternalAxiosRequestConfig & { _retry?: boolean; _retryCount?: number })
           | undefined
 
         // 401 自动刷新 Token（single-flight：并发 401 共享同一次刷新，避免 refresh token 被多次轮换）
@@ -67,14 +85,26 @@ class ApiClient {
         ) {
           originalRequest._retry = true
           try {
-            // M4: 复用统一的 single-flight 刷新（与 fetch 流共享同一 refreshPromise），
-            // 避免多路并发 401 各自刷新导致 refresh token 被并发轮换、相互失效。
             await this.performTokenRefresh()
             originalRequest.headers.Authorization = `Bearer ${this.accessToken}`
             return this.instance(originalRequest)
           } catch {
             this.clearTokens()
             throw error
+          }
+        }
+
+        // 幂等请求（GET）网络错误/临时 5xx 自动重试（指数退避）
+        if (originalRequest && isRetryableError(error)) {
+          const retryCount = (originalRequest._retryCount ?? 0)
+          if (retryCount < MAX_RETRIES) {
+            originalRequest._retryCount = retryCount + 1
+            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, retryCount)
+            await sleep(delay)
+            if (this.accessToken && originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${this.accessToken}`
+            }
+            return this.instance(originalRequest)
           }
         }
 
@@ -130,10 +160,8 @@ class ApiClient {
     this.onTokenChange = callback
   }
 
-  // S5 修复：Token 原仅内存存储，刷新页面即登出。
-  // 提供 restoreTokens 方法，应用启动时从主进程 storeApi 恢复已持久化的 token，
-  // 避免刷新即登出。注意 storeApi 当前为内存存储（主进程 Map），应用完全重启仍会丢失；
-  // 若需跨重启持久化，需在主进程接入 electron-store（见 codewiki M3）。
+  // 应用启动时从主进程 store（electron-store 持久化）恢复已登录的 token，
+  // 避免应用重启后需要重新登录。
   async restoreTokens(getStoredTokens: () => Promise<AuthTokens | null | undefined>): Promise<boolean> {
     try {
       const tokens = await getStoredTokens()

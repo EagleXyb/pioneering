@@ -3,9 +3,8 @@
    严格按照 apps/web/src/modes/pro/pro.css 的 .pro-input-* 样式移植：
    布局结构、圆角/阴影、聚焦态、发送/停止按钮、工具栏交互等。
    将 web 端主题变量映射到 desktop 端已有的语义令牌（--card / --border /
-   --muted-foreground / --accent / --ring），从而自动跟随明/暗主题；
-   仅发送按钮的深色字面量（#1a1d23 / #e8eaed，停止红 #ef4444 / #f87171）
-   按 web 端规范硬编码，并通过 [data-theme='dark'] 与 .dark 双选择器覆盖。
+   --muted-foreground / --accent / --ring / --primary / --destructive），
+   从而自动跟随明/暗主题，无硬编码字面量颜色。
    ============================================================ */
 
 /* ---- 外层区域：仅提供内边距与主题变量作用域（不铺背景，沿用原容器底色）---- */
@@ -22,7 +21,7 @@
   --text-secondary: var(--muted-foreground);
   --text-tertiary: var(--muted-foreground);
   --bg-input: var(--accent);
-  --accent-blue: #3b82f6;
+  --accent-blue: var(--primary);
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -62,10 +61,10 @@
     0 12px 40px rgba(0, 0, 0, 0.1);
 }
 
-/* 拖拽高亮（desktop 特性）：沿用 web 端的蓝色强调，维持交互反馈 */
+/* 拖拽高亮（desktop 特性）：使用主题 primary 色的透明叠层，明/暗自动适配 */
 .pro-input-card.is-dragging {
   border-color: var(--accent-blue);
-  background: rgba(59, 130, 246, 0.04);
+  background: color-mix(in oklch, var(--primary) 6%, var(--bg-card));
 }
 
 /* 暗色：更柔和的边界高光与更深的投影 */
@@ -88,7 +87,7 @@
 
 .dark .pro-input-card.is-dragging,
 [data-theme='dark'] .pro-input-card.is-dragging {
-  background: rgba(91, 156, 246, 0.08);
+  background: color-mix(in oklch, var(--primary) 10%, var(--bg-card));
 }
 
 /* ============================================================
@@ -193,6 +192,45 @@
   cursor: not-allowed;
 }
 
+/* ---- Agent 模式标签（工具栏左侧，加号按钮右侧）---- */
+.pro-input-agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+  user-select: none;
+}
+
+.pro-input-agent-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    background var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.pro-input-agent-close:hover {
+  background: color-mix(in oklch, var(--primary) 15%, transparent);
+  opacity: 1;
+}
+
 /* ---- 模型选择按钮（desktop 特性）---- */
 .pro-input-model-btn {
   display: inline-flex;
@@ -237,8 +275,8 @@
   margin-left: 4px;
   border: none;
   border-radius: 50%;
-  background: #1a1d23;
-  color: #ffffff;
+  background: var(--foreground);
+  color: var(--background);
   cursor: pointer;
   transition:
     background var(--transition-fast),
@@ -247,7 +285,7 @@
 }
 
 .pro-input-send-btn:hover:not(:disabled) {
-  background: #000000;
+  background: color-mix(in oklch, var(--foreground) 85%, black);
   transform: scale(1.05);
 }
 
@@ -256,48 +294,22 @@
 }
 
 .pro-input-send-btn:disabled {
-  background: #1a1d23;
+  background: var(--foreground);
   opacity: 0.25;
   cursor: not-allowed;
 }
 
-/* 停止态：默认深底，悬停变红（与 web 端一致） */
+/* 停止态：默认前景色背景，悬停变红色（破坏性色） */
 .pro-input-send-btn.is-stop {
-  background: #1a1d23;
+  background: var(--foreground);
 }
 
 .pro-input-send-btn.is-stop:hover:not(:disabled) {
-  background: #ef4444;
-  color: #ffffff;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
-/* 暗色覆盖 */
-.dark .pro-input-send-btn,
-[data-theme='dark'] .pro-input-send-btn {
-  background: #e8eaed;
-  color: #1a1d23;
-}
-
-.dark .pro-input-send-btn:hover:not(:disabled),
-[data-theme='dark'] .pro-input-send-btn:hover:not(:disabled) {
-  background: #ffffff;
-}
-
-.dark .pro-input-send-btn:disabled,
-[data-theme='dark'] .pro-input-send-btn:disabled {
-  background: #e8eaed;
-}
-
-.dark .pro-input-send-btn.is-stop,
-[data-theme='dark'] .pro-input-send-btn.is-stop {
-  background: #e8eaed;
-}
-
-.dark .pro-input-send-btn.is-stop:hover:not(:disabled),
-[data-theme='dark'] .pro-input-send-btn.is-stop:hover:not(:disabled) {
-  background: #f87171;
-  color: #ffffff;
-}
+/* 暗色覆盖：主题变量已自动切换明暗，无需额外覆盖 */
 
 /* ============================================================
    更多工具下拉面板 — 对应 web 端 .pro-input-more-pop

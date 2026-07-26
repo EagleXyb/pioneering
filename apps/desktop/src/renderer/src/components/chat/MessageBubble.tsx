@@ -1,4 +1,4 @@
-import { useState, memo, useRef, useEffect, useCallback } from 'react'
+import { useState, memo, useRef, useEffect, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -8,6 +8,7 @@ import { useSetAtom } from 'jotai'
 import { Copy, ThumbsUp, ThumbsDown, Check, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { openArtifactAtom } from '@/stores/artifactStore'
+import { useChatStore } from '@/stores/chatStore'
 import { getHastText, previewableLanguage, getCodeLanguage } from '@/lib/extractCodeBlocks'
 // T04：引入 shadcn/ui 官方 Message + Bubble 组件作为消息行布局外壳
 import {
@@ -17,9 +18,11 @@ import {
 } from '@/components/ui/message'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { cn } from '@/lib/utils'
-import type { Message as ChatMessage, ToolCall } from '@shared/types'
+import type { Message as ChatMessage, ToolCall, TraceNode } from '@shared/types'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
+import { TraceNodeView } from './TraceNodeView'
+import { TraceTreeRenderer, TraceTextNode } from './TraceTreeRenderer'
 
 // H7: 自定义 sanitize schema —— 在默认安全白名单基础上保留
 // GFM 表格与 rehype-highlight 高亮所需的 className（语言/ token 着色），
@@ -85,6 +88,9 @@ interface MessageBubbleProps {
   streamingContent?: string
   streamingThinking?: string
   streamingToolCalls?: ToolCall[]
+  /** M2: trace 树（流式期间用实时快照，历史消息用 message.traceNodes/traceRootOrder） */
+  streamingTraceNodes?: Record<string, TraceNode>
+  streamingTraceRootOrder?: string[]
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -92,11 +98,13 @@ export const MessageBubble = memo(function MessageBubble({
   isStreaming,
   streamingContent,
   streamingThinking,
-  streamingToolCalls
+  streamingToolCalls,
+  streamingTraceNodes,
+  streamingTraceRootOrder
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
-  const [liked, setLiked] = useState<'none' | 'like' | 'dislike'>('none')
   const copyTimer = useRef<number | null>(null)
+  const toggleMessageFeedback = useChatStore((s) => s.toggleMessageFeedback)
 
   useEffect(() => {
     return () => {
@@ -108,9 +116,18 @@ export const MessageBubble = memo(function MessageBubble({
   const isAssistant = message.role === 'assistant'
   const displayContent = isStreaming && streamingContent !== undefined ? streamingContent : message.content
 
-  // 流式期间优先显示实时推理/工具轨迹，结束回退到落库数据
-  const thinking = isStreaming ? streamingThinking : message.thinking?.content
-  const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
+  const feedback = message.feedback ?? 'none'
+
+  // M2: 优先使用 trace 树，回退到扁平结构
+  const traceNodes: Record<string, TraceNode> | undefined =
+    isStreaming ? streamingTraceNodes : message.traceNodes
+  const traceRootOrder: string[] | undefined =
+    isStreaming ? streamingTraceRootOrder : message.traceRootOrder
+  const useTrace = Boolean(traceNodes && traceRootOrder && traceRootOrder.length > 0)
+
+  // 扁平模式下的数据
+  const thinking = !useTrace ? (isStreaming ? streamingThinking : message.thinking?.content) : undefined
+  const toolCalls = !useTrace ? (isStreaming ? streamingToolCalls : message.toolCalls) : undefined
 
   const handleCopy = () => {
     navigator.clipboard.writeText(displayContent)
@@ -176,16 +193,31 @@ export const MessageBubble = memo(function MessageBubble({
   // T04：Message 作为消息行布局外壳，承担对齐 + 内容容器的组合（头像已隐藏）
   <Message align={align}>
       <MessageContent>
-        {/* T06：ThinkingBlock 内联于 MessageContent，置于气泡之前 */}
-        {isAssistant && thinking && <ThinkingBlock content={thinking} isStreaming={isStreaming} />}
+        {useTrace && isAssistant ? (
+          // M2/M6: trace 树递归渲染（thinking / tool-call / observation 等非 text 节点）
+          traceNodes && traceRootOrder ? (
+            <TraceTreeRenderer
+              nodes={traceNodes}
+              rootIds={traceRootOrder.filter((id) => {
+                const n = traceNodes[id]
+                return n && n.kind !== 'text'
+              })}
+            />
+          ) : null
+        ) : (
+          <>
+            {/* T06：ThinkingBlock 内联于 MessageContent，置于气泡之前 */}
+            {isAssistant && thinking && <ThinkingBlock content={thinking} isStreaming={isStreaming} />}
 
-        {/* T06：ToolCallCard 内联于 MessageContent，置于气泡之前 */}
-        {isAssistant && toolCalls && toolCalls.length > 0 && (
-          <div className="space-y-2">
-            {toolCalls.map((tc) => (
-              <ToolCallCard key={tc.id} toolCall={tc} />
-            ))}
-          </div>
+            {/* T06：ToolCallCard 内联于 MessageContent，置于气泡之前 */}
+            {isAssistant && toolCalls && toolCalls.length > 0 && (
+              <div className="space-y-2">
+                {toolCalls.map((tc) => (
+                  <ToolCallCard key={tc.id} toolCall={tc} />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* 图片附件：保持原有的安全降级（非 image/* 不开 <a href>） */}
@@ -224,21 +256,17 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {(displayContent || message.content || isStreaming) && (
-          // T04：Bubble 作为消息可见表面；用户消息沿用蓝色（保留原视觉），
-          // 助手消息使用 muted variant（与原 bg-muted/60 一致）。
-          // T03 a11y：流式输出期间让 AT 朗读新内容；助手消息作为 live region 通告更新。
+        {(displayContent || message.content || isStreaming || useTrace) && (
           <Bubble
-            variant={isUser ? 'default' : 'muted'}
+            variant={isUser ? 'secondary' : 'muted'}
             align={align}
             className={cn(
               isUser
-                ? '[&>[data-slot=bubble-content]]:bg-[#e5e7eb] [&>[data-slot=bubble-content]]:text-foreground'
+                ? ''
                 : 'w-full max-w-full'
             )}
           >
             <BubbleContent
-              // T03 a11y：role/aria-live/aria-atomic 仅在流式助手消息上启用
               role={isAssistant && isStreaming ? 'status' : undefined}
               aria-live={isAssistant && isStreaming ? 'polite' : undefined}
               aria-atomic={isAssistant && isStreaming ? 'false' : undefined}
@@ -251,12 +279,19 @@ export const MessageBubble = memo(function MessageBubble({
               }
               className={cn(
                 'min-w-0 rounded-2xl py-2.5 text-sm leading-relaxed',
-                // 用户消息：左右内边距 16px；助手消息：左右内边距 0px 并填满内容区
-                isUser && 'px-4 bg-[#e5e7eb] text-foreground border-transparent',
+                isUser && 'px-4',
                 !isUser && 'px-0 !bg-transparent text-foreground border-transparent'
               )}
             >
-              {isAssistant || message.role === 'system' || message.role === 'tool' ? (
+              {/* M2/M6: trace 模式下 text 节点由 TraceTextNode 统一渲染（含 markdown、光标、动画）；
+                  非 trace 路径保留旧的 ReactMarkdown 渲染 */}
+              {useTrace && isAssistant ? (
+                traceNodes && traceRootOrder ? (
+                  <TraceTextNode nodes={traceNodes} rootIds={traceRootOrder} />
+                ) : isStreaming ? (
+                  <span className="inline-block h-4 w-1.5 animate-pulse bg-current" aria-hidden>▊</span>
+                ) : null
+              ) : (isAssistant || message.role === 'system' || message.role === 'tool') ? (
                 <div className="chat-markdown max-w-none break-words">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -290,23 +325,23 @@ export const MessageBubble = memo(function MessageBubble({
               variant="ghost"
               size="icon"
               className="size-6"
-              onClick={() => setLiked(liked === 'like' ? 'none' : 'like')}
+              onClick={() => toggleMessageFeedback(message.id, feedback === 'like' ? 'none' : 'like')}
               title="赞"
-              aria-label={liked === 'like' ? '取消赞' : '赞'}
-              aria-pressed={liked === 'like'}
+              aria-label={feedback === 'like' ? '取消赞' : '赞'}
+              aria-pressed={feedback === 'like'}
             >
-              <ThumbsUp className={cn('size-3', liked === 'like' && 'text-blue-500')} />
+              <ThumbsUp className={cn('size-3', feedback === 'like' && 'text-blue-500')} />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="size-6"
-              onClick={() => setLiked(liked === 'dislike' ? 'none' : 'dislike')}
+              onClick={() => toggleMessageFeedback(message.id, feedback === 'dislike' ? 'none' : 'dislike')}
               title="踩"
-              aria-label={liked === 'dislike' ? '取消踩' : '踩'}
-              aria-pressed={liked === 'dislike'}
+              aria-label={feedback === 'dislike' ? '取消踩' : '踩'}
+              aria-pressed={feedback === 'dislike'}
             >
-              <ThumbsDown className={cn('size-3', liked === 'dislike' && 'text-red-500')} />
+              <ThumbsDown className={cn('size-3', feedback === 'dislike' && 'text-red-500')} />
             </Button>
             {message.model && (
               <span className="text-[10px] text-muted-foreground ml-1">{message.model}</span>

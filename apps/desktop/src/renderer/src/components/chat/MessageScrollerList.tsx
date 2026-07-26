@@ -21,7 +21,9 @@
 //   - 同发送者分组（T05）通过 groupPosition 控制头像显隐与间距
 // ============================================================
 
+import { ChevronDown } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
+import { Button } from '@/components/ui/button'
 import {
   MessageScroller,
   MessageScrollerProvider,
@@ -57,8 +59,13 @@ interface MessageScrollerListProps {
   streamingContent?: string
   streamingThinking?: string
   streamingToolCalls?: ToolCall[]
+  streamingTraceNodes?: Record<string, import('@shared/types').TraceNode>
+  streamingTraceRootOrder?: string[]
   streamingMessageId?: string | null
   isStreaming?: boolean
+  hasMore?: boolean
+  isLoadingMore?: boolean
+  onLoadMore?: () => void
 }
 
 export function MessageScrollerList({
@@ -66,8 +73,13 @@ export function MessageScrollerList({
   streamingContent,
   streamingThinking,
   streamingToolCalls,
+  streamingTraceNodes,
+  streamingTraceRootOrder,
   streamingMessageId,
-  isStreaming
+  isStreaming,
+  hasMore,
+  isLoadingMore,
+  onLoadMore
 }: MessageScrollerListProps) {
   // T14：last-anchor 定位策略由 flag 控制，默认关（保持原"拉到底部"行为）
   const useLastAnchor = useFeatureFlag('scrollLastAnchor')
@@ -97,6 +109,20 @@ export function MessageScrollerList({
       <MessageScroller className="h-full">
         <MessageScrollerViewport aria-label="对话消息列表">
           <MessageScrollerContent className="px-3 py-4 gap-4">
+            {hasMore && (
+              <div className="flex justify-center pb-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs gap-1 text-muted-foreground hover:text-foreground"
+                  onClick={onLoadMore}
+                  disabled={isLoadingMore}
+                >
+                  <ChevronDown className="size-3" />
+                  {isLoadingMore ? '加载中...' : '加载更多历史消息'}
+                </Button>
+              </div>
+            )}
             {messages.map((msg, index) => {
               const isStreamingMsg = isStreaming && msg.id === streamingMessageId
               const groupPosition = computeGroupPosition(messages, index)
@@ -124,6 +150,8 @@ export function MessageScrollerList({
                     streamingContent={isStreamingMsg ? streamingContent : undefined}
                     streamingThinking={isStreamingMsg ? streamingThinking : undefined}
                     streamingToolCalls={isStreamingMsg ? streamingToolCalls : undefined}
+                    streamingTraceNodes={isStreamingMsg ? streamingTraceNodes : undefined}
+                    streamingTraceRootOrder={isStreamingMsg ? streamingTraceRootOrder : undefined}
                   />
                 </MessageScrollerItem>
               )

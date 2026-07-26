@@ -34,12 +34,14 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
+  HelpCircle,
   Image as ImageIcon,
   Mic,
   Paperclip,
   Plus,
   Square,
   Terminal,
+  X,
   Zap
 } from 'lucide-react'
 import {
@@ -55,7 +57,6 @@ import { cn } from '@/lib/utils'
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip'
 import { fileApi, notificationApi } from '@/services/ipc'
@@ -523,12 +524,8 @@ export function InputArea({
   }, [agentMode, setAgentMode, onToggleAgent])
 
   return (
-    // 顶层包裹本地 TooltipProvider：RootLayout 的全局 Provider 仅覆盖 TopBarActions，
-    // 而 InputArea 经 <Outlet/> 渲染、不在其内。Radix Tooltip 缺少 Provider 会在
-    // 渲染期抛错导致整树白屏，故此处自包含一层（与 ConversationList/ContextPanel 一致）。
-    <TooltipProvider>
-      <div className="pro-input-area">
-        <div className="pro-input-inner">
+    <div className="pro-input-area">
+      <div className="pro-input-inner">
         {/* Slash 命令弹出层 */}
         <SlashCommandPopover
           open={slashOpen}
@@ -556,9 +553,9 @@ export function InputArea({
           onDrop={handleDrop}
         >
           {/* 状态行：运行时状态 + 选中技能 */}
-          {(agentMode || attachedImages.length > 0 || selectedSkill) && (
+          {(attachedImages.length > 0 || selectedSkill) && (
             <div className="pro-input-status-row">
-              <ComposerRuntimeStatus imageCount={attachedImages.length} agentMode={agentMode} />
+              <ComposerRuntimeStatus imageCount={attachedImages.length} />
               {selectedSkill && (
                 <span className="inline-flex items-center gap-1 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] text-violet-500">
                   <ImageIcon className="size-3" />
@@ -638,12 +635,32 @@ export function InputArea({
                     <Terminal />
                     <span>技能</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => handleAttachFile()}>
-                    <HelpCircleIcon />
+                  <DropdownMenuItem onSelect={() => { /* 连接设置暂未实现 */ }}>
+                    <HelpCircle className="size-4" />
                     <span>连接</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {agentMode && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="pro-input-agent-badge">
+                      <Zap className="size-3.5" />
+                      <span>Agent</span>
+                      <button
+                        type="button"
+                        className="pro-input-agent-close"
+                        onClick={handleToggleAgent}
+                        aria-label="关闭 Agent 模式"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>点击关闭 Agent 模式</TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
             <div className="pro-input-toolbar-right">
@@ -713,28 +730,5 @@ export function InputArea({
         )}
       </div>
       </div>
-    </TooltipProvider>
-  )
-}
-
-/** 临时小图标组件：避免因缺少 HelpCircle 导入而报错 */
-function HelpCircleIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-      <path d="M12 17h.01" />
-    </svg>
   )
 }

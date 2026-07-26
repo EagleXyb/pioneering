@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
@@ -113,15 +114,17 @@ function App() {
   }, [])
 
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<RootLayout />}>
-          <Route index element={<ChatPage />} />
-          <Route path="/home" element={<HomePage />} />
-          <Route path="/workspace" element={<WorkspacePage />} />
-        </Route>
-      </Routes>
-    </HashRouter>
+    <TooltipProvider delayDuration={200}>
+      <HashRouter>
+        <Routes>
+          <Route element={<RootLayout />}>
+            <Route index element={<ChatPage />} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/workspace" element={<WorkspacePage />} />
+          </Route>
+        </Routes>
+      </HashRouter>
+    </TooltipProvider>
   )
 }
 

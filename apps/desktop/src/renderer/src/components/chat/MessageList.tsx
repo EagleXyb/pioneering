@@ -1,8 +1,9 @@
-import { Bot } from 'lucide-react'
+import { Bot, ChevronDown } from 'lucide-react'
 import { useEffect } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageBubble } from './MessageBubble'
+import { Button } from '@/components/ui/button'
 import type { Message, ToolCall } from '@shared/types'
 import { MESSAGE_LIST_ESTIMATE_HEIGHT, MESSAGE_LIST_OVERSCAN } from '@/lib/constants'
 import { highlightMessageIdAtom, clearHighlightAtom } from '@/stores/artifactStore'
@@ -45,14 +46,13 @@ interface MessageListProps {
   streamingContent?: string
   streamingThinking?: string
   streamingToolCalls?: ToolCall[]
+  streamingTraceNodes?: Record<string, import('@shared/types').TraceNode>
+  streamingTraceRootOrder?: string[]
   streamingMessageId?: string | null
   isStreaming?: boolean
-  /**
-   * 外层 ScrollArea 的根 ref，用于定位视口元素驱动虚拟化滚动。
-   * 复用 ConversationList 的视口定位模式：通过 querySelector
-   * '[data-radix-scroll-area-viewport]' 获取真实滚动容器。
-   * 若未提供则虚拟化降级为无滚动容器（仅渲染首屏估算条数）。
-   */
+  hasMore?: boolean
+  isLoadingMore?: boolean
+  onLoadMore?: () => void
   scrollElementRef?: React.RefObject<HTMLDivElement | null>
 }
 
@@ -61,8 +61,13 @@ export function MessageList({
   streamingContent,
   streamingThinking,
   streamingToolCalls,
+  streamingTraceNodes,
+  streamingTraceRootOrder,
   streamingMessageId,
   isStreaming,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
   scrollElementRef
 }: MessageListProps) {
   // P1 修复：原实现直接 `.map()` 渲染全部消息，每条跑 ReactMarkdown + rehypeHighlight +
@@ -125,6 +130,20 @@ export function MessageList({
 
   return (
     <div className="py-4">
+      {hasMore && (
+        <div className="flex justify-center pb-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs gap-1 text-muted-foreground hover:text-foreground"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+          >
+            <ChevronDown className="size-3" />
+            {isLoadingMore ? '加载中...' : '加载更多历史消息'}
+          </Button>
+        </div>
+      )}
       <div
         style={{
           height: virtualizer.getTotalSize(),
@@ -170,6 +189,8 @@ export function MessageList({
                 streamingContent={isStreamingMsg ? streamingContent : undefined}
                 streamingThinking={isStreamingMsg ? streamingThinking : undefined}
                 streamingToolCalls={isStreamingMsg ? streamingToolCalls : undefined}
+                streamingTraceNodes={isStreamingMsg ? streamingTraceNodes : undefined}
+                streamingTraceRootOrder={isStreamingMsg ? streamingTraceRootOrder : undefined}
               />
             </div>
           )

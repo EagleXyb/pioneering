@@ -33,6 +33,8 @@ export function ChatArea() {
   const streamingContent = useChatStore((s) => s.streamingContent)
   const streamingThinking = useChatStore((s) => s.streamingThinking)
   const streamingToolCalls = useChatStore((s) => s.streamingToolCalls)
+  const streamingTraceNodes = useChatStore((s) => s.streamingTraceNodes)
+  const streamingTraceRootOrder = useChatStore((s) => s.streamingTraceRootOrder)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const agentMode = useChatStore((s) => s.agentMode)
@@ -42,6 +44,9 @@ export function ChatArea() {
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearError = useChatStore((s) => s.clearError)
   const loadSessions = useChatStore((s) => s.loadSessions)
+  const loadMoreMessages = useChatStore((s) => s.loadMoreMessages)
+  const messagesHasMore = useChatStore((s) => s.messagesHasMore)
+  const messagesLoading = useChatStore((s) => s.messagesLoading)
 
   // T10/T11/T12/T13/T14：feature flag 控制 Message Scroller 启用
   const useMessageScroller = useFeatureFlag('messageScroller')
@@ -55,6 +60,8 @@ export function ChatArea() {
   const isNearBottomRef = useRef(true)
 
   const realMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
+  const hasMore = currentSessionId ? !!messagesHasMore[currentSessionId] : false
+  const isLoadingMore = messagesLoading && realMessages.length > 0
 
   // T09：dev 压测时注入大量 mock 消息（仅 dev，且用 __stress__ 前缀隔离）
   const currentMessages: Message[] = useMemo(() => {
@@ -136,8 +143,13 @@ export function ChatArea() {
               streamingContent={streamingContent}
               streamingThinking={streamingThinking}
               streamingToolCalls={streamingToolCalls}
+              streamingTraceNodes={streamingTraceNodes}
+              streamingTraceRootOrder={streamingTraceRootOrder}
               streamingMessageId={streamingMessageId}
               isStreaming={isStreaming}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+              onLoadMore={loadMoreMessages}
             />
           ) : (
             // legacy 路径 — ScrollArea + 虚拟化 + isNearBottomRef
@@ -149,8 +161,13 @@ export function ChatArea() {
                   streamingContent={streamingContent}
                   streamingThinking={streamingThinking}
                   streamingToolCalls={streamingToolCalls}
+                  streamingTraceNodes={streamingTraceNodes}
+                  streamingTraceRootOrder={streamingTraceRootOrder}
                   streamingMessageId={streamingMessageId}
                   isStreaming={isStreaming}
+                  hasMore={hasMore}
+                  isLoadingMore={isLoadingMore}
+                  onLoadMore={loadMoreMessages}
                   scrollElementRef={scrollRef}
                 />
               </div>

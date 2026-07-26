@@ -179,6 +179,43 @@ export interface ToolCall {
   endTime?: number
 }
 
+// ---- Trace 树（M1 新增）----
+// 将 thinking/tool-call/observation/text 等流式事件归一化为树形节点，
+// 替代扁平的 thinking + toolCalls[] 模型，支持折叠状态、耗时、嵌套层级。
+export type TraceNodeKind = 'thinking' | 'tool-call' | 'observation' | 'text' | 'error'
+export type TraceNodeStatus = 'pending' | 'running' | 'completed' | 'error'
+
+export interface TraceNode {
+  /** 稳定节点 id：thinking 节点固定为 "${msgId}::thinking"，工具节点使用 toolCallId */
+  id: string
+  kind: TraceNodeKind
+  /** 展示在折叠标题上的标签（如 "思考过程" / 工具名 / "最终回答"） */
+  label: string
+  status: TraceNodeStatus
+  /** 父节点 id；根节点 parentId = null */
+  parentId: string | null
+  /** 子节点有序 id 列表 */
+  children: string[]
+  /** 节点正文（thinking 内容 / 工具输入摘要 / text 正文 / observation 结果） */
+  content?: string
+  /** 工具名（仅 kind=tool-call/observation） */
+  toolName?: string
+  /** 工具调用参数（仅 kind=tool-call） */
+  arguments?: Record<string, unknown>
+  /** 工具参数原始 JSON 字符串（流式期间用于预览尚未解析完整的参数） */
+  argumentsRaw?: string
+  /** 工具执行失败时的错误信息 */
+  errorMessage?: string
+  /** 节点开始时间（epoch ms） */
+  startTime?: number
+  /** 节点结束时间（epoch ms） */
+  endTime?: number
+  /** 耗时毫秒；若未提供则渲染时从 startTime/endTime/当前时间推导 */
+  durationMs?: number
+  /** 是否为历史回填（来自后端 getExecutions），用于区分实时流 vs 回放 */
+  fromHistory?: boolean
+}
+
 export interface TokenUsage {
   prompt: number
   completion: number
@@ -188,6 +225,9 @@ export interface TokenUsage {
 export interface Message extends ChatMessage {
   thinking?: ThinkingBlock
   toolCalls?: ToolCall[]
+  /** M1: Trace 树（思考/工具/观察/正文归一化节点）；优先于 thinking/toolCalls 使用 */
+  traceNodes?: Record<string, TraceNode>
+  traceRootOrder?: string[]
   tokenUsage?: TokenUsage
   timestamp: number
   /** 用户消息附带图片（base64 dataUrl） */

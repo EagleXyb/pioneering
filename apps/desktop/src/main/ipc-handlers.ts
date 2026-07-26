@@ -17,6 +17,7 @@ import {
 import { readFile, writeFile, stat } from 'fs/promises'
 import { realpathSync } from 'fs'
 import path from 'path'
+import Store from 'electron-store'
 import { IpcChannel } from '../shared/ipc-channels'
 import type {
   FileDialogOptions,
@@ -27,8 +28,10 @@ import type {
   UserDataPath
 } from '../shared/ipc-channels'
 
-// 简单的内存 Store（可替换为 electron-store）
-const appStore = new Map<string, unknown>()
+// 使用 electron-store 持久化到磁盘，应用重启后 Token/配置不丢失。
+// 注意：electron-store 内部在读写时自动做 JSON 序列化/反序列化，
+// 我们在 IPC 边界仍保留 sanitizeValue 深度清洗以杜绝原型链污染。
+const appStore = new Store({ name: 'pioneering-app-store' })
 
 // 主进程持有的后端 baseURL，由渲染端通过 IPC 同步。
 // 解决原 APP_NETWORK_CHECK 直接读 process.env['VITE_API_BASE_URL']（主进程不加载
