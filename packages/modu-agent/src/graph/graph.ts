@@ -307,7 +307,7 @@ export class ModuGraph implements ModuGraphInterface {
  * @param checkpointer 检查点保存器（null=不持久化，MemorySaver=内存持久化）
  * @param store 长期记忆存储（null=跳过长期记忆查询）
  * @param systemPrompt 系统提示词（可选）
- * @param recursionLimit 递归限制（对应 maxIterations * 2 + 4）
+ * @param recursionLimit 递归限制（默认 = maxIterations * 3 + 7，见下方计算）
  * @param orchestrator EvolutionOrchestrator 实例（null=跳过反馈评估）
  * @param hitlEnabled P3-12.3.2 是否启用人工审批节点；null 时从配置读取
  * @param multiAgentEnabled P3-12.3.1 是否启用多 Agent 协作；null 时从配置读取
@@ -618,12 +618,16 @@ export function buildModuGraph(
   if (recursionLimit) {
     compiledAny.recursionLimit = recursionLimit
   } else {
-    // 默认：max_reasoning_iterations * 2 + 7（每个 ReAct 循环 2 个节点 + 固定开销含 feedback + memory_update）
+    // 默认：max_reasoning_iterations * 3 + 7（每个 ReAct 循环实际 3 个节点
+    //   agent → tools → tool_processor，加固定开销 perception + memory_query
+    //   + 终答 agent + finalize_response + memory_update/feedback；留 1~2 步余量）
+    // 注：旧公式按"每循环 2 个节点"计算会低估，导致 max_reasoning_iterations=3 时
+    //   合法运行的节点数(14) 超过预算(13)，正常推理也会抛 GraphRecursionError。
     // P3-12.3.2: HITL 开启时额外加 2（human_review + 路由开销）
     // P3-12.3.1: multi_agent 开启时额外加 4（supervisor + subagent_run + consensus + 路由开销）
     const config = getConfig()
     const maxIterations = config.get('llm.max_reasoning_iterations', 3)
-    let baseLimit = maxIterations * 2 + 7
+    let baseLimit = maxIterations * 3 + 7
     if (humanReviewNode) {
       baseLimit += 2  // 为 human_review 节点预留递归预算
     }
