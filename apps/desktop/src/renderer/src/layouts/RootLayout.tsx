@@ -35,14 +35,14 @@ import { usePlatform } from '@/hooks/usePlatform'
 import { usePanelToggle } from '@/platform/usePanelToggle'
 import { useChatStore } from '@/stores/chatStore'
 
-// 三栏初始比例（sidebar + center + context-panel = 100）
-const SIDEBAR_INIT = 15
-const CENTER_INIT = 55
-const CONTEXT_INIT = 30
+// 三栏模式：左侧 Sidebar 固定 260px，中栏 + 右栏用 ResizablePanelGroup 调整比例（合计 100）
+const SIDEBAR_WIDTH = 262
+const CENTER_INIT = 65
+const CONTEXT_INIT = 35
 
 export function RootLayout() {
   const { platform } = usePlatform()
-  const { sidebarRef, contextRef, mode } = usePanelToggle()
+  const { contextRef, mode } = usePanelToggle()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
   const navigate = useNavigate()
@@ -60,60 +60,54 @@ export function RootLayout() {
       <TitleBar />
 
       {mode === 'three-column' ? (
-        <ResizablePanelGroup
-          // 按平台区分 autoSaveId，各 OS 记忆各自布局
-          autoSaveId={`pioneering-main-layout-${platform}`}
-          direction="horizontal"
-          className="flex-1"
-        >
-          {/* 左栏：Sidebar */}
-          <ResizablePanel
-            id="sidebar"
-            ref={sidebarRef}
-            defaultSize={SIDEBAR_INIT}
-            minSize={10}
-            maxSize={25}
-            collapsible
-            collapsedSize={0}
-            onCollapse={() => setSidebarVisible(false)}
-            onExpand={() => setSidebarVisible(true)}
+        <div className="flex-1 flex overflow-hidden">
+          {/* 左栏：固定 260px 宽度的 Sidebar，可折叠 */}
+          <div
+            className="shrink-0 overflow-hidden transition-[width] duration-200 ease-out"
+            style={{ width: sidebarVisible ? SIDEBAR_WIDTH : 0 }}
           >
             <Sidebar />
-          </ResizablePanel>
+          </div>
 
-          <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
-
-          {/* 中栏：页面内容 */}
-          <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-            <div className="flex flex-col h-full">
-              {!sidebarVisible && (
-                <TopBarActions
-                  platform={platform}
-                  onExpandSidebar={() => setSidebarVisible(true)}
-                  onCreate={handleCreate}
-                />
-              )}
-              <div className="flex-1 min-h-0">
-                <Outlet />
-              </div>
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
-
-          {/* 右栏：Context Panel */}
-          <ResizablePanel
-            id="context-panel"
-            ref={contextRef}
-            defaultSize={CONTEXT_INIT}
-            minSize={15}
-            maxSize={50}
-            collapsible
-            collapsedSize={0}
+          {/* 中栏 + 右栏：可拖拽调整比例（2 个 Panel，比例合计 100） */}
+          <ResizablePanelGroup
+            // 按平台区分 autoSaveId，各 OS 记忆各自布局
+            autoSaveId={`pioneering-main-layout-2p-${platform}`}
+            direction="horizontal"
+            className="flex-1"
           >
-            <ContextPanel />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            {/* 中栏：页面内容 */}
+            <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
+              <div className="flex flex-col h-full">
+                {!sidebarVisible && (
+                  <TopBarActions
+                    platform={platform}
+                    onExpandSidebar={() => setSidebarVisible(true)}
+                    onCreate={handleCreate}
+                  />
+                )}
+                <div className="flex-1 min-h-0">
+                  <Outlet />
+                </div>
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
+
+            {/* 右栏：Context Panel */}
+            <ResizablePanel
+              id="context-panel"
+              ref={contextRef}
+              defaultSize={CONTEXT_INIT}
+              minSize={15}
+              maxSize={50}
+              collapsible
+              collapsedSize={0}
+            >
+              <ContextPanel />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       ) : (
         // 覆盖模式：中栏全宽，侧栏/上下文转抽屉
         <div className="flex-1 relative overflow-hidden">

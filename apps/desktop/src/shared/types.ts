@@ -58,6 +58,9 @@ export interface UpdateSessionRequest {
 // ---- 消息 ----
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
+/** 预览面板产物类型：HTML / SVG 走沙箱 iframe，其余走纯文本 code 视图 */
+export type ArtifactType = 'html' | 'svg' | 'code'
+
 export interface ChatMessage {
   id: string
   sessionId: string

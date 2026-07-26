@@ -16,16 +16,11 @@ export function usePanelToggle() {
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
 
-  const sidebarRef = useRef<ImperativePanelHandle>(null)
   const contextRef = useRef<ImperativePanelHandle>(null)
 
   // 同步 atom → 三栏模式的折叠态（覆盖键盘快捷键等外部修改）
-  useEffect(() => {
-    if (mode === 'three-column') {
-      sidebarVisible ? sidebarRef.current?.expand() : sidebarRef.current?.collapse()
-    }
-  }, [sidebarVisible, mode])
-
+  // 注：侧边栏已改为固定 260px 的 flex 元素，其折叠态由 sidebarVisible atom
+  //     直接通过 CSS 宽度控制，无需驱动 ResizablePanel。
   useEffect(() => {
     if (mode === 'three-column') {
       contextPanelVisible ? contextRef.current?.expand() : contextRef.current?.collapse()
@@ -40,5 +35,5 @@ export function usePanelToggle() {
     [contextPanelVisible]
   )
 
-  return { sidebarRef, contextRef, toggleSidebar, toggleContext, mode }
+  return { contextRef, toggleSidebar, toggleContext, mode }
 }

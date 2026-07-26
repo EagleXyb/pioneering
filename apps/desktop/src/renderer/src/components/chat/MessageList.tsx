@@ -1,8 +1,11 @@
 import { Bot } from 'lucide-react'
+import { useEffect } from 'react'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageBubble } from './MessageBubble'
 import type { Message, ToolCall } from '@shared/types'
 import { MESSAGE_LIST_ESTIMATE_HEIGHT, MESSAGE_LIST_OVERSCAN } from '@/lib/constants'
+import { highlightMessageIdAtom, clearHighlightAtom } from '@/stores/artifactStore'
 
 /**
  * T05 轻量分组：同发送者连续消息的视觉聚合。
@@ -78,6 +81,33 @@ export function MessageList({
     overscan: MESSAGE_LIST_OVERSCAN
   })
 
+  // 跳转源消息：预览面板「跳转到源消息」写入 highlightMessageIdAtom 后，
+  // 这里消费该信号——滚动定位到对应消息并做短暂高亮，随后清除信号。
+  const highlightId = useAtomValue(highlightMessageIdAtom)
+  const clearHighlight = useSetAtom(clearHighlightAtom)
+
+  useEffect(() => {
+    if (!highlightId) return
+    const idx = messages.findIndex((m) => m.id === highlightId)
+    if (idx >= 0) {
+      virtualizer.scrollToIndex(idx, { align: 'center' })
+    }
+    // 等虚拟化把目标条渲染进视口后再做 DOM 高亮
+    const t = window.setTimeout(() => {
+      const viewport = scrollElementRef?.current?.querySelector<HTMLElement>(
+        '[data-radix-scroll-area-viewport]'
+      )
+      const el = viewport?.querySelector<HTMLElement>(`[data-message-id="${highlightId}"]`)
+      if (el) {
+        el.classList.add('artifact-source-highlight')
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        window.setTimeout(() => el.classList.remove('artifact-source-highlight'), 2200)
+      }
+      clearHighlight()
+    }, 140)
+    return () => window.clearTimeout(t)
+  }, [highlightId, messages, virtualizer, clearHighlight, scrollElementRef])
+
   if (messages.length === 0) {
     return (
       <div className="flex h-full items-center justify-center py-12">
@@ -121,6 +151,7 @@ export function MessageList({
           return (
             <div
               key={msg.id}
+              data-message-id={msg.id}
               data-index={row.index}
               data-group-position={groupPosition}
               ref={virtualizer.measureElement}
@@ -139,7 +170,6 @@ export function MessageList({
                 streamingContent={isStreamingMsg ? streamingContent : undefined}
                 streamingThinking={isStreamingMsg ? streamingThinking : undefined}
                 streamingToolCalls={isStreamingMsg ? streamingToolCalls : undefined}
-                groupPosition={groupPosition}
               />
             </div>
           )

@@ -26,6 +26,9 @@ import { contextPanelVisibleAtom } from '@/stores/atoms'
 import { useChatStore } from '@/stores/chatStore'
 import type { ToolCall } from '@shared/types'
 import { TaskPipeline } from './TaskPipeline'
+import { ArtifactPanel } from '@/components/preview/ArtifactPanel'
+import { useAtomValue } from 'jotai'
+import { activeArtifactAtom } from '@/stores/artifactStore'
 import { cn } from '@/lib/utils'
 
 /** 任务流水线阶段；衍生自 chatStore 的流式/工具/错误状态 */
@@ -76,6 +79,7 @@ export function ContextPanel() {
   const error = useChatStore((s) => s.error)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
   const messages = useChatStore((s) => s.messages)
+  const activeArtifact = useAtomValue(activeArtifactAtom)
 
   // 历史工具调用：流式期间用 streamingToolCalls，非流式时取当前会话最后一条
   // assistant 消息的 toolCalls 作为「最近一次任务」回放数据源。
@@ -97,7 +101,8 @@ export function ContextPanel() {
   const badge = PHASE_BADGE[phase]
 
   return (
-    <div className="flex flex-col h-full bg-muted/20 border-l border-border">
+    <div className="relative h-full w-full">
+      <div className="flex flex-col h-full bg-muted/20 border-l border-border">
       {/* Header：标题 + 阶段徽章 + 收起按钮 */}
       <div className="flex items-center justify-between h-12 px-4 border-b border-border bg-background shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -140,6 +145,14 @@ export function ContextPanel() {
           error={error}
           phase={phase}
         />
+      </div>
+
+      {/* 预览面板：存在活跃产物时作为覆盖层铺满右侧栏（与 web 端「右栏=预览」一致） */}
+      {activeArtifact && (
+        <div className="absolute inset-0 z-20 bg-background">
+          <ArtifactPanel />
+        </div>
+      )}
       </div>
     </div>
   )

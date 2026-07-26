@@ -124,7 +124,6 @@ export function MessageScrollerList({
                     streamingContent={isStreamingMsg ? streamingContent : undefined}
                     streamingThinking={isStreamingMsg ? streamingThinking : undefined}
                     streamingToolCalls={isStreamingMsg ? streamingToolCalls : undefined}
-                    groupPosition={groupPosition}
                   />
                 </MessageScrollerItem>
               )

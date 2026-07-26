@@ -126,35 +126,37 @@ export function ChatArea() {
         onClearError={clearError}
       />
 
-      {/* Messages */}
-      <div className="flex-1 overflow-hidden">
-        {useMessageScroller ? (
-          // T10/T11/T12/T13/T14：新路径 — Message Scroller + content-visibility
-          <MessageScrollerList
-            messages={currentMessages}
-            streamingContent={streamingContent}
-            streamingThinking={streamingThinking}
-            streamingToolCalls={streamingToolCalls}
-            streamingMessageId={streamingMessageId}
-            isStreaming={isStreaming}
-          />
-        ) : (
-          // legacy 路径 — ScrollArea + 虚拟化 + isNearBottomRef
-          // 完全保留改造前实现，flag 关闭时行为一致
-          <ScrollArea className="h-full" ref={scrollRef}>
-            <div className="min-h-full px-3">
-              <MessageList
-                messages={currentMessages}
-                streamingContent={streamingContent}
-                streamingThinking={streamingThinking}
-                streamingToolCalls={streamingToolCalls}
-                streamingMessageId={streamingMessageId}
-                isStreaming={isStreaming}
-                scrollElementRef={scrollRef}
-              />
-            </div>
-          </ScrollArea>
-        )}
+      {/* Messages：与输入框同宽（max-w-[880px]）并居中 */}
+      <div className="chat-messages-pane flex-1 overflow-hidden">
+        <div className="mx-auto h-full w-full max-w-[880px] px-0">
+          {useMessageScroller ? (
+            // T10/T11/T12/T13/T14：新路径 — Message Scroller + content-visibility
+            <MessageScrollerList
+              messages={currentMessages}
+              streamingContent={streamingContent}
+              streamingThinking={streamingThinking}
+              streamingToolCalls={streamingToolCalls}
+              streamingMessageId={streamingMessageId}
+              isStreaming={isStreaming}
+            />
+          ) : (
+            // legacy 路径 — ScrollArea + 虚拟化 + isNearBottomRef
+            // 完全保留改造前实现，flag 关闭时行为一致
+            <ScrollArea className="h-full" ref={scrollRef}>
+              <div className="min-h-full">
+                <MessageList
+                  messages={currentMessages}
+                  streamingContent={streamingContent}
+                  streamingThinking={streamingThinking}
+                  streamingToolCalls={streamingToolCalls}
+                  streamingMessageId={streamingMessageId}
+                  isStreaming={isStreaming}
+                  scrollElementRef={scrollRef}
+                />
+              </div>
+            </ScrollArea>
+          )}
+        </div>
       </div>
 
       {/* Input */}

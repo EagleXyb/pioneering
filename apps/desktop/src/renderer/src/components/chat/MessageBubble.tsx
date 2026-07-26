@@ -1,16 +1,17 @@
-import { useState, memo, useRef, useEffect } from 'react'
+import { useState, memo, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize from 'rehype-sanitize'
 import { defaultSchema, type Schema as SanitizeSchema } from 'hast-util-sanitize'
-import { Copy, ThumbsUp, ThumbsDown, Bot, User, Check } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { useSetAtom } from 'jotai'
+import { Copy, ThumbsUp, ThumbsDown, Check, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { openArtifactAtom } from '@/stores/artifactStore'
+import { getHastText, previewableLanguage, getCodeLanguage } from '@/lib/extractCodeBlocks'
 // T04：引入 shadcn/ui 官方 Message + Bubble 组件作为消息行布局外壳
 import {
   Message,
-  MessageAvatar,
   MessageContent,
   MessageFooter
 } from '@/components/ui/message'
@@ -78,27 +79,12 @@ function SafeLink({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLA
   )
 }
 
-/**
- * T05 同发送者分组位置：
- *   - 'single'：孤立消息（前后均无同发送者消息）
- *   - 'start' ：同发送者组的第一条
- *   - 'middle'：同发送者组的中间条
- *   - 'end'   ：同发送者组的最后一条
- *
- * 视觉规则：
- *   - 组内非末条（start/middle）隐藏头像但保留占位宽度，避免布局跳动
- *   - 组内首条（start）保留 MessageHeader（角色名/时间），其余隐藏
- */
-type GroupPosition = 'single' | 'start' | 'middle' | 'end'
-
 interface MessageBubbleProps {
   message: ChatMessage
   isStreaming?: boolean
   streamingContent?: string
   streamingThinking?: string
   streamingToolCalls?: ToolCall[]
-  /** T05：同发送者分组位置，控制头像/间距的视觉聚合 */
-  groupPosition?: GroupPosition
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -106,8 +92,7 @@ export const MessageBubble = memo(function MessageBubble({
   isStreaming,
   streamingContent,
   streamingThinking,
-  streamingToolCalls,
-  groupPosition = 'single'
+  streamingToolCalls
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [liked, setLiked] = useState<'none' | 'like' | 'dislike'>('none')
@@ -133,34 +118,63 @@ export const MessageBubble = memo(function MessageBubble({
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000)
   }
 
+  // 预览入口：点击代码块的「预览」按钮 → 打开右侧预览面板（自动展开右栏）
+  const openArtifact = useSetAtom(openArtifactAtom)
+
+  /**
+   * 自定义代码块渲染：在 assistant 消息的 html / svg 代码块上附加「预览」按钮。
+   * - pre 改为透传，避免默认 <pre> 再次包裹我们自定义的卡片结构（div 不能嵌在 pre 内）。
+   * - 行内代码（无 language、无换行）→ 原样渲染；围栏代码块 → 带语言标签的卡片，
+   *   仅 html / svg 显示「预览」按钮，点击把原始 code 传给 openArtifact。
+   */
+  const CodeBlock = useCallback(
+    ({ node, className, children, ...rest }: any) => {
+      const raw = getHastText(node)
+      const lang = previewableLanguage(className)
+      const hasLang = Boolean(className && /language-/.test(className))
+      const isBlock = hasLang || raw.includes('\n')
+      if (!isBlock) {
+        return <code className={className} {...rest}>{children}</code>
+      }
+      return (
+        <div className="group/code relative my-2 overflow-hidden rounded-lg border border-border/60 bg-muted [&>pre]:m-0 [&>pre]:rounded-none [&>pre]:bg-transparent [&>pre]:p-0">
+          <div className="flex items-center justify-between border-b border-border/60 px-3 py-1">
+            <span className="font-mono text-[11px] uppercase text-muted-foreground">
+              {lang ?? (hasLang ? getCodeLanguage(className) : 'code')}
+            </span>
+            {lang && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-2 text-[11px] text-primary"
+                onClick={() =>
+                  openArtifact({
+                    messageId: message.id,
+                    type: lang,
+                    content: raw,
+                    language: lang
+                  })
+                }
+              >
+                <Eye className="size-3" /> 预览
+              </Button>
+            )}
+          </div>
+          <pre className="overflow-x-auto p-3 font-mono text-[0.85em] leading-relaxed">
+            <code className={className} {...rest}>{children}</code>
+          </pre>
+        </div>
+      )
+    },
+    [message.id, openArtifact]
+  )
+
   // T04：用户消息右对齐（align="end"），助手/系统/工具消息左对齐（align="start"）
   const align = isUser ? 'end' : 'start'
 
-  // T05：组内非末条消息隐藏头像内容（保留占位宽度避免布局跳动）
-  const showAvatar = groupPosition === 'single' || groupPosition === 'end' || groupPosition === 'start'
-
   return (
-    // T04：Message 作为消息行布局外壳，承担头像 + 对齐 + 内容容器的组合
-    <Message align={align}>
-      <MessageAvatar>
-        {/* T05：组内中间条消息隐藏头像内容，保留 Avatar 占位以维持宽度对齐 */}
-        {showAvatar ? (
-          <Avatar className="size-7 shrink-0 mt-1">
-            <AvatarFallback
-              className={cn(
-                'text-xs',
-                isUser ? 'bg-blue-500/20 text-blue-600' : 'bg-primary/20 text-primary'
-              )}
-            >
-              {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
-            </AvatarFallback>
-          </Avatar>
-        ) : (
-          // 占位：保留与头像同宽（size-7 = 1.75rem），高度 0 避免撑高
-          <div className="size-7 shrink-0" aria-hidden />
-        )}
-      </MessageAvatar>
-
+  // T04：Message 作为消息行布局外壳，承担对齐 + 内容容器的组合（头像已隐藏）
+  <Message align={align}>
       <MessageContent>
         {/* T06：ThinkingBlock 内联于 MessageContent，置于气泡之前 */}
         {isAssistant && thinking && <ThinkingBlock content={thinking} isStreaming={isStreaming} />}
@@ -217,7 +231,11 @@ export const MessageBubble = memo(function MessageBubble({
           <Bubble
             variant={isUser ? 'default' : 'muted'}
             align={align}
-            className={cn(isUser && '[&>[data-slot=bubble-content]]:bg-blue-600 [&>[data-slot=bubble-content]]:text-white')}
+            className={cn(
+              isUser
+                ? '[&>[data-slot=bubble-content]]:bg-[#e5e7eb] [&>[data-slot=bubble-content]]:text-foreground'
+                : 'w-full max-w-full'
+            )}
           >
             <BubbleContent
               // T03 a11y：role/aria-live/aria-atomic 仅在流式助手消息上启用
@@ -232,10 +250,10 @@ export const MessageBubble = memo(function MessageBubble({
                   : undefined
               }
               className={cn(
-                'min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
-                // 用户消息保留蓝色背景（覆盖 BubbleContent 默认 border/bg）
-                isUser && 'bg-blue-600 text-white border-transparent',
-                !isUser && 'bg-muted/60 text-foreground border-transparent'
+                'min-w-0 rounded-2xl py-2.5 text-sm leading-relaxed',
+                // 用户消息：左右内边距 16px；助手消息：左右内边距 0px 并填满内容区
+                isUser && 'px-4 bg-[#e5e7eb] text-foreground border-transparent',
+                !isUser && 'px-0 !bg-transparent text-foreground border-transparent'
               )}
             >
               {isAssistant || message.role === 'system' || message.role === 'tool' ? (
@@ -243,7 +261,7 @@ export const MessageBubble = memo(function MessageBubble({
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
-                    components={{ a: SafeLink }}
+                    components={{ a: SafeLink, pre: ({ children }) => <>{children}</>, code: CodeBlock }}
                   >
                     {displayContent || (isStreaming ? '▊' : '')}
                   </ReactMarkdown>
