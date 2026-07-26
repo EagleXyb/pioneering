@@ -278,18 +278,25 @@
 
 /* =============================================
    消息内容区：隐藏滚动条但保留滚动能力
-   （Radix ScrollArea 的自定义滚动条 + 原生滚动条兜底）
+   覆盖 Radix ScrollArea 的自定义滚动条控件，以及真正滚动的
+   viewport 元素内部的原生滚动条（macOS 常驻显示），并对所有
+   后代滚动容器兜底。加 !important 确保优先级高于组件内联样式。
    ============================================= */
-.chat-messages-pane [data-radix-scroll-area-scrollbar] {
-  display: none;
+.chat-messages-pane [data-radix-scroll-area-scrollbar],
+.chat-messages-pane [data-radix-scroll-area-thumb] {
+  display: none !important;
+  visibility: hidden !important;
 }
-.chat-messages-pane {
-  scrollbar-width: none;
+.chat-messages-pane,
+.chat-messages-pane * {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* 旧 Edge/IE */
 }
-.chat-messages-pane ::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+.chat-messages-pane ::-webkit-scrollbar,
+.chat-messages-pane *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* =============================================
