@@ -728,6 +728,9 @@ export function InputArea({
             </span>
           </div>
         )}
+
+        {/* AI 生成内容免责声明 */}
+        <div className="pro-input-disclaimer">内容由AI生成，仅供参考</div>
       </div>
       </div>
   )

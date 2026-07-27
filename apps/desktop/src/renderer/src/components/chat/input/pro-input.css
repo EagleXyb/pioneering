@@ -11,7 +11,7 @@
 .pro-input-area {
   position: relative;
   width: 100%;
-  padding: 16px 20px 24px;
+  padding: 10px 20px 15px;
 
   /* 将 web 端变量映射到 desktop 端语义令牌，子元素自动继承并随主题切换 */
   --bg-card: var(--card);
@@ -342,4 +342,19 @@
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
   transition: color var(--transition-fast);
+}
+
+/* ============================================================
+   AI 生成内容免责声明 — 输入框正下方居中（desktop 特性）
+   ============================================================ */
+.pro-input-disclaimer {
+  display: flex;
+  justify-content: center;
+  padding: 8px 4px 0;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text-tertiary);
+  opacity: 0.55;
+  user-select: none;
+  pointer-events: none;
 }

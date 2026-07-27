@@ -121,8 +121,8 @@ export const Sidebar = memo(function Sidebar() {
             </button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent side="top" align="start" className="w-60">
-            <DropdownMenuLabel className="py-2">
+          <DropdownMenuContent side="top" align="start" className="w-64 rounded-[10px] border-border/60 p-1 shadow-lg [&_[role=menuitem]]:py-1.5 [&_[role=separator]]:my-1.5">
+            <DropdownMenuLabel className="px-2 py-2.5">
               <div className="truncate text-sm font-medium">{displayName}</div>
               <div className="truncate text-[11px] font-normal text-muted-foreground">
                 {user.email || '未登录'}
@@ -201,7 +201,6 @@ export const Sidebar = memo(function Sidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <span className="text-[10px] text-muted-foreground/60">v0.1.0</span>
       </div>
     </div>
   )
