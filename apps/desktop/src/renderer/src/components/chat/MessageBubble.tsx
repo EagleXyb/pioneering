@@ -23,6 +23,7 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 import { TraceNodeView } from './TraceNodeView'
 import { TraceTreeRenderer, TraceTextNode } from './TraceTreeRenderer'
+import { AgentTimeline } from './AgentTimeline'
 
 // H7: 自定义 sanitize schema —— 在默认安全白名单基础上保留
 // GFM 表格与 rehype-highlight 高亮所需的 className（语言/ token 着色），
@@ -194,14 +195,11 @@ export const MessageBubble = memo(function MessageBubble({
   <Message align={align}>
       <MessageContent>
         {useTrace && isAssistant ? (
-          // M2/M6: trace 树递归渲染（thinking / tool-call / observation 等非 text 节点）
           traceNodes && traceRootOrder ? (
-            <TraceTreeRenderer
+            <AgentTimeline
               nodes={traceNodes}
-              rootIds={traceRootOrder.filter((id) => {
-                const n = traceNodes[id]
-                return n && n.kind !== 'text'
-              })}
+              rootOrder={traceRootOrder}
+              isStreaming={isStreaming}
             />
           ) : null
         ) : (
