@@ -9,6 +9,7 @@
  */
 
 const noop = () => {}
+const noopAsync = () => Promise.resolve()
 
 // ---- localStorage 持久化，模拟 Electron store ----
 function getStore() {
@@ -31,12 +32,12 @@ function saveStore(data: Record<string, unknown>) {
 // ---- 构建 mock 对象 ----
 const mockApi: PioneeringApi = {
   window: {
-    minimize: noop,
-    maximize: noop,
-    close: noop,
+    minimize: noopAsync,
+    maximize: noopAsync,
+    close: noopAsync,
     isMaximized: () => Promise.resolve(false),
-    toggleFullscreen: noop,
-    toggleDevTools: noop,
+    toggleFullscreen: noopAsync,
+    toggleDevTools: noopAsync,
     startDrag: noop,
     moveDrag: noop,
     endDrag: noop,
@@ -47,7 +48,7 @@ const mockApi: PioneeringApi = {
   app: {
     getVersion: () => Promise.resolve('0.0.0-browser'),
     getPlatform: () => Promise.resolve('windows'),
-    quit: noop,
+    quit: noopAsync,
     checkUpdate: () => Promise.resolve('0.0.0'),
     networkCheck: () => Promise.resolve(true),
     setApiBaseUrl: (_url: string) => Promise.resolve(true),
@@ -68,20 +69,20 @@ const mockApi: PioneeringApi = {
   },
 
   notification: {
-    show: (_options: unknown) => {
+    show: async (_options: unknown) => {
       console.log('[Mock Notification]', _options)
     }
   },
 
   clipboard: {
-    write: (_text: string) => {
-      navigator.clipboard.writeText(_text).catch(noop)
+    write: async (_text: string) => {
+      await navigator.clipboard.writeText(_text).catch(noop)
     },
     read: () => navigator.clipboard.readText().catch(() => '')
   },
 
   shell: {
-    openExternal: (url: string) => {
+    openExternal: async (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer')
     }
   },
