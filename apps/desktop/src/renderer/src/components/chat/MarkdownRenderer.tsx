@@ -195,7 +195,7 @@ function CodeBlockComponent({
                 {collapsed ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">{collapsed ? '展开' : '收起'}</TooltipContent>
+            <TooltipContent side="top">{collapsed ? '展开' : '收起'}</TooltipContent>
           </Tooltip>
         </div>
 
@@ -213,7 +213,7 @@ function CodeBlockComponent({
                 {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">{copied ? '已复制' : '复制'}</TooltipContent>
+            <TooltipContent side="top">{copied ? '已复制' : '复制'}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -228,21 +228,21 @@ function CodeBlockComponent({
                 <Maximize2 className="size-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">全屏预览</TooltipContent>
+            <TooltipContent side="top">全屏预览</TooltipContent>
           </Tooltip>
         </div>
       </div>
 
-      {/* 代码区域 */}
+      {/* 代码区域：使用 grid-template-rows 0fr/1fr 精确折叠过渡（避免 max-h 数值钳制导致大代码块溢出到后续内容） */}
       <div
-        className={cn(
-          'transition-all duration-200 ease-in-out',
-          collapsed ? 'max-h-0 overflow-hidden opacity-0' : 'max-h-[2000px] opacity-100'
-        )}
+        className="grid transition-[grid-template-rows] duration-200 ease-in-out"
+        style={{ gridTemplateRows: collapsed ? '0fr' : '1fr' }}
       >
-        <pre className="code-block-pre overflow-x-auto p-4 bg-white dark:bg-zinc-900">
-          <code className={className} {...codeProps}>{children}</code>
-        </pre>
+        <div className="min-h-0 overflow-hidden">
+          <pre className="code-block-pre overflow-x-auto p-4 bg-white dark:bg-zinc-900">
+            <code className={className} {...codeProps}>{children}</code>
+          </pre>
+        </div>
       </div>
     </div>
   )
