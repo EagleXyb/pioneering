@@ -12,10 +12,11 @@
 //   3. 两条路径共用同一份 store 数据与 InputArea，无数据层改动
 // ============================================================
 
-import { useRef, useEffect, useMemo } from 'react'
+import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageList } from './MessageList'
 import { MessageScrollerList } from './MessageScrollerList'
+import { WelcomeScreen } from './WelcomeScreen'
 import { InputArea, type InputAreaSendOptions } from './input/InputArea'
 import { AgentStatus } from './AgentStatus'
 // P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
@@ -124,6 +125,17 @@ export function ChatArea() {
     })
   }
 
+  // WelcomeScreen 快捷提示词点击：直接发送
+  const handleQuickPrompt = useCallback(
+    (text: string) => {
+      void sendMessage(text, { images: [] })
+    },
+    [sendMessage]
+  )
+
+  // 是否显示欢迎引导页（无消息且非流式状态）
+  const showWelcome = currentMessages.length === 0 && !isStreaming && !streamingContent
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Agent Status（实时推理/工具轨迹） */}
@@ -138,7 +150,10 @@ export function ChatArea() {
       {/* Messages：与输入框同宽（max-w-[880px]）并居中 */}
       <div className="chat-messages-pane flex-1 overflow-hidden">
         <div className="mx-auto h-full w-full max-w-[880px] px-0">
-          {useMessageScroller ? (
+          {showWelcome ? (
+            // 空会话：显示欢迎引导页
+            <WelcomeScreen onQuickPrompt={handleQuickPrompt} />
+          ) : useMessageScroller ? (
             // T10/T11/T12/T13/T14：新路径 — Message Scroller + content-visibility
             <MessageScrollerList
               messages={currentMessages}

@@ -147,7 +147,7 @@ export function ConversationList() {
                     <div
                       onClick={() => handleSelect(session.id)}
                       className={cn(
-                        'group flex items-center gap-2 h-[32px] px-2.5 rounded-md cursor-pointer transition-colors',
+                        'group flex items-center gap-2 h-[32px] w-[237px] px-2.5 rounded-md cursor-pointer transition-colors',
                         currentSessionId === session.id
                           ? 'bg-accent text-accent-foreground'
                           : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
