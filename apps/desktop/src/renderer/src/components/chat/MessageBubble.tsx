@@ -1,7 +1,12 @@
 import { useState, memo, useRef, useEffect } from 'react'
 import { useSetAtom } from 'jotai'
-import { Copy, ThumbsUp, ThumbsDown, Check } from 'lucide-react'
+import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from '@/components/ui/tooltip'
 import { useChatStore } from '@/stores/chatStore'
 import { openLightboxAtom } from '@/stores/lightboxStore'
 // T04：引入 shadcn/ui 官方 Message + Bubble 组件作为消息行布局外壳
@@ -45,14 +50,18 @@ export const MessageBubble = memo(function MessageBubble({
   streamingTraceRootOrder
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
+  const [shared, setShared] = useState(false)
   const copyTimer = useRef<number | null>(null)
+  const shareTimer = useRef<number | null>(null)
   const toggleMessageFeedback = useChatStore((s) => s.toggleMessageFeedback)
+  const regenerateMessage = useChatStore((s) => s.regenerateMessage)
   // P1：用户图片点击 → 应用内 Lightbox 放大（替代新窗口打开 dataUrl）
   const openLightbox = useSetAtom(openLightboxAtom)
 
   useEffect(() => {
     return () => {
       if (copyTimer.current) clearTimeout(copyTimer.current)
+      if (shareTimer.current) clearTimeout(shareTimer.current)
     }
   }, [])
 
@@ -77,6 +86,24 @@ export const MessageBubble = memo(function MessageBubble({
     navigator.clipboard.writeText(displayContent)
     setCopied(true)
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleRegenerate = () => {
+    regenerateMessage(message.id)
+  }
+
+  const handleShare = async () => {
+    try {
+      if (navigator.share && displayContent) {
+        await navigator.share({ text: displayContent, title: 'AI 回复' })
+      } else {
+        await navigator.clipboard.writeText(displayContent)
+        setShared(true)
+        shareTimer.current = window.setTimeout(() => setShared(false), 2000)
+      }
+    } catch {
+      /* 用户取消或分享失败，静默处理 */
+    }
   }
 
   // T04：用户消息右对齐（align="end"），助手/系统/工具消息左对齐（align="start"）
@@ -203,38 +230,78 @@ export const MessageBubble = memo(function MessageBubble({
         {/* T07：actions 由 MessageFooter 承载，align="end" 时自动右对齐 */}
         {isAssistant && !isStreaming && message.content && (
           <MessageFooter className="opacity-0 group-hover/message:opacity-100 transition-opacity gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              onClick={handleCopy}
-              title="复制"
-              aria-label={copied ? '已复制' : '复制消息内容'}
-            >
-              {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              onClick={() => toggleMessageFeedback(message.id, feedback === 'like' ? 'none' : 'like')}
-              title="赞"
-              aria-label={feedback === 'like' ? '取消赞' : '赞'}
-              aria-pressed={feedback === 'like'}
-            >
-              <ThumbsUp className={cn('size-3', feedback === 'like' && 'text-blue-500')} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              onClick={() => toggleMessageFeedback(message.id, feedback === 'dislike' ? 'none' : 'dislike')}
-              title="踩"
-              aria-label={feedback === 'dislike' ? '取消踩' : '踩'}
-              aria-pressed={feedback === 'dislike'}
-            >
-              <ThumbsDown className={cn('size-3', feedback === 'dislike' && 'text-red-500')} />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={handleCopy}
+                  aria-label={copied ? '已复制' : '复制消息内容'}
+                >
+                  {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{copied ? '已复制' : '复制'}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => toggleMessageFeedback(message.id, feedback === 'like' ? 'none' : 'like')}
+                  aria-label={feedback === 'like' ? '取消赞' : '赞'}
+                  aria-pressed={feedback === 'like'}
+                >
+                  <ThumbsUp className={cn('size-3', feedback === 'like' && 'text-blue-500')} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">赞</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => toggleMessageFeedback(message.id, feedback === 'dislike' ? 'none' : 'dislike')}
+                  aria-label={feedback === 'dislike' ? '取消踩' : '踩'}
+                  aria-pressed={feedback === 'dislike'}
+                >
+                  <ThumbsDown className={cn('size-3', feedback === 'dislike' && 'text-red-500')} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">踩</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={handleRegenerate}
+                  aria-label="重新生成回复"
+                >
+                  <RotateCcw className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">重新生成</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={handleShare}
+                  aria-label={shared ? '内容已复制' : '分享此消息'}
+                >
+                  {shared ? <Check className="size-3 text-green-500" /> : <Share className="size-3" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{shared ? '已复制' : '分享'}</TooltipContent>
+            </Tooltip>
             {message.model && (
               <span className="text-[10px] text-muted-foreground ml-1">{message.model}</span>
             )}

@@ -66,6 +66,7 @@ interface ChatState {
   setAgentMode: (mode: boolean) => void
   toggleMessageFeedback: (messageId: string, feedback: 'like' | 'dislike' | 'none') => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
+  regenerateMessage: (messageId: string) => Promise<void>
   clearError: () => void
 }
 
@@ -612,5 +613,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  regenerateMessage: async (messageId) => {
+    const { currentSessionId, messages, isStreaming } = get()
+    if (!currentSessionId || isStreaming) return
+    const list = messages[currentSessionId]
+    if (!list || list.length === 0) return
+
+    const assistantIdx = list.findIndex((m) => m.id === messageId)
+    if (assistantIdx === -1) return
+    const assistantMsg = list[assistantIdx]
+    if (!assistantMsg || assistantMsg.role !== 'assistant') return
+
+    let userIdx = assistantIdx - 1
+    while (userIdx >= 0 && list[userIdx]!.role !== 'user') {
+      userIdx--
+    }
+    if (userIdx === -1) return
+    const userMsg = list[userIdx]!
+
+    set((state) => {
+      const msgs = state.messages[currentSessionId] || []
+      const trimmed = msgs.slice(0, userIdx)
+      return {
+        messages: { ...state.messages, [currentSessionId]: trimmed }
+      }
+    })
+
+    await get().sendMessage(userMsg.content, {
+      images: userMsg.images ? (userMsg.images as ImageAttachment[]) : undefined
+    })
+  }
 }))
