@@ -39,6 +39,10 @@ export default defineConfig({
     server: {
       port: 5174,
     },
+    // 修复 mermaid 依赖 cytoscape 的 UMD 子路径在 vite 预打包时解析失败的问题
+    optimizeDeps: {
+      exclude: ['mermaid', 'cytoscape']
+    },
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),
