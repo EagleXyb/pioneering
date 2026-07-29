@@ -66,6 +66,14 @@ export interface FeatureFlags {
    * ContextRing 组件已实现，仅在 InputArea 中接入时受此 flag 控制。
    */
   contextCompression: boolean
+
+  /**
+   * P2：mermaid 代码块的图表预览渲染。
+   * 关闭时 mermaid 块按纯文本 code 卡片渲染（与 P2 前行为完全一致）。
+   * 默认开：降级路径安全（动态导入/解析失败均回退源码视图），且仅影响
+   * 显式标记为 mermaid 的代码块；如发现异常可作为 kill switch 关闭。
+   */
+  mermaidPreview: boolean
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
@@ -75,7 +83,8 @@ const DEFAULT_FLAGS: FeatureFlags = {
   scrollJumpButton: true,
   devStressMessages: false,
   devStressCount: 1000,
-  contextCompression: false
+  contextCompression: false,
+  mermaidPreview: true
 }
 
 const STORAGE_KEY = 'pioneering:feature-flags'

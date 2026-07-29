@@ -1,15 +1,9 @@
-import { useState, memo, useRef, useEffect, useCallback, useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
-import rehypeSanitize from 'rehype-sanitize'
-import { defaultSchema, type Schema as SanitizeSchema } from 'hast-util-sanitize'
+import { useState, memo, useRef, useEffect } from 'react'
 import { useSetAtom } from 'jotai'
-import { Copy, ThumbsUp, ThumbsDown, Check, Eye } from 'lucide-react'
+import { Copy, ThumbsUp, ThumbsDown, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { openArtifactAtom } from '@/stores/artifactStore'
 import { useChatStore } from '@/stores/chatStore'
-import { getHastText, previewableLanguage, getCodeLanguage } from '@/lib/extractCodeBlocks'
+import { openLightboxAtom } from '@/stores/lightboxStore'
 // T04：引入 shadcn/ui 官方 Message + Bubble 组件作为消息行布局外壳
 import {
   Message,
@@ -24,64 +18,11 @@ import { ToolCallCard } from './ToolCallCard'
 import { TraceNodeView } from './TraceNodeView'
 import { TraceTreeRenderer, TraceTextNode } from './TraceTreeRenderer'
 import { AgentTimeline } from './AgentTimeline'
-
-// H7: 自定义 sanitize schema —— 在默认安全白名单基础上保留
-// GFM 表格与 rehype-highlight 高亮所需的 className（语言/ token 着色），
-// 同时限制 href 仅允许 http(s):// / mailto 协议，剥离 on* 事件与危险协议。
-const sanitizeSchema: SanitizeSchema = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    '*': [
-      ...((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
-        '*'
-      ] as string[] | undefined) ?? [],
-      'className'
-    ],
-    code: [
-      ...((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
-        'code'
-      ] as string[] | undefined) ?? [],
-      'className'
-    ],
-    span: [
-      ...((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
-        'span'
-      ] as string[] | undefined) ?? [],
-      'className'
-    ],
-    a: [
-      ...((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
-        'a'
-      ] as string[] | undefined) ?? [],
-      'href',
-      'target',
-      'rel'
-    ]
-  },
-  protocols: {
-    // 限制所有 href 属性仅允许安全协议（默认含 irc/ircs/xmpp，这里收紧为 http(s)/mailto）
-    ...defaultSchema.protocols,
-    href: ['http', 'https', 'mailto']
-  }
-}
-
-// H7: 渲染阶段对链接 href 再做一次白名单，仅放行 http(s)://；
-// 其它（如 javascript: / 相对危险链接）降级为纯文本，阻断 XSS 跳转/脚本执行。
-function SafeLink({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-  const safe = typeof href === 'string' && /^https?:\/\//i.test(href)
-  if (!safe) {
-    // 非安全链接降级为纯文本（剥离锚点）；将剩余属性断言为 span 属性后再展开，
-    // 避免 JSX 内联 as 转换的解析歧义。
-    const spanProps = props as React.HTMLAttributes<HTMLSpanElement>
-    return <span {...spanProps}>{children}</span>
-  }
-  return (
-    <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
-      {children}
-    </a>
-  )
-}
+// P3：通用文件附件卡片（非图片；图片仍走 message.images 通道）
+import { AttachmentList } from './AttachmentList'
+// P0：统一 Markdown 渲染器（sanitizeSchema/SafeLink/CodeBlock 已迁移至此，
+// 非 trace 路径渲染产物与迁移前完全一致）
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -106,6 +47,8 @@ export const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const toggleMessageFeedback = useChatStore((s) => s.toggleMessageFeedback)
+  // P1：用户图片点击 → 应用内 Lightbox 放大（替代新窗口打开 dataUrl）
+  const openLightbox = useSetAtom(openLightboxAtom)
 
   useEffect(() => {
     return () => {
@@ -135,57 +78,6 @@ export const MessageBubble = memo(function MessageBubble({
     setCopied(true)
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000)
   }
-
-  // 预览入口：点击代码块的「预览」按钮 → 打开右侧预览面板（自动展开右栏）
-  const openArtifact = useSetAtom(openArtifactAtom)
-
-  /**
-   * 自定义代码块渲染：在 assistant 消息的 html / svg 代码块上附加「预览」按钮。
-   * - pre 改为透传，避免默认 <pre> 再次包裹我们自定义的卡片结构（div 不能嵌在 pre 内）。
-   * - 行内代码（无 language、无换行）→ 原样渲染；围栏代码块 → 带语言标签的卡片，
-   *   仅 html / svg 显示「预览」按钮，点击把原始 code 传给 openArtifact。
-   */
-  const CodeBlock = useCallback(
-    ({ node, className, children, ...rest }: any) => {
-      const raw = getHastText(node)
-      const lang = previewableLanguage(className)
-      const hasLang = Boolean(className && /language-/.test(className))
-      const isBlock = hasLang || raw.includes('\n')
-      if (!isBlock) {
-        return <code className={className} {...rest}>{children}</code>
-      }
-      return (
-        <div className="group/code relative my-2 overflow-hidden rounded-lg border border-border/60 bg-muted [&>pre]:m-0 [&>pre]:rounded-none [&>pre]:bg-transparent [&>pre]:p-0">
-          <div className="flex items-center justify-between border-b border-border/60 px-3 py-1">
-            <span className="font-mono text-[11px] uppercase text-muted-foreground">
-              {lang ?? (hasLang ? getCodeLanguage(className) : 'code')}
-            </span>
-            {lang && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 gap-1 px-2 text-[11px] text-primary"
-                onClick={() =>
-                  openArtifact({
-                    messageId: message.id,
-                    type: lang,
-                    content: raw,
-                    language: lang
-                  })
-                }
-              >
-                <Eye className="size-3" /> 预览
-              </Button>
-            )}
-          </div>
-          <pre className="overflow-x-auto p-3 font-mono text-[0.85em] leading-relaxed">
-            <code className={className} {...rest}>{children}</code>
-          </pre>
-        </div>
-      )
-    },
-    [message.id, openArtifact]
-  )
 
   // T04：用户消息右对齐（align="end"），助手/系统/工具消息左对齐（align="start"）
   const align = isUser ? 'end' : 'start'
@@ -230,16 +122,18 @@ export const MessageBubble = memo(function MessageBubble({
                 <img src={img.dataUrl} alt="" className="size-full object-cover" />
               )
               if (isImage) {
+                // P1：应用内 Lightbox 放大预览（替代 <a target="_blank"> 新窗口打开）。
+                // 缩略图尺寸/圆角/边框样式与布局保持不变；H8 的 mediaType 门控不变。
                 return (
-                  <a
+                  <button
                     key={img.id}
-                    href={img.dataUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="block size-20 overflow-hidden rounded-lg border bg-muted"
+                    type="button"
+                    onClick={() => openLightbox(img.dataUrl)}
+                    className="block size-20 cursor-zoom-in overflow-hidden rounded-lg border bg-muted"
+                    aria-label="放大查看图片"
                   >
                     {media}
-                  </a>
+                  </button>
                 )
               }
               return (
@@ -252,6 +146,11 @@ export const MessageBubble = memo(function MessageBubble({
               )
             })}
           </div>
+        )}
+
+        {/* P3：通用文件附件（非图片；无附件时不渲染，布局与此前完全一致） */}
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentList attachments={message.attachments} isUser={isUser} />
         )}
 
         {(displayContent || message.content || isStreaming || useTrace) && (
@@ -278,11 +177,11 @@ export const MessageBubble = memo(function MessageBubble({
               className={cn(
                 'min-w-0 rounded-2xl py-2.5 text-sm leading-relaxed',
                 isUser && 'px-4',
-                !isUser && 'px-0 !bg-transparent text-foreground border-transparent'
+                !isUser && '!w-full !max-w-full px-0 !bg-transparent text-foreground border-transparent'
               )}
             >
               {/* M2/M6: trace 模式下 text 节点由 TraceTextNode 统一渲染（含 markdown、光标、动画）；
-                  非 trace 路径保留旧的 ReactMarkdown 渲染 */}
+                  非 trace 路径经 P0 统一为 MarkdownRenderer（渲染产物与迁移前完全一致） */}
               {useTrace && isAssistant ? (
                 traceNodes && traceRootOrder ? (
                   <TraceTextNode nodes={traceNodes} rootIds={traceRootOrder} />
@@ -290,15 +189,10 @@ export const MessageBubble = memo(function MessageBubble({
                   <span className="inline-block h-4 w-1.5 animate-pulse bg-current" aria-hidden>▊</span>
                 ) : null
               ) : (isAssistant || message.role === 'system' || message.role === 'tool') ? (
-                <div className="chat-markdown max-w-none break-words">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
-                    components={{ a: SafeLink, pre: ({ children }) => <>{children}</>, code: CodeBlock }}
-                  >
-                    {displayContent || (isStreaming ? '▊' : '')}
-                  </ReactMarkdown>
-                </div>
+                <MarkdownRenderer
+                  content={displayContent || (isStreaming ? '▊' : '')}
+                  messageId={message.id}
+                />
               ) : (
                 <p className="whitespace-pre-wrap break-words">{displayContent}</p>
               )}

@@ -21,8 +21,8 @@ import { cn } from '@/lib/utils'
 import type { TraceNode } from '@shared/types'
 import { traceNodeExpandedAtom, defaultExpandedForNode } from '@/stores/traceAtoms'
 import { formatDuration } from '@/lib/trace-utils'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+// P0：text 节点改由统一 MarkdownRenderer 渲染（替代原裸 ReactMarkdown）
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface TraceNodeViewProps {
   node: TraceNode
@@ -78,20 +78,24 @@ export const TraceNodeView = memo(function TraceNodeView({
 
   // text 节点（最终回答）不渲染卡片外壳，只渲染内容
   if (isText) {
+    // P0 修复：trace 文本节点与非 trace 路径共用 MarkdownRenderer，
+    // 补齐此前缺失的 rehype-sanitize（XSS 防护）、rehype-highlight（语法高亮）、
+    // SafeLink（危险链接拦截）与 CodeBlock（语言标签/预览按钮）。
+    // messageId 从节点 id 推导（`${msgId}::text`，见 stream-handler makeTextNodeId），
+    // 供代码块「预览 → 跳转源消息」反向联动。
+    const messageId = node.id.endsWith('::text') ? node.id.slice(0, -'::text'.length) : undefined
     return (
       <div className="trace-node-text min-w-0 px-0 py-0">
-        <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-          {children ?? (
-            node.content ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
-            ) : null
-          )}
-          {isRunning && (
-            <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse bg-current align-baseline" aria-hidden>
-              ▊
-            </span>
-          )}
-        </div>
+        {children ?? (
+          node.content ? (
+            <MarkdownRenderer content={node.content} messageId={messageId} />
+          ) : null
+        )}
+        {isRunning && (
+          <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse bg-current align-baseline" aria-hidden>
+            ▊
+          </span>
+        )}
       </div>
     )
   }

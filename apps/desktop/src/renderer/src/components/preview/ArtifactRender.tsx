@@ -9,6 +9,7 @@
  */
 import { useMemo } from 'react'
 import type { ArtifactType } from '@shared/types'
+import { MermaidRender } from './MermaidRender'
 
 // 严格 CSP：默认禁止任何外部资源，仅放行内联脚本/样式 + data:/blob: 的媒体资源
 const CSP_META =
@@ -33,6 +34,11 @@ export function ArtifactRender({ type, content }: ArtifactRenderProps) {
     if (type === 'svg') return wrapSvg(content)
     return ''
   }, [type, content])
+
+  // P2：mermaid 分支 —— 动态导入渲染矢量图，失败自动降级源码视图
+  if (type === 'mermaid') {
+    return <MermaidRender content={content} />
+  }
 
   // iframe key 绑内容：内容变化即重建 iframe，避免上一产物的 DOM 状态残留
   if (type === 'html' || type === 'svg') {

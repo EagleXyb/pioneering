@@ -58,8 +58,8 @@ export interface UpdateSessionRequest {
 // ---- 消息 ----
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
-/** 预览面板产物类型：HTML / SVG 走沙箱 iframe，其余走纯文本 code 视图 */
-export type ArtifactType = 'html' | 'svg' | 'code'
+/** 预览面板产物类型：HTML / SVG 走沙箱 iframe，Mermaid 走矢量图渲染，其余走纯文本 code 视图 */
+export type ArtifactType = 'html' | 'svg' | 'code' | 'mermaid'
 
 export interface ChatMessage {
   id: string
@@ -232,6 +232,8 @@ export interface Message extends ChatMessage {
   timestamp: number
   /** 用户消息附带图片（base64 dataUrl） */
   images?: AttachedImage[]
+  /** P3：通用文件附件（非图片文件；图片仍走 images 通道） */
+  attachments?: Attachment[]
 }
 
 /** 用户消息的附件图片（与渲染端 ImageAttachment 结构兼容） */
@@ -239,6 +241,23 @@ export interface AttachedImage {
   id: string
   dataUrl: string
   mediaType: string
+}
+
+/**
+ * P3：通用消息附件（非图片文件）。
+ * 图片附件仍走 AttachedImage / message.images 通道，本类型不重复承载；
+ * 后端暂未下发，属 UI 层就绪能力（不改动任何既有字段）。
+ */
+export interface Attachment {
+  id: string
+  /** 文件名（卡片展示 + 「另存为」默认文件名） */
+  name: string
+  /** MIME 类型（决定图标与打开/下载策略） */
+  mediaType: string
+  /** base64 dataUrl 或 http(s) URL；其它协议一律视为不可信，卡片禁用 */
+  dataUrl: string
+  /** 字节大小（可选，仅展示用） */
+  size?: number
 }
 
 export interface AgentStep {

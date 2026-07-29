@@ -52,15 +52,19 @@ export function ArtifactPanel() {
         ? 'html'
         : artifact.type === 'svg'
           ? 'svg'
-          : artifact.language && artifact.language !== 'code'
-            ? artifact.language
-            : 'txt'
+          : artifact.type === 'mermaid'
+            ? 'mmd'
+            : artifact.language && artifact.language !== 'code'
+              ? artifact.language
+              : 'txt'
     const filters =
       artifact.type === 'html'
         ? [{ name: 'HTML 文件', extensions: ['html'] }]
         : artifact.type === 'svg'
           ? [{ name: 'SVG 文件', extensions: ['svg'] }]
-          : [{ name: '文本文件', extensions: ['txt'] }]
+          : artifact.type === 'mermaid'
+            ? [{ name: 'Mermaid 源码', extensions: ['mmd'] }]
+            : [{ name: '文本文件', extensions: ['txt'] }]
 
     const result = await fileApi.saveDialog({
       title: '保存预览产物',
@@ -89,7 +93,9 @@ export function ArtifactPanel() {
       ? 'HTML 预览'
       : artifact.type === 'svg'
         ? 'SVG 预览'
-        : `代码预览 · ${artifact.language}`
+        : artifact.type === 'mermaid'
+          ? '图表预览 · Mermaid'
+          : `代码预览 · ${artifact.language}`
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">

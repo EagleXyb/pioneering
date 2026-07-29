@@ -18,6 +18,8 @@ import { MessageList } from './MessageList'
 import { MessageScrollerList } from './MessageScrollerList'
 import { InputArea, type InputAreaSendOptions } from './input/InputArea'
 import { AgentStatus } from './AgentStatus'
+// P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
+import { ImageLightbox } from './ImageLightbox'
 import { useChatStore } from '../../stores/chatStore'
 import { useFeatureFlag } from '@/lib/feature-flags'
 import type { Message } from '@shared/types'
@@ -186,6 +188,9 @@ export function ChatArea() {
         agentMode={agentMode}
         onToggleAgent={() => setAgentMode(!agentMode)}
       />
+
+      {/* P1：图片放大预览 Lightbox（Portal 挂载，关闭时不渲染任何 DOM） */}
+      <ImageLightbox />
     </div>
   )
 }

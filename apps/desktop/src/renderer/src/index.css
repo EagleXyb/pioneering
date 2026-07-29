@@ -159,7 +159,7 @@
    ============================================= */
 @layer components {
   .chat-markdown {
-    @apply font-sans text-sm leading-relaxed text-foreground;
+    @apply w-full max-w-none min-w-0 block font-sans text-sm leading-relaxed text-foreground;
   }
 
   /* 容器首尾子元素去掉多余外边距，避免气泡内出现额外留白 */
@@ -222,12 +222,30 @@
     @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
   }
 
-  /* 代码块：横向溢出滚动，避免长行撑破气泡布局 */
+  /* 代码块容器重置：CodeBlockComponent 自带卡片样式，这里仅兜底 */
   .chat-markdown pre {
-    @apply my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[0.85em] leading-relaxed;
+    @apply m-0 bg-transparent p-0;
   }
   .chat-markdown pre code {
     @apply bg-transparent p-0;
+  }
+
+  /* 代码块内部 pre 样式：专业代码字体栈 + 舒适的排版 */
+  .chat-markdown .code-block-pre {
+    font-family: Consolas, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Andale Mono',
+      'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    tab-size: 4;
+    -moz-tab-size: 4;
+  }
+  .chat-markdown .code-block-pre code {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    background: transparent;
+    padding: 0;
+    white-space: pre;
   }
 
   .chat-markdown table {
@@ -245,29 +263,153 @@
     @apply my-3 border-border;
   }
 
-  /* 轻量语法高亮：rehype-highlight 产出 hljs-* 类，但项目未引入高亮主题，
-     这里用语义化主题色补全，避免代码纯黑/纯白、层级缺失。 */
+  /* =============================================
+     语法高亮配色 —— 白色/浅色背景下视觉柔和、层次清晰
+     采用接近 GitHub Light 风格的配色方案
+     ============================================= */
+  /* 注释：灰色斜体，降低视觉权重 */
   .chat-markdown .hljs-comment,
   .chat-markdown .hljs-quote {
-    @apply text-muted-foreground italic;
+    color: #6a737d;
+    font-style: italic;
   }
+  /* 关键字/控制流：深蓝色 */
   .chat-markdown .hljs-keyword,
   .chat-markdown .hljs-selector-tag,
-  .chat-markdown .hljs-built_in,
   .chat-markdown .hljs-literal,
-  .chat-markdown .hljs-type {
-    @apply text-primary;
+  .chat-markdown .hljs-section,
+  .chat-markdown .hljs-link-label {
+    color: #d73a49;
   }
+  /* 内置类型/布尔值：蓝紫色 */
+  .chat-markdown .hljs-built_in,
+  .chat-markdown .hljs-type,
+  .chat-markdown .hljs-class .hljs-title {
+    color: #6f42c1;
+  }
+  /* 字符串：绿色 */
   .chat-markdown .hljs-string,
   .chat-markdown .hljs-attr,
   .chat-markdown .hljs-template-tag,
-  .chat-markdown .hljs-addition {
-    @apply text-foreground;
+  .chat-markdown .hljs-addition,
+  .chat-markdown .hljs-regexp,
+  .chat-markdown .hljs-selector-attr {
+    color: #032f62;
   }
+  /* 数字/符号：橙色 */
   .chat-markdown .hljs-number,
   .chat-markdown .hljs-symbol,
-  .chat-markdown .hljs-meta {
-    @apply text-foreground/80;
+  .chat-markdown .hljs-meta,
+  .chat-markdown .hljs-bullet,
+  .chat-markdown .hljs-link,
+  .chat-markdown .hljs-code {
+    color: #005cc5;
+  }
+  /* 函数名/方法名：偏蓝 */
+  .chat-markdown .hljs-title,
+  .chat-markdown .hljs-title.function_,
+  .chat-markdown .hljs-name,
+  .chat-markdown .hljs-function .hljs-title {
+    color: #6f42c1;
+    font-weight: 500;
+  }
+  /* 标签/选择器：红色 */
+  .chat-markdown .hljs-tag,
+  .chat-markdown .hljs-selector-class,
+  .chat-markdown .hljs-selector-id,
+  .chat-markdown .hljs-deletion {
+    color: #22863a;
+  }
+  /* 属性/变量：深灰/黑 */
+  .chat-markdown .hljs-attribute,
+  .chat-markdown .hljs-variable,
+  .chat-markdown .hljs-template-variable,
+  .chat-markdown .hljs-property,
+  .chat-markdown .hljs-subst,
+  .chat-markdown .hljs-params {
+    color: #24292e;
+  }
+  /* 操作符/标点：中灰色 */
+  .chat-markdown .hljs-operator,
+  .chat-markdown .hljs-punctuation,
+  .chat-markdown .hljs-doctag {
+    color: #d73a49;
+  }
+  /* Meta 信息：灰色 */
+  .chat-markdown .hljs-meta .hljs-keyword,
+  .chat-markdown .hljs-meta .hljs-string {
+    color: #6a737d;
+  }
+  .chat-markdown .hljs-emphasis {
+    font-style: italic;
+  }
+  .chat-markdown .hljs-strong {
+    font-weight: 600;
+  }
+
+  /* =============================================
+     暗色主题语法高亮 —— 接近 GitHub Dark 风格
+     ============================================= */
+  .dark .chat-markdown .hljs-comment,
+  .dark .chat-markdown .hljs-quote {
+    color: #8b949e;
+  }
+  .dark .chat-markdown .hljs-keyword,
+  .dark .chat-markdown .hljs-selector-tag,
+  .dark .chat-markdown .hljs-literal,
+  .dark .chat-markdown .hljs-section,
+  .dark .chat-markdown .hljs-link-label {
+    color: #ff7b72;
+  }
+  .dark .chat-markdown .hljs-built_in,
+  .dark .chat-markdown .hljs-type,
+  .dark .chat-markdown .hljs-class .hljs-title {
+    color: #d2a8ff;
+  }
+  .dark .chat-markdown .hljs-string,
+  .dark .chat-markdown .hljs-attr,
+  .dark .chat-markdown .hljs-template-tag,
+  .dark .chat-markdown .hljs-addition,
+  .dark .chat-markdown .hljs-regexp,
+  .dark .chat-markdown .hljs-selector-attr {
+    color: #a5d6ff;
+  }
+  .dark .chat-markdown .hljs-number,
+  .dark .chat-markdown .hljs-symbol,
+  .dark .chat-markdown .hljs-meta,
+  .dark .chat-markdown .hljs-bullet,
+  .dark .chat-markdown .hljs-link,
+  .dark .chat-markdown .hljs-code {
+    color: #79c0ff;
+  }
+  .dark .chat-markdown .hljs-title,
+  .dark .chat-markdown .hljs-title.function_,
+  .dark .chat-markdown .hljs-name,
+  .dark .chat-markdown .hljs-function .hljs-title {
+    color: #d2a8ff;
+  }
+  .dark .chat-markdown .hljs-tag,
+  .dark .chat-markdown .hljs-selector-class,
+  .dark .chat-markdown .hljs-selector-id,
+  .dark .chat-markdown .hljs-deletion {
+    color: #7ee787;
+  }
+  .dark .chat-markdown .hljs-attribute,
+  .dark .chat-markdown .hljs-variable,
+  .dark .chat-markdown .hljs-template-variable,
+  .dark .chat-markdown .hljs-property,
+  .dark .chat-markdown .hljs-subst,
+  .dark .chat-markdown .hljs-params {
+    color: #c9d1d9;
+  }
+  .dark .chat-markdown .hljs-operator,
+  .dark .chat-markdown .hljs-punctuation,
+  .dark .chat-markdown .hljs-doctag {
+    color: #ff7b72;
+  }
+  .dark .chat-markdown .hljs-meta .hljs-keyword,
+  .dark .chat-markdown .hljs-meta .hljs-string {
+    color: #8b949e;
   }
 }
 
