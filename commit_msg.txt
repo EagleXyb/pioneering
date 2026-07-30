@@ -1,9 +1,0 @@
-feat(modu-agent): 新增 ReAct 推理增强模块并补充相关文档
-
-- 新增 observation-distiller 观察蒸馏适配器，压缩与提炼工具观测结果
-- 新增 termination-engine 终止判定引擎，控制 agent 循环退出
-- 新增 complexity-assessor 复杂度评估，自适应选择推理策略
-- 新增 cot-anchors 思维链锚点，增强推理可追溯性
-- 更新 graph 节点/状态/工厂以接入上述新模块
-- 新增 ReAct 推理边界与失效模式、缺陷解析两篇文档
-- 移除已过时的 Plan-and-Execute-Agent 实践指南
