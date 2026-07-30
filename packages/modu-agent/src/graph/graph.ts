@@ -618,16 +618,26 @@ export function buildModuGraph(
   if (recursionLimit) {
     compiledAny.recursionLimit = recursionLimit
   } else {
-    // 默认：max_reasoning_iterations * 3 + 7（每个 ReAct 循环实际 3 个节点
+    // 默认：max_reasoning_iterations * 3 + 12（每个 ReAct 循环实际 3 个节点
     //   agent → tools → tool_processor，加固定开销 perception + memory_query
-    //   + 终答 agent + finalize_response + memory_update/feedback；留 1~2 步余量）
+    //   + 终答 agent + finalize_response + memory_update/feedback 共 5~6 节点）
+    //
+    // P0-修复(2026-07-30): 固定余量从 +7 提到 +12。
+    //   原公式 +7 在 max_reasoning_iterations=3 时给出 recursionLimit=16,
+    //   仅能容纳 4 轮 ReAct(14 节点)+ 2 步余量。但防幻觉提示词规则 7-11
+    //   逼迫 LLM 多步闭环(如"日期→搜索→验证→总结"),LLM 倾向多调工具,
+    //   5 轮 ReAct(17 节点)即超限,触发 GraphRecursionError。
+    //   提到 +12 后 recursionLimit=21,可容纳 5 轮 ReAct(15 节点)+ 6 固定开销,
+    //   与 max_reasoning_iterations=3 的语义("最多 3 轮工具调用 + 终答")匹配,
+    //   并为多步任务留出足够预算。
+    //
     // 注：旧公式按"每循环 2 个节点"计算会低估，导致 max_reasoning_iterations=3 时
     //   合法运行的节点数(14) 超过预算(13)，正常推理也会抛 GraphRecursionError。
     // P3-12.3.2: HITL 开启时额外加 2（human_review + 路由开销）
     // P3-12.3.1: multi_agent 开启时额外加 4（supervisor + subagent_run + consensus + 路由开销）
     const config = getConfig()
     const maxIterations = config.get('llm.max_reasoning_iterations', 3)
-    let baseLimit = maxIterations * 3 + 7
+    let baseLimit = maxIterations * 3 + 12
     if (humanReviewNode) {
       baseLimit += 2  // 为 human_review 节点预留递归预算
     }

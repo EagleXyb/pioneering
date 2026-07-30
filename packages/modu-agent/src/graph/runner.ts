@@ -89,6 +89,15 @@ const _GRAPH_REBUILD_PREFIXES = ['llm.', 'tools.', 'memory.', 'orchestration.', 
 // P9.5.1: 仅影响 LLM 行为（不改变图拓扑）的配置 key——软失效，不触发缓存重置。
 // 这些参数通过 RunnableConfig.configurable 在 per-request 层注入（复用
 // config_overrides 机制），避免每次温度/max_tokens 调整都重建图。
+//
+// P1-修正(2026-07-30): max_reasoning_iterations 语义边界澄清。
+//   该参数有双重作用:
+//     (1) 作为 LLM 行为参数,通过 configurable.llm_params 注入 agent 节点(软失效路径)
+//     (2) 作为 recursionLimit 计算输入(见 graph.ts baseLimit 公式),图编译时硬写入
+//   软失效路径只覆盖 (1),(2) 仍依赖下次 get_runner() 的 hash 惰性重建兜底。
+//   即:运行时改 max_reasoning_iterations 后,LLM 行为立即生效,但 recursionLimit
+//   要等下次配置 hash 变化触发重建才更新。这是已知的设计折衷,非 bug——
+//   避免每次调参都重建图(昂贵),以最终一致性换取低开销。
 const _LLM_PARAM_ONLY_KEYS = new Set([
   'llm.temperature',
   'llm.max_tokens',

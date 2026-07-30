@@ -9,23 +9,21 @@ import { atomFamily } from 'jotai/utils'
 import type { TraceNode } from '@shared/types'
 
 /**
- * 默认展开策略：
+ * 默认展开策略（P2 优化：已完成/待处理步骤默认折叠）：
  * - error 节点：展开（方便看到错误信息）
  * - observation 节点：折叠（通常很长，按需展开）
  * - running 中的 thinking/tool-call：展开（实时看输出）
  * - completed thinking：折叠（节省空间）
  * - text 节点（最终回答）：始终展开
- * - completed tool-call：折叠（默认展示标题即可）
+ * - completed/pending tool-call：折叠（默认展示标题即可）
  */
 export function defaultExpandedForNode(node: TraceNode | undefined): boolean {
-  if (!node) return true
+  if (!node) return false
   if (node.kind === 'text') return true
   if (node.status === 'error') return true
   if (node.status === 'running') return true
-  if (node.kind === 'observation') return false
-  if (node.kind === 'thinking' && node.status === 'completed') return false
-  if (node.kind === 'tool-call' && node.status === 'completed') return false
-  return true
+  // P2：observation / completed / pending 一律默认折叠
+  return false
 }
 
 /**

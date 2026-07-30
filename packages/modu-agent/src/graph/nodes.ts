@@ -371,6 +371,11 @@ export function routeAfterPerception(state: ModuAgentState): string {
  *   - 无 tool_calls → "__end__"（正常结束）
  *
  * LangGraph 的 recursionLimit 替代 max_iterations。
+ *
+ * P2 兜底检测: 当本轮已有 ToolMessage(调过工具)、AIMessage 无 tool_calls、
+ * 且文本含承诺词("然后搜索/接下来我会/let me then"等)时,LLM 可能发生了
+ * "承诺但未执行"的提前终止。仅打 warning 日志,不改变路由(避免过度工程
+ * 破坏正常对话流);日志便于事后追踪与调优提示词。
  */
 export function routeAfterAgent(state: ModuAgentState): string {
   const messages = state.messages ?? []
@@ -391,7 +396,67 @@ export function routeAfterAgent(state: ModuAgentState): string {
   if (state.plan_phase === 'executing') {
     return 'step_finalize'
   }
+
+  // P2 兜底检测: 承诺词 + 已有 ToolMessage → 可能提前终止
+  // 不改变路由,仅打 warning 便于追踪
+  _detectPrematureTermination(messages, lastMsg)
+
   return '__end__'
+}
+
+/**
+ * P2: 检测 LLM "承诺但未执行"的提前终止行为。
+ *
+ * 触发条件(全部满足才打日志):
+ *   1. 消息历史中存在至少一条 ToolMessage(说明本轮已调过工具)
+ *   2. 最后一条 AIMessage 无 tool_calls(已在 routeAfterAgent 判断)
+ *   3. AIMessage 文本含承诺词(中英文): "然后搜索/接下来/我会搜索/let me then/next I will" 等
+ *
+ * 仅记录 warning,不修改路由 —— 强制改路由会破坏"LLM 已完成任务正常结束"的对话流,
+ * 真正的修复依赖 P0 提示词约束与 P1 ToolMessage 精简,这里只是可观测性兜底。
+ */
+const _PROMISE_KEYWORDS = [
+  // 中文承诺词
+  '然后搜索', '然后查询', '然后获取', '然后调用',
+  '接下来', '下一步', '我会搜索', '我会查询', '我会获取',
+  '让我搜索', '让我查询', '让我获取', '让我然后',
+  // 英文承诺词
+  'let me then', 'let me search', 'let me fetch',
+  'next i will', 'then i will', 'i will now search',
+  'i will now fetch', 'i will then',
+]
+
+function _detectPrematureTermination(
+  messages: BaseMessage[],
+  lastMsg: BaseMessage & MessageExt,
+): void {
+  // 条件1: 历史中存在 ToolMessage
+  let hasToolMessage = false
+  for (const msg of messages) {
+    if (msg instanceof ToolMessage) {
+      hasToolMessage = true
+      break
+    }
+  }
+  if (!hasToolMessage) return
+
+  // 条件2: 最后一条是 AIMessage(无 tool_calls,由调用方保证)
+  if (!(lastMsg instanceof AIMessage)) return
+
+  // 条件3: 文本含承诺词
+  const content = typeof lastMsg.content === 'string' ? lastMsg.content : ''
+  if (!content) return
+  const lowerContent = content.toLowerCase()
+  const matched = _PROMISE_KEYWORDS.find((kw) =>
+    content.includes(kw) || lowerContent.includes(kw.toLowerCase()),
+  )
+  if (matched) {
+    logger.warning(
+      '[premature-termination-detected] AIMessage 含承诺词 "%s" 但无 tool_calls, ' +
+      '可能发生"承诺但未执行"的提前终止。建议加强 P0 提示词约束。',
+      matched,
+    )
+  }
 }
 
 // ============================================================

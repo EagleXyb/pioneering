@@ -142,6 +142,44 @@ function _truncateToolResult(
 }
 
 /**
+ * 格式化工具结果为 ToolMessage 内容（P1-精简）。
+ *
+ * 原 ModuAgent 工具统一返回 `{status, error_code, data}` 结构,LangChain ToolNode
+ * 会将整个对象 JSON.stringify 后作为 ToolMessage.content,导致 LLM 在 ReAct 推理时
+ * 容易把 `{"status":"success","error_code":"",...}` 这种包装字段直接抄进最终响应,
+ * 干扰多步任务的闭环推进。
+ *
+ * 精简策略:
+ *   - 成功(status==='success'): 只返回 data 字段内容,并在外层加 tool + status
+ *     最小元信息,让 LLM 知道这是工具结果且成功,但不再暴露 error_code 等内部字段
+ *   - 错误: 保留完整结构(含 error_code),让 LLM 能识别错误并决定是否重试/换工具
+ *   - 非标准结构: 透传整个 result,保证未知工具格式不被破坏
+ *
+ * @param result ModuAgent BaseTool.invoke 返回的字典
+ * @returns ToolMessage 用的 JSON 字符串
+ */
+function _formatToolResult(result: Record<string, any>): string {
+  if (!result || typeof result !== 'object') {
+    return JSON.stringify(result)
+  }
+  const status = result['status']
+  if (status === 'success') {
+    // 精简: 只保留 tool 名与 data 字段,去掉 error_code 包装
+    return JSON.stringify({
+      tool: result['tool'] ?? '',
+      status: 'success',
+      data: result['data'] ?? {},
+    })
+  }
+  if (status === 'error') {
+    // 错误: 保留完整结构,LLM 需要 error_code 判断错误类型
+    return JSON.stringify(result)
+  }
+  // 非标准结构(无 status 字段等): 透传,避免破坏未知工具格式
+  return JSON.stringify(result)
+}
+
+/**
  * 将 ModuAgent BaseTool 包装为 LangChain StructuredTool。
  *
  * ModuAgent BaseTool 接口：
@@ -215,7 +253,7 @@ export function wrap_modu_tool(
         return cached
       }
       const result = await moduTool.invoke(input, {})
-      const json = JSON.stringify(result)
+      const json = _formatToolResult(result)
       // 仅缓存成功结果，避免错误结果被反复返回
       if (result?.['status'] === 'success') {
         cache.set(cacheKey, json, cacheCfg.ttlMs)
@@ -225,7 +263,7 @@ export function wrap_modu_tool(
     }
 
     const result = await moduTool.invoke(input, {})
-    const json = JSON.stringify(result)
+    const json = _formatToolResult(result)
     // 工具结果字符级截断（对应文档 §4.3 建议1）：
     //   按 tools.max_result_chars.{tool_name} 截断，避免大响应撑爆 LLM 上下文
     //   - 工具名未单独配置时回退到 default（default=0 表示不截断）

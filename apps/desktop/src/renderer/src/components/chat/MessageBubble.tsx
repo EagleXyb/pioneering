@@ -182,7 +182,7 @@ export const MessageBubble = memo(function MessageBubble({
 
         {(displayContent || message.content || isStreaming || useTrace) && (
           <Bubble
-            variant={isUser ? 'secondary' : 'muted'}
+            variant={isUser ? 'secondary' : 'ghost'}
             align={align}
             className={cn(
               isUser
@@ -202,9 +202,10 @@ export const MessageBubble = memo(function MessageBubble({
                   : undefined
               }
               className={cn(
-                'min-w-0 rounded-2xl py-2.5 text-sm leading-relaxed',
-                isUser && 'px-4',
-                !isUser && '!w-full !max-w-full px-0 !bg-transparent text-foreground border-transparent'
+                'min-w-0 rounded-2xl py-2.5 leading-relaxed',
+                isUser && 'px-4 text-sm',
+                // P1：助手消息无背景、全宽、字号略大，对齐 WorkBuddy 排版
+                !isUser && 'w-full max-w-full px-0 text-[15px] text-foreground'
               )}
             >
               {/* M2/M6: trace 模式下 text 节点由 TraceTextNode 统一渲染（含 markdown、光标、动画）；

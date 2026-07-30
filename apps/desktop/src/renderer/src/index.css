@@ -159,7 +159,7 @@
    ============================================= */
 @layer components {
   .chat-markdown {
-    @apply w-full max-w-none min-w-0 block font-sans text-sm leading-relaxed text-foreground;
+    @apply w-full max-w-none min-w-0 block font-sans text-[15px] leading-7 text-foreground;
   }
 
   /* 容器首尾子元素去掉多余外边距，避免气泡内出现额外留白 */
@@ -170,30 +170,32 @@
     margin-bottom: 0;
   }
 
+  /* P1：段落间距加大，阅读更舒适 */
   .chat-markdown p {
-    @apply my-2 leading-relaxed;
+    @apply my-2.5 leading-7;
   }
 
-  /* 字体层级：与正文 14px 拉开梯度，字重统一为 semibold */
+  /* 字体层级：与正文拉开梯度，字重统一为 semibold */
   .chat-markdown h1 {
-    @apply mt-4 mb-2 text-lg font-semibold leading-snug;
+    @apply mt-5 mb-2.5 text-xl font-semibold leading-snug;
   }
   .chat-markdown h2 {
-    @apply mt-4 mb-2 text-base font-semibold leading-snug;
+    @apply mt-4 mb-2 text-lg font-semibold leading-snug;
   }
   .chat-markdown h3,
   .chat-markdown h4 {
-    @apply mt-3 mb-1.5 text-sm font-semibold leading-snug;
+    @apply mt-3.5 mb-1.5 text-[15px] font-semibold leading-snug;
   }
 
+  /* P1：列表间距和缩进优化 */
   .chat-markdown ul {
-    @apply my-2 list-disc space-y-1 pl-5;
+    @apply my-2.5 list-disc space-y-1.5 pl-5;
   }
   .chat-markdown ol {
-    @apply my-2 list-decimal space-y-1 pl-5;
+    @apply my-2.5 list-decimal space-y-1.5 pl-5;
   }
   .chat-markdown li {
-    @apply leading-relaxed;
+    @apply leading-7;
   }
   .chat-markdown li > ul,
   .chat-markdown li > ol {

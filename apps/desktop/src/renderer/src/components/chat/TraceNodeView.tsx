@@ -18,11 +18,14 @@ import {
   Eye
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getToolDisplayName } from '@/lib/constants'
 import type { TraceNode } from '@shared/types'
 import { traceNodeExpandedAtom, defaultExpandedForNode } from '@/stores/traceAtoms'
 import { formatDuration } from '@/lib/trace-utils'
 // P0：text 节点改由统一 MarkdownRenderer 渲染（替代原裸 ReactMarkdown）
 import { MarkdownRenderer } from './MarkdownRenderer'
+// P0：observation 节点使用智能结果展示（替代裸露原始 JSON）
+import { ObservationResult } from './ObservationResult'
 
 interface TraceNodeViewProps {
   node: TraceNode
@@ -67,8 +70,9 @@ export const TraceNodeView = memo(function TraceNodeView({
 
   const Icon = KIND_ICON[node.kind]
   const title = useMemo(() => {
-    if (node.kind === 'tool-call') return node.toolName || node.label || KIND_TITLE[node.kind]
-    if (node.kind === 'observation') return node.toolName ? `${node.toolName} · 观察结果` : KIND_TITLE[node.kind]
+    // P1：工具名中文化
+    if (node.kind === 'tool-call') return getToolDisplayName(node.toolName || node.label || KIND_TITLE[node.kind])
+    if (node.kind === 'observation') return node.toolName ? `${getToolDisplayName(node.toolName)} · 观察结果` : KIND_TITLE[node.kind]
     return node.label || KIND_TITLE[node.kind]
   }, [node.kind, node.label, node.toolName])
 
@@ -244,16 +248,9 @@ const TraceNodeContent = memo(function TraceNodeContent({ node }: { node: TraceN
       </div>
     )
   }
+  // P0：observation 节点使用 ObservationResult 智能展示，不再裸露原始 JSON
   if (node.kind === 'observation') {
-    const text = node.content ?? ''
-    return (
-      <div className="text-xs">
-        <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">返回</div>
-        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/80">
-{text || '(空结果)'}
-        </pre>
-      </div>
-    )
+    return <ObservationResult raw={node.content ?? ''} />
   }
   if (node.kind === 'error' && node.errorMessage) {
     return (
