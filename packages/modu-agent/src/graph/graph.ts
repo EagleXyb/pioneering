@@ -46,6 +46,11 @@ import {
 import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
 // P0-3: Observation 蒸馏器
 import { ObservationDistiller } from './adapters/observation-distiller.js'
+// P2-2: Few-shot 动态示例选择
+import {
+  DynamicFewShotSelector,
+  InMemoryExampleStore,
+} from '../skills/few-shot-selector.js'
 import { make_supervisor_node, route_from_supervisor } from './subgraph/supervisor.js'
 import {
   makePlanContextInjector,
@@ -406,9 +411,20 @@ export function buildModuGraph(
 
   // 创建节点函数
   // P4: plan_execute 模式下为 agent 节点注入步骤上下文（默认 null 时行为不变）
+  // P2-2: few_shot 启用时注入 DynamicFewShotSelector（默认 null 时行为不变）
+  let _fewShotSelector: any = null
+  try {
+    if (getConfig().get('react_optimization.few_shot.enabled', false)) {
+      // 使用内存示例库（生产环境可替换为 ChromaExampleStore）
+      const store = new InMemoryExampleStore()
+      _fewShotSelector = DynamicFewShotSelector.fromConfig(store)
+    }
+  } catch (e: any) {
+    logger.warning('[P2-2] Few-shot selector init failed, skipping: %s', String(e?.message ?? e))
+  }
   const agentNode = planExecuteEnabled
-    ? makeAgentNode(boundLlm, systemPrompt, 0.5, 0.3, makePlanContextInjector())
-    : makeAgentNode(boundLlm, systemPrompt)
+    ? makeAgentNode(boundLlm, systemPrompt, 0.5, 0.3, makePlanContextInjector(), null, null, _fewShotSelector)
+    : makeAgentNode(boundLlm, systemPrompt, 0.5, 0.3, null, null, null, _fewShotSelector)
   const memoryNode = store ? makeMemoryQueryNode(store) : null
   // P0-3: 创建记忆更新节点（带 Store 时写入长期记忆，否则跳过）
   const memoryUpdate = store ? makeMemoryUpdateNode(store) : memoryUpdateNode

@@ -69,6 +69,17 @@ import {
 import {
   filterToolsByTaskTypeAndIntent,
 } from '../tools/tool-registry.js'
+// P2-1: 写操作 + 敏感数据安全防护
+import {
+  checkGuardrailsForToolCalls,
+} from '../tools/tool-guardrails.js'
+// P2-3: 动态工具编排
+import {
+  parseToolCalls,
+  planExecution,
+  shouldOrchestrate,
+  formatExecutionPlan,
+} from './adapters/tool-orchestrator.js'
 
 // ============================================================
 // P9.3.1: LangChain 消息类型辅助（减少 as any 断言）
@@ -482,6 +493,23 @@ export function routeAfterAgent(state: ModuAgentState): string {
         return '__end__'
       }
     }
+
+    // P2-3: 动态工具编排检测（advisory 模式，仅记录执行计划）
+    // ToolNode 本身已支持并行执行同一 AIMessage 中的多个 tool_calls，
+    // 此处记录依赖分析结果便于追踪；feature flag 控制是否启用分析
+    try {
+      const _cfg = getConfig()
+      const parallelEnabled = _cfg.get('react_optimization.parallel_tools.enabled', false)
+      if (parallelEnabled && toolCalls.length >= 2) {
+        const items = parseToolCalls(toolCalls)
+        const conservative = _cfg.get('react_optimization.parallel_tools.conservative_mode', true)
+        const plan = planExecution(items, conservative)
+        logger.info('[P2-3] %s', formatExecutionPlan(plan))
+      }
+    } catch {
+      // 配置读取异常时静默跳过
+    }
+
     return 'tools'
   }
   // P4 Plan-and-Execute：执行阶段中"无 tool_calls"表示当前步骤完成，
@@ -579,6 +607,8 @@ export function makeAgentNode(
   cotAnchorEnabled: boolean | null = null,
   // P0-4: 自适应终止引擎（null 时从配置读取，默认 advisory 模式启用）
   terminationEngine: AdaptiveTerminationEngine | null = null,
+  // P2-2: Few-shot 动态示例选择器（null 时从配置读取，默认不启用）
+  fewShotSelector: any | null = null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
   // 获取原始 LLM 用于动态调整温度
   const _originalLlm = (boundLlm as any)._llm ?? boundLlm
@@ -705,6 +735,21 @@ export function makeAgentNode(
         messages.push(new SystemMessage({
           content: `Recent observations (distilled summaries):\n${obsText}`,
         }))
+      }
+    }
+
+    // P2-2: Few-shot 动态示例注入（gated by react_optimization.few_shot.enabled）
+    // 示例库为空时静默跳过（零侵入），有示例时作为 SystemMessage 注入
+    // 对应 R-11 策略①：空库返回空字符串，不影响现有流程
+    if (fewShotSelector) {
+      try {
+        const _query = state.cleaned_text ?? ''
+        const fewShotPrompt = await fewShotSelector.selectAndFormat(_query)
+        if (fewShotPrompt) {
+          messages.push(new SystemMessage({ content: fewShotPrompt }))
+        }
+      } catch (e: any) {
+        logger.warning('[P2-2] Few-shot selection failed, skipping: %s', String(e?.message ?? e))
       }
     }
 
@@ -1342,12 +1387,38 @@ export function makeHumanReviewNode(
       session_id: state.session_id ?? '',
       trace_id: state.trace_id ?? '',
     }
-    const pending = toolCalls.filter((tc: Record<string, any>) =>
-      _toolRequiresApproval(
+
+    // P2-1: guardrail 检查（gated by react_optimization.action_guardrails.enabled）
+    // guardrail 命中→直接加入 pending（强审批），未命中→走原有 _toolRequiresApproval 逻辑
+    // 对应 R-10 策略③：与 requiresApprovalFor 合并判定
+    let guardrailsEnabled = false
+    let guardrailDryRun = false
+    try {
+      const _cfg = config !== null && config !== undefined ? config : getConfig()
+      guardrailsEnabled = _cfg.get('react_optimization.action_guardrails.enabled', false)
+      guardrailDryRun = _cfg.get('react_optimization.action_guardrails.dry_run_enabled', true)
+    } catch {
+      // 配置读取异常时降级到原逻辑
+    }
+
+    const guardrailHits = guardrailsEnabled
+      ? checkGuardrailsForToolCalls(toolCalls, guardrailDryRun)
+      : []
+    const guardrailHitIds = new Set(
+      guardrailHits.map((h) => h.toolCall['id'] ?? ''),
+    )
+
+    const pending = toolCalls.filter((tc: Record<string, any>) => {
+      // guardrail 命中直接加入 pending
+      if (guardrailHitIds.has(tc['id'] ?? '')) {
+        return true
+      }
+      // 未命中走原有 _toolRequiresApproval 逻辑
+      return _toolRequiresApproval(
         tc['name'] ?? '', reg, sensitiveTools,
         tc['args'] ?? {}, hitlContext,
-      ),
-    )
+      )
+    })
 
     if (pending.length === 0) {
       // 无需审批，透传

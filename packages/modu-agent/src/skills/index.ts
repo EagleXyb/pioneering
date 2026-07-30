@@ -8,3 +8,13 @@
 export { SkillAdapter, SkillToolWrapper } from './adapter.js'
 export { SkillLoader } from './loader.js'
 export { SkillPromptAggregator } from './prompt-aggregator.js'
+// P2-2: Few-shot 动态示例选择
+export {
+  DynamicFewShotSelector,
+  InMemoryExampleStore,
+  formatExample,
+  formatExamplesAsPrompt,
+  mmrSelect,
+  type FewShotExample,
+  type ExampleStore,
+} from './few-shot-selector.js'

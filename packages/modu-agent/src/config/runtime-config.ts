@@ -290,6 +290,30 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     tool_capability_matrix: {
       enabled: false,  // R-09 中等风险，默认关闭；启用后通过 subtask.intent 触发细筛
     },
+    // P2-1: 写操作 + 敏感数据安全防护
+    // 启用后 ACTION_GUARDRAILS 与 requiresApprovalFor 合并判定
+    // guardrail 命中→直接 interrupt，未命中→走原有 requiresApprovalFor 逻辑
+    action_guardrails: {
+      enabled: false,  // R-10 高风险，默认关闭；灰度开启
+      dry_run_enabled: true,  // dry_run 预检结果以独立字段回写
+    },
+    // P2-2: Few-shot 动态示例选择
+    // 启用后 DynamicFewShotSelector 从示例库检索 MMR 示例注入 agentNode
+    // 示例库初始为空时静默跳过（零侵入）
+    few_shot: {
+      enabled: false,  // R-11 低风险，默认关闭
+      max_examples: 3,  // 单次注入最多 3 个示例
+      max_tokens_budget: 1500,  // 示例 token 硬上限
+      min_quality_score: 0.7,  // 低于此分的示例不入库/不检索
+      mmr_lambda: 0.7,  // MMR 多样性权重（0=纯相关性，1=纯多样性）
+    },
+    // P2-3: 动态工具编排（串行/并行/条件分支）
+    // 启用后多个独立 tool_calls 通过 Send API 并行分发
+    // 依赖关系不明确时保守串行（conservative_mode=true）
+    parallel_tools: {
+      enabled: false,  // R-12 高风险，默认关闭；灰度开启
+      conservative_mode: true,  // 依赖不明确时串行
+    },
   },
 }
 

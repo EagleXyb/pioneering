@@ -15,3 +15,14 @@ export { ToolRateLimiter, get_tool_rate_limiter, _reset_tool_rate_limiter_for_te
 export { with_tool_retry, apply_llm_retry } from './retry.js'
 export { ChromaStore, InMemoryStoreAdapter } from './store-adapter.js'
 export { wrap_modu_tool, build_langchain_tools } from './tool-adapter.js'
+// P2-3: 动态工具编排
+export {
+  hasDependency,
+  planExecution,
+  parseToolCalls,
+  shouldOrchestrate,
+  formatExecutionPlan,
+  type ToolCallItem,
+  type ExecutionGroup,
+  type ExecutionPlan,
+} from './tool-orchestrator.js'

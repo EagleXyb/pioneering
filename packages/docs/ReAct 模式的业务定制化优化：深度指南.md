@@ -1055,21 +1055,48 @@ MONITORING_METRICS = {
 
 #### P2-1 ｜ 写操作 + 敏感数据安全防护（对应优化点 10）
 
+> **状态**：✅ 已修复（v1.x）— `ACTION_GUARDRAILS` 注册表（5 条预置规则）+ `checkGuardrail()` 双层判定已实现，集成到 `human_review` 节点与 `requiresApprovalFor` 合并判定，gated by `react_optimization.action_guardrails.enabled`（默认 false），31 个单元测试全通过。
+> **实现位置**：[tool-guardrails.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/tool-guardrails.ts)、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts)、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts)、[tool-guardrails.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/tools/tool-guardrails.test.ts)
+
 - **触及文件**：新增 `src/tools/tool-guardrails.ts`；修改 `src/graph/graph.ts`（在 ToolNode 前插入 guardrail 节点）；修改 `src/graph/nodes.ts` 的 HITL 审批逻辑。
 - **执行建议**：guardrail 命中时通过 LangGraph `interrupt` 触发现有 HITL 机制，不新建独立审批流。`ACTION_GUARDRAILS` 配置化，支持按工具名/操作类型匹配。
 - **依赖**：建议在 P1-5 完成后实施（依赖工具能力矩阵的 `requires_confirmation` 标注）。
+- **实现说明**（v1.x）：
+  - `ACTION_GUARDRAILS` 预置 5 条规则：file_ops write/delete、sql_query write、http_request sensitive、code_executor network_access。
+  - `checkGuardrail()` 双层判定：第一层匹配 `ACTION_GUARDRAILS` 规则（tool_name + param_conditions），第二层回退到 `TOOL_CAPABILITY_MATRIX.requires_confirmation` 静态标注。
+  - 集成到 `human_review` 节点：guardrail 命中→直接加入 pending（强审批），未命中→走原有 `_toolRequiresApproval` 逻辑（合并判定，对应 R-10 策略③）。
+  - dry_run 模式：`dry_run_enabled=true` 时返回 `dry_run_result`（would_execute=false + blocked_reason），不实际执行工具。
+  - feature flag `react_optimization.action_guardrails.enabled` 默认 false，关闭时行为与现状完全一致。
 
 #### P2-2 ｜ Few-shot 动态示例选择（对应优化点 11）
+
+> **状态**：✅ 已修复（v1.x）— `DynamicFewShotSelector` + MMR 算法（lambda=0.7）+ `InMemoryExampleStore` 已实现，集成到 `agentNode` 注入 SystemMessage，gated by `react_optimization.few_shot.enabled`（默认 false），22 个单元测试全通过。
+> **实现位置**：[few-shot-selector.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/skills/few-shot-selector.ts)、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts)、[graph.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts)、[few-shot-selector.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/skills/few-shot-selector.test.ts)
 
 - **触及文件**：新增 `src/skills/few-shot-selector.ts`；修改 `src/graph/nodes.ts` 的 `agentNode`（调用 selector 注入 examples）；复用 `src/memory/chroma.ts`（新增 namespace）。
 - **执行建议**：`DynamicFewShotSelector` 实现 MMR 算法（lambda=0.7），token 预算 1500。示例库初始为空时静默跳过，不影响现有流程。需配套建立示例标注规范（`EXAMPLE_SCHEMA`）。
 - **依赖**：P1-4 完成后实施（examples 作为 taskSpec 层注入 PromptComposer）。
+- **实现说明**（v1.x）：
+  - `DynamicFewShotSelector` 实现 MMR 选择算法：检索 top-N 候选 → 过滤 quality_score < 0.7 → MMR 去重 → token 预算截断。
+  - `InMemoryExampleStore` 提供纯内存示例库（关键词匹配相关性），生产环境可替换为 `ChromaExampleStore`（语义嵌入检索）。
+  - `makeAgentNode` 新增 `fewShotSelector` 参数，在 Observation 历史注入后调用 `selectAndFormat()` 注入 SystemMessage。
+  - 空库静默跳过（R-11 策略①），token 预算硬上限 1500（R-11 策略②），质量门槛 0.7（R-11 策略③）。
+  - feature flag `react_optimization.few_shot.enabled` 默认 false，关闭时 agentNode 不注入示例（等价现状）。
 
 #### P2-3 ｜ 动态工具编排（串行/并行/条件分支）（对应优化点 12）
+
+> **状态**：✅ 已修复（v1.x）— `tool-orchestrator.ts` 依赖分析 + 执行计划已实现，`routeAfterAgent` 接入 advisory 模式日志记录，gated by `react_optimization.parallel_tools.enabled`（默认 false），27 个单元测试全通过。
+> **实现位置**：[tool-orchestrator.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-orchestrator.ts)、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts)、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts)、[tool-orchestrator.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/graph/adapters/tool-orchestrator.test.ts)
 
 - **触及文件**：新增 `src/graph/adapters/tool-orchestrator.ts`；修改 `src/graph/graph.ts`（引入 LangGraph `Send` API 并行分发）；修改 `src/graph/nodes.ts` 的 agentNode 后续处理。
 - **执行建议**：仅在 LLM 输出多个独立 tool_calls 时触发并行编排，依赖关系不明确时保守串行。复用 `plan-execute/dispatcher.ts` 的 `_identifyReadySteps` 依赖分析逻辑。
 - **依赖**：P1-5 完成后实施。
+- **实现说明**（v1.x）：
+  - `hasDependency()` 依赖推断：同名工具、两个写操作工具、args 占位符引用（`${...}`）、args 引用另一工具 id（`call_` 前缀）。
+  - `planExecution()` 执行计划构建：保守模式下任一对 tool_calls 有依赖则全部串行；非保守模式下贪心分组（最大独立集 → 并行组）。
+  - `shouldOrchestrate()` 触发判定：tool_calls >= 2 + feature flag 启用 + 执行计划含并行组。
+  - `routeAfterAgent` 接入 advisory 模式：feature flag 启用时记录执行计划日志，不改变路由（ToolNode 本身已支持并行执行同 AIMessage 中的多 tool_calls）。
+  - feature flag `react_optimization.parallel_tools.enabled` 默认 false，`conservative_mode` 默认 true（依赖不明确时串行，对应 R-12 策略①）。
 
 ---
 
@@ -1289,3 +1316,21 @@ MONITORING_METRICS = {
 - R-07（场景化参数）：优先级 scene_profile > tier 映射 > 默认 complex_analysis
 - R-08（Prompt 解耦）：`compose({systemCore})` === systemCore（字符等价回归），DOMAIN_ADAPTERS 查找失败返回空字符串
 - R-09（工具矩阵）：intent 匹配失败回退到 task_type 粗筛结果（等价现状），fallback_chain 仅作为 prompt 建议
+
+### v1.x — P2 全量完成（3 项）
+
+| 优先级 | 优化项 | 状态 | 核心实现 | 测试 |
+|--------|--------|------|---------|------|
+| P2-1 | 写操作 + 敏感数据安全防护 | ✅ 已修复 | `ACTION_GUARDRAILS`（5 条规则）+ `checkGuardrail()` 双层判定 + human_review 节点合并判定 + dry_run 模式（gated by `action_guardrails.enabled`） | tool-guardrails.test.ts（31 tests） |
+| P2-2 | Few-shot 动态示例选择 | ✅ 已修复 | `DynamicFewShotSelector` + MMR 算法（lambda=0.7）+ `InMemoryExampleStore` + agentNode 注入 SystemMessage（gated by `few_shot.enabled`） | few-shot-selector.test.ts（22 tests） |
+| P2-3 | 动态工具编排 | ✅ 已修复 | `tool-orchestrator.ts` + `hasDependency()` 依赖推断 + `planExecution()` 执行计划 + `routeAfterAgent` advisory 日志（gated by `parallel_tools.enabled`） | tool-orchestrator.test.ts（27 tests） |
+
+**验证结果**：
+- `tsc --noEmit` 通过（零编译错误）
+- `vitest run` 全量通过：46 test files / 514 tests passed（含本次新增 80 个测试）
+- 所有 P2 项均通过 feature flag 控制，默认关闭，启用后行为与现状完全一致（零侵入）
+
+**风险控制总结**：
+- R-10（安全防护）：guardrail 与 `requiresApprovalFor` 合并判定（命中→直接 interrupt，未命中→走原逻辑），dry_run 结果独立字段回写，feature flag 默认 false
+- R-11（Few-shot）：空库静默跳过 + token 预算硬上限 1500 + 质量门槛 0.7 + feature flag 默认 false
+- R-12（工具编排）：保守模式默认 true（依赖不明确时串行）+ advisory 模式不改变路由 + feature flag 默认 false

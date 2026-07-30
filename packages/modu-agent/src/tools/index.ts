@@ -21,3 +21,12 @@ export {
   filterToolsByTaskTypeAndIntent,
   type ToolCapability,
 } from './tool-registry.js'
+// P2-1: 写操作 + 敏感数据安全防护
+export {
+  ACTION_GUARDRAILS,
+  registerGuardrailRule,
+  checkGuardrail,
+  checkGuardrailsForToolCalls,
+  type GuardrailRule,
+  type GuardrailCheckResult,
+} from './tool-guardrails.js'
