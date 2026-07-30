@@ -5,6 +5,11 @@
 //   Layer-2: 相关性过滤（按 current_subtask 关键词过滤）
 //   Layer-3: 增量压缩（与 history 去重，仅保留新信息）
 //
+// P1-1 扩展：异常信号增强（对应文档 §1.3 策略 B 与风险登记表 R-05）
+//   - 在蒸馏输出中追加 enhancement 文本，引导 LLM 调整策略
+//   - 仅在 status==='error' 分支生效，不修改原始 error 结构
+//   - enhancement 文本以 `⚠️` 前缀与 `---` 分隔符与原始 payload 隔离
+//
 // 设计要点：
 //   1. 蒸馏器为纯函数模块，无副作用，便于单元测试
 //   2. 蒸馏结果格式与现有 parsedContent 结构对齐（status/records_count/key_metrics）
@@ -33,8 +38,121 @@ export interface DistilledObservation {
   error_code?: string
   /** 错误信息（status=error 时存在） */
   error_message?: string
+  /**
+   * 异常信号增强文本（P1-1，status=error 时可能存在）。
+   *
+   * 引导 LLM 在遇到工具异常时调整策略（如缩小查询范围、切换备用工具）。
+   * 由 ERROR_PATTERNS 映射表匹配 error_code / error_message 生成，
+   * 不修改原始 error 结构；格式化时以 `⚠️` 前缀与 `---` 分隔符与原始 payload 隔离。
+   */
+  enhancement?: string
   /** 原始结果保留（调试与回退用，不写入 ToolMessage content） */
   raw?: any
+}
+
+// ============================================================
+// P1-1: 异常信号增强映射表（对应文档 §1.3 策略 B 与风险登记表 R-05）
+// ============================================================
+
+/**
+ * 异常模式增强配置。
+ *
+ * - match: 命中条件（error_code 子串匹配，大小写不敏感）
+ * - enhancement: 引导 LLM 调整策略的建议文本
+ * - suggest_alternatives: 是否在 enhancement 中提示切换备用工具
+ */
+interface ErrorPatternConfig {
+  /** error_code 子串匹配关键词（小写） */
+  match: string[]
+  /** 增强建议文本 */
+  enhancement: string
+  /** 是否提示切换备用工具 */
+  suggest_alternatives?: boolean
+}
+
+/**
+ * 异常模式 → 增强建议映射表。
+ *
+ * 设计要点：
+ *   1. 仅覆盖常见可恢复异常（timeout / empty_result / permission_denied / data_quality_issue）
+ *      未覆盖的异常码不影响主流程（enhancement 为空，等价原行为）
+ *   2. enhancement 文本仅作为 prompt 引导，不修改原始 error payload
+ *   3. 匹配基于 error_code 子串（大小写不敏感），兼容不同工具的命名约定
+ */
+export const ERROR_PATTERNS: ErrorPatternConfig[] = [
+  {
+    match: ['timeout', 'timed_out', 'timed out', 'gateway_timeout', 'etimedout'],
+    enhancement:
+      'Tool call timed out. Suggested actions: 1) narrow the query scope 2) switch to a fallback tool 3) split into smaller sub-queries.',
+    suggest_alternatives: true,
+  },
+  {
+    match: ['empty', 'no_results', 'not_found', 'null_result', 'empty_result'],
+    enhancement:
+      'Query returned empty results. Suggested actions: 1) broaden filter conditions 2) verify query parameters 3) try fuzzy search.',
+  },
+  {
+    match: ['permission', 'forbidden', 'unauthorized', 'access_denied', '403', '401'],
+    enhancement:
+      'Permission denied. Suggested actions: 1) use an alternative tool accessible with current privileges 2) request privilege escalation.',
+    suggest_alternatives: true,
+  },
+  {
+    match: ['rate_limit', 'too_many_requests', '429', 'quota_exceeded'],
+    enhancement:
+      'Rate limit exceeded. Suggested actions: 1) wait and retry with backoff 2) reduce call frequency 3) cache previous results if applicable.',
+  },
+  {
+    match: ['data_quality', 'invalid_data', 'schema_mismatch', 'parse_error'],
+    enhancement:
+      'Data quality issue detected. Suggested actions: 1) use a data cleaning tool 2) flag problematic fields 3) cross-validate with another source.',
+  },
+  {
+    match: ['network', 'connection', 'econnreset', 'econnrefused', 'socket_hang_up'],
+    enhancement:
+      'Network error occurred. Suggested actions: 1) retry once with backoff 2) switch to offline cached data 3) inform user of temporary unavailability.',
+    suggest_alternatives: true,
+  },
+]
+
+/**
+ * 默认的备用工具建议（suggest_alternatives=true 时附加）。
+ *
+ * 此处为通用建议，不绑定具体工具名，由 LLM 根据当前可用工具集自主选择。
+ */
+const _ALTERNATIVES_HINT =
+  'If this tool remains unavailable, consider other tools in your toolset that can fulfill a similar purpose.'
+
+/**
+ * 根据 error_code 与 error_message 生成增强建议文本。
+ *
+ * 匹配策略：
+ *   1. 优先按 error_code 子串匹配（大小写不敏感）
+ *   2. 其次按 error_message 子串匹配
+ *   3. 未命中任何模式时返回空字符串（等价原行为）
+ *
+ * @param errorCode 工具返回的 error_code
+ * @param errorMessage 工具返回的 error_message
+ * @returns 增强建议文本；未命中时为空字符串
+ */
+export function enhanceErrorSignal(
+  errorCode?: string,
+  errorMessage?: string,
+): string {
+  const code = (errorCode ?? '').toLowerCase()
+  const msg = (errorMessage ?? '').toLowerCase()
+  const haystack = `${code} ${msg}`
+
+  for (const pattern of ERROR_PATTERNS) {
+    const hit = pattern.match.some((kw) => haystack.includes(kw.toLowerCase()))
+    if (!hit) continue
+
+    const parts = [pattern.enhancement]
+    if (pattern.suggest_alternatives) parts.push(_ALTERNATIVES_HINT)
+    return parts.join(' ')
+  }
+
+  return ''
 }
 
 /**
@@ -142,6 +260,12 @@ export class ObservationDistiller {
       if (result.status === 'error') {
         result.error_code = raw['error_code'] ?? raw['code'] ?? 'UNKNOWN'
         result.error_message = raw['error_message'] ?? raw['message'] ?? raw['error'] ?? ''
+        // P1-1: 异常信号增强 —— 匹配 ERROR_PATTERNS 生成 enhancement 文本
+        // 不修改原始 error 结构；enhancement 仅作为 prompt 引导
+        const enhancement = enhanceErrorSignal(result.error_code, result.error_message)
+        if (enhancement) {
+          result.enhancement = enhancement
+        }
       }
 
       // 提取 data / result / output 字段
@@ -359,16 +483,25 @@ export class ObservationDistiller {
  * 将蒸馏结果格式化为 ToolMessage content 字符串。
  *
  * 格式与现有 parsedContent 结构对齐，下游 LLM 无需感知差异。
+ *
+ * P1-1: error 分支追加 enhancement 字段（若存在），以 `⚠️` 前缀与 `---` 分隔符
+ * 与原始 error payload 隔离，避免被下游误判为工具返回数据（对应风险 R-05 规避策略）。
  */
 export function formatDistilledAsContent(distilled: DistilledObservation): string {
   // error 状态保留原始 error 结构
   if (distilled.status === 'error') {
-    return JSON.stringify({
+    // P1-1: enhancement 非空时附加引导文本，与原始 error payload 隔离
+    const payload: Record<string, any> = {
       status: 'error',
       error_code: distilled.error_code ?? 'UNKNOWN',
       error_message: distilled.error_message ?? '',
       summary: distilled.summary,
-    })
+    }
+    if (distilled.enhancement) {
+      payload['enhancement'] = `⚠️ ${distilled.enhancement}`
+      payload['enhancement_separator'] = '---'
+    }
+    return JSON.stringify(payload)
   }
 
   // success 状态输出蒸馏后的结构

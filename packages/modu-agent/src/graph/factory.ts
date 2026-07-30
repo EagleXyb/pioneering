@@ -41,6 +41,8 @@ import { PassthroughLLMRouter, RuleBasedLLMRouter, type RouteTable } from '../re
 import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
 // P0-3: Observation 蒸馏器
 import { ObservationDistiller } from './adapters/observation-distiller.js'
+// P1-4: 四层 Prompt 解耦架构
+import { PromptComposer } from '../reasoning/prompt-composer.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[factory] ${msg}`, ...args),
@@ -499,6 +501,27 @@ export async function create_agent(
       )
     } catch (e: any) {
       logger.warning('Skill prompt aggregation failed, using base prompt: %s', String(e))
+    }
+  }
+
+  // P1-4: 四层 Prompt 解耦架构（gated by react_optimization.prompt_composer.enabled）
+  // 启用后通过 PromptComposer 组装 systemCore + domain + taskSpec + runtimeContext
+  // domain 为空时行为与现状完全一致（字符等价回归，对应 R-08 策略①）
+  if (runtimeConfig.get('react_optimization.prompt_composer.enabled', false)) {
+    try {
+      effectiveSystemPrompt = PromptComposer.compose({
+        systemCore: effectiveSystemPrompt ?? '',
+        domain: configurable['domain'] ?? null,
+        taskSpec: configurable['task_spec'] ?? null,
+        runtimeContext: configurable['runtime_context'] ?? null,
+      })
+      logger.info('[P1-4] PromptComposer enabled: domain=%s taskSpec=%s runtimeContext=%s',
+        configurable['domain'] ?? '(none)',
+        configurable['task_spec'] ? '(set)' : '(none)',
+        configurable['runtime_context'] ? '(set)' : '(none)',
+      )
+    } catch (e: any) {
+      logger.warning('[P1-4] PromptComposer failed, using aggregated prompt: %s', String(e))
     }
   }
 

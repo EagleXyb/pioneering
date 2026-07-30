@@ -269,8 +269,26 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     // P0-4: 自适应终止判定引擎
     // 第一阶段：advisory 模式，仅采集 confidence_history/information_gain_history/termination_advice
     // 不改变 routeAfterAgent 路由；第二阶段待 false_positive_rate < 5% 后才影响路由
+    // P1-3: 场景化参数动态调优
+    //   - scene_profile: 显式指定场景（quick_qa/complex_analysis/creative_generation/high_stakes_decision）
+    //   - use_tier_mapping: 启用 tier→scene 自动映射（默认 true）
+    //   优先级：scene_profile > tier 映射 > 默认 complex_analysis
     adaptive_termination: {
       enabled: false,  // R-04 高风险，第一阶段默认关闭；启用后仅 advisory 不改变路由
+      scene_profile: null,  // R-07 低风险，默认 null 启用 tier 映射
+      use_tier_mapping: true,  // 按 complexity_assessment.tier 自动选择场景配置
+    },
+    // P1-4: 四层 Prompt 解耦架构
+    // 启用后通过 PromptComposer 组装 system prompt（systemCore + domain + taskSpec + runtimeContext）
+    // 默认关闭，启用后 domain 为空时行为与现状完全一致（字符等价）
+    prompt_composer: {
+      enabled: false,  // R-08 中等风险，默认关闭；启用后通过 configurable.domain 注入领域适配
+    },
+    // P1-5: 工具能力矩阵 + 意图路由
+    // 启用后 _filterToolsByTaskType 升级为"先 task_type 粗筛 → 再 intent 细筛"两级管道
+    // intent 匹配失败时回退到 task_type 结果（等价现状）
+    tool_capability_matrix: {
+      enabled: false,  // R-09 中等风险，默认关闭；启用后通过 subtask.intent 触发细筛
     },
   },
 }

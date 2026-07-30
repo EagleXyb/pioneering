@@ -11,3 +11,13 @@ export { HttpRequestTool } from './http-request.js'
 export { FileOpsTool } from './file-ops.js'
 export { CodeExecutorTool } from './code-executor.js'
 export { SqlQueryTool } from './sql-query.js'
+// P1-5: 工具能力矩阵 + 意图路由
+export {
+  TOOL_CAPABILITY_MATRIX,
+  registerToolCapability,
+  getToolCapability,
+  filterToolsByTaskType,
+  filterToolsByIntent,
+  filterToolsByTaskTypeAndIntent,
+  type ToolCapability,
+} from './tool-registry.js'

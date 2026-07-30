@@ -136,6 +136,9 @@ export interface ModuAgentState {
   information_gain_history?: number[]
   // P0-4: 终止决策建议（advisory 模式写入，第一阶段不改变路由）
   termination_advice?: Record<string, any> | null
+  // P1-2: Observation 三级记忆（ObservationMemory.serialize() 整体替换）
+  // toolResultProcessor 写入，agentNode 读取注入 SystemMessage
+  observation_memory?: Record<string, any> | null
 }
 
 /**
@@ -311,6 +314,9 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   }),
   // P0-4: 终止决策建议（last-write-wins，advisory 模式写入）
   termination_advice: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
+  // P1-2: Observation 三级记忆（last-write-wins，ObservationMemory.serialize() 整体替换）
+  // 对应风险 R-06 规避策略②：reducer 整体替换避免并发覆盖
+  observation_memory: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
 })
 
 // ============================================================
@@ -418,6 +424,7 @@ export function makeInitialState(
     confidence_history: [],
     information_gain_history: [],
     termination_advice: null,
+    observation_memory: null,
   }
 }
 

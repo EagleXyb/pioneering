@@ -10,6 +10,13 @@
 //   - 不改变 routeAfterAgent 路由行为（仅采集指标）
 //   - 第二阶段待 false_positive_rate < 5% 后才真正影响路由
 //
+// P1-3 扩展：场景化参数动态调优（对应文档 §2.3 动态参数调整 + 风险 R-07）
+//   - SCENE_PROFILES 字典覆盖 4 类典型场景（quick_qa / complex_analysis /
+//     creative_generation / high_stakes_decision）
+//   - tier → scene 自动映射（tier_1→quick_qa，tier_2→complex_analysis，
+//     tier_3→high_stakes_decision）
+//   - 优先级：runtime_config.scene_profile > tier 映射 > 默认 complex_analysis
+//
 // 风险控制（对应风险登记表 R-04）：
 //   - 触及 routeAfterAgent 核心路由函数
 //   - 规避：第一阶段仅 advisory（不改变路由）+ 双重兜底（tool_calls + recursionLimit）
@@ -72,6 +79,181 @@ export const DEFAULT_TERMINATION_CONFIG: TerminationEngineConfig = {
   confidenceThreshold: 0.75,
   stagnationThreshold: 3,
   convergenceWindow: 3,
+}
+
+// ============================================================
+// P1-3: 场景化参数动态调优（对应文档 §2.3 动态参数调整 + 风险 R-07）
+// ============================================================
+
+/**
+ * 场景标识（对应 DynamicParameterTuner.SCENE_PROFILES）。
+ *
+ * - quick_qa: 简单问答场景，快速终止
+ * - complex_analysis: 复杂分析场景，允许更多轮次
+ * - creative_generation: 创意生成场景，基于质量标准而非信息完整度
+ * - high_stakes_decision: 高风险决策场景，极高置信度要求
+ */
+export type SceneProfile =
+  | 'quick_qa'
+  | 'complex_analysis'
+  | 'creative_generation'
+  | 'high_stakes_decision'
+
+/**
+ * 场景化终止参数配置。
+ *
+ * 与 TerminationEngineConfig 字段对齐，便于直接构造引擎实例。
+ * 额外字段：
+ *   - quality_metrics: 创意场景的质量评估维度（目前仅作元数据，不影响决策逻辑）
+ *   - mandatory_verification: 高风险场景是否强制二次验证（标记位，第二阶段生效）
+ *   - dual_confirmation: 高风险场景是否需要两个独立来源确认（标记位）
+ */
+export interface SceneProfileConfig extends TerminationEngineConfig {
+  /** 场景标识 */
+  scene: SceneProfile
+  /** 质量评估维度（创意场景） */
+  qualityMetrics?: string[]
+  /** 是否强制验证（高风险场景） */
+  mandatoryVerification?: boolean
+  /** 是否需要双源确认（高风险场景） */
+  dualConfirmation?: boolean
+}
+
+/**
+ * 场景化参数映射表（对应文档 §2.3 SCENE_PROFILES）。
+ *
+ * 设计要点：
+ *   1. 每个场景的参数均独立调优，反映该场景的典型特征
+ *   2. high_stakes_decision 场景启用 mandatory_verification + dual_confirmation 标记
+ *   3. creative_generation 场景标注 quality_metrics，但当前实现仍按置信度判定
+ *      （质量评估待 P2 阶段接入 LLM-as-Judge）
+ */
+export const SCENE_PROFILES: Record<SceneProfile, SceneProfileConfig> = {
+  // 简单问答场景：快速终止
+  quick_qa: {
+    scene: 'quick_qa',
+    maxRounds: 3,
+    maxTokens: 3000,
+    confidenceThreshold: 0.7,
+    stagnationThreshold: 2,
+    convergenceWindow: 2,
+  },
+  // 复杂分析场景：允许更多轮次（等价 DEFAULT_TERMINATION_CONFIG）
+  complex_analysis: {
+    scene: 'complex_analysis',
+    maxRounds: 15,
+    maxTokens: 12000,
+    confidenceThreshold: 0.85,
+    stagnationThreshold: 4,
+    convergenceWindow: 3,
+  },
+  // 创意生成场景：基于质量标准而非信息完整度
+  creative_generation: {
+    scene: 'creative_generation',
+    maxRounds: 8,
+    maxTokens: 8000,
+    confidenceThreshold: 0.75,
+    stagnationThreshold: 3,
+    convergenceWindow: 3,
+    qualityMetrics: ['originality', 'coherence', 'relevance'],
+  },
+  // 高风险决策场景：极高置信度要求
+  high_stakes_decision: {
+    scene: 'high_stakes_decision',
+    maxRounds: 20,
+    maxTokens: 15000,
+    confidenceThreshold: 0.95,
+    stagnationThreshold: 5,
+    convergenceWindow: 4,
+    mandatoryVerification: true,
+    dualConfirmation: true,
+  },
+}
+
+/**
+ * ComplexityTier 类型别名（避免与 complexity-assessor 循环依赖）。
+ *
+ * 此处仅用于 tier → scene 映射，不引入运行时依赖。
+ */
+export type ComplexityTier = 'tier_1' | 'tier_2' | 'tier_3'
+
+/**
+ * tier → scene 自动映射（对应文档 §2.3 auto_configure）。
+ *
+ * - tier_1 → quick_qa（简单查询快速终止）
+ * - tier_2 → complex_analysis（标准推理）
+ * - tier_3 → high_stakes_decision（深度推理 + 高置信度要求）
+ *
+ * 注意：creative_generation 场景无对应 tier，需通过 runtime_config 显式指定。
+ */
+export const TIER_TO_SCENE: Record<ComplexityTier, SceneProfile> = {
+  tier_1: 'quick_qa',
+  tier_2: 'complex_analysis',
+  tier_3: 'high_stakes_decision',
+}
+
+/**
+ * 根据场景标识构造终止引擎实例（对应文档 §2.3 auto_configure）。
+ *
+ * 优先级（对应风险 R-07 规避策略）：
+ *   1. 显式传入的 scene 参数（最高优先级，用于 runtime_config override）
+ *   2. tier 映射（tier_1→quick_qa，tier_2→complex_analysis，tier_3→high_stakes_decision）
+ *   3. 默认 complex_analysis（等价 DEFAULT_TERMINATION_CONFIG 行为）
+ *
+ * @param scene 场景标识（null 时按 tier 映射或默认值）
+ * @param tier 复杂度层级（scene 为 null 时使用）
+ * @returns 配置好的 AdaptiveTerminationEngine 实例
+ */
+export function createEngineForScene(
+  scene: SceneProfile | null = null,
+  tier?: ComplexityTier | null,
+): AdaptiveTerminationEngine {
+  // 优先级1: 显式 scene
+  if (scene) {
+    return new AdaptiveTerminationEngine(SCENE_PROFILES[scene])
+  }
+
+  // 优先级2: tier 映射
+  if (tier) {
+    const mappedScene = TIER_TO_SCENE[tier]
+    return new AdaptiveTerminationEngine(SCENE_PROFILES[mappedScene])
+  }
+
+  // 优先级3: 默认 complex_analysis
+  return new AdaptiveTerminationEngine(SCENE_PROFILES.complex_analysis)
+}
+
+/**
+ * 根据任务特征自动选择场景配置（对应文档 §2.3 auto_configure 的微调逻辑）。
+ *
+ * 在基础场景配置之上，按任务特征做微调：
+ *   - has_time_constraint: 压缩 maxRounds 与 maxTokens
+ *   - requires_high_precision: 提升 confidenceThreshold（上限 0.98）
+ *
+ * @param baseScene 基础场景
+ * @param taskAnalysis 任务特征
+ * @returns 微调后的配置
+ */
+export function autoConfigureScene(
+  baseScene: SceneProfile,
+  taskAnalysis: {
+    has_time_constraint?: boolean
+    requires_high_precision?: boolean
+  } = {},
+): SceneProfileConfig {
+  const base = SCENE_PROFILES[baseScene]
+  const tuned: SceneProfileConfig = { ...base }
+
+  if (taskAnalysis.has_time_constraint) {
+    tuned.maxRounds = Math.min(tuned.maxRounds, 5)
+    tuned.maxTokens = Math.min(tuned.maxTokens, 5000)
+  }
+
+  if (taskAnalysis.requires_high_precision) {
+    tuned.confidenceThreshold = Math.min(tuned.confidenceThreshold + 0.1, 0.98)
+  }
+
+  return tuned
 }
 
 /**

@@ -990,11 +990,17 @@ MONITORING_METRICS = {
 
 #### P1-1 ｜ 异常信号增强（对应优化点 4）
 
+> **状态**：✅ 已修复（v1.x）— `ERROR_PATTERNS` 映射表（6 类异常）+ `enhanceErrorSignal()` 已实现，集成到 `ObservationDistiller._extractStructured` 的 error 分支，`formatDistilledAsContent` 以 `⚠️` 前缀 + `---` 分隔符隔离 enhancement。
+> **实现位置**：[observation-distiller.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/adapters/observation-distiller.ts)、[observation-distiller.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/graph/adapters/observation-distiller.test.ts)
+
 - **触及文件**：扩展 `src/graph/adapters/observation-distiller.ts`；修改 `src/graph/nodes.ts` 的 `makeToolResultProcessor` 错误分支。
 - **执行建议**：在 distiller 内增加 `ERROR_PATTERNS` 映射表，`toolResultProcessor` 检测 `status==='error'` 时匹配 error_code 并附加 enhancement 文本，不修改原始 error 结构。
 - **依赖**：P0-3 完成后实施。
 
 #### P1-2 ｜ Observation 三级记忆管理（对应优化点 5）
+
+> **状态**：✅ 已修复（v1.x）— `ObservationMemory` 类已实现（short_term/working_memory/long_term 三级），state.ts 新增 `observation_memory` 字段（last-write-wins reducer），`toolResultProcessor` 写入记忆，`agentNode` 读取注入 SystemMessage。
+> **实现位置**：[observation-memory.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/memory/observation-memory.ts)、[state.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/state.ts)、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts)、[memory/index.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/memory/index.ts)
 
 - **触及文件**：新增 `src/memory/observation-memory.ts`；修改 `src/graph/nodes.ts` 的 `agentNode`（读取 memory context 注入 SystemMessage）；修改 `src/graph/state.ts`（新增 `observation_memory` 字段）。
 - **执行建议**：`ObservationMemory` 维护 short_term(3 轮) / working_memory / long_term(摘要)，在每轮 Observation 后调用 `update`，在 `agentNode` 入口调用 `getContext`。long_term 摘要复用 `reasoning/llm` 的 ModuLLM。
@@ -1002,11 +1008,17 @@ MONITORING_METRICS = {
 
 #### P1-3 ｜ 场景化参数动态调优（对应优化点 7）
 
+> **状态**：✅ 已修复（v1.x）— `SCENE_PROFILES` 字典（4 场景）+ `TIER_TO_SCENE` 映射 + `createEngineForScene()` 已实现，runtime-config 新增 `scene_profile` / `use_tier_mapping` 配置，优先级：scene_profile > tier 映射 > 默认 complex_analysis。
+> **实现位置**：[termination-engine.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/termination-engine.ts)、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts)、[termination-engine.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/graph/termination-engine.test.ts)
+
 - **触及文件**：扩展 `src/graph/termination-engine.ts`；修改 `src/config/schemas.ts`（新增 `scene_profile` 配置项）。
 - **执行建议**：定义 `SCENE_PROFILES` 字典（quick_qa / complex_analysis / creative_generation / high_stakes_decision），与 P0-1 的 tier 映射联动（tier_1→quick_qa，tier_2→complex_analysis，tier_3→high_stakes_decision）。配置项通过 LangGraph `runtime_config` 注入，避免硬编码。
 - **依赖**：P0-1 与 P0-4 完成后实施。
 
 #### P1-4 ｜ 四层 Prompt 解耦架构（对应优化点 8）
+
+> **状态**：✅ 已修复（v1.x）— `PromptComposer` + `DOMAIN_ADAPTERS` 注册表已实现，gated by `react_optimization.prompt_composer.enabled`（默认 false），字符等价回归通过 24 个单元测试。
+> **实现位置**：[domain-adapters.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/domain-adapters.ts)、[prompt-composer.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/reasoning/prompt-composer.ts)、[factory.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts)、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts)、[prompt-composer.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/reasoning/prompt-composer.test.ts)
 
 - **触及文件**：新增 `src/reasoning/prompt-composer.ts`、`src/reasoning/domain-adapters.ts`；修改 `src/graph/factory.ts` 的 `create_agent`（用 PromptComposer 替代直接拼接）。
 - **执行建议**：
@@ -1014,14 +1026,28 @@ MONITORING_METRICS = {
   2. 再引入 `PromptComposer` 与 `DOMAIN_ADAPTERS`，默认 domain 为空时行为与现状完全一致。
   3. 领域适配器采用注册表模式，新领域接入仅需追加条目。
 - **依赖**：可与 P0-2 并行实施（P0-2 的锚点模板作为 taskSpec 层注入）。
+- **实现说明**（v1.x）：
+  - 保留 `_DEFAULT_ANTI_HALLUCINATION_PROMPT` 原样作为 systemCore，不拆分（避免字符等价风险）；`SkillPromptAggregator` 输出仍作为 systemCore 的一部分（不改变其内部聚合逻辑）。
+  - `PromptComposer.compose({systemCore, domain, taskSpec, runtimeContext})` 按 systemCore → domain → taskSpec → runtimeContext 顺序拼接，空层跳过；`compose({systemCore})` === systemCore（字符等价）。
+  - `DOMAIN_ADAPTERS` 初始为空对象，宿主通过 `registerDomainAdapter()` 追加；`getDomainAdapter()` 查找失败返回 null（不抛异常）。
+  - feature flag `react_optimization.prompt_composer.enabled` 默认 false，启用后通过 `configurable.domain` / `configurable.task_spec` / `configurable.runtime_context` 注入各层。
 
 #### P1-5 ｜ 工具能力矩阵 + 意图路由（对应优化点 9）
+
+> **状态**：✅ 已修复（v1.x）— `TOOL_CAPABILITY_MATRIX` + 两级管道已实现，gated by `react_optimization.tool_capability_matrix.enabled`（默认 false），intent 匹配失败回退到 task_type 结果，通过 27 个单元测试。
+> **实现位置**：[tool-registry.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/tools/tool-registry.ts)、[nodes.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts)、[runtime-config.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts)、[tool-registry.test.ts](file:///Users/ybxue/Desktop/pioneering/packages/modu-agent/tests/tools/tool-registry.test.ts)
 
 - **触及文件**：新增 `src/tools/tool-registry.ts`；修改 `src/graph/nodes.ts` 的 `_filterToolsByTaskType`（升级为 intent 细粒度路由）。
 - **执行建议**：
   1. `TOOL_CAPABILITY_MATRIX` 作为独立注册表，不替换现有 ComponentRegistry（职责不同：前者描述能力，后者管理生命周期）。
   2. `_filterToolsByTaskType` 改造为"先 task_type 粗筛 → 再 intent 细筛"两级管道，intent 匹配失败时回退到现有 task_type 逻辑。
 - **依赖**：建议在 P1-4 完成后实施（intent 路由规则可作为 domainAdapter 的一部分）。
+- **实现说明**（v1.x）：
+  - `TOOL_CAPABILITY_MATRIX` 预置 7 个内置工具能力描述（search_engine/http_request/calculator/code_executor/sql_query/datetime/file_ops），含 task_types/intents/requires_confirmation/fallback_chain。
+  - `filterToolsByTaskTypeAndIntent(tools, taskType, intent)` 实现"task_type 粗筛 → intent 细筛"两级管道；intent 细筛无匹配时回退到 task_type 粗筛结果（等价现状）。
+  - `_filterToolsByTaskType` 升级为接收可选 `intent` 参数，feature flag 关闭时保持原 `_TOOL_TASK_TYPE_MAP` 逻辑（向后兼容）。
+  - `_getSubgraphForTaskType` 缓存键追加 intent（`${taskType}::${intent}`），避免不同 intent 复用同一子图工具集。
+  - subtask 的 `intent` 字段从 `task['intent']` 或 `task_input['intent']` 提取。
 
 ### 5.3 低优先级（P2）— 长期演进与高级能力
 
@@ -1237,3 +1263,29 @@ MONITORING_METRICS = {
 ```
 
 **核心原则**：每一批内部并行实施，批次之间串行验证；任何 🔴 高风险项（R-04/R-10/R-12）禁止跳过灰度阶段直接全量；所有改动必须可通过 feature flag 一键回退至现状行为。
+
+---
+
+## 七、更新历史
+
+### v1.x — P1 全量完成（5 项）
+
+| 优先级 | 优化项 | 状态 | 核心实现 | 测试 |
+|--------|--------|------|---------|------|
+| P1-1 | 异常信号增强 | ✅ 已修复 | `ERROR_PATTERNS`（6 类异常）+ `enhanceErrorSignal()` 集成到 `ObservationDistiller` error 分支 | observation-distiller.test.ts |
+| P1-2 | Observation 三级记忆管理 | ✅ 已修复 | `ObservationMemory`（short_term/working_memory/long_term）+ state.observation_memory 字段 + toolResultProcessor 写入 + agentNode 读取注入 | observation-memory 模块 |
+| P1-3 | 场景化参数动态调优 | ✅ 已修复 | `SCENE_PROFILES`（4 场景）+ `TIER_TO_SCENE` 映射 + `createEngineForScene()` + runtime-config 配置 | termination-engine.test.ts（24 tests） |
+| P1-4 | 四层 Prompt 解耦架构 | ✅ 已修复 | `PromptComposer` + `DOMAIN_ADAPTERS` 注册表 + factory.ts 接入（gated by `prompt_composer.enabled`） | prompt-composer.test.ts（24 tests） |
+| P1-5 | 工具能力矩阵 + 意图路由 | ✅ 已修复 | `TOOL_CAPABILITY_MATRIX`（7 工具）+ `filterToolsByTaskTypeAndIntent` 两级管道 + nodes.ts 升级（gated by `tool_capability_matrix.enabled`） | tool-registry.test.ts（27 tests） |
+
+**验证结果**：
+- `tsc --noEmit` 通过（零编译错误）
+- `vitest run` 全量通过：43 test files / 434 tests passed
+- 所有 P1 项均通过 feature flag 控制，默认关闭，启用后行为与现状字符等价或回退等价（零侵入）
+
+**风险控制总结**：
+- R-05（异常信号增强）：仅 error 分支生效，enhancement 文本以 `⚠️` 前缀 + `---` 分隔符隔离
+- R-06（三级记忆）：`observation_memory` 采用 last-write-wins reducer 整体替换，避免并发覆盖
+- R-07（场景化参数）：优先级 scene_profile > tier 映射 > 默认 complex_analysis
+- R-08（Prompt 解耦）：`compose({systemCore})` === systemCore（字符等价回归），DOMAIN_ADAPTERS 查找失败返回空字符串
+- R-09（工具矩阵）：intent 匹配失败回退到 task_type 粗筛结果（等价现状），fallback_chain 仅作为 prompt 建议

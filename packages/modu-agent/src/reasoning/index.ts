@@ -20,3 +20,13 @@ export {
   publish_llm_cost_event,
   type CostEventContext,
 } from './llm/cost-tracker.js'
+
+// P1-4: 四层 Prompt 解耦架构
+export { PromptComposer, type PromptComposerInput } from './prompt-composer.js'
+export {
+  DOMAIN_ADAPTERS,
+  registerDomainAdapter,
+  getDomainAdapter,
+  renderDomainAdapter,
+  type DomainAdapter,
+} from './domain-adapters.js'

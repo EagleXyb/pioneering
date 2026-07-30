@@ -60,7 +60,15 @@ import {
   formatDistilledAsContent,
 } from './adapters/observation-distiller.js'
 // P0-4: 自适应终止判定引擎（advisory 模式）
-import { AdaptiveTerminationEngine } from './termination-engine.js'
+// P1-3: 场景化参数动态调优（createEngineForScene + tier 映射）
+import {
+  AdaptiveTerminationEngine,
+  createEngineForScene,
+} from './termination-engine.js'
+// P1-5: 工具能力矩阵 + 意图路由
+import {
+  filterToolsByTaskTypeAndIntent,
+} from '../tools/tool-registry.js'
 
 // ============================================================
 // P9.3.1: LangChain 消息类型辅助（减少 as any 断言）
@@ -587,10 +595,33 @@ export function makeAgentNode(
 
   // P0-4: 解析终止引擎开关（null 时从配置读取，默认 false）
   // 第一阶段：advisory 模式，仅采集指标，不改变路由
+  // P1-3: 支持场景化参数动态调优
+  //   优先级：runtime_config.scene_profile > tier 映射 > 默认 complex_analysis
+  //   - react_optimization.adaptive_termination.scene_profile: 显式指定场景
+  //   - react_optimization.adaptive_termination.use_tier_mapping: 按 tier 自动映射（默认 true）
   const _terminationEngine = terminationEngine ?? (() => {
     try {
-      const enabled = getConfig().get('react_optimization.adaptive_termination.enabled', false)
-      return enabled ? new AdaptiveTerminationEngine() : null
+      const cfg = getConfig()
+      const enabled = cfg.get('react_optimization.adaptive_termination.enabled', false)
+      if (!enabled) return null
+
+      // P1-3: 读取场景配置
+      const sceneProfile = cfg.get('react_optimization.adaptive_termination.scene_profile', null)
+      const useTierMapping = cfg.get('react_optimization.adaptive_termination.use_tier_mapping', true)
+
+      // 优先级1: 显式 scene_profile
+      if (sceneProfile) {
+        return createEngineForScene(sceneProfile as any)
+      }
+
+      // 优先级2: tier 映射（在 agentNode 内部按 state.complexity_assessment.tier 动态构造）
+      // 此处返回 null，agentNode 内部会按 tier 创建临时引擎
+      if (useTierMapping) {
+        return null
+      }
+
+      // 优先级3: 默认引擎
+      return new AdaptiveTerminationEngine()
     } catch {
       return null
     }
@@ -654,6 +685,7 @@ export function makeAgentNode(
 
     // P0-3: 注入 Observation 蒸馏历史（仅当 observation_history 非空时）
     // 提供工具结果的精简摘要，辅助 LLM 在长会话中保持上下文
+    // P1-1: 异常条目追加 enhancement 引导文本（若存在）
     const observationHistory = state.observation_history ?? []
     if (observationHistory.length > 0) {
       const recentObs = observationHistory.slice(-5) // 仅保留最近 5 条，控制 token
@@ -662,7 +694,11 @@ export function makeAgentNode(
           const summary = o['summary'] ?? ''
           const metrics = o['key_metrics'] ? ` | metrics: ${JSON.stringify(o['key_metrics'])}` : ''
           const count = o['records_count'] !== undefined ? ` | count: ${o['records_count']}` : ''
-          return `[${idx}] ${o['tool'] ?? 'unknown'} (${o['status'] ?? 'success'}): ${summary}${count}${metrics}`
+          // P1-1: error 状态且存在 enhancement 时，附加引导文本
+          const enhancement = o['enhancement']
+            ? `\n   ⚠️ ${o['enhancement']}`
+            : ''
+          return `[${idx}] ${o['tool'] ?? 'unknown'} (${o['status'] ?? 'success'}): ${summary}${count}${metrics}${enhancement}`
         })
         .join('\n')
       if (obsText) {
@@ -769,7 +805,26 @@ export function makeAgentNode(
     // P0-4: 自适应终止判定（第一阶段 advisory 模式）
     // 仅采集 confidence_history / information_gain_history / termination_advice
     // 不改变 routeAfterAgent 路由行为（第二阶段才影响路由）
-    if (_terminationEngine) {
+    // P1-3: 支持场景化参数动态调优
+    //   - _terminationEngine 非空（显式 scene 或外部注入）：直接使用
+    //   - _terminationEngine 为空但 tier 映射启用：按 state.complexity_assessment.tier
+    //     动态构造引擎（每次调用按当前 tier 选择 SCENE_PROFILES）
+    let engineForAssessment = _terminationEngine
+    if (!engineForAssessment) {
+      try {
+        const cfg = getConfig()
+        const enabled = cfg.get('react_optimization.adaptive_termination.enabled', false)
+        const useTierMapping = cfg.get('react_optimization.adaptive_termination.use_tier_mapping', true)
+        if (enabled && useTierMapping) {
+          const tier = state.complexity_assessment?.tier as ComplexityTier | undefined
+          engineForAssessment = createEngineForScene(null, tier ?? null)
+        }
+      } catch {
+        // 配置读取失败，跳过动态引擎构造
+      }
+    }
+
+    if (engineForAssessment) {
       try {
         // 构造包含最新 response 的临时 state 供引擎评估
         const tempState = {
@@ -777,7 +832,7 @@ export function makeAgentNode(
           messages: [...(state.messages ?? []), response],
           reasoning_round_count: (state.reasoning_round_count ?? 0) + (update.reasoning_round_count ?? 0),
         }
-        const decision = _terminationEngine.shouldTerminate(tempState)
+        const decision = engineForAssessment.shouldTerminate(tempState)
         update.confidence_history = [decision.confidence]
         update.information_gain_history = [decision.information_gain]
         update.termination_advice = {
@@ -891,6 +946,9 @@ export function makeToolResultProcessor(
               status: distilled.status,
               key_metrics: distilled.key_metrics,
               records_count: distilled.records_count,
+              // P1-1: 异常信号增强 —— 透传 enhancement 文本到 observation_history
+              // agentNode 注入上下文时会一并展示，引导 LLM 调整策略
+              enhancement: distilled.enhancement,
             })
           } catch (e: any) {
             // 蒸馏异常降级：跳过此条蒸馏，不影响主流程
@@ -1561,16 +1619,19 @@ export function makeSubagentNode(
   //   - tools 为空或 null：保持原行为（单次 LLM 调用，无 ReAct 循环）
   //   - tools 非空：构建子图，子 Agent 可调用工具
   //   子图构建是 lazy 的——只在首次需要时构建并缓存
+  // P1-5: 缓存键追加 intent，避免不同 intent 复用同一子图工具集
   const _subgraphCache: Map<string, any> = new Map()
 
-  function _getSubgraphForTaskType(taskType: string): any | null {
+  function _getSubgraphForTaskType(taskType: string, intent?: string | null): any | null {
     if (!tools || tools.length === 0) return null
-    if (_subgraphCache.has(taskType)) return _subgraphCache.get(taskType)
+    const cacheKey = intent ? `${taskType}::${intent}` : taskType
+    if (_subgraphCache.has(cacheKey)) return _subgraphCache.get(cacheKey)
 
     // v1.4 §4.4 建议2：按 task_type 过滤工具
-    const filteredTools = _filterToolsByTaskType(tools!, taskType)
+    // P1-5: 启用工具能力矩阵时追加 intent 细筛
+    const filteredTools = _filterToolsByTaskType(tools!, taskType, intent)
     if (filteredTools.length === 0) {
-      _subgraphCache.set(taskType, null)
+      _subgraphCache.set(cacheKey, null)
       return null
     }
     // 子图使用未绑定工具的 LLM，由子图内部 ToolNode 调度
@@ -1581,10 +1642,10 @@ export function makeSubagentNode(
       taskType,
       10, // recursionLimit，独立于主图
     )
-    _subgraphCache.set(taskType, subgraph)
+    _subgraphCache.set(cacheKey, subgraph)
     logger.debug(
-      'Subagent subgraph built for task_type=%s, tools=%d',
-      taskType, filteredTools.length,
+      'Subagent subgraph built for task_type=%s intent=%s, tools=%d',
+      taskType, intent ?? '(none)', filteredTools.length,
     )
     return subgraph
   }
@@ -1602,6 +1663,8 @@ export function makeSubagentNode(
     const taskInput = task['task_input'] ?? {}
     const promptText = (taskInput['prompt'] as string) ?? String(taskInput)
     const traceId = state.trace_id ?? ''
+    // P1-5: 从 subtask 或 task_input 提取 intent（subtask.intent 优先于 task_input.intent）
+    const intent = (task['intent'] as string | undefined) ?? (taskInput['intent'] as string | undefined) ?? null
 
     const config = getConfig()
     const multiAgentCfg = config.get('orchestration.multi_agent', {}) ?? {}
@@ -1617,7 +1680,8 @@ export function makeSubagentNode(
     }
 
     // v1.4 §4.4 建议2：尝试使用子图（带工具循环）
-    const subgraph = _getSubgraphForTaskType(taskType)
+    // P1-5: 传入 intent 触发两级管道（启用 tool_capability_matrix 时生效）
+    const subgraph = _getSubgraphForTaskType(taskType, intent)
 
     let result: Record<string, any> | null = null
     let lastError: string = ''
@@ -1726,15 +1790,31 @@ export function makeSubagentNode(
  * v1.4 §4.4 建议2：按 task_type 过滤工具。
  *
  * 工具按 BaseTool.category() 或工具名前缀映射到 task_type：
- *   - research: search_engine, http_request
- *   - coding: calculator, code_executor
+ *   - research: search_engine, http_request, sql_query, datetime
+ *   - coding: calculator, code_executor, sql_query
  *   - review: 无工具（纯 LLM 评审）
  *   - default: 全部工具（保守策略）
  *
  * 工具实例可能是 LangChain StructuredTool 或 BaseTool wrapper，
  * 通过 name 字段判断。
+ *
+ * P1-5: 升级为两级管道（gated by react_optimization.tool_capability_matrix.enabled）
+ *   - 启用时：调用 filterToolsByTaskTypeAndIntent（task_type 粗筛 → intent 细筛）
+ *     intent 匹配失败时回退到 task_type 粗筛结果（等价现状）
+ *   - 关闭时：保持原 _TOOL_TASK_TYPE_MAP 逻辑（向后兼容，零风险）
  */
-function _filterToolsByTaskType(tools: any[], taskType: string): any[] {
+function _filterToolsByTaskType(tools: any[], taskType: string, intent?: string | null): any[] {
+  // P1-5: 启用工具能力矩阵时走两级管道
+  try {
+    const enabled = getConfig().get('react_optimization.tool_capability_matrix.enabled', false)
+    if (enabled) {
+      return filterToolsByTaskTypeAndIntent(tools, taskType, intent ?? null)
+    }
+  } catch {
+    // 配置读取异常时降级到原逻辑
+  }
+
+  // 原逻辑（向后兼容）
   const _TOOL_TASK_TYPE_MAP: Record<string, string[]> = {
     research: ['search_engine', 'http_request'],
     coding: ['calculator', 'code_executor'],
