@@ -15,22 +15,48 @@ import {
   Loader2,
   TerminalSquare,
   Wand2,
-  Eye
+  Eye,
+  Search,
+  Globe,
+  Clock,
+  Code2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getToolDisplayName } from '@/lib/constants'
 import type { TraceNode } from '@shared/types'
 import { traceNodeExpandedAtom, defaultExpandedForNode } from '@/stores/traceAtoms'
 import { formatDuration } from '@/lib/trace-utils'
-// P0：text 节点改由统一 MarkdownRenderer 渲染（替代原裸 ReactMarkdown）
 import { MarkdownRenderer } from './MarkdownRenderer'
-// P0：observation 节点使用智能结果展示（替代裸露原始 JSON）
 import { ObservationResult } from './ObservationResult'
 
 interface TraceNodeViewProps {
   node: TraceNode
-  /** 节点内容（正文/参数/结果）；text/thinking 节点为 markdown 源文，tool-call 为 JSON 预览 */
   children?: React.ReactNode
+}
+
+// ---- 工具图标映射 ----
+function getToolIcon(toolName: string | undefined): React.ComponentType<{ className?: string }> {
+  if (!toolName) return TerminalSquare
+  const n = toolName.toLowerCase()
+  if (n.includes('search') || n.includes('web_search') || n === 'news') return Search
+  if (n.includes('fetch') || n.includes('url') || n.includes('browser')) return Globe
+  if (n.includes('datetime') || n.includes('time') || n.includes('clock')) return Clock
+  if (n.includes('python') || n.includes('code') || n.includes('execute')) return Code2
+  return TerminalSquare
+}
+
+// ---- 从工具参数中提取简短摘要 ----
+function extractArgSummary(args: Record<string, unknown> | undefined): string | null {
+  if (!args) return null
+  const keys = ['query', 'q', 'keyword', 'keywords', 'search_query', 'question', 'prompt', 'url', 'pattern']
+  for (const k of keys) {
+    const v = args[k]
+    if (typeof v === 'string' && v.trim()) {
+      const t = v.trim()
+      return t.length > 40 ? t.slice(0, 40) + '…' : t
+    }
+  }
+  return null
 }
 
 const KIND_ICON: Record<TraceNode['kind'], React.ComponentType<{ className?: string }>> = {
@@ -42,7 +68,7 @@ const KIND_ICON: Record<TraceNode['kind'], React.ComponentType<{ className?: str
 }
 
 const KIND_TITLE: Record<TraceNode['kind'], string> = {
-  thinking: '思考过程',
+  thinking: '深度思考',
   'tool-call': '工具调用',
   observation: '观察结果',
   text: '最终回答',
@@ -55,44 +81,51 @@ export const TraceNodeView = memo(function TraceNodeView({
 }: TraceNodeViewProps) {
   const [expanded, setExpanded] = useAtom(traceNodeExpandedAtom(node.id))
 
-  // 首次挂载根据节点状态决定默认展开（运行中/错误展开，已完成折叠）
   useEffect(() => {
     setExpanded(defaultExpandedForNode(node))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.id])
 
-  // running 节点始终保持展开（便于实时看到流式输出）
   useEffect(() => {
     if (node.status === 'running' && !expanded) {
       setExpanded(true)
     }
   }, [node.status, expanded, setExpanded])
 
-  const Icon = KIND_ICON[node.kind]
-  const title = useMemo(() => {
-    // P1：工具名中文化
-    if (node.kind === 'tool-call') return getToolDisplayName(node.toolName || node.label || KIND_TITLE[node.kind])
-    if (node.kind === 'observation') return node.toolName ? `${getToolDisplayName(node.toolName)} · 观察结果` : KIND_TITLE[node.kind]
-    return node.label || KIND_TITLE[node.kind]
-  }, [node.kind, node.label, node.toolName])
-
   const isRunning = node.status === 'running'
   const isError = node.status === 'error'
   const isText = node.kind === 'text'
+  const isThinking = node.kind === 'thinking'
+  const isToolCall = node.kind === 'tool-call'
 
-  // text 节点（最终回答）不渲染卡片外壳，只渲染内容
+  // 图标：工具节点用专用图标
+  const Icon = useMemo(() => {
+    if (isToolCall) return getToolIcon(node.toolName)
+    return KIND_ICON[node.kind]
+  }, [isToolCall, node.kind, node.toolName])
+
+  // 标题：工具节点显示中文名+参数摘要
+  const title = useMemo(() => {
+    if (isToolCall) {
+      const name = getToolDisplayName(node.toolName || node.label || KIND_TITLE[node.kind])
+      const summary = extractArgSummary(node.arguments)
+      return summary ? `${name} ${summary}` : name
+    }
+    if (node.kind === 'observation') {
+      return node.toolName ? `${getToolDisplayName(node.toolName)} · 结果` : KIND_TITLE[node.kind]
+    }
+    return node.label || KIND_TITLE[node.kind]
+  }, [isToolCall, node.kind, node.label, node.toolName, node.arguments])
+
   if (isText) {
-    // P0 修复：trace 文本节点与非 trace 路径共用 MarkdownRenderer，
-    // 补齐此前缺失的 rehype-sanitize（XSS 防护）、rehype-highlight（语法高亮）、
-    // SafeLink（危险链接拦截）与 CodeBlock（语言标签/预览按钮）。
-    // messageId 从节点 id 推导（`${msgId}::text`，见 stream-handler makeTextNodeId），
-    // 供代码块「预览 → 跳转源消息」反向联动。
     const messageId = node.id.endsWith('::text') ? node.id.slice(0, -'::text'.length) : undefined
     return (
       <div className="trace-node-text min-w-0 px-0 py-0">
         {children ?? (
           node.content ? (
-            <MarkdownRenderer content={node.content} messageId={messageId} />
+            // trace 模式下上方已有 AgentTimeline 展示工具结果，
+            // 正文中嵌入的相同结果直接跳过，避免重复渲染。
+            <MarkdownRenderer content={node.content} messageId={messageId} skipEmbeddedResults={true} />
           ) : null
         )}
         {isRunning && (
@@ -133,14 +166,14 @@ export const TraceNodeView = memo(function TraceNodeView({
         <Icon
           className={cn(
             'size-3.5 shrink-0',
-            isRunning && 'animate-spin text-blue-500',
+            isRunning && 'animate-spin text-foreground/40',
             isError && 'text-destructive',
             !isRunning && !isError && 'text-muted-foreground'
           )}
         />
         <span className={cn(
           'truncate text-xs font-medium',
-          isError ? 'text-destructive' : 'text-foreground/90'
+          isError ? 'text-destructive' : 'text-foreground/70'
         )}>
           {title}
         </span>
@@ -151,7 +184,7 @@ export const TraceNodeView = memo(function TraceNodeView({
         )}
         <NodeDuration node={node} />
         {isRunning && (
-          <span className="ml-auto shrink-0 text-[10px] text-blue-500">执行中</span>
+          <span className="ml-auto shrink-0 text-[10px] text-foreground/50">执行中</span>
         )}
         {isError && node.errorMessage && (
           <span className="ml-auto shrink-0 truncate text-[10px] text-destructive/80">
@@ -160,7 +193,6 @@ export const TraceNodeView = memo(function TraceNodeView({
         )}
       </button>
 
-      {/* grid-rows 折叠动画：0fr 折叠 / 1fr 展开 */}
       <div
         className={cn(
           'grid transition-[grid-template-rows] duration-300 ease-out',
@@ -177,7 +209,6 @@ export const TraceNodeView = memo(function TraceNodeView({
   )
 })
 
-// ---- 子组件：耗时显示（M3：running 时实时 elapsed 计时 1s/帧）----
 function NodeDuration({ node }: { node: TraceNode }) {
   const finalMs =
     node.durationMs ??
@@ -187,7 +218,6 @@ function NodeDuration({ node }: { node: TraceNode }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!isRunning || !node.startTime) return
-    // 每秒刷新一次已用时间（节省 CPU：不使用 rAF）
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     setNow(Date.now())
     return () => window.clearInterval(timer)
@@ -202,7 +232,7 @@ function NodeDuration({ node }: { node: TraceNode }) {
     <span
       className={cn(
         'ml-1 shrink-0 font-mono text-[10px] tabular-nums',
-        isRunning ? 'text-blue-500/80' : 'text-muted-foreground/70'
+        isRunning ? 'text-foreground/40' : 'text-muted-foreground/70'
       )}
     >
       {formatDuration(ms)}
@@ -210,37 +240,42 @@ function NodeDuration({ node }: { node: TraceNode }) {
   )
 }
 
-// ---- 子组件：默认节点正文（当未通过 children 注入自定义渲染时使用）----
 const TraceNodeContent = memo(function TraceNodeContent({ node }: { node: TraceNode }) {
+  // 深度思考：WorkBuddy 风格 — 左侧竖线 + 浅灰文字
   if (node.kind === 'thinking') {
     return (
-      <div className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-        {node.content}
-        {node.status === 'running' && (
-          <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-current" aria-hidden>▊</span>
-        )}
+      <div className="relative pl-3.5">
+        <div className="absolute left-0 top-1 bottom-1 w-[2.5px] rounded-full bg-border/70" />
+        <div className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-foreground/45">
+          {node.content}
+          {node.status === 'running' && (
+            <span className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-foreground/30 align-middle" aria-hidden>▊</span>
+          )}
+        </div>
       </div>
     )
   }
   if (node.kind === 'tool-call') {
     const hasArgs = node.arguments && Object.keys(node.arguments).length > 0
+    const hasObservationChildren = node.children.length > 0
+    const showArgs = hasArgs && !hasObservationChildren
     return (
       <div className="space-y-2 text-xs">
-        {hasArgs && (
+        {showArgs && (
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">参数</div>
-            <pre className="max-h-60 overflow-auto rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/80">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-foreground/25">参数</div>
+            <pre className="max-h-60 overflow-auto rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/55 whitespace-pre-wrap break-all">
 {JSON.stringify(node.arguments, null, 2)}
             </pre>
           </div>
         )}
-        {!hasArgs && node.argumentsRaw && (
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono text-[11px] text-muted-foreground">
+        {!hasArgs && node.argumentsRaw && !hasObservationChildren && (
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/40">
 {node.argumentsRaw}
           </pre>
         )}
         {node.status === 'running' && (
-          <div className="flex items-center gap-1.5 text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-foreground/40">
             <Loader2 className="size-3 animate-spin" />
             <span>正在执行...</span>
           </div>
@@ -248,7 +283,7 @@ const TraceNodeContent = memo(function TraceNodeContent({ node }: { node: TraceN
       </div>
     )
   }
-  // P0：observation 节点使用 ObservationResult 智能展示，不再裸露原始 JSON
+  // observation → ObservationResult 智能展示（搜索卡片/时间芯片/折叠JSON）
   if (node.kind === 'observation') {
     return <ObservationResult raw={node.content ?? ''} />
   }

@@ -14,7 +14,7 @@
 // 获得与非 trace 路径一致的安全与渲染能力。不改变任何布局外壳与样式类名。
 // ============================================================
 
-import { memo, useMemo, useState, useCallback } from 'react'
+import { memo, useMemo, useState, useCallback, Fragment } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -27,6 +27,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { openArtifactAtom } from '@/stores/artifactStore'
 import { openLightboxAtom } from '@/stores/lightboxStore'
 import { getHastText, previewableLanguage, getCodeLanguage } from '@/lib/extractCodeBlocks'
+import { extractEmbeddedToolResults } from '@/lib/embedded-tool-results'
+import { ToolResultRenderer } from './ToolResultRenderer'
 import { cn } from '@/lib/utils'
 import type { ArtifactType } from '@shared/types'
 
@@ -123,6 +125,11 @@ interface MarkdownRendererProps {
    * 缺省时预览功能仍可用，仅跳转源消息退化为无操作。
    */
   messageId?: string
+  /**
+   * 是否跳过正文中嵌入的工具结果JSON（直接删除不渲染）。
+   * 当上方已有 AgentTimeline / TraceNodeView 折叠框展示了相同结果时置 true，避免重复。
+   */
+  skipEmbeddedResults?: boolean
 }
 
 /**
@@ -248,9 +255,18 @@ function CodeBlockComponent({
   )
 }
 
+/**
+ * 嵌入在正文中的工具返回结果 —— 委托给 ToolResultRenderer（embedded 变体）。
+ * 搜索结果直接显示为灰色卡片列表，时间结果显示为芯片，其他结果折叠展示。
+ */
+function EmbeddedToolResult({ raw }: { raw: string }) {
+  return <ToolResultRenderer raw={raw} variant="embedded" />
+}
+
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
-  messageId
+  messageId,
+  skipEmbeddedResults = false
 }: MarkdownRendererProps) {
   /**
    * 自定义代码块渲染：
@@ -285,15 +301,63 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     [messageId]
   )
 
+  // 将文本切分为「纯文本段」和「嵌入工具结果段」。若没有任何嵌入JSON，
+  // 直接走原始 ReactMarkdown 渲染路径（零开销，零行为变化）。
+  const segments = useMemo(() => extractEmbeddedToolResults(content), [content])
+  const hasEmbedded = segments.some(s => s.type === 'toolResult')
+
+  if (!hasEmbedded) {
+    return (
+      <div className="chat-markdown max-w-none break-words">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
+          components={{ a: SafeLink, img: SafeImage, pre: ({ children }) => <>{children}</>, code: CodeBlock }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    )
+  }
+
+  // skipEmbeddedResults=true：直接剔除工具结果JSON，只把文本段拼接后交给 ReactMarkdown 一次渲染
+  if (skipEmbeddedResults) {
+    const cleanText = segments
+      .filter((s): s is Extract<typeof s, { type: 'text' }> => s.type === 'text')
+      .map(s => s.content)
+      .join('')
+    return (
+      <div className="chat-markdown max-w-none break-words">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
+          components={{ a: SafeLink, img: SafeImage, pre: ({ children }) => <>{children}</>, code: CodeBlock }}
+        >
+          {cleanText}
+        </ReactMarkdown>
+      </div>
+    )
+  }
+
+  // 默认：有嵌入JSON时，逐段渲染——文本段交给 ReactMarkdown，工具结果段智能展示。
   return (
     <div className="chat-markdown max-w-none break-words">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
-        components={{ a: SafeLink, img: SafeImage, pre: ({ children }) => <>{children}</>, code: CodeBlock }}
-      >
-        {content}
-      </ReactMarkdown>
+      {segments.map((seg, idx) => {
+        if (seg.type === 'toolResult') {
+          return <EmbeddedToolResult key={idx} raw={seg.raw} />
+        }
+        return (
+          <Fragment key={idx}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
+              components={{ a: SafeLink, img: SafeImage, pre: ({ children }) => <>{children}</>, code: CodeBlock }}
+            >
+              {seg.content}
+            </ReactMarkdown>
+          </Fragment>
+        )
+      })}
     </div>
   )
 })
