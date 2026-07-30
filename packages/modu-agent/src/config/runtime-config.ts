@@ -245,6 +245,34 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     default_timeout: 30.0,
     servers: [],
   },
+  // === P0 优化（ReAct 模式业务定制化）===
+  // 所有 P0 优化项均通过 feature flag 控制，默认行为与现状一致（零侵入）。
+  // 风险登记表 R-01~R-04 要求：字段全 optional + 异常降级 + 默认关闭高风险项
+  react_optimization: {
+    // P0-1: Thought 分层推理框架
+    // 启用后 perception 节点调用 ComplexityAssessor 评估 tier，
+    // agentNode 按 tier 调整温度，routeAfterAgent 按 reasoning_budget 终止
+    complexity_assessment: {
+      enabled: false,  // R-01 中等风险，默认关闭；启用后 LLM 评估失败自动回退规则化评估
+    },
+    // P0-2: CoT 锚点 + 反思后缀
+    // 启用后 agentNode 按 tier 拼接 CoT prompt（tier_3 强制启用锚点+反思）
+    cot_anchor: {
+      enabled: false,  // R-02 低风险，默认关闭以便 A/B 测试对比 avg_rounds_per_task
+    },
+    // P0-3: Observation 多层蒸馏器
+    // 启用后 toolResultProcessor 对工具结果三层蒸馏，写入 observation_history
+    observation_distillation: {
+      enabled: true,   // R-03 中等风险，默认启用（异常自动降级回原始 content）
+      max_tokens: 500, // 蒸馏后 summary 的 token 预算上限
+    },
+    // P0-4: 自适应终止判定引擎
+    // 第一阶段：advisory 模式，仅采集 confidence_history/information_gain_history/termination_advice
+    // 不改变 routeAfterAgent 路由；第二阶段待 false_positive_rate < 5% 后才影响路由
+    adaptive_termination: {
+      enabled: false,  // R-04 高风险，第一阶段默认关闭；启用后仅 advisory 不改变路由
+    },
+  },
 }
 
 // ============================================================

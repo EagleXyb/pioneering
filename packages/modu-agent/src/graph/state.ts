@@ -3,6 +3,9 @@
 import type { BaseMessage } from '@langchain/core/messages'
 import { messagesStateReducer } from '@langchain/langgraph'
 
+// P0-1: 复杂度评估结果类型（仅类型导入，不引入运行时依赖）
+import type { ComplexityAssessment } from '../reasoning/complexity-assessor.js'
+
 /**
  * P3-12.3.1: 子任务结果合并 reducer。
  *
@@ -119,6 +122,20 @@ export interface ModuAgentState {
   step_msg_baseline?: number
   // transient: PlanStateDelta，供 EventBridge 发 SSE
   plan_delta?: Record<string, any> | null
+
+  // === P0 优化（ReAct 模式业务定制化） ===
+  // P0-1: 复杂度评估结果（perception 节点写入，agentNode/routeAfterAgent 读取）
+  complexity_assessment?: ComplexityAssessment | null
+  // P0-1: 当前已用 Thought 轮数（routeAfterAgent 递增，reducer 聚合）
+  reasoning_round_count?: number
+  // P0-3: Observation 蒸馏历史（distiller 写入，agentNode 读取上下文）
+  observation_history?: Array<Record<string, any>>
+  // P0-4: 置信度历史（advisory 模式采集，不影响路由）
+  confidence_history?: number[]
+  // P0-4: 信息增益历史（advisory 模式采集，不影响路由）
+  information_gain_history?: number[]
+  // P0-4: 终止决策建议（advisory 模式写入，第一阶段不改变路由）
+  termination_advice?: Record<string, any> | null
 }
 
 /**
@@ -268,6 +285,32 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   // 状态 schema 版本号（对应文档 §2.3 建议3）
   // Checkpointer 持久化时一并保存；读取时由 migrate_state 按版本迁移
   state_schema_version: Annotation<number>(_lw<number>(() => STATE_SCHEMA_VERSION)),
+
+  // === P0 优化（ReAct 模式业务定制化） ===
+  // P0-1: 复杂度评估结果（last-write-wins，perception 节点写入）
+  complexity_assessment: Annotation<ComplexityAssessment | null>(_lw<ComplexityAssessment | null>(() => null)),
+  // P0-1: Thought 轮数计数器（累加 reducer，routeAfterAgent 递增）
+  reasoning_round_count: Annotation<number>({
+    reducer: (prev, next) => (prev ?? 0) + (next ?? 0),
+    default: () => 0,
+  }),
+  // P0-3: Observation 蒸馏历史（追加 reducer）
+  observation_history: Annotation<Array<Record<string, any>>>({
+    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    default: () => [],
+  }),
+  // P0-4: 置信度历史（追加 reducer，advisory 采集）
+  confidence_history: Annotation<number[]>({
+    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    default: () => [],
+  }),
+  // P0-4: 信息增益历史（追加 reducer，advisory 采集）
+  information_gain_history: Annotation<number[]>({
+    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    default: () => [],
+  }),
+  // P0-4: 终止决策建议（last-write-wins，advisory 模式写入）
+  termination_advice: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
 })
 
 // ============================================================
@@ -368,6 +411,13 @@ export function makeInitialState(
     step_msg_baseline: 0,
     plan_delta: null,
     state_schema_version: STATE_SCHEMA_VERSION,
+    // P0 优化字段初始化
+    complexity_assessment: null,
+    reasoning_round_count: 0,
+    observation_history: [],
+    confidence_history: [],
+    information_gain_history: [],
+    termination_advice: null,
   }
 }
 
@@ -416,6 +466,19 @@ export interface CoreState {
   config_overrides?: Record<string, any>
   // 状态 schema 版本号
   state_schema_version?: number
+  // === P0 优化字段（ReAct 模式业务定制化） ===
+  // P0-1: 复杂度评估结果
+  complexity_assessment?: ComplexityAssessment | null
+  // P0-1: Thought 轮数计数器
+  reasoning_round_count?: number
+  // P0-3: Observation 蒸馏历史
+  observation_history?: Array<Record<string, any>>
+  // P0-4: 置信度历史（advisory）
+  confidence_history?: number[]
+  // P0-4: 信息增益历史（advisory）
+  information_gain_history?: number[]
+  // P0-4: 终止决策建议（advisory）
+  termination_advice?: Record<string, any> | null
 }
 
 /** Human-in-the-loop 模式专属状态。 */

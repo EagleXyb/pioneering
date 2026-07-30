@@ -37,6 +37,10 @@ import { ChromaStore, InMemoryStoreAdapter } from './adapters/store-adapter.js'
 import { build_langchain_tools } from './adapters/tool-adapter.js'
 import { ModuGraph, buildModuGraph } from './graph.js'
 import { PassthroughLLMRouter, RuleBasedLLMRouter, type RouteTable } from '../reasoning/llm/router.js'
+// P0-1: 复杂度评估器
+import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
+// P0-3: Observation 蒸馏器
+import { ObservationDistiller } from './adapters/observation-distiller.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[factory] ${msg}`, ...args),
@@ -523,6 +527,44 @@ export async function create_agent(
   )
   const graphJudgeLlm = consensusStrategy === 'llm_judge' ? judgeLlm : null
 
+  // P0-1: 构造复杂度评估器
+  // gated by react_optimization.complexity_assessment.enabled（默认 false，零风险）
+  // 启用时复用主流程 LLM 的 ModuLLM 视图，避免额外连接池
+  let complexityAssessor: ComplexityAssessor | null = null
+  const enableComplexityAssessment = runtimeConfig.get(
+    'react_optimization.complexity_assessment.enabled', false,
+  )
+  if (enableComplexityAssessment) {
+    try {
+      const moduLlmForAssessment = _build_modu_llm(llm, provider ?? runtimeConfig.get('llm.default_provider', 'glm'))
+      complexityAssessor = new ComplexityAssessor(moduLlmForAssessment)
+      logger.info('[P0-1] ComplexityAssessor enabled')
+    } catch (e: any) {
+      logger.warning('[P0-1] ComplexityAssessor init failed, using null (rule fallback only): %s', String(e))
+      // 即使 ModuLLM 包装失败，也构造一个无 LLM 的 assessor（纯规则化评估）
+      complexityAssessor = new ComplexityAssessor(null)
+    }
+  }
+
+  // P0-3: 构造 Observation 蒸馏器
+  // 默认启用（与 makeToolResultProcessor 内的 feature flag 默认 true 一致）
+  // max_tokens 可通过 react_optimization.observation_distillation.max_tokens 配置
+  let observationDistiller: ObservationDistiller | null = null
+  try {
+    const enableDistillation = runtimeConfig.get(
+      'react_optimization.observation_distillation.enabled', true,
+    )
+    if (enableDistillation) {
+      const maxTokens = runtimeConfig.get(
+        'react_optimization.observation_distillation.max_tokens', 500,
+      )
+      observationDistiller = new ObservationDistiller(maxTokens)
+      logger.info('[P0-3] ObservationDistiller enabled (max_tokens=%d)', maxTokens)
+    }
+  } catch (e: any) {
+    logger.warning('[P0-3] ObservationDistiller init failed, using null: %s', String(e))
+  }
+
   // 构建并编译图
   const compiled = buildModuGraph(
     tools,
@@ -539,6 +581,8 @@ export async function create_agent(
     // configurable.plan_execute_enabled=true 时强制启用），否则从全局配置读取（默认 false）。
     configurable['plan_execute_enabled'] ?? null,
     llm,   // P4: 未绑定工具的原始 LLM，供 Planner 节点使用（规划阶段禁止工具）
+    complexityAssessor,  // P0-1: 复杂度评估器
+    observationDistiller, // P0-3: Observation 蒸馏器
   )
   logger.info(
     'create_agent plan_execute: configurable=%j plan_execute_enabled=%s',

@@ -45,6 +45,22 @@ import {
 import { create_consensus_strategy, ConsensusPattern } from '../orchestration/patterns/consensus.js'
 import { _getSystemPrompt, build_subagent_subgraph } from './subgraph/builder.js'
 import type { ModuAgentState } from './state.js'
+// P0-1: 复杂度评估器
+import {
+  ComplexityAssessor,
+  TIER_TEMPERATURE_MAP,
+  defaultAssessment,
+  type ComplexityTier,
+} from '../reasoning/complexity-assessor.js'
+// P0-2: CoT 锚点与反思后缀
+import { composeCotPrompt } from '../reasoning/cot-anchors.js'
+// P0-3: Observation 蒸馏器
+import {
+  ObservationDistiller,
+  formatDistilledAsContent,
+} from './adapters/observation-distiller.js'
+// P0-4: 自适应终止判定引擎（advisory 模式）
+import { AdaptiveTerminationEngine } from './termination-engine.js'
 
 // ============================================================
 // P9.3.1: LangChain 消息类型辅助（减少 as any 断言）
@@ -169,6 +185,61 @@ export async function perceptionNodeSync(
 
   const fused = await runPerceptionPipeline(inputData, config, registry)
   return _buildPerceptionResult(fused, prompt)
+}
+
+/**
+ * P0-1: 创建带复杂度评估的感知节点工厂。
+ *
+ * 在感知管线之后调用 ComplexityAssessor 评估任务复杂度，
+ * 结果写入 state.complexity_assessment 供下游 agentNode / routeAfterAgent 使用。
+ *
+ * 风险控制（对应 R-01）：
+ *   - assessor 为 null 时行为等价原 perceptionNode（向后兼容）
+ *   - assessor.assess() 内部已捕获所有异常并降级到规则化评估，
+ *     此处再包一层 try-catch 作为兜底，保证感知节点不因评估失败而中断
+ *
+ * @param assessor 复杂度评估器实例（null 时不进行评估，等价原行为）
+ * @returns 感知节点函数
+ */
+export function makePerceptionNode(
+  assessor: ComplexityAssessor | null = null,
+): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
+  async function perceptionNodeWithAssessment(
+    state: ModuAgentState,
+  ): Promise<Partial<ModuAgentState>> {
+    const config = getConfig()
+    const registry = getRegistry()
+    const inputData = state.input_data ?? {}
+    const prompt = (inputData['prompt'] as string) ?? ''
+
+    const fused = await runPerceptionPipelineAsync(inputData, config, registry)
+    const result = _buildPerceptionResult(fused, prompt)
+
+    // P0-1: 复杂度评估（assessor 为 null 时跳过，等价原行为）
+    if (assessor) {
+      try {
+        const assessment = await assessor.assess(prompt)
+        result.complexity_assessment = assessment
+        logger.info(
+          '[P0-1] Complexity assessed: tier=%s budget=%d method=%s',
+          assessment.tier,
+          assessment.reasoning_budget,
+          assessment.assessment_method,
+        )
+      } catch (e: any) {
+        // 兜底：评估异常时不阻断感知，使用默认评估（tier_2）
+        result.complexity_assessment = defaultAssessment()
+        logger.warning(
+          '[P0-1] Complexity assessment failed, using default tier_2: %s',
+          String(e?.message ?? e),
+        )
+      }
+    }
+
+    return result
+  }
+
+  return perceptionNodeWithAssessment
 }
 
 // ============================================================
@@ -388,6 +459,21 @@ export function routeAfterAgent(state: ModuAgentState): string {
   const toolCalls = lastMsg.tool_calls
 
   if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+    // P0-1: 有 tool_calls 时递增 Thought 轮数计数器
+    // 通过返回 Partial<ModuAgentState> 无法在路由函数中更新 state，
+    // 故此处仅做 advisory 检测；实际计数由 agentNode 返回时累加。
+    // 这里检测是否超出 reasoning_budget，超出则强制终止（防止无限循环）
+    const assessment = state.complexity_assessment
+    if (assessment && assessment.reasoning_budget > 0) {
+      const roundCount = state.reasoning_round_count ?? 0
+      if (roundCount >= assessment.reasoning_budget) {
+        logger.warning(
+          '[P0-1] Reasoning budget exhausted: %d >= %d (tier=%s), forcing termination',
+          roundCount, assessment.reasoning_budget, assessment.tier,
+        )
+        return '__end__'
+      }
+    }
     return 'tools'
   }
   // P4 Plan-and-Execute：执行阶段中"无 tool_calls"表示当前步骤完成，
@@ -481,10 +567,34 @@ export function makeAgentNode(
   confidenceThreshold: number = 0.5,
   conservativeTemperature: number = 0.3,
   planContextInjector: ((state: ModuAgentState) => SystemMessage | null) | null = null,
+  // P0-2: CoT 锚点开关（null 时从配置读取，默认 false）
+  cotAnchorEnabled: boolean | null = null,
+  // P0-4: 自适应终止引擎（null 时从配置读取，默认 advisory 模式启用）
+  terminationEngine: AdaptiveTerminationEngine | null = null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
   // 获取原始 LLM 用于动态调整温度
   const _originalLlm = (boundLlm as any)._llm ?? boundLlm
   const _defaultTemperature = (boundLlm as any).temperature ?? 0.7
+
+  // P0-2: 解析 CoT 锚点开关（null 时从配置读取，默认 false）
+  const _cotAnchorEnabled = cotAnchorEnabled ?? (() => {
+    try {
+      return getConfig().get('react_optimization.cot_anchor.enabled', false)
+    } catch {
+      return false
+    }
+  })()
+
+  // P0-4: 解析终止引擎开关（null 时从配置读取，默认 false）
+  // 第一阶段：advisory 模式，仅采集指标，不改变路由
+  const _terminationEngine = terminationEngine ?? (() => {
+    try {
+      const enabled = getConfig().get('react_optimization.adaptive_termination.enabled', false)
+      return enabled ? new AdaptiveTerminationEngine() : null
+    } catch {
+      return null
+    }
+  })()
 
   async function agentNode(
     state: ModuAgentState,
@@ -499,9 +609,18 @@ export function makeAgentNode(
       }
     }
 
+    // P0-2: 按 tier 动态拼接 CoT 锚点 prompt
+    // tier 缺失时 composeCotPrompt 按 tier_2 处理（tier_2 启用锚点）
+    // _cotAnchorEnabled=false 时返回空字符串，等价原行为
+    const tier = state.complexity_assessment?.tier as ComplexityTier | undefined
+    const cotPrompt = _cotAnchorEnabled ? composeCotPrompt(tier) : ''
+    const effectiveSystemPrompt = cotPrompt
+      ? `${systemPrompt ?? ''}\n\n${cotPrompt}`
+      : systemPrompt
+
     // 注入系统提示词
-    if (systemPrompt && (messages.length === 0 || !(messages[0] instanceof SystemMessage))) {
-      messages.unshift(new SystemMessage({ content: systemPrompt }))
+    if (effectiveSystemPrompt && (messages.length === 0 || !(messages[0] instanceof SystemMessage))) {
+      messages.unshift(new SystemMessage({ content: effectiveSystemPrompt }))
     }
 
     // 注入感知上下文（对应 coordinator.py 中 context["perception"] 注入）
@@ -512,7 +631,7 @@ export function makeAgentNode(
         const ctxMsg = new SystemMessage({
           content: `Perception context: ${JSON.stringify(perceptionCtx)}`,
         })
-        const insertIdx = systemPrompt ? 1 : 0
+        const insertIdx = effectiveSystemPrompt ? 1 : 0
         messages.splice(insertIdx, 0, ctxMsg)
       }
     }
@@ -526,10 +645,30 @@ export function makeAgentNode(
         .join('\n')
       if (knowledgeText) {
         messages.splice(
-          systemPrompt ? 1 : 0,
+          effectiveSystemPrompt ? 1 : 0,
           0,
           new SystemMessage({ content: `Relevant knowledge from memory:\n${knowledgeText}` }),
         )
+      }
+    }
+
+    // P0-3: 注入 Observation 蒸馏历史（仅当 observation_history 非空时）
+    // 提供工具结果的精简摘要，辅助 LLM 在长会话中保持上下文
+    const observationHistory = state.observation_history ?? []
+    if (observationHistory.length > 0) {
+      const recentObs = observationHistory.slice(-5) // 仅保留最近 5 条，控制 token
+      const obsText = recentObs
+        .map((o, idx) => {
+          const summary = o['summary'] ?? ''
+          const metrics = o['key_metrics'] ? ` | metrics: ${JSON.stringify(o['key_metrics'])}` : ''
+          const count = o['records_count'] !== undefined ? ` | count: ${o['records_count']}` : ''
+          return `[${idx}] ${o['tool'] ?? 'unknown'} (${o['status'] ?? 'success'}): ${summary}${count}${metrics}`
+        })
+        .join('\n')
+      if (obsText) {
+        messages.push(new SystemMessage({
+          content: `Recent observations (distilled summaries):\n${obsText}`,
+        }))
       }
     }
 
@@ -563,9 +702,23 @@ export function makeAgentNode(
       effectiveTemperature = Number(overrideTemperature)
     }
 
+    // P0-1: 基于 complexity_assessment.tier 动态调整温度
+    // 优先级：config_overrides > 低置信度保守 > tier 映射 > 默认值
+    // tier_1 高温快速直答，tier_3 低温深思
+    const tierAssessment = state.complexity_assessment
+    let tierApplied = false
+    if (tierAssessment && tierAssessment.tier) {
+      const tierTemp = TIER_TEMPERATURE_MAP[tierAssessment.tier as ComplexityTier]
+      if (typeof tierTemp === 'number') {
+        effectiveTemperature = tierTemp
+        tierApplied = true
+      }
+    }
+
     let needCustomTemp = false
 
     if (confidence < confidenceThreshold) {
+      // 低置信度保守模式优先级最高，覆盖 tier 映射
       effectiveTemperature = conservativeTemperature
       needCustomTemp = true
       logger.info(
@@ -578,6 +731,16 @@ export function makeAgentNode(
         'Using config_overrides temperature: %.2f',
         overrideTemperature,
       )
+    } else if (tierApplied) {
+      // tier 映射生效（与默认温度不同时才需克隆 LLM）
+      if (Math.abs(effectiveTemperature - _defaultTemperature) > 0.001) {
+        needCustomTemp = true
+        logger.debug(
+          '[P0-1] Using tier temperature: %.2f (tier=%s)',
+          effectiveTemperature,
+          tierAssessment?.tier,
+        )
+      }
     }
 
     let response: any
@@ -594,7 +757,48 @@ export function makeAgentNode(
       response = await boundLlm.invoke(messages)
     }
 
-    return { messages: [response] }
+    // P0-1: 递增 Thought 轮数计数器
+    // routeAfterAgent 读取此值判定是否超出 reasoning_budget
+    // reducer 为累加语义，返回 1 即在原值上 +1
+    const update: Partial<ModuAgentState> = { messages: [response] }
+    const aiMsg = response as any
+    if (aiMsg && Array.isArray(aiMsg.tool_calls) && aiMsg.tool_calls.length > 0) {
+      update.reasoning_round_count = 1
+    }
+
+    // P0-4: 自适应终止判定（第一阶段 advisory 模式）
+    // 仅采集 confidence_history / information_gain_history / termination_advice
+    // 不改变 routeAfterAgent 路由行为（第二阶段才影响路由）
+    if (_terminationEngine) {
+      try {
+        // 构造包含最新 response 的临时 state 供引擎评估
+        const tempState = {
+          ...state,
+          messages: [...(state.messages ?? []), response],
+          reasoning_round_count: (state.reasoning_round_count ?? 0) + (update.reasoning_round_count ?? 0),
+        }
+        const decision = _terminationEngine.shouldTerminate(tempState)
+        update.confidence_history = [decision.confidence]
+        update.information_gain_history = [decision.information_gain]
+        update.termination_advice = {
+          action: decision.action,
+          confidence: decision.confidence,
+          information_gain: decision.information_gain,
+          reason: decision.reason,
+          caveats: decision.caveats,
+          dimensions: decision.dimensions,
+        }
+        logger.info(
+          '[P0-4] Termination advice (advisory): action=%s confidence=%.2f gain=%.2f reason=%s',
+          decision.action, decision.confidence, decision.information_gain, decision.reason,
+        )
+      } catch (e: any) {
+        // 采集异常不阻断主流程
+        logger.warning('[P0-4] Termination assessment failed, skipping: %s', String(e?.message ?? e))
+      }
+    }
+
+    return update
   }
 
   return agentNode
@@ -612,13 +816,32 @@ export function makeAgentNode(
  *
  * LangGraph 的 ToolNode 已自动将工具结果作为 ToolMessage 追加到 messages，
  * 此节点仅用于提取 tool_results 供最终响应使用。
+ *
+ * P0-3: 可选启用 Observation 蒸馏器，将 ToolMessage content 替换为蒸馏后的精简版本，
+ * 控制 Token 消耗。蒸馏通过 feature flag enable_observation_distillation 控制（默认 true）。
+ * 异常时自动降级回原始 content，保证不阻断 ReAct 循环。
+ *
+ * @param distiller Observation 蒸馏器实例（null 时不启用蒸馏，等价原行为）
  */
-export function makeToolResultProcessor(): (state: ModuAgentState) => Partial<ModuAgentState> {
+export function makeToolResultProcessor(
+  distiller: ObservationDistiller | null = null,
+): (state: ModuAgentState) => Partial<ModuAgentState> {
+  // P0-3: 解析蒸馏开关（默认 true，可通过配置关闭）
+  const enableDistillation = (() => {
+    try {
+      return getConfig().get('react_optimization.observation_distillation.enabled', true)
+    } catch {
+      return true
+    }
+  })()
+
   function toolResultProcessor(
     state: ModuAgentState,
   ): Partial<ModuAgentState> {
     const messages = state.messages ?? []
     const toolResults: Array<Record<string, any>> = [...(state.tool_results ?? [])]
+    // P0-3: 收集蒸馏后的 Observation 历史，写入 state.observation_history
+    const observationHistoryEntries: Array<Record<string, any>> = []
 
     for (const msg of messages) {
       // v1.2 §4.3 建议10：使用 instanceof 替代 (msg as any)._getType() 反射，
@@ -649,10 +872,48 @@ export function makeToolResultProcessor(): (state: ModuAgentState) => Partial<Mo
             status: toolStatus,
           })
         }
+
+        // P0-3: Observation 蒸馏
+        // 启用条件：distiller 非空 + enableDistillation=true
+        // 蒸馏结果写入 observation_history，供 agentNode 作为辅助上下文注入
+        // 异常时跳过蒸馏（不影响 tool_results 提取与主流程）
+        if (distiller && enableDistillation) {
+          try {
+            const distilled = distiller.distill(
+              parsedContent,
+              state.current_step ?? state.current_subtask ?? null,
+              state.observation_history ?? [],
+            )
+            observationHistoryEntries.push({
+              tool: toolName,
+              execution_id: toolCallId,
+              summary: distilled.summary,
+              status: distilled.status,
+              key_metrics: distilled.key_metrics,
+              records_count: distilled.records_count,
+            })
+          } catch (e: any) {
+            // 蒸馏异常降级：跳过此条蒸馏，不影响主流程
+            logger.warning(
+              '[P0-3] Observation distillation failed for tool %s, skipping: %s',
+              toolName,
+              String(e?.message ?? e),
+            )
+          }
+        }
       }
     }
 
-    return { tool_results: toolResults }
+    // P0-3: 返回蒸馏后的 Observation 历史，写入 state.observation_history
+    // 设计决策：不修改 messages（避免 messagesStateReducer 追加导致重复），
+    // 仅写入 observation_history 供 agentNode 读取作为上下文 SystemMessage。
+    // 原始 ToolMessage content 保留在 messages 中，LLM 仍可见；
+    // 蒸馏后的精简版本通过 observation_history 在 agentNode 中作为辅助上下文注入。
+    const update: Partial<ModuAgentState> = { tool_results: toolResults }
+    if (observationHistoryEntries.length > 0) {
+      update.observation_history = observationHistoryEntries
+    }
+    return update
   }
 
   return toolResultProcessor

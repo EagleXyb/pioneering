@@ -30,6 +30,7 @@ import {
   makeHumanReviewNode,
   makeMemoryQueryNode,
   makeMemoryUpdateNode,
+  makePerceptionNode,
   makeSubagentNode,
   makeToolResultProcessor,
   memoryQueryNode,
@@ -41,6 +42,10 @@ import {
   routeAfterMemoryQuery,
   routeAfterPerception,
 } from './nodes.js'
+// P0-1: 复杂度评估器
+import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
+// P0-3: Observation 蒸馏器
+import { ObservationDistiller } from './adapters/observation-distiller.js'
 import { make_supervisor_node, route_from_supervisor } from './subgraph/supervisor.js'
 import {
   makePlanContextInjector,
@@ -345,6 +350,10 @@ export function buildModuGraph(
   judgeLlm: any = null,
   planExecuteEnabled: boolean | null = null,
   rawLlm: any = null,
+  // P0-1: 复杂度评估器（null 时不启用复杂度评估，等价原行为）
+  complexityAssessor: ComplexityAssessor | null = null,
+  // P0-3: Observation 蒸馏器（null 时不启用蒸馏，等价原行为）
+  observationDistiller: ObservationDistiller | null = null,
 ): CompiledStateGraph<any, any> {
   // LLM 已经在 factory 中绑定了工具，此处直接使用
   const boundLlm = llm
@@ -403,7 +412,8 @@ export function buildModuGraph(
   const memoryNode = store ? makeMemoryQueryNode(store) : null
   // P0-3: 创建记忆更新节点（带 Store 时写入长期记忆，否则跳过）
   const memoryUpdate = store ? makeMemoryUpdateNode(store) : memoryUpdateNode
-  const toolResultProcessor = makeToolResultProcessor()
+  // P0-3: 传入 Observation 蒸馏器（null 时等价原行为）
+  const toolResultProcessor = makeToolResultProcessor(observationDistiller)
   // P0-1: 创建反馈评估节点（有 orchestrator 时评估，否则跳过）
   const feedbackNode = orchestrator ? makeFeedbackNode(orchestrator) : null
   // P3-12.3.2: 人工审批节点（HITL 开启时插入 agent → tools 之间）
@@ -437,7 +447,11 @@ export function buildModuGraph(
   }
 
   // 添加节点
-  graph.addNode('perception', perceptionNode)
+  // P0-1: complexityAssessor 非空时使用带复杂度评估的感知节点，否则等价原行为
+  const perceptionNodeFn = complexityAssessor
+    ? makePerceptionNode(complexityAssessor)
+    : perceptionNode
+  graph.addNode('perception', perceptionNodeFn)
 
   if (memoryNode) {
     graph.addNode('memory_query', memoryNode)
