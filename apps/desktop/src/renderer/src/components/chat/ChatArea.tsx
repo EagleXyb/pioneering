@@ -12,13 +12,13 @@
 //   3. 两条路径共用同一份 store 数据与 InputArea，无数据层改动
 // ============================================================
 
-import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useCallback, createElement } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageList } from './MessageList'
 import { MessageScrollerList } from './MessageScrollerList'
 import { WelcomeScreen } from './WelcomeScreen'
 import { InputArea, type InputAreaSendOptions } from './input/InputArea'
-import { AgentStatus } from './AgentStatus'
+import { AgentStatus } from './ChatStatus'
 // P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
 import { ImageLightbox } from './ImageLightbox'
 import { useChatStore } from '../../stores/chatStore'
@@ -138,18 +138,9 @@ export function ChatArea() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Agent Status（实时推理/工具轨迹） */}
-      <AgentStatus
-        isStreaming={isStreaming}
-        thinking={streamingThinking}
-        toolCalls={streamingToolCalls}
-        error={error}
-        onClearError={clearError}
-      />
-
-      {/* Messages：与输入框同宽（max-w-[880px]）并居中 */}
+      {/* Messages：与输入框同宽（由 --chat-col-max 令牌统一约束，既定 880px）并居中 */}
       <div className="chat-messages-pane flex-1 overflow-hidden">
-        <div className="mx-auto h-full w-full max-w-[880px] px-0">
+        <div className="mx-auto h-full w-full max-w-[var(--chat-col-max)] px-0">
           {showWelcome ? (
             // 空会话：显示欢迎引导页
             <WelcomeScreen onQuickPrompt={handleQuickPrompt} />
@@ -192,6 +183,13 @@ export function ChatArea() {
           )}
         </div>
       </div>
+
+      {/* 错误提示条：仅出错时展示（运行态已内联于消息流），置于底部避免顶部 layout shift */}
+      {createElement(AgentStatus, {
+        toolCalls: streamingToolCalls,
+        error,
+        onClearError: clearError
+      })}
 
       {/* Input */}
       <InputArea

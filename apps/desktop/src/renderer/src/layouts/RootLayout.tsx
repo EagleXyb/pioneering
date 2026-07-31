@@ -78,7 +78,7 @@ export function RootLayout() {
           >
             {/* 中栏：页面内容 */}
             <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-              <div className="flex flex-col h-full">
+              <div className="flex flex-col h-full rounded-[4px] overflow-hidden">
                 {!sidebarVisible && (
                   <TopBarActions
                     platform={platform}

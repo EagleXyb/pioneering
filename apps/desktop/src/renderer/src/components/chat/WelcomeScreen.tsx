@@ -65,7 +65,7 @@ export function WelcomeScreen({ onQuickPrompt }: WelcomeScreenProps) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 py-12">
-      <div className="w-full max-w-2xl flex flex-col items-center gap-8">
+      <div className="w-full max-w-[var(--chat-col-max)] flex flex-col items-center gap-8">
         {/* ===== 标题 ===== */}
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-center">
           Pioneering AI，我帮你

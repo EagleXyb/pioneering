@@ -14,6 +14,9 @@
 | [06-file-index.md](./06-file-index.md) | 关键文件索引与阅读地图 |
 | [07-shadcn-message-feasibility.md](./07-shadcn-message-feasibility.md) | shadcn/ui 官方 AI 聊天组件替换可行性分析 |
 | [08-task-pipeline-timeline-ui.md](./08-task-pipeline-timeline-ui.md) | 任务模式右侧面板时间轴 UI 优化方案 |
+| [09-productization-plan.md](./09-productization-plan.md) | 产品化落地方案 |
+| [10-desktop对接modu-agent.md](./10-desktop对接modu-agent.md) | Desktop 对接 modu-agent 的架构与功能评估 |
+| [11-middle-column-layout-analysis.md](./11-middle-column-layout-analysis.md) | 中间栏布局分析报告：结构拆解、WorkBuddy 对比、P1–P7 问题与优化方案 |
 
 ## 代码版本
 

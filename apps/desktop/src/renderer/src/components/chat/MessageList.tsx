@@ -129,7 +129,7 @@ export function MessageList({
   const lastIndex = messages.length - 1
 
   return (
-    <div className="py-4">
+    <div className="px-3 py-4">
       {hasMore && (
         <div className="flex justify-center pb-3">
           <Button

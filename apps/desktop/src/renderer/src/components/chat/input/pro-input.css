@@ -7,11 +7,17 @@
    从而自动跟随明/暗主题，无硬编码字面量颜色。
    ============================================================ */
 
+:root {
+  /* 中间栏统一列宽令牌：内容展示区 / 输入区 / 欢迎页共用，既定 880px（不强制对齐 WorkBuddy） */
+  --chat-col-max: 880px;
+}
+
 /* ---- 外层区域：仅提供内边距与主题变量作用域（不铺背景，沿用原容器底色）---- */
 .pro-input-area {
+  container-type: inline-size;
   position: relative;
   width: 100%;
-  padding: 10px 20px 15px;
+  padding: 10px 20px 12px;
 
   /* 将 web 端变量映射到 desktop 端语义令牌，子元素自动继承并随主题切换 */
   --bg-card: var(--card);
@@ -29,7 +35,7 @@
 .pro-input-inner {
   position: relative;
   width: 100%;
-  max-width: 880px;
+  max-width: var(--chat-col-max);
   margin: 0 auto;
 }
 
@@ -337,7 +343,7 @@
 .pro-input-limit {
   display: flex;
   justify-content: flex-end;
-  padding: 6px 4px 0;
+  padding: 4px 4px 0;
   font-size: 11px;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
@@ -350,11 +356,33 @@
 .pro-input-disclaimer {
   display: flex;
   justify-content: center;
-  padding: 8px 4px 0;
+  padding: 4px 4px 0;
   font-size: 12px;
   line-height: 1.2;
   color: var(--text-tertiary);
   opacity: 0.55;
   user-select: none;
   pointer-events: none;
+}
+
+/* ============================================================
+   容器查询响应式：中栏宽度由用户拖拽决定，媒体查询无效，
+   故以 .pro-input-area 为容器（inline-size），按实际列宽内部降级。
+   ============================================================ */
+@container (max-width: 479px) {
+  /* 窄列：工具栏换行、隐藏非关键免责声明，避免卡片被挤压 */
+  .pro-input-toolbar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .pro-input-disclaimer {
+    display: none;
+  }
+}
+
+@container (min-width: 480px) and (max-width: 719px) {
+  /* 中列：工具栏间距收敛，避免按钮拥挤 */
+  .pro-input-toolbar {
+    gap: 6px;
+  }
 }
