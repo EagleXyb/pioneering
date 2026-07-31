@@ -102,11 +102,14 @@ export function ContextPanel() {
 
   return (
     <div className="relative h-full w-full">
-      <div className="flex flex-col h-full bg-muted/20 border-l border-border">
-      {/* Header：标题 + 阶段徽章 + 收起按钮 */}
-      <div className="flex items-center justify-between h-12 px-4 border-b border-border bg-background shrink-0">
+      <div className="flex flex-col h-full">
+      {/* Header：标题 + 阶段徽章 + 收起按钮（高度与窗口标题栏/ChatHeader 一致，同级别并列） */}
+      <div
+        className="flex items-center justify-between h-[var(--titlebar-h)] px-4 border-b border-border shrink-0"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground truncate">任务流水线</h3>
+          <h3 className="text-[15px] font-semibold text-foreground truncate">任务流水线</h3>
           <span
             className={cn(
               'text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0',
@@ -122,11 +125,11 @@ export function ContextPanel() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0"
+                className="h-8 w-8 shrink-0 text-foreground/70 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 rounded-md"
                 onClick={() => setContextPanelVisible(false)}
                 aria-label="收起右侧面板"
               >
-                <PanelRightClose className="size-4" />
+                <PanelRightClose className="size-[18px]" strokeWidth={1.5} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="end" className="text-xs">

@@ -6,7 +6,7 @@ import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { useAppStore } from './stores/useAppStore'
-import { useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { platformAtom, isFullscreenAtom } from './stores/atoms'
 import { normalizePlatform } from '@shared/types'
 import type { MenuActionId } from '@shared/menu-template'
@@ -25,6 +25,7 @@ function App() {
   const initTheme = useAppStore((s) => s.initTheme)
   const setPlatform = useSetAtom(platformAtom)
   const setIsFullscreen = useSetAtom(isFullscreenAtom)
+  const isFullscreen = useAtomValue(isFullscreenAtom)
 
   useEffect(() => {
     initTheme()
@@ -106,6 +107,11 @@ function App() {
     const cleanup = window.api?.window.onFullscreenChange?.((fs) => setIsFullscreen(fs))
     return () => cleanup?.()
   }, [setIsFullscreen])
+
+  // 同步全屏状态到 <html data-fullscreen>，驱动 layout-tokens.css 中的变量切换
+  useEffect(() => {
+    document.documentElement.dataset.fullscreen = isFullscreen ? 'true' : 'false'
+  }, [isFullscreen])
 
   // 主进程原生菜单（macOS 全局栏）转发到渲染端的动作（如打开设置弹框）
   useEffect(() => {

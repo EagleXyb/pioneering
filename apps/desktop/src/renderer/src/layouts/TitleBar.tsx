@@ -4,9 +4,13 @@ import { windowApi } from '@/services/ipc'
 import { usePlatform } from '@/hooks/usePlatform'
 import { menuTemplate } from '@shared/menu-template'
 import { MenuDropdown } from '@/menu/MenuDropdown'
+import { MacTitleBar } from './MacTitleBar'
+import { cn } from '@/lib/utils'
 
 interface TitleBarProps {
-  // 无外部 props（菜单/窗口控件自包含）
+  sidebarVisible: boolean
+  onToggleSidebar: () => void
+  onCreate: () => void | Promise<void>
 }
 
 /** Windows/Linux 窗口控制按钮组（最小化 / 最大化 / 关闭） */
@@ -42,14 +46,14 @@ const WindowControls = memo(function WindowControls() {
     <div className="flex items-stretch h-full">
       <button
         onClick={handleMinimize}
-        className="flex items-center justify-center w-11 h-full text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-colors"
+        className="flex items-center justify-center w-11 h-full text-muted-foreground/60 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
         title="最小化"
       >
         <Minus className="size-3.5" />
       </button>
       <button
         onClick={handleMaximize}
-        className="flex items-center justify-center w-11 h-full text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-colors"
+        className="flex items-center justify-center w-11 h-full text-muted-foreground/60 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
         title={isMaximized ? '还原' : '最大化'}
       >
         <Square className="size-3" />
@@ -65,18 +69,19 @@ const WindowControls = memo(function WindowControls() {
   )
 })
 
-export const TitleBar = memo(function TitleBar(_props: TitleBarProps) {
-  const { hasNativeWindowControls, platform, showInWindowMenu } = usePlatform()
+export const TitleBar = memo(function TitleBar({
+  sidebarVisible,
+  onToggleSidebar,
+  onCreate
+}: TitleBarProps) {
+  const { hasNativeWindowControls, platform, showInWindowMenu, isMac, isFullscreen } =
+    usePlatform()
 
-  // 菜单处理函数已收敛到 shared/menu-template + renderer/src/menu/menuActions（数据驱动）
-  // Win/Linux 无原生窗口控件 → 显示自定义 min/max/close；
-  // platform 尚未经 IPC 初始化（'unknown'）时不渲染任何控件，避免启动闪烁。
   const showCustomControls = !hasNativeWindowControls && platform !== 'unknown'
   const isDragging = useRef(false)
 
-  // ===== 纯 IPC 窗口拖拽（不用 -webkit-app-region，避免按钮点击被拦截） =====
+  // ===== 纯 IPC 窗口拖拽 =====
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // 点击目标是按钮/链接等交互元素时不启动拖拽
     const target = e.target as HTMLElement
     if (target.closest('button, a, [role="button"], input, textarea, select')) return
     isDragging.current = true
@@ -102,32 +107,49 @@ export const TitleBar = memo(function TitleBar(_props: TitleBarProps) {
     }
   }, [])
 
+  const headerStyle: React.CSSProperties = {
+    height: 'var(--titlebar-h)'
+  }
+  if (!isMac) {
+    headerStyle.paddingLeft = 'var(--titlebar-leading)'
+    headerStyle.paddingRight = 'var(--titlebar-trailing)'
+  }
+
   return (
     <header
-      className="flex items-center bg-[#EDEFF2] select-none shrink-0"
-      style={{
-        height: 'var(--titlebar-h)',
-        paddingLeft: 'var(--titlebar-leading)',
-        paddingRight: 'var(--titlebar-trailing)'
-      }}
-      onMouseDown={handleMouseDown}
-    >
-      {/* 平台差异全部经 CSS 变量下发：高度、左右留白由 data-platform 决定，
-          不再写 w-[70px] 之类的魔法数，左右对称保证 mode 切换真正居中。 */}
-      {/* App Menus: 数据驱动渲染（macOS 走全局栏，故窗口内仅 Win/Linux 渲染） */}
-      {showInWindowMenu && (
-        <div className="flex items-center shrink-0">
-          {menuTemplate.map((menu) => (
-            <MenuDropdown key={menu.label} item={menu} platform={platform} />
-          ))}
-        </div>
+      className={cn(
+        // 绝对定位在窗口顶部
+        // macOS：只覆盖左侧区域（left-0 top-0，不设 right-0/inset-x-0），
+        //        右侧留给白色卡片的 ChatHeader/ContextPanel header 自然显示
+        // Win/Linux：全宽（inset-x-0），包含菜单和窗口控制按钮
+        'absolute top-0 z-20 flex items-center select-none h-[var(--titlebar-h)]',
+        isMac ? 'left-0 bg-transparent pointer-events-none' : 'inset-x-0 bg-sidebar pointer-events-auto'
       )}
+      style={isMac ? undefined : headerStyle}
+      onMouseDown={isMac ? undefined : handleMouseDown}
+    >
+      {isMac ? (
+        <MacTitleBar
+          sidebarVisible={sidebarVisible}
+          isFullscreen={isFullscreen}
+          onToggleSidebar={onToggleSidebar}
+          onCreate={onCreate}
+        />
+      ) : (
+        <>
+          {showInWindowMenu && (
+            <div className="flex items-center shrink-0">
+              {menuTemplate.map((menu) => (
+                <MenuDropdown key={menu.label} item={menu} platform={platform} />
+              ))}
+            </div>
+          )}
 
-      {/* Spacer: push window controls to the far right */}
-      <div className="flex-1" />
+          <div className="flex-1" />
 
-      {/* Windows/Linux: custom window controls (min/max/close) */}
-      {showCustomControls && <WindowControls />}
+          {showCustomControls && <WindowControls />}
+        </>
+      )}
     </header>
   )
 })

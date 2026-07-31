@@ -11,20 +11,28 @@
   --titlebar-h: 40px;
   --titlebar-leading: 0px; /* 标题栏左端留白（避让原生控件） */
   --titlebar-trailing: 0px; /* 标题栏右端留白 */
+  --traffic-light-w: 0px; /* 红绿灯占位宽度（仅 macOS 非全屏时 >0） */
   --radius-control: 8px; /* 控件圆角 */
   --scrollbar-size: 10px; /* 滚动条粗细 */
   --density: 1; /* 整体缩放密度因子 */
 }
 
 /* macOS：hiddenInset 已由系统处理红绿灯内边距，
-   这里只微调高度/圆角/滚动条以贴合 SF 原生观感 */
+   渲染端用 --traffic-light-w 精确预留红绿灯区域，
+   品牌栏内容与红绿灯水平对齐。 */
 :root[data-platform='mac'] {
   --titlebar-h: 38px;
-  --titlebar-leading: 0px; /* hiddenInset 自动避让，渲染端无需占位 */
+  --titlebar-leading: 0px; /* hiddenInset 自动避让，渲染端无需额外 padding */
   --titlebar-trailing: 0px;
+  --traffic-light-w: 72px; /* macOS 红绿灯区域占位（3×12px 按钮 + 间距 + 左边距） */
   --radius-control: 6px; /* mac 原生控件更紧 */
   --scrollbar-size: 6px; /* 细覆盖条 */
   --density: 0.96;
+}
+
+/* macOS 全屏：红绿灯隐藏，无需占位 */
+:root[data-platform='mac'][data-fullscreen='true'] {
+  --traffic-light-w: 0px;
 }
 
 /* Windows 11：无边框自绘，控件占满右侧，无需右留白 */
@@ -32,6 +40,7 @@
   --titlebar-h: 40px;
   --titlebar-leading: 8px;
   --titlebar-trailing: 0px;
+  --traffic-light-w: 0px;
   --radius-control: 8px; /* Win11 风格 */
   --scrollbar-size: 12px;
   --density: 1;
@@ -42,6 +51,7 @@
   --titlebar-h: 40px;
   --titlebar-leading: 4px;
   --titlebar-trailing: 0px;
+  --traffic-light-w: 0px;
   --radius-control: 6px;
   --scrollbar-size: 12px;
   --density: 1;

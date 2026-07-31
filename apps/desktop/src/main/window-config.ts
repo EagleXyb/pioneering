@@ -13,10 +13,12 @@ export function getWindowOptions(platform: NodeJS.Platform): BrowserWindowConstr
   switch (normalized) {
     case 'mac':
       // 保留原生 frame，标题栏用 hiddenInset：
-      // macOS 自动在红绿灯左侧加 inset 内边距，渲染端不再需要 w-[70px] 魔法数。
+      // macOS 自动在红绿灯左侧加 inset 内边距，通过 trafficLightPosition 精确定位。
+      // 红绿灯位置: x=9(距左边缘), y=9(距标题栏顶部)，与 Finder/Safari 等原生应用一致。
       return {
         frame: true,
-        titleBarStyle: 'hiddenInset'
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: { x: 9, y: 9 }
       }
     case 'windows':
     case 'linux':

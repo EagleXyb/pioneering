@@ -59,6 +59,7 @@ import { cn } from '@/lib/utils'
 import { authService } from '@/services/api/auth'
 import { ConversationList } from './ConversationList'
 import { useChatStore } from '../../stores/chatStore'
+import { usePlatform } from '@/hooks/usePlatform'
 
 // ============================================================
 // 导航菜单配置（无对应功能的条目使用 placeholder: true）
@@ -113,7 +114,7 @@ function SectionHeader({
         <span
           className={cn(
             'text-[10px] leading-none px-1.5 py-0.5 rounded-full',
-            placeholder ? 'bg-muted text-muted-foreground' : 'bg-[#E6E8EB] text-muted-foreground'
+            placeholder ? 'bg-muted text-muted-foreground' : 'bg-accent text-muted-foreground'
           )}
         >
           {count}
@@ -139,6 +140,7 @@ export const Sidebar = memo(function Sidebar() {
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setSettingsCategory = useSetAtom(settingsCategoryAtom)
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
+  const { isMac } = usePlatform()
 
   // 主题
   const theme = useAppStore((s) => s.theme)
@@ -220,96 +222,95 @@ export const Sidebar = memo(function Sidebar() {
   const displayInitial = displayName.slice(0, 1).toUpperCase()
 
   return (
-    <div className="conversation-sidebar flex flex-col h-full bg-[#EDEFF2] border-r border-border">
+    <div className="conversation-sidebar flex flex-col h-full bg-sidebar">
       <TooltipProvider delayDuration={200}>
         {/* ================================================ */}
-        {/* 1. 品牌栏 */}
+        {/* 1. 品牌栏：Win/Linux 显示完整品牌栏（含工具栏按钮）；
+              macOS 下工具栏按钮在标题栏，品牌栏整体隐藏 */}
         {/* ================================================ */}
-        <div className="conversation-list-header px-3 pt-3 pb-0 shrink-0">
-          <div className="flex items-center justify-between py-1">
-            {/* 左侧：Logo + 名称 + 版本 */}
-            <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 rounded bg-sidebar-primary flex items-center justify-center">
-                <span className="text-[10px] font-bold text-sidebar-primary-foreground">
-                  P
-                </span>
+        {!isMac && (
+          <div className="conversation-list-header px-3 pt-3 pb-0 shrink-0">
+            <div className="flex items-center justify-between py-1">
+              {/* 左侧：Logo + 名称 + 版本 */}
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded bg-sidebar-primary flex items-center justify-center">
+                  <span className="text-[10px] font-bold text-sidebar-primary-foreground">
+                    P
+                  </span>
+                </div>
+                <span className="text-xs font-semibold text-foreground/90">Pioneering</span>
+                <span className="text-[10px] text-muted-foreground/50 ml-0.5">v0.1.0</span>
               </div>
-              <span className="text-xs font-semibold text-foreground/90">Pioneering</span>
-              <span className="text-[10px] text-muted-foreground/50 ml-0.5">v0.1.0</span>
-            </div>
 
-            {/* 右侧：搜索 / 筛选 / 侧边栏切换 */}
-            <div className="flex items-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                    onClick={() => {
-                      // 占位：搜索功能
-                    }}
-                  >
-                    <Search className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center" className="text-xs">
-                  搜索（即将开放）
-                </TooltipContent>
-              </Tooltip>
+              {/* 右侧：搜索/筛选/侧边栏切换 */}
+              <div className="flex items-center gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => {}}
+                    >
+                      <Search className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="center" className="text-xs">
+                    搜索（即将开放）
+                  </TooltipContent>
+                </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                    onClick={() => {
-                      // 占位：筛选功能
-                    }}
-                  >
-                    <SlidersHorizontal className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center" className="text-xs">
-                  筛选（即将开放）
-                </TooltipContent>
-              </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => {}}
+                    >
+                      <SlidersHorizontal className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="center" className="text-xs">
+                    筛选（即将开放）
+                  </TooltipContent>
+                </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setSidebarVisible(!sidebarVisible)}
-                  >
-                    {sidebarVisible ? (
-                      <PanelLeftClose className="size-4" />
-                    ) : (
-                      <PanelLeftOpen className="size-4" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center" className="text-xs">
-                  {sidebarVisible ? '收起侧边栏' : '展开侧边栏'}
-                </TooltipContent>
-              </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setSidebarVisible(!sidebarVisible)}
+                    >
+                      {sidebarVisible ? (
+                        <PanelLeftClose className="size-4" />
+                      ) : (
+                        <PanelLeftOpen className="size-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="center" className="text-xs">
+                    {sidebarVisible ? '收起侧边栏' : '展开侧边栏'}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* ================================================ */}
         {/* 2. 新建任务 */}
         {/* ================================================ */}
-        <div className="px-3 pt-3 pb-2 shrink-0">
+        <div className={cn('px-3 pb-2 shrink-0', isMac ? 'pt-2' : 'pt-3')}>
           <Button
             variant="ghost"
             size="sm"
-            className="group/new-task w-full h-9 px-3 justify-start gap-2.5 text-xs font-normal rounded-[8px] shadow-none bg-[#E6E8EB] hover:bg-accent/50"
+            className="group/new-task w-full h-9 px-3 justify-start gap-2.5 text-xs font-normal rounded-[8px] shadow-none bg-accent hover:bg-accent/50"
             onClick={handleCreate}
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-[#E6E8EB] text-foreground">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-accent text-foreground">
               <MessageCirclePlus className="h-4 w-4" />
             </span>
             <span className="text-sm font-medium text-foreground">新建任务</span>
@@ -330,8 +331,8 @@ export const Sidebar = memo(function Sidebar() {
                 className={cn(
                   'flex items-center justify-between h-[32px] px-2.5 rounded-[8px] cursor-pointer transition-colors select-none',
                   isActive
-                    ? 'bg-[#E6E8EB] text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-[#E6E8EB]/60 hover:text-foreground'
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
                 )}
               >
                 <div className="flex items-center gap-2.5">
