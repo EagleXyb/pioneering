@@ -3,6 +3,8 @@ out
 dist
 dist-ssr
 release
+# Vite 临时/测试构建产物
+.vite-test
 *.local
 .DS_Store
 .vscode/*
