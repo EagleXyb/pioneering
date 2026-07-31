@@ -4,7 +4,7 @@
 
 import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PanelLeftClose, PanelLeftOpen, MessageSquare, Plus, Trash2 } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, MessageSquare, MessageCirclePlus, Trash2 } from 'lucide-react'
 import { useAtom } from 'jotai'
 import { sidebarVisibleAtom } from '@/stores/atoms'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -93,25 +93,15 @@ export function ConversationList() {
             </Tooltip>
           </div>
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
-            className="group/new-task w-full h-8 px-3 justify-between text-xs font-normal rounded-lg"
+            className="group/new-task w-full h-8 px-2.5 justify-start gap-2 text-xs font-normal rounded-[8px] shadow-none border-border bg-background hover:bg-accent/50"
             onClick={handleCreate}
           >
-            <span className="inline-flex items-center gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              新建任务
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+              <MessageCirclePlus className="h-3 w-3" />
             </span>
-            <kbd
-              className={cn(
-                'inline-flex items-center rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground',
-                'opacity-0 -translate-x-1 transition-all duration-150',
-                'group-hover/new-task:opacity-100 group-hover/new-task:translate-x-0',
-                'sm:inline-flex'
-              )}
-            >
-              {formatAccelerator('CmdOrCtrl+N', platform)}
-            </kbd>
+            <span className="text-sm font-medium text-foreground">新建任务</span>
           </Button>
         </TooltipProvider>
       </div>
@@ -142,12 +132,12 @@ export function ConversationList() {
                       height: `${row.size}px`,
                       transform: `translateY(${row.start}px)`
                     }}
-                    className="px-1.5"
+                    className="px-3"
                   >
                     <div
                       onClick={() => handleSelect(session.id)}
                       className={cn(
-                        'group flex items-center gap-2 h-[32px] px-2.5 rounded-md cursor-pointer transition-colors',
+                        'group flex items-center gap-2 h-[32px] px-2.5 rounded-[8px] cursor-pointer transition-colors',
                         currentSessionId === session.id
                           ? 'bg-accent text-accent-foreground'
                           : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
