@@ -69,7 +69,7 @@ export function MermaidRender({ content }: MermaidRenderProps) {
         <div className="shrink-0 border-b border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           图表解析失败，已降级显示源码：{error}
         </div>
-        <pre className="m-0 min-h-0 flex-1 overflow-auto bg-muted p-4 font-mono text-xs leading-relaxed text-foreground">
+        <pre className="artifact-view m-0 min-h-0 flex-1 overflow-auto p-4 font-mono text-[13px] leading-[1.65] bg-gray-50 text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
           <code>{content}</code>
         </pre>
       </div>

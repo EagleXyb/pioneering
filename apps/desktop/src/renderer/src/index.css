@@ -464,6 +464,162 @@
 }
 
 /* =============================================
+   产物预览 —— 代码视图（ArtifactRender CodeView）
+   代码编辑器风格：专业字体栈 + 舒适的排版
+   ============================================= */
+.artifact-view {
+  font-family: Consolas, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Andale Mono',
+    'Courier New', monospace;
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+.artifact-view code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  background: transparent;
+  padding: 0;
+  white-space: pre;
+}
+
+/* =============================================
+   产物预览 —— 语法高亮配色（GitHub Light / Dark）
+   与对话区 .chat-markdown 使用同一套配色，保证一致性
+   ============================================= */
+.artifact-view .hljs-comment,
+.artifact-view .hljs-quote {
+  color: #6a737d;
+  font-style: italic;
+}
+.artifact-view .hljs-keyword,
+.artifact-view .hljs-selector-tag,
+.artifact-view .hljs-literal,
+.artifact-view .hljs-section,
+.artifact-view .hljs-link-label {
+  color: #d73a49;
+}
+.artifact-view .hljs-built_in,
+.artifact-view .hljs-type,
+.artifact-view .hljs-class .hljs-title {
+  color: #6f42c1;
+}
+.artifact-view .hljs-string,
+.artifact-view .hljs-attr,
+.artifact-view .hljs-template-tag,
+.artifact-view .hljs-addition,
+.artifact-view .hljs-regexp,
+.artifact-view .hljs-selector-attr {
+  color: #032f62;
+}
+.artifact-view .hljs-number,
+.artifact-view .hljs-symbol,
+.artifact-view .hljs-meta,
+.artifact-view .hljs-bullet,
+.artifact-view .hljs-link,
+.artifact-view .hljs-code {
+  color: #005cc5;
+}
+.artifact-view .hljs-title,
+.artifact-view .hljs-title.function_,
+.artifact-view .hljs-name,
+.artifact-view .hljs-function .hljs-title {
+  color: #6f42c1;
+  font-weight: 500;
+}
+.artifact-view .hljs-tag,
+.artifact-view .hljs-selector-class,
+.artifact-view .hljs-selector-id,
+.artifact-view .hljs-deletion {
+  color: #22863a;
+}
+.artifact-view .hljs-attribute,
+.artifact-view .hljs-variable,
+.artifact-view .hljs-template-variable,
+.artifact-view .hljs-property,
+.artifact-view .hljs-subst,
+.artifact-view .hljs-params {
+  color: #24292e;
+}
+.artifact-view .hljs-operator,
+.artifact-view .hljs-punctuation,
+.artifact-view .hljs-doctag {
+  color: #d73a49;
+}
+.artifact-view .hljs-meta .hljs-keyword,
+.artifact-view .hljs-meta .hljs-string {
+  color: #6a737d;
+}
+.artifact-view .hljs-emphasis {
+  font-style: italic;
+}
+.artifact-view .hljs-strong {
+  font-weight: 600;
+}
+
+/* 暗色主题：GitHub Dark 风格 */
+.dark .artifact-view .hljs-comment,
+.dark .artifact-view .hljs-quote {
+  color: #8b949e;
+}
+.dark .artifact-view .hljs-keyword,
+.dark .artifact-view .hljs-selector-tag,
+.dark .artifact-view .hljs-literal,
+.dark .artifact-view .hljs-section,
+.dark .artifact-view .hljs-link-label {
+  color: #ff7b72;
+}
+.dark .artifact-view .hljs-built_in,
+.dark .artifact-view .hljs-type,
+.dark .artifact-view .hljs-class .hljs-title {
+  color: #d2a8ff;
+}
+.dark .artifact-view .hljs-string,
+.dark .artifact-view .hljs-attr,
+.dark .artifact-view .hljs-template-tag,
+.dark .artifact-view .hljs-addition,
+.dark .artifact-view .hljs-regexp,
+.dark .artifact-view .hljs-selector-attr {
+  color: #a5d6ff;
+}
+.dark .artifact-view .hljs-number,
+.dark .artifact-view .hljs-symbol,
+.dark .artifact-view .hljs-meta,
+.dark .artifact-view .hljs-bullet,
+.dark .artifact-view .hljs-link,
+.dark .artifact-view .hljs-code {
+  color: #79c0ff;
+}
+.dark .artifact-view .hljs-title,
+.dark .artifact-view .hljs-title.function_,
+.dark .artifact-view .hljs-name,
+.dark .artifact-view .hljs-function .hljs-title {
+  color: #d2a8ff;
+}
+.dark .artifact-view .hljs-tag,
+.dark .artifact-view .hljs-selector-class,
+.dark .artifact-view .hljs-selector-id,
+.dark .artifact-view .hljs-deletion {
+  color: #7ee787;
+}
+.dark .artifact-view .hljs-attribute,
+.dark .artifact-view .hljs-variable,
+.dark .artifact-view .hljs-template-variable,
+.dark .artifact-view .hljs-property,
+.dark .artifact-view .hljs-subst,
+.dark .artifact-view .hljs-params {
+  color: #c9d1d9;
+}
+.dark .artifact-view .hljs-operator,
+.dark .artifact-view .hljs-punctuation,
+.dark .artifact-view .hljs-doctag {
+  color: #ff7b72;
+}
+.dark .artifact-view .hljs-meta .hljs-keyword,
+.dark .artifact-view .hljs-meta .hljs-string {
+  color: #8b949e;
+}
+
+/* =============================================
    窗口拖拽通过 TitleBar 组件的 IPC 鼠标事件实现
    （不使用 -webkit-app-region 以避免点击事件被 OS 拦截）
    ============================================= */

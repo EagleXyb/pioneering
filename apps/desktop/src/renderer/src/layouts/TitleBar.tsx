@@ -104,7 +104,7 @@ export const TitleBar = memo(function TitleBar(_props: TitleBarProps) {
 
   return (
     <header
-      className="flex items-center border-b border-border bg-background/95 backdrop-blur select-none shrink-0"
+      className="flex items-center bg-[#EDEFF2] select-none shrink-0"
       style={{
         height: 'var(--titlebar-h)',
         paddingLeft: 'var(--titlebar-leading)',

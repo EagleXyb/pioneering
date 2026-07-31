@@ -41,6 +41,7 @@
     "electron-store": "^11.0.2",
     "hast-util-sanitize": "^5.0.2",
     "jotai": "^2.20.1",
+    "lowlight": "^3.3.0",
     "lucide-react": "^0.469.0",
     "mermaid": "^11.16.0",
     "radix-ui": "^1.6.3",

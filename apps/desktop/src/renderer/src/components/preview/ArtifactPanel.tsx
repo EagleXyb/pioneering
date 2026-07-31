@@ -172,9 +172,9 @@ export function ArtifactPanel() {
         </div>
       </div>
 
-      {/* 主体：iframe（html/svg）或 纯文本（code） */}
+      {/* 主体：iframe（html/svg）或 代码视图（code） */}
       <div className={cn('min-h-0 flex-1')}>
-        <ArtifactRender type={artifact.type} content={artifact.content} />
+        <ArtifactRender type={artifact.type} content={artifact.content} language={artifact.language} />
       </div>
     </div>
   )
