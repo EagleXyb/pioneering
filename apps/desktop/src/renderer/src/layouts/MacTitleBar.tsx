@@ -8,8 +8,8 @@
 //          直接在白色卡片内自然显示，不被 TitleBar 覆盖
 //
 // 折叠状态（sidebarVisible = false）：
-//   [红绿灯避让] [toggle][💬+]
-//   按钮区宽度自适应内容
+//   [红绿灯避让]
+//   仅保留红绿灯避让区；展开侧边栏/新建入口由中栏 ChatHeader 左侧按钮提供（三平台一致）
 //
 // 注意：TitleBar 在 macOS 下不设全宽（无 inset-x-0 / right-0），
 //       只覆盖左侧必要区域；右侧内容由下方卡片的 header 自然填充。
@@ -19,8 +19,7 @@ import { memo } from 'react'
 import {
   Search,
   Filter,
-  PanelLeft,
-  MessageSquarePlus
+  PanelLeft
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,7 +34,6 @@ interface MacTitleBarProps {
   sidebarVisible: boolean
   isFullscreen: boolean
   onToggleSidebar: () => void
-  onCreate: () => void | Promise<void>
   onDragMouseDown?: (e: React.MouseEvent) => void
 }
 
@@ -75,7 +73,6 @@ export const MacTitleBar = memo(function MacTitleBar({
   sidebarVisible,
   isFullscreen,
   onToggleSidebar,
-  onCreate,
   onDragMouseDown
 }: MacTitleBarProps) {
   const tlw = isFullscreen ? 0 : 72
@@ -91,7 +88,8 @@ export const MacTitleBar = memo(function MacTitleBar({
         >
           {!isFullscreen && <div className="shrink-0" style={{ width: tlw }} />}
           <div className="flex-1" />
-          <div className="flex items-center gap-0.5 pr-2">
+          {/* 按钮组使用 translate-y 下移 5px，对齐右侧 ChatHeader 按钮（卡片 top:5px） */}
+          <div className="flex items-center gap-1 pr-3 translate-y-[5px]">
             <ToolbarButton
               icon={PanelLeft}
               onClick={onToggleSidebar}
@@ -102,25 +100,14 @@ export const MacTitleBar = memo(function MacTitleBar({
           </div>
         </div>
       ) : (
-        /* 折叠状态：红绿灯避让 + 操作按钮，宽度自适应 */
+        /* 折叠状态：仅保留红绿灯避让区；
+           展开侧边栏/新建入口统一由中栏 ChatHeader 左侧按钮提供（三平台一致），
+           避免与 ChatHeader 按钮重叠 */
         <div
           className="flex items-center h-full relative z-30 pointer-events-auto"
           onMouseDown={onDragMouseDown}
         >
           {!isFullscreen && <div className="shrink-0 h-full" style={{ width: tlw }} />}
-          <div className="flex items-center gap-0.5 pl-0.5">
-            <ToolbarButton
-              icon={PanelLeft}
-              onClick={onToggleSidebar}
-              title="展开侧边栏"
-            />
-            <ToolbarButton
-              icon={MessageSquarePlus}
-              onClick={onCreate}
-              title="新建对话"
-              size={20}
-            />
-          </div>
         </div>
       )}
     </TooltipProvider>

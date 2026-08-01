@@ -22,8 +22,7 @@ import {
   LogOut,
   User,
   ChevronRight,
-  PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeft,
   MessageCirclePlus,
   ChevronDown,
   Sparkles,
@@ -269,9 +268,9 @@ export const Sidebar = memo(function Sidebar() {
                       onClick={() => setSidebarVisible(!sidebarVisible)}
                     >
                       {sidebarVisible ? (
-                        <PanelLeftClose className="size-4" />
+                        <PanelLeft className="size-4" />
                       ) : (
-                        <PanelLeftOpen className="size-4" />
+                        <PanelLeft className="size-4" />
                       )}
                     </Button>
                   </TooltipTrigger>
@@ -292,7 +291,7 @@ export const Sidebar = memo(function Sidebar() {
               - 助理/技能/插件/自动化/更多：默认透明灰字，激活态与主按钮一致 bg-accent
               - 所有项高度统一 h-11，内部 px-3（12px），图标 16px 与文字 14px 协调 */}
         {/* ================================================ */}
-        <div className={cn('px-3 pb-1 shrink-0', isMac ? 'pt-2' : 'pt-3')}>
+        <div className={cn('px-3 pb-1 shrink-0', isMac ? 'pt-3.5' : 'pt-[18px]')}>
           {/* ---- 主按钮：新建任务（默认透明，hover 浅灰，激活态实色块） ---- */}
           <Button
             variant="ghost"

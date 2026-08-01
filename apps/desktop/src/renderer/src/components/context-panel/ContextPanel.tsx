@@ -13,7 +13,7 @@
 //     ResizablePanel.collapse() 接管，覆盖模式由 Drawer onClose 接管
 // ============================================================
 
-import { PanelRightClose } from 'lucide-react'
+import { PanelRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -103,7 +103,8 @@ export function ContextPanel() {
   return (
     <div className="relative h-full w-full">
       <div className="flex flex-col h-full">
-      {/* Header：标题 + 阶段徽章 + 收起按钮（高度与窗口标题栏/ChatHeader 一致，同级别并列） */}
+      {/* Header：标题 + 阶段徽章 + 收起按钮
+         卡片有 5px top 沟渠，按钮自然位于 Y=29px */}
       <div
         className="flex items-center justify-between h-[var(--titlebar-h)] px-4 border-b border-border shrink-0"
       >
@@ -128,7 +129,7 @@ export function ContextPanel() {
                 onClick={() => setContextPanelVisible(false)}
                 aria-label="收起右侧面板"
               >
-                <PanelRightClose className="size-[18px]" strokeWidth={1.5} />
+                <PanelRight className="size-[18px]" strokeWidth={1.5} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="end" className="text-xs">

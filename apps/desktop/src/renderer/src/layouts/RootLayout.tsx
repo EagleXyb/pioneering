@@ -24,10 +24,10 @@ import {
   ResizableHandle
 } from '@/components/ui/resizable'
 import {
-  PanelLeftOpen,
+  PanelLeft,
   Plus,
-  PanelRightOpen,
-  PanelRightClose,
+  MessageCirclePlus,
+  PanelRight,
   Search,
   Share2,
   History
@@ -150,14 +150,14 @@ export function RootLayout() {
             <Sidebar />
           </div>
 
-          {/* 白色卡片区域容器：透明底色，由各 panel 内卡片承载白色 */}
+          {/* 白色卡片区域容器：四周 5px 沟渠 */}
           <div
             className="absolute"
             style={{
-              top: '0.375rem',
-              right: '0.375rem',
-              bottom: '0.375rem',
-              left: sidebarVisible ? `calc(${SIDEBAR_WIDTH}px + 0.375rem)` : '0.375rem'
+              top: '5px',
+              right: '5px',
+              bottom: '5px',
+              left: sidebarVisible ? `calc(${SIDEBAR_WIDTH}px + 5px)` : '5px'
             }}
             onMouseDown={handleCardMouseDown}
           >
@@ -168,24 +168,16 @@ export function RootLayout() {
             >
               {/* 中栏：独立白色圆角卡片 */}
               <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-                <div className="h-full w-full bg-background rounded-[10px] shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col">
-                  {/* Win/Linux 折叠时的操作条 */}
-                  {showTopBarActions && (
-                    <TopBarActions
-                      platform={platform}
-                      onExpandSidebar={() => setSidebarVisible(true)}
-                      onCreate={handleCreate}
-                    />
-                  )}
-
-                  {/* 展开时显示中栏顶部栏 */}
-                  {sidebarVisible && (
-                    <ChatHeader
-                      title={currentTitle || '新对话'}
-                      contextPanelVisible={contextPanelVisible}
-                      onToggleContext={() => setContextPanelVisible(!contextPanelVisible)}
-                    />
-                  )}
+                <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
+                  {/* 中栏顶部栏：常驻渲染；侧边栏折叠时左侧显示"展开侧边栏/新建任务"按钮 */}
+                  <ChatHeader
+                    title={currentTitle || '新对话'}
+                    contextPanelVisible={contextPanelVisible}
+                    onToggleContext={() => setContextPanelVisible(!contextPanelVisible)}
+                    sidebarVisible={sidebarVisible}
+                    onToggleSidebar={handleToggleSidebar}
+                    onCreate={handleCreate}
+                  />
 
                   <div className="flex-1 min-h-0">
                     <Outlet />
@@ -206,7 +198,7 @@ export function RootLayout() {
                 collapsible
                 collapsedSize={0}
               >
-                <div className="h-full w-full bg-background rounded-[10px] shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden">
+                <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden" style={{ borderRadius: 6 }}>
                   <ContextPanel />
                 </div>
               </ResizablePanel>
@@ -216,10 +208,10 @@ export function RootLayout() {
       ) : (
         /* ============================================================
            覆盖模式（小屏抽屉）：单白色卡片 + 两侧 Drawer
-           与三栏模式一致：卡片四周 6px 沟渠
+           与三栏模式一致：卡片四周 3px 沟渠
            ============================================================ */
-        <div className="absolute inset-0 p-1.5 overflow-hidden" style={{paddingTop: isMac ? '0.375rem' : 'var(--titlebar-h)'}}>
-          <div className="h-full w-full bg-background rounded-[10px] shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col">
+        <div className="absolute inset-0 overflow-hidden p-[5px]" style={{paddingTop: isMac ? '5px' : 'var(--titlebar-h)'}}>
+          <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
             {showTopBarActions && (
               <TopBarActions
                 platform={platform}
@@ -245,31 +237,48 @@ export function RootLayout() {
   )
 }
 
-// ============================================================
-// ChatHeader — 中栏会话顶部栏（与右栏 ContextPanel header 同级别并列）
-// ============================================================
+/* ChatHeader — 中栏会话顶部栏
+   卡片有 5px top 沟渠，按钮自然位于 Y=29px；
+   左栏 MacTitleBar 的按钮也使用 pt-[5px] 下移对齐 */
 function ChatHeader({
   title,
   contextPanelVisible,
-  onToggleContext
+  onToggleContext,
+  sidebarVisible,
+  onToggleSidebar,
+  onCreate
 }: {
   title: string
   contextPanelVisible: boolean
   onToggleContext: () => void
+  sidebarVisible: boolean
+  onToggleSidebar: () => void
+  onCreate: () => void | Promise<void>
 }) {
   return (
     <TooltipProvider delayDuration={200}>
       <div
         className="flex items-center h-[var(--titlebar-h)] shrink-0 px-4 select-none border-b border-border"
       >
+        {/* 侧边栏折叠时：展开侧边栏 + 新建任务（三平台统一入口）；
+            macOS 下左侧留出红绿灯避让区（--traffic-light-w）避免重叠 */}
+        {!sidebarVisible && (
+          <div
+            className="flex items-center gap-1 mr-3"
+            style={{ paddingLeft: 'var(--traffic-light-w)' }}
+          >
+            <HeaderButton icon={PanelLeft} title="展开侧边栏" onClick={onToggleSidebar} />
+            <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={onCreate} />
+          </div>
+        )}
         <span className="text-[15px] font-semibold text-foreground truncate">{title}</span>
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
           <HeaderButton icon={Search} title="在会话中搜索" />
           <HeaderButton icon={Share2} title="分享" />
           <HeaderButton icon={History} title="历史记录" />
           <HeaderButton
-            icon={contextPanelVisible ? PanelRightClose : PanelRightOpen}
+            icon={PanelRight}
             title={contextPanelVisible ? '收起右侧面板' : '展开右侧面板'}
             onClick={onToggleContext}
           />
@@ -307,7 +316,7 @@ function HeaderButton({
   )
 }
 
-// 侧栏隐藏时的顶部操作条（仅 Win/Linux 使用）
+// 覆盖模式（小屏抽屉）的顶部操作条：仅 Win/Linux 使用（macOS 由 MacTitleBar 承担）
 function TopBarActions({
   platform,
   onExpandSidebar,
@@ -325,7 +334,7 @@ function TopBarActions({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onExpandSidebar}>
-              <PanelLeftOpen className="size-4" />
+              <PanelLeft className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" className="text-xs">
@@ -357,7 +366,7 @@ function TopBarActions({
                 className="h-7 w-7"
                 onClick={() => setContextPanelVisible(true)}
               >
-                <PanelRightOpen className="size-4" />
+                <PanelRight className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="end" className="text-xs">

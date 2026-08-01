@@ -8,7 +8,7 @@
 
 /* 默认 / 未知平台回退 */
 :root {
-  --titlebar-h: 40px;
+  --titlebar-h: 48px;
   --titlebar-leading: 0px; /* 标题栏左端留白（避让原生控件） */
   --titlebar-trailing: 0px; /* 标题栏右端留白 */
   --traffic-light-w: 0px; /* 红绿灯占位宽度（仅 macOS 非全屏时 >0） */
@@ -21,7 +21,7 @@
    渲染端用 --traffic-light-w 精确预留红绿灯区域，
    品牌栏内容与红绿灯水平对齐。 */
 :root[data-platform='mac'] {
-  --titlebar-h: 38px;
+  --titlebar-h: 48px;
   --titlebar-leading: 0px; /* hiddenInset 自动避让，渲染端无需额外 padding */
   --titlebar-trailing: 0px;
   --traffic-light-w: 72px; /* macOS 红绿灯区域占位（3×12px 按钮 + 间距 + 左边距） */
@@ -37,7 +37,7 @@
 
 /* Windows 11：无边框自绘，控件占满右侧，无需右留白 */
 :root[data-platform='windows'] {
-  --titlebar-h: 40px;
+  --titlebar-h: 48px;
   --titlebar-leading: 8px;
   --titlebar-trailing: 0px;
   --traffic-light-w: 0px;
@@ -48,7 +48,7 @@
 
 /* Linux：无边框自绘，略偏紧凑 */
 :root[data-platform='linux'] {
-  --titlebar-h: 40px;
+  --titlebar-h: 48px;
   --titlebar-leading: 4px;
   --titlebar-trailing: 0px;
   --traffic-light-w: 0px;

@@ -133,7 +133,6 @@ export const TitleBar = memo(function TitleBar({
           sidebarVisible={sidebarVisible}
           isFullscreen={isFullscreen}
           onToggleSidebar={onToggleSidebar}
-          onCreate={onCreate}
           onDragMouseDown={handleMouseDown}
         />
       ) : (
