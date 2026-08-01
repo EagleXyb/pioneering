@@ -1,16 +1,19 @@
 // ============================================================
 // RootLayout — 自适应根布局
-//   三栏模式 (>= 断点)：左 Sidebar + 中内容 + 右 ContextPanel，
+//   三栏模式 (>= 断点)：左 Sidebar(灰色贴边) + 中卡片(白色圆角) + 右卡片(白色圆角)，
+//                      卡片间 6px 灰色沟渠，卡片四周 6px 灰色边距
 //                      使用 ResizablePanelGroup（始终渲染 3 个 Panel，
 //                      通过 collapse/expand 控显隐，避免拖拽 Bug）。
 //   覆盖模式 (< 断点)：中栏全宽，Sidebar / ContextPanel 转 Drawer 抽屉。
 // 断点与窗口记忆按平台区分，保证各 OS 下的一致体验。
 //
-// 布局策略：
-//   TitleBar 使用 absolute 覆盖在窗口顶部，
-//   内容区（Sidebar + 中+右卡片）使用 inset:0 从窗口顶部开始布局，
-//   这样中栏/右栏的 header 可以自然地位于标题栏行（与红绿灯同高），
-//   实现 WorkBuddy 风格：左灰区 + 中栏标题栏 + 右栏面板栏 三段并列。
+// 布局策略（截图标配）：
+//   - 窗口底色始终为 bg-sidebar（灰色），作为沟渠/边框色
+//   - Sidebar absolute 贴左/顶/底边，无外间距（全高灰色）
+//   - 白色卡片区域 absolute 定位，四周 6px 间距（沟渠）
+//   - ResizableHandle 宽 6px 透明，作为两卡片间的沟渠（透显灰色底色）
+//   - 每个 ResizablePanel 内部用独立白色圆角卡片包裹
+//   - TitleBar absolute 覆盖在窗口顶部左侧（macOS 仅左区）
 // ============================================================
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -24,6 +27,7 @@ import {
   PanelLeftOpen,
   Plus,
   PanelRightOpen,
+  PanelRightClose,
   Search,
   Share2,
   History
@@ -67,7 +71,6 @@ export function RootLayout() {
     ? sessions.find((s) => s.id === currentSessionId)
     : null
   const currentTitle = currentSession?.title
-  const hasActiveSession = !!currentTitle
 
   const handleCreate = useCallback(async () => {
     await createSession()
@@ -113,10 +116,7 @@ export function RootLayout() {
 
   return (
     <div
-      className={cn(
-        'relative h-screen w-screen overflow-hidden text-foreground',
-        sidebarVisible ? 'bg-sidebar' : 'bg-background'
-      )}
+      className="relative h-screen w-screen overflow-hidden text-foreground bg-sidebar"
     >
       {/* TitleBar 覆盖在窗口顶部 */}
       <TitleBar
@@ -127,15 +127,20 @@ export function RootLayout() {
 
       {mode === 'three-column' ? (
         /* ============================================================
-           三栏模式：内容区 inset:0 从窗口最顶部开始
+           三栏模式：
+           - 左栏 Sidebar absolute 贴左/顶/底边（灰色，全高，无外间距）
+           - 卡片容器 absolute 定位，四周 6px 沟渠（top/right/bottom 固定 6px，
+             left 视侧边栏状态而定：展开时 262+6=268px，折叠时 6px）
+           - ResizablePanelGroup 填满容器，底色透明（透显灰色）
+           - ResizableHandle 宽 6px 作为两卡片间沟渠（透显灰色底色）
+           - 每个 Panel 内包裹独立白色圆角卡片（rounded-[10px] shadow ring overflow-hidden）
            ============================================================ */
-        <div className="absolute inset-0 flex overflow-hidden">
-          {/* 左栏 Sidebar：展开时需要 pt-[var(--titlebar-h)] 避开标题栏，
-              折叠时 width=0，内容自然隐藏 */}
+        <div className="absolute inset-0 overflow-hidden">
+          {/* 左栏 Sidebar */}
           <div
             className={cn(
-              'shrink-0 overflow-hidden transition-[width] duration-200 ease-out bg-sidebar',
-              sidebarVisible && 'border-r border-border'
+              'absolute top-0 left-0 bottom-0 overflow-hidden transition-[width] duration-200 ease-out bg-sidebar',
+              sidebarVisible && 'border-r border-border/0' /* 无分割线，靠沟渠分隔 */
             )}
             style={{
               width: sidebarVisible ? SIDEBAR_WIDTH : 0,
@@ -145,32 +150,25 @@ export function RootLayout() {
             <Sidebar />
           </div>
 
-          {/* 中栏 + 右栏白色卡片容器
-              macOS 展开：从 y=0 开始（卡片顶部与标题栏行齐平），右上角+右下角圆角，右/下留沟渠
-              Win/Linux 展开：从 TitleBar 下方开始（上留 6px 沟渠），完整圆角
-              折叠：平铺无卡片，加 pt 让内容从 TitleBar 下方开始 */}
+          {/* 白色卡片区域容器：透明底色，由各 panel 内卡片承载白色 */}
           <div
-            className={cn(
-              'flex-1 flex min-w-0',
-              sidebarVisible
-                ? [
-                    'overflow-hidden bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5',
-                    isMac
-                      ? 'rounded-tr-[10px] rounded-br-[10px] mr-1.5 mb-1.5'
-                      : 'rounded-[10px] mt-[calc(var(--titlebar-h)+0.375rem)] mr-1.5 mb-1.5'
-                  ]
-                : 'pt-[var(--titlebar-h)]'
-            )}
+            className="absolute"
+            style={{
+              top: '0.375rem',
+              right: '0.375rem',
+              bottom: '0.375rem',
+              left: sidebarVisible ? `calc(${SIDEBAR_WIDTH}px + 0.375rem)` : '0.375rem'
+            }}
             onMouseDown={handleCardMouseDown}
           >
             <ResizablePanelGroup
               autoSaveId={`pioneering-main-layout-2p-${platform}`}
               direction="horizontal"
-              className="flex-1 h-full"
+              className="h-full w-full"
             >
-              {/* 中栏 */}
+              {/* 中栏：独立白色圆角卡片 */}
               <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-                <div className="flex flex-col h-full">
+                <div className="h-full w-full bg-background rounded-[10px] shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col">
                   {/* Win/Linux 折叠时的操作条 */}
                   {showTopBarActions && (
                     <TopBarActions
@@ -180,9 +178,13 @@ export function RootLayout() {
                     />
                   )}
 
-                  {/* 展开时显示中栏顶部栏（会话标题/新对话），与右栏header同级并列 */}
+                  {/* 展开时显示中栏顶部栏 */}
                   {sidebarVisible && (
-                    <ChatHeader title={currentTitle || '新对话'} />
+                    <ChatHeader
+                      title={currentTitle || '新对话'}
+                      contextPanelVisible={contextPanelVisible}
+                      onToggleContext={() => setContextPanelVisible(!contextPanelVisible)}
+                    />
                   )}
 
                   <div className="flex-1 min-h-0">
@@ -191,10 +193,10 @@ export function RootLayout() {
                 </div>
               </ResizablePanel>
 
-              {/* 垂直分割线：从上到下贯穿，包括header区域 */}
-              <ResizableHandle className="w-px bg-border hover:bg-primary/50 transition-colors shrink-0" />
+              {/* 中卡片与右卡片之间的沟渠：6px 宽透明，透显底层灰色 */}
+              <ResizableHandle className="w-1.5 bg-transparent hover:bg-primary/20 transition-colors shrink-0 rounded-sm" />
 
-              {/* 右栏 */}
+              {/* 右栏：独立白色圆角卡片 */}
               <ResizablePanel
                 id="context-panel"
                 ref={contextRef}
@@ -204,17 +206,20 @@ export function RootLayout() {
                 collapsible
                 collapsedSize={0}
               >
-                <ContextPanel />
+                <div className="h-full w-full bg-background rounded-[10px] shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden">
+                  <ContextPanel />
+                </div>
               </ResizablePanel>
             </ResizablePanelGroup>
           </div>
         </div>
       ) : (
         /* ============================================================
-           覆盖模式（小屏抽屉）
+           覆盖模式（小屏抽屉）：单白色卡片 + 两侧 Drawer
+           与三栏模式一致：卡片四周 6px 沟渠
            ============================================================ */
-        <div className="absolute inset-0 pt-[var(--titlebar-h)] overflow-hidden">
-          <div className="flex flex-col h-full">
+        <div className="absolute inset-0 p-1.5 overflow-hidden" style={{paddingTop: isMac ? '0.375rem' : 'var(--titlebar-h)'}}>
+          <div className="h-full w-full bg-background rounded-[10px] shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col">
             {showTopBarActions && (
               <TopBarActions
                 platform={platform}
@@ -243,20 +248,34 @@ export function RootLayout() {
 // ============================================================
 // ChatHeader — 中栏会话顶部栏（与右栏 ContextPanel header 同级别并列）
 // ============================================================
-function ChatHeader({ title }: { title: string }) {
+function ChatHeader({
+  title,
+  contextPanelVisible,
+  onToggleContext
+}: {
+  title: string
+  contextPanelVisible: boolean
+  onToggleContext: () => void
+}) {
   return (
-    <div
-      className="flex items-center h-[var(--titlebar-h)] shrink-0 px-4 select-none border-b border-border"
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <span className="text-[15px] font-semibold text-foreground truncate">{title}</span>
-      <div className="flex-1" />
-      <div className="flex items-center gap-0.5">
-        <HeaderButton icon={Search} title="在会话中搜索" />
-        <HeaderButton icon={Share2} title="分享" />
-        <HeaderButton icon={History} title="历史记录" />
+    <TooltipProvider delayDuration={200}>
+      <div
+        className="flex items-center h-[var(--titlebar-h)] shrink-0 px-4 select-none border-b border-border"
+      >
+        <span className="text-[15px] font-semibold text-foreground truncate">{title}</span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-0.5">
+          <HeaderButton icon={Search} title="在会话中搜索" />
+          <HeaderButton icon={Share2} title="分享" />
+          <HeaderButton icon={History} title="历史记录" />
+          <HeaderButton
+            icon={contextPanelVisible ? PanelRightClose : PanelRightOpen}
+            title={contextPanelVisible ? '收起右侧面板' : '展开右侧面板'}
+            onClick={onToggleContext}
+          />
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   )
 }
 

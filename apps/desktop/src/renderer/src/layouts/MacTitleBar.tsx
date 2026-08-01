@@ -36,6 +36,7 @@ interface MacTitleBarProps {
   isFullscreen: boolean
   onToggleSidebar: () => void
   onCreate: () => void | Promise<void>
+  onDragMouseDown?: (e: React.MouseEvent) => void
 }
 
 const SIDEBAR_WIDTH = 262
@@ -74,45 +75,54 @@ export const MacTitleBar = memo(function MacTitleBar({
   sidebarVisible,
   isFullscreen,
   onToggleSidebar,
-  onCreate
+  onCreate,
+  onDragMouseDown
 }: MacTitleBarProps) {
   const tlw = isFullscreen ? 0 : 72
 
-  return sidebarVisible ? (
-    /* 展开状态：左侧灰色区（侧栏宽 262px），不渲染右侧占位 */
-    <div
-      className="flex items-center h-full bg-sidebar relative z-30 pointer-events-auto"
-      style={{ width: SIDEBAR_WIDTH }}
-    >
-      {!isFullscreen && <div className="shrink-0" style={{ width: tlw }} />}
-      <div className="flex-1" />
-      <div className="flex items-center gap-0.5 pr-2">
-        <ToolbarButton
-          icon={PanelLeft}
-          onClick={onToggleSidebar}
-          title="收起侧边栏"
-        />
-        <ToolbarButton icon={Search} title="搜索（即将开放）" />
-        <ToolbarButton icon={Filter} title="筛选（即将开放）" />
-      </div>
-    </div>
-  ) : (
-    /* 折叠状态：红绿灯避让 + 操作按钮，宽度自适应 */
-    <div className="flex items-center h-full relative z-30 pointer-events-auto">
-      {!isFullscreen && <div className="shrink-0 h-full" style={{ width: tlw }} />}
-      <div className="flex items-center gap-0.5 pl-0.5">
-        <ToolbarButton
-          icon={PanelLeft}
-          onClick={onToggleSidebar}
-          title="展开侧边栏"
-        />
-        <ToolbarButton
-          icon={MessageSquarePlus}
-          onClick={onCreate}
-          title="新建对话"
-          size={20}
-        />
-      </div>
-    </div>
+  return (
+    <TooltipProvider delayDuration={200}>
+      {sidebarVisible ? (
+        /* 展开状态：左侧灰色区（侧栏宽 262px），不渲染右侧占位 */
+        <div
+          className="flex items-center h-full bg-sidebar relative z-30 pointer-events-auto"
+          style={{ width: SIDEBAR_WIDTH }}
+          onMouseDown={onDragMouseDown}
+        >
+          {!isFullscreen && <div className="shrink-0" style={{ width: tlw }} />}
+          <div className="flex-1" />
+          <div className="flex items-center gap-0.5 pr-2">
+            <ToolbarButton
+              icon={PanelLeft}
+              onClick={onToggleSidebar}
+              title="收起侧边栏"
+            />
+            <ToolbarButton icon={Search} title="搜索（即将开放）" />
+            <ToolbarButton icon={Filter} title="筛选（即将开放）" />
+          </div>
+        </div>
+      ) : (
+        /* 折叠状态：红绿灯避让 + 操作按钮，宽度自适应 */
+        <div
+          className="flex items-center h-full relative z-30 pointer-events-auto"
+          onMouseDown={onDragMouseDown}
+        >
+          {!isFullscreen && <div className="shrink-0 h-full" style={{ width: tlw }} />}
+          <div className="flex items-center gap-0.5 pl-0.5">
+            <ToolbarButton
+              icon={PanelLeft}
+              onClick={onToggleSidebar}
+              title="展开侧边栏"
+            />
+            <ToolbarButton
+              icon={MessageSquarePlus}
+              onClick={onCreate}
+              title="新建对话"
+              size={20}
+            />
+          </div>
+        </div>
+      )}
+    </TooltipProvider>
   )
 })

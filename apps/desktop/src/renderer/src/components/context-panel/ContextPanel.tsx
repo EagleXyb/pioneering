@@ -106,7 +106,6 @@ export function ContextPanel() {
       {/* Header：标题 + 阶段徽章 + 收起按钮（高度与窗口标题栏/ChatHeader 一致，同级别并列） */}
       <div
         className="flex items-center justify-between h-[var(--titlebar-h)] px-4 border-b border-border shrink-0"
-        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="text-[15px] font-semibold text-foreground truncate">任务流水线</h3>
