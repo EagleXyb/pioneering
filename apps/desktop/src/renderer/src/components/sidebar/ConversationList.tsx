@@ -4,7 +4,7 @@
 
 import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -83,8 +83,7 @@ export function ConversationList() {
                             : 'text-muted-foreground hover:bg-[#E6E8EB] hover:text-foreground'
                         )}
                       >
-                        <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                        <span className="text-xs truncate flex-1">{session.title || '新对话'}</span>
+                        <span className="text-[13px] truncate flex-1 pl-0.5">{session.title || '新对话'}</span>
                         <button
                           onClick={(e) => handleDelete(e, session.id)}
                           className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all p-0.5"

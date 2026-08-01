@@ -10,13 +10,10 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { platformAtom, isFullscreenAtom } from './stores/atoms'
 import { normalizePlatform } from '@shared/types'
 import type { MenuActionId } from '@shared/menu-template'
-import type { AuthTokens } from '@shared/types'
 import { appApi, storeApi } from './services/ipc'
 import { apiClient } from './services/api'
 import { runMenuAction } from './menu/menuActions'
-
-// S5: Token 在主进程 storeApi 中的持久化 key
-const TOKEN_STORAGE_KEY = 'auth.tokens'
+import { useAuthBootstrap } from './hooks/useAuthBootstrap'
 
 // API baseURL 持久化 key（与 ApiConnectionSection 共用）
 const API_BASE_URL_STORAGE_KEY = 'api.baseUrl'
@@ -26,6 +23,10 @@ function App() {
   const setPlatform = useSetAtom(platformAtom)
   const setIsFullscreen = useSetAtom(isFullscreenAtom)
   const isFullscreen = useAtomValue(isFullscreenAtom)
+
+  // 认证态引导：恢复 token、拉取用户资料、订阅 token 变化。
+  // 统一在此处完成，避免各组件自行判断登录态而产生竞态。
+  useAuthBootstrap()
 
   useEffect(() => {
     initTheme()
@@ -55,25 +56,6 @@ function App() {
         void appApi.setApiBaseUrl(normalized)
       }
     })()
-  }, [])
-
-  // S5 修复：应用启动时从主进程 storeApi 恢复已持久化的 token，避免刷新即登出。
-  // 并注册 onTokensChange 回调，token 变化时持久化到主进程内存（刷新页面不丢失）。
-  useEffect(() => {
-    // 恢复已持久化的 token
-    void apiClient.restoreTokens(async () => {
-      const tokens = await storeApi.get<AuthTokens | null>(TOKEN_STORAGE_KEY)
-      return tokens ?? null
-    })
-
-    // 注册回调：token 变化时同步持久化 / 清除
-    apiClient.onTokensChange((tokens) => {
-      if (tokens) {
-        void storeApi.set(TOKEN_STORAGE_KEY, tokens)
-      } else {
-        void storeApi.delete(TOKEN_STORAGE_KEY)
-      }
-    })
   }, [])
 
   // 获取平台信息，写入 platformAtom 并同步到 <html data-platform>

@@ -43,7 +43,9 @@ class ApiClient {
   private instance: AxiosInstance
   private accessToken: string | null = null
   private refreshToken: string | null = null
-  private onTokenChange?: (tokens: AuthTokens | null) => void
+  // 多订阅者：token 变化需要同时驱动「持久化」与「全局认证态」等多方，
+  // 单回调字段会被后注册者覆盖，故改为集合。
+  private tokenChangeListeners = new Set<(tokens: AuthTokens | null) => void>()
   private refreshPromise: Promise<void> | null = null
 
   constructor(baseURL: string = DEFAULT_BASE_URL) {
@@ -122,7 +124,18 @@ class ApiClient {
       this.accessToken = null
       this.refreshToken = null
     }
-    this.onTokenChange?.(tokens)
+    this.emitTokenChange(tokens)
+  }
+
+  // 逐个通知订阅者，单个订阅者抛错不影响其余订阅者（尤其不能让 UI 异常阻断持久化）
+  private emitTokenChange(tokens: AuthTokens | null): void {
+    for (const listener of this.tokenChangeListeners) {
+      try {
+        listener(tokens)
+      } catch (err) {
+        console.error('[ApiClient] token change listener failed:', err)
+      }
+    }
   }
 
   clearTokens(): void {
@@ -156,8 +169,15 @@ class ApiClient {
     return this.refreshToken
   }
 
-  onTokensChange(callback: (tokens: AuthTokens | null) => void): void {
-    this.onTokenChange = callback
+  /**
+   * 订阅 token 变化。支持多个订阅者，返回取消订阅函数。
+   * 注意：重复调用不会覆盖已有订阅者（历史实现为单回调赋值，会静默丢失持久化逻辑）。
+   */
+  onTokensChange(callback: (tokens: AuthTokens | null) => void): () => void {
+    this.tokenChangeListeners.add(callback)
+    return () => {
+      this.tokenChangeListeners.delete(callback)
+    }
   }
 
   // 应用启动时从主进程 store（electron-store 持久化）恢复已登录的 token，
@@ -168,6 +188,9 @@ class ApiClient {
       if (tokens && tokens.token && tokens.refreshToken) {
         this.accessToken = tokens.token
         this.refreshToken = tokens.refreshToken
+        // 通知订阅者（如全局认证态）token 已恢复。
+        // 这里刻意不走 setTokens：避免把刚读出来的 token 原样写回持久层。
+        this.emitTokenChange(tokens)
         return true
       }
     } catch {

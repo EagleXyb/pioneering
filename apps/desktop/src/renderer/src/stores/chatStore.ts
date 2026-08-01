@@ -58,6 +58,8 @@ interface ChatState {
   error: string | null
 
   loadSessions: () => Promise<void>
+  /** 清空所有会话与消息数据（登出/切换账号时调用，不触碰流式状态与业务 action） */
+  resetSessions: () => void
   createSession: (title?: string) => Promise<ChatSession>
   selectSession: (sessionId: string) => void
   loadMessages: (sessionId: string, append?: boolean) => Promise<void>
@@ -801,6 +803,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     }
   },
+
+  // 登出 / 切换账号时清空会话与消息数据。
+  // 仅重置数据字段，刻意不触碰 isStreaming / abortController / streaming* 等流式状态，
+  // 也不动任何业务 action 函数，避免打断进行中的对话或引入状态不一致。
+  resetSessions: () =>
+    set({
+      sessions: [],
+      sessionsLoading: false,
+      currentSessionId: null,
+      messages: {},
+      messagesLoading: false,
+      messagesNextCursor: {},
+      messagesHasMore: {}
+    }),
 
   clearError: () => set({ error: null }),
 

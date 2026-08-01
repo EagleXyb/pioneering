@@ -2,12 +2,29 @@
 // 原 SettingsPage 中「认证」卡片内容，独立为设置弹框的一个分类区块。
 
 import { useState } from 'react'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { Key, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authService } from '@/services/api/auth'
+import {
+  authViewAtom,
+  authStatusAtom,
+  authErrorAtom,
+  currentUserAtom,
+  cachedUserAtom,
+  toAppUser,
+  toErrorMessage
+} from '@/stores/authStore'
 
 export function AuthSection() {
-  const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated())
+  // 登录态改为读取全局 authStore，不再维护局部副本，
+  // 避免与侧边栏出现「一处已登录、一处未登录」的不一致。
+  const { isAuthed, user } = useAtomValue(authViewAtom)
+  const setStatus = useSetAtom(authStatusAtom)
+  const setAuthError = useSetAtom(authErrorAtom)
+  const setUser = useSetAtom(currentUserAtom)
+  const setCachedUser = useSetAtom(cachedUserAtom)
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
@@ -17,20 +34,28 @@ export function AuthSection() {
     setLoginLoading(true)
     setLoginError(null)
     try {
-      await authService.login({ username, password })
-      setIsAuthenticated(true)
+      // 登录响应本身已带完整 user，直接落地全局态，
+      // 无需再请求一次 /user/profile。
+      const tokens = await authService.login({ username, password })
+      if (tokens.user) {
+        const appUser = toAppUser(tokens.user)
+        setUser(appUser)
+        setCachedUser(appUser)
+      }
+      setAuthError(null)
+      setStatus('authed')
       setUsername('')
       setPassword('')
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Login failed')
+      setLoginError(toErrorMessage(err))
     } finally {
       setLoginLoading(false)
     }
   }
 
+  // 登出后的状态重置由 authStore 订阅 token 变化统一完成
   const handleLogout = async () => {
     await authService.logout()
-    setIsAuthenticated(false)
   }
 
   return (
@@ -40,11 +65,14 @@ export function AuthSection() {
         <h2 className="text-lg font-semibold">认证</h2>
       </div>
 
-      {isAuthenticated ? (
+      {isAuthed ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm text-green-500">
             <CheckCircle2 className="size-4" />
             已认证
+            <span className="text-muted-foreground">
+              （{user.nickname || user.username}）
+            </span>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout}>
             登出

@@ -271,7 +271,15 @@ function ChatHeader({
             <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={onCreate} />
           </div>
         )}
-        <span className="text-[15px] font-semibold text-foreground truncate">{title}</span>
+        {/* 会话标题：展开状态下左侧留 9px 边距（16px 容器内边距 + 9px ≈ 25px 距卡片左缘） */}
+        <span
+          className={cn(
+            'text-[15px] font-semibold text-foreground truncate',
+            sidebarVisible && 'ml-[9px]'
+          )}
+        >
+          {title}
+        </span>
         <div className="flex-1" />
         <div className="flex items-center gap-1">
           <HeaderButton icon={Search} title="在会话中搜索" />
