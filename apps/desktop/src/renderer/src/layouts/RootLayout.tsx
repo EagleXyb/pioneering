@@ -193,8 +193,8 @@ export function RootLayout() {
                 </div>
               </ResizablePanel>
 
-              {/* 中卡片与右卡片之间的沟渠：6px 宽透明，透显底层灰色 */}
-              <ResizableHandle className="w-1.5 bg-transparent hover:bg-primary/20 transition-colors shrink-0 rounded-sm" />
+              {/* 中卡片与右卡片之间的沟渠：1px 拖拽线，hover 时显示高亮线 */}
+              <ResizableHandle className="w-px bg-transparent hover:bg-primary/40 transition-colors shrink-0 rounded-sm after:w-px" />
 
               {/* 右栏：独立白色圆角卡片 */}
               <ResizablePanel

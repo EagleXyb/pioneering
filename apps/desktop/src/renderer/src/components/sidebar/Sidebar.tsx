@@ -86,7 +86,7 @@ const NAV_ITEMS = [
 ]
 
 // ============================================================
-// 子组件：分组标题
+// 子组件：分组标题（任务/空间，"标题 (数量)" + 下拉箭头）
 // ============================================================
 function SectionHeader({
   title,
@@ -105,26 +105,19 @@ function SectionHeader({
     <div
       onClick={onToggle}
       className={cn(
-        'flex items-center justify-between px-3 py-2 cursor-pointer select-none group',
+        'flex items-center justify-between h-[34px] px-3 gap-2 cursor-pointer select-none transition-colors rounded-[8px] hover:bg-accent/40',
         placeholder && 'opacity-60'
       )}
     >
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{title}</span>
-        <span
-          className={cn(
-            'text-[10px] leading-none px-1.5 py-0.5 rounded-full',
-            placeholder ? 'bg-muted text-muted-foreground' : 'bg-accent text-muted-foreground'
-          )}
-        >
-          {count}
-        </span>
-      </div>
+      <span className="text-sm font-normal text-muted-foreground">
+        {title} ({count})
+      </span>
       <ChevronDown
         className={cn(
-          'h-3.5 w-3.5 text-muted-foreground/60 transition-transform',
+          'size-4 text-muted-foreground/60 transition-transform duration-200 shrink-0',
           expanded && 'rotate-180'
         )}
+        strokeWidth={1.5}
       />
     </div>
   )
@@ -154,11 +147,12 @@ export const Sidebar = memo(function Sidebar() {
   const [tasksExpanded, setTasksExpanded] = useState(true)
   const [spacesExpanded, setSpacesExpanded] = useState(true)
 
-  // 导航激活态：助理页 = /，其余用本地 activeNavKey
+  // 导航激活态：助理页 = /，其余用本地 activeNavKey；
+  // 'new-task' 为新建任务的独立激活标识（与助理同指向首页，但避免两者同时高亮）
   const [activeNavKey, setActiveNavKey] = useState('assistant')
   useEffect(() => {
     if (location.pathname === '/' || location.pathname === '') {
-      setActiveNavKey('assistant')
+      setActiveNavKey((prev) => (prev === 'new-task' ? prev : 'assistant'))
     }
   }, [location.pathname])
 
@@ -202,6 +196,7 @@ export const Sidebar = memo(function Sidebar() {
 
   const handleCreate = useCallback(async () => {
     await createSession()
+    setActiveNavKey('new-task')
     navigate('/')
   }, [createSession, navigate])
 
@@ -230,18 +225,7 @@ export const Sidebar = memo(function Sidebar() {
         {/* ================================================ */}
         {!isMac && (
           <div className="conversation-list-header px-3 pt-3 pb-0 shrink-0">
-            <div className="flex items-center justify-between py-1">
-              {/* 左侧：Logo + 名称 + 版本 */}
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded bg-sidebar-primary flex items-center justify-center">
-                  <span className="text-[10px] font-bold text-sidebar-primary-foreground">
-                    P
-                  </span>
-                </div>
-                <span className="text-xs font-semibold text-foreground/90">Pioneering</span>
-                <span className="text-[10px] text-muted-foreground/50 ml-0.5">v0.1.0</span>
-              </div>
-
+            <div className="flex items-center justify-end py-1">
               {/* 右侧：搜索/筛选/侧边栏切换 */}
               <div className="flex items-center gap-0.5">
                 <Tooltip>
@@ -301,26 +285,28 @@ export const Sidebar = memo(function Sidebar() {
         )}
 
         {/* ================================================ */}
-        {/* 2. 新建任务 */}
+        {/* 2. 功能按钮区
+              - 容器 px-3 统一 12px 左右边距
+              - 所有项圆角统一 rounded-[14px]，垂直间距统一 mb-1
+              - 新建任务：主操作按钮，始终带 bg-accent 背景
+              - 助理/技能/插件/自动化/更多：默认透明灰字，激活态与主按钮一致 bg-accent
+              - 所有项高度统一 h-11，内部 px-3（12px），图标 16px 与文字 14px 协调 */}
         {/* ================================================ */}
-        <div className={cn('px-3 pb-2 shrink-0', isMac ? 'pt-2' : 'pt-3')}>
+        <div className={cn('px-3 pb-1 shrink-0', isMac ? 'pt-2' : 'pt-3')}>
+          {/* ---- 主按钮：新建任务（默认透明，hover 浅灰，激活态实色块） ---- */}
           <Button
             variant="ghost"
-            size="sm"
-            className="group/new-task w-full h-9 px-3 justify-start gap-2.5 text-xs font-normal rounded-[8px] shadow-none bg-accent hover:bg-accent/50"
+            className={cn(
+              'w-full h-[32px] px-3 gap-2 justify-start rounded-[8px] text-muted-foreground hover:bg-accent/40 hover:text-foreground shadow-none mb-1 font-normal [&_svg]:size-4',
+              activeNavKey === 'new-task' && 'bg-accent text-foreground hover:bg-accent/80'
+            )}
             onClick={handleCreate}
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-accent text-foreground">
-              <MessageCirclePlus className="h-4 w-4" />
-            </span>
-            <span className="text-sm font-medium text-foreground">新建任务</span>
+            <MessageCirclePlus className="shrink-0" strokeWidth={1.5} />
+            <span className="text-sm font-normal">新建任务</span>
           </Button>
-        </div>
 
-        {/* ================================================ */}
-        {/* 3. 导航菜单 */}
-        {/* ================================================ */}
-        <div className="px-3 py-1 shrink-0 space-y-0.5">
+          {/* ---- 导航项 ---- */}
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive = activeNavKey === item.key
@@ -329,18 +315,18 @@ export const Sidebar = memo(function Sidebar() {
                 key={item.key}
                 onClick={() => handleNavClick(item)}
                 className={cn(
-                  'flex items-center justify-between h-[32px] px-2.5 rounded-[8px] cursor-pointer transition-colors select-none',
+                  'flex items-center justify-between h-[32px] px-3 gap-2 rounded-[8px] cursor-pointer select-none transition-colors mb-1',
                   isActive
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'
                 )}
               >
-                <div className="flex items-center gap-2.5">
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-xs">{item.label}</span>
+                <div className="flex items-center gap-2">
+                  <Icon className="size-4 shrink-0" strokeWidth={1.5} />
+                  <span className="text-sm font-normal">{item.label}</span>
                 </div>
                 {'extra' in item && item.extra && (
-                  <span className="text-[10px] text-muted-foreground/50 ml-auto mr-0">
+                  <span className="text-xs text-muted-foreground/70 font-normal">
                     {item.extra}
                   </span>
                 )}
@@ -355,9 +341,9 @@ export const Sidebar = memo(function Sidebar() {
         <div className="mx-3 my-1 border-t border-border/60 shrink-0" />
 
         {/* ================================================ */}
-        {/* 5. 任务 / 空间 分组（flex 列布局，上方任务列表下方空间占位） */}
+        {/* 5. 任务 / 空间 分组 */}
         {/* ================================================ */}
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col px-3">
           {/* 任务 */}
           <SectionHeader
             title="任务"
@@ -366,7 +352,7 @@ export const Sidebar = memo(function Sidebar() {
             onToggle={() => setTasksExpanded(!tasksExpanded)}
           />
           {tasksExpanded && (
-            <div className="flex-1 basis-0 min-h-[60px]">
+            <div className="flex-1 basis-0 min-h-[60px] -mx-3">
               <ConversationList />
             </div>
           )}
@@ -380,7 +366,7 @@ export const Sidebar = memo(function Sidebar() {
             placeholder
           />
           {spacesExpanded && (
-            <div className={cn('flex-1 basis-0 min-h-0 px-3 py-4 text-center', !tasksExpanded && 'flex items-center justify-center')}>
+            <div className={cn('flex-1 basis-0 min-h-0 px-4 py-4 text-center', !tasksExpanded && 'flex items-center justify-center')}>
               <p className="text-[11px] text-muted-foreground/50">即将开放</p>
             </div>
           )}
