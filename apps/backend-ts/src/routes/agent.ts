@@ -290,7 +290,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             data: {
               id: genId('sess_'),
               userId,
-              title: dto.message.slice(0, 50),
+              title: dto.message.slice(0, 50) || '新对话',
               model: env.LLM_DEFAULT_MODEL,
               // P4: 使用请求指定的 agentMode（plan_execute / react_agent）
               agentMode: dto.agentMode,

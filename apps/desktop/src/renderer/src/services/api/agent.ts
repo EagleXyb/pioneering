@@ -8,6 +8,7 @@ import { streamAgui, type AguiStreamCallbacks } from './agui'
 import type {
   AgentSession,
   CreateAgentSessionRequest,
+  UpdateSessionRequest,
   AgentToolExecution,
   SendMessageRequest
 } from '@shared/types'
@@ -22,6 +23,21 @@ export const agentService = {
   /** 获取单个 Agent 会话 */
   async getSession(sessionId: string): Promise<AgentSession> {
     const res = await apiClient.get<AgentSession>(`/agent/sessions/${sessionId}`)
+    return res.data
+  },
+
+  /**
+   * 更新 Agent 会话（标题等）。Agent 会话与聊天会话共用同一张
+   * chat_sessions 表，复用 /chat/sessions/:id 端点。
+   */
+  async updateSession(
+    sessionId: string,
+    data: UpdateSessionRequest
+  ): Promise<ChatSession> {
+    const res = await apiClient.put<ChatSession>(
+      `/chat/sessions/${sessionId}`,
+      data
+    )
     return res.data
   },
 

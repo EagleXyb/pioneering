@@ -33,3 +33,6 @@ export interface AppUser {
 
 // 设置弹框当前分类（持久化）
 export const settingsCategoryAtom = atomWithStorage<string>('settings-category', 'api')
+
+// 中栏消息区是否滚动离开顶部：ChatHeader 据此决定是否显示下边框
+export const chatScrolledAtom = atom(false)

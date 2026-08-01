@@ -13,7 +13,13 @@ export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>
 
 // 对应 Python: UpdateSessionRequest（populate_by_name=True）
 export const UpdateSessionRequestSchema = z.object({
-  title: z.string().nullable().optional(),
+  title: z
+    .string()
+    .trim()
+    .min(1, { message: '标题不能为空' })
+    .max(200, { message: '标题长度不能超过 200' })
+    .nullable()
+    .optional(),
   model: z.string().nullable().optional(),
   modelConfig: z.record(z.unknown()).nullable().optional(),
   /** 归档状态：true 归档，false 恢复，undefined 不变 */

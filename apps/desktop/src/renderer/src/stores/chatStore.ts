@@ -32,6 +32,7 @@ import {
 
 const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
+const DEFAULT_SESSION_TITLE = '新对话'
 
 interface ChatState {
   sessions: ChatSession[]
@@ -61,6 +62,8 @@ interface ChatState {
   /** 清空所有会话与消息数据（登出/切换账号时调用，不触碰流式状态与业务 action） */
   resetSessions: () => void
   createSession: (title?: string) => Promise<ChatSession>
+  setSessionTitle: (sessionId: string, title: string) => void
+  renameSession: (sessionId: string, title: string) => Promise<void>
   selectSession: (sessionId: string) => void
   loadMessages: (sessionId: string, append?: boolean) => Promise<void>
   loadMoreMessages: () => Promise<void>
@@ -366,15 +369,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const isAgent = get().agentMode
       const session = isAgent
         ? await agentService.createSession({
-            title: title ?? 'New Agent Chat',
+            title: title ?? DEFAULT_SESSION_TITLE,
             agentMode: DEFAULT_AGENT_MODE_VALUE
           })
         : await chatService.createSession({
-            title: title ?? 'New Chat'
+            title: title ?? DEFAULT_SESSION_TITLE
           })
       const chatSession: ChatSession = {
         id: session.id,
-        title: session.title || title || 'New Chat',
+        title: session.title || title || DEFAULT_SESSION_TITLE,
         model: session.model,
         modelConfig: session.modelConfig,
         isArchived: false,
@@ -393,6 +396,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
         error: err instanceof Error ? err.message : 'Failed to create session'
       })
       throw err
+    }
+  },
+
+  setSessionTitle: (sessionId, title) => {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId ? { ...s, title: trimmed } : s
+      )
+    }))
+  },
+
+  renameSession: async (sessionId, title) => {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    const prev = get().sessions.find((s) => s.id === sessionId)
+    if (!prev) return
+    // 乐观更新：先改本地，失败回滚
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId ? { ...s, title: trimmed } : s
+      )
+    }))
+    try {
+      const service = isAgentSession(prev) ? agentService : chatService
+      const updated = await service.updateSession(sessionId, { title: trimmed })
+      if (updated?.title) {
+        get().setSessionTitle(sessionId, updated.title)
+      }
+    } catch (err) {
+      // 回滚到原标题
+      get().setSessionTitle(sessionId, prev.title)
+      set({ error: err instanceof Error ? err.message : 'Failed to rename session' })
     }
   },
 
@@ -477,9 +514,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     if (!sessionId) {
       try {
-        const session = await get().createSession(
-          content.slice(0, 30) + (content.length > 30 ? '...' : '')
-        )
+        const session = await get().createSession()
         sessionId = session.id
       } catch {
         return
@@ -488,6 +523,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const _sessionId = sessionId
     const targetSession = sessions.find((s) => s.id === _sessionId)
+    // 阶段一（乐观命名）：首条消息且标题仍是默认值时，立即截取前 30 字给用户瞬时反馈
+    if (
+      targetSession &&
+      targetSession.title === DEFAULT_SESSION_TITLE &&
+      (targetSession.messageCount ?? 0) === 0
+    ) {
+      get().setSessionTitle(
+        _sessionId,
+        content.slice(0, 30) + (content.length > 30 ? '...' : '')
+      )
+    }
     const useAgent = isAgentSession(targetSession) || globalAgentMode
     const now = Date.now()
     const mySeq = ++streamSeq
@@ -595,6 +641,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
             abortController: null
           }
         })
+        // 阶段二（AI 命名）：流结束后用后端生成的标题覆盖乐观标题；失败则保留阶段一结果
+        const current = get().sessions.find((s) => s.id === _sessionId)
+        const isDefaultTitle =
+          !current || current.title === DEFAULT_SESSION_TITLE
+        if (isDefaultTitle) {
+          chatService
+            .generateTitle(_sessionId)
+            .then((title) => {
+              if (title) get().setSessionTitle(_sessionId, title)
+            })
+            .catch(() => {})
+        }
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder }) => {
         set((state) => {

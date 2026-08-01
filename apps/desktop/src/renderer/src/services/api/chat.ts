@@ -70,6 +70,18 @@ export const chatService = {
     })
   },
 
+  /** AI 生成会话标题（取最近消息摘要，三级回退由后端处理） */
+  async generateTitle(sessionId: string): Promise<string | null> {
+    try {
+      const res = await apiClient.post<{ title: string }>(
+        `/chat/sessions/${sessionId}/generate-title`
+      )
+      return res.data?.title || null
+    } catch {
+      return null
+    }
+  },
+
   /** 获取消息列表 */
   async getMessages(
     sessionId: string,

@@ -13,6 +13,8 @@
 // ============================================================
 
 import { useRef, useEffect, useMemo, useCallback, createElement } from 'react'
+import { useSetAtom } from 'jotai'
+import { chatScrolledAtom } from '@/stores/atoms'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageList } from './MessageList'
 import { MessageScrollerList } from './MessageScrollerList'
@@ -58,9 +60,15 @@ export function ChatArea() {
   const devStressCount = useFeatureFlag('devStressCount')
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 消息区容器 ref：用于定位滚动容器，驱动顶部栏下边框显隐
+  const messagesPaneRef = useRef<HTMLDivElement>(null)
   // B8: 记录用户是否在底部附近，用于判断流式输出时是否自动滚动。
   // 仅当用户在底部附近才自动滚动，避免用户向上回看历史时被强制拉回底部。
   const isNearBottomRef = useRef(true)
+
+  // 滚动感知顶部栏：消息区滚动离开顶部（scrollTop > 0）时，
+  // ChatHeader 显示下边框；回到顶部/无滚动容器（欢迎页、内容不足一屏）时隐藏。
+  const setChatScrolled = useSetAtom(chatScrolledAtom)
 
   const realMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
   const hasMore = currentSessionId ? !!messagesHasMore[currentSessionId] : false
@@ -136,10 +144,33 @@ export function ChatArea() {
   // 是否显示欢迎引导页（无消息且非流式状态）
   const showWelcome = currentMessages.length === 0 && !isStreaming && !streamingContent
 
+  // 滚动感知顶部栏：消息区滚动离开顶部（scrollTop > 0）时，
+  // ChatHeader 显示下边框；回到顶部/无滚动容器（欢迎页、内容不足一屏）时隐藏。
+  useEffect(() => {
+    const pane = messagesPaneRef.current
+    if (!pane) return
+    // 两条消息列表路径的滚动容器：新 MessageScroller 视口 / 旧 Radix ScrollArea 视口
+    const container = pane.querySelector<HTMLElement>(
+      '[data-slot="message-scroller-viewport"], [data-radix-scroll-area-viewport]'
+    )
+    if (!container) {
+      setChatScrolled(false)
+      return
+    }
+    const update = () => setChatScrolled(container.scrollTop > 0)
+    update()
+    container.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      container.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [useMessageScroller, showWelcome, currentSessionId, currentMessages.length, setChatScrolled])
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Messages：与输入框同宽（由 --chat-col-max 令牌统一约束，既定 880px）并居中 */}
-      <div className="chat-messages-pane flex-1 overflow-hidden">
+      <div className="chat-messages-pane flex-1 overflow-hidden" ref={messagesPaneRef}>
         <div className="mx-auto h-full w-full max-w-[var(--chat-col-max)] px-0">
           {showWelcome ? (
             // 空会话：显示欢迎引导页

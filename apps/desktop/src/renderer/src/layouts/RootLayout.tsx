@@ -46,8 +46,12 @@ import { ContextPanel } from '@/components/context-panel/ContextPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Drawer } from '@/components/layout/Drawer'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
-import { useAtom } from 'jotai'
-import { sidebarVisibleAtom, contextPanelVisibleAtom } from '@/stores/atoms'
+import { useAtom, useAtomValue } from 'jotai'
+import {
+  sidebarVisibleAtom,
+  contextPanelVisibleAtom,
+  chatScrolledAtom
+} from '@/stores/atoms'
 import type { Platform } from '@shared/types'
 import { formatAccelerator } from '@/menu/formatAccelerator'
 import { usePlatform } from '@/hooks/usePlatform'
@@ -255,10 +259,17 @@ function ChatHeader({
   onToggleSidebar: () => void
   onCreate: () => void | Promise<void>
 }) {
+  // 消息区滚动离开顶部时显示下边框；在顶部/无滚动内容时隐藏
+  // （始终保留 border-b 的 1px 空间并仅切换颜色，避免边框显隐引起 1px 布局抖动）
+  const isChatScrolled = useAtomValue(chatScrolledAtom)
+
   return (
     <TooltipProvider delayDuration={200}>
       <div
-        className="flex items-center h-[var(--titlebar-h)] shrink-0 px-4 select-none border-b border-border"
+        className={cn(
+          'flex items-center h-[var(--titlebar-h)] shrink-0 px-4 select-none border-b border-transparent',
+          isChatScrolled && 'border-border/50'
+        )}
       >
         {/* 侧边栏折叠时：展开侧边栏 + 新建任务（三平台统一入口）；
             macOS 下左侧留出红绿灯避让区（--traffic-light-w）避免重叠 */}
@@ -274,7 +285,7 @@ function ChatHeader({
         {/* 会话标题：展开状态下左侧留 9px 边距（16px 容器内边距 + 9px ≈ 25px 距卡片左缘） */}
         <span
           className={cn(
-            'text-[15px] font-semibold text-foreground truncate',
+            'text-[16px] font-semibold text-foreground truncate',
             sidebarVisible && 'ml-[9px]'
           )}
         >
@@ -285,11 +296,14 @@ function ChatHeader({
           <HeaderButton icon={Search} title="在会话中搜索" />
           <HeaderButton icon={Share2} title="分享" />
           <HeaderButton icon={History} title="历史记录" />
-          <HeaderButton
-            icon={PanelRight}
-            title={contextPanelVisible ? '收起右侧面板' : '展开右侧面板'}
-            onClick={onToggleContext}
-          />
+          {/* 右侧面板展开时不显示收起入口，折叠时显示展开入口 */}
+          {!contextPanelVisible && (
+            <HeaderButton
+              icon={PanelRight}
+              title="展开右侧面板"
+              onClick={onToggleContext}
+            />
+          )}
         </div>
       </div>
     </TooltipProvider>

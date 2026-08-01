@@ -2,7 +2,7 @@
 // ConversationList — 会话历史列表（纯列表，由 Sidebar 组合）
 // ============================================================
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -21,6 +21,12 @@ export function ConversationList() {
   const selectSession = useChatStore((s) => s.selectSession)
   const createSession = useChatStore((s) => s.createSession)
   const deleteSession = useChatStore((s) => s.deleteSession)
+  const renameSession = useChatStore((s) => s.renameSession)
+
+  // 行内重命名：记录正在编辑的会话 id 与草稿文本
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // 长列表虚拟化：仅渲染视口内行，避免大量会话时 DOM 膨胀（固定行高）
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -41,6 +47,30 @@ export function ConversationList() {
     e.stopPropagation()
     if (!window.confirm('确定删除该对话？删除后不可恢复。')) return
     deleteSession(sessionId)
+  }
+
+  const startRename = (e: React.MouseEvent, sessionId: string, currentTitle: string) => {
+    e.stopPropagation()
+    setEditingId(sessionId)
+    setDraft(currentTitle)
+    // 等待 input 渲染后聚焦
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  const commitRename = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const id = editingId
+    setEditingId(null)
+    if (!id) return
+    const trimmed = draft.trim()
+    const session = sessions.find((s) => s.id === id)
+    if (!trimmed || !session || trimmed === session.title) return
+    await renameSession(id, trimmed)
+  }
+
+  const cancelRename = () => {
+    setEditingId(null)
+    setDraft('')
   }
 
   return (
@@ -75,7 +105,10 @@ export function ConversationList() {
                       className="px-3"
                     >
                       <div
-                        onClick={() => handleSelect(session.id)}
+                        onClick={() => {
+                          if (editingId === session.id) return
+                          handleSelect(session.id)
+                        }}
                         className={cn(
                           'group flex items-center gap-2 h-[32px] px-2.5 rounded-[8px] cursor-pointer transition-colors',
                           currentSessionId === session.id
@@ -83,7 +116,29 @@ export function ConversationList() {
                             : 'text-muted-foreground hover:bg-[#E6E8EB] hover:text-foreground'
                         )}
                       >
-                        <span className="text-[13px] truncate flex-1 pl-0.5">{session.title || '新对话'}</span>
+                        {editingId === session.id ? (
+                          <form onSubmit={commitRename} className="flex-1" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              ref={inputRef}
+                              value={draft}
+                              onChange={(e) => setDraft(e.target.value)}
+                              onBlur={cancelRename}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') cancelRename()
+                              }}
+                              maxLength={200}
+                              className="w-full text-[13px] bg-white border border-primary rounded px-1 py-0.5 outline-none"
+                            />
+                          </form>
+                        ) : (
+                          <span
+                            onDoubleClick={(e) => startRename(e, session.id, session.title || '新对话')}
+                            className="text-[13px] truncate flex-1 pl-0.5"
+                            title="双击重命名"
+                          >
+                            {session.title || '新对话'}
+                          </span>
+                        )}
                         <button
                           onClick={(e) => handleDelete(e, session.id)}
                           className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all p-0.5"
