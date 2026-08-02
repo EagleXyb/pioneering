@@ -1,7 +1,7 @@
 // ============================================================
-// MessageScrollerList — T10/T11/T12/T13 新实现
+// MessageScrollerList — 消息列表（基于 @shadcn/react Message Scroller）
 // ============================================================
-// 用 shadcn/ui Message Scroller 替换 ScrollArea + 虚拟化 + isNearBottomRef。
+// 用 shadcn/ui Message Scroller 替换原 ScrollArea + 虚拟化 + isNearBottomRef。
 //
 // 设计要点：
 //   1. **不虚拟化**：依赖 MessageScrollerItem 内置的
@@ -9,12 +9,13 @@
 //      让浏览器跳过不可见子树的渲染，对长会话比 JS 测高更轻量。
 //   2. **流式自动跟随**：Provider 的 autoScroll 默认开，
 //      用户向上滚动后自动停止跟随，避免被流式拉回。
-//   3. **新 turn 锚定**（T12）：user 消息标记为 scrollAnchor，
-//      Provider 会把新 turn 锚定到视口顶部附近。
-//   4. **跳到最新按钮**（T13）：MessageScrollerButton 距底时自动显隐。
-//   5. **重开定位**（T14）：defaultScrollPosition 由 feature flag 控制。
+//   3. **新 turn 锚定**：user 消息标记为 scrollAnchor，
+//      Provider 会把新 turn 锚定到视口顶部附近（上方保留 80px 上一条消息作为上下文）。
+//   4. **跳到最新按钮**：MessageScrollerButton 距底时自动显隐。
+//   5. **重开定位**：defaultScrollPosition='end'，拉到底部（与 legacy 一致）。
+//   6. **跳转源消息高亮**：消费 highlightMessageIdAtom，scrollIntoView + 短暂描边。
 //
-// 与 legacy MessageList 的差异：
+// 与原 MessageList 的差异：
 //   - 不使用 @tanstack/react-virtual，常规流布局
 //   - 不使用 isNearBottomRef，由 Provider 接管
 //   - gap-8（32px）替代 pb-4（16px），与官方默认视觉一致
@@ -22,6 +23,8 @@
 // ============================================================
 
 import { ChevronDown } from 'lucide-react'
+import { useEffect } from 'react'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { MessageBubble } from './MessageBubble'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,7 +35,7 @@ import {
   MessageScrollerItem,
   MessageScrollerButton
 } from '@/components/ui/message-scroller'
-import { useFeatureFlag } from '@/lib/feature-flags'
+import { highlightMessageIdAtom, clearHighlightAtom } from '@/stores/artifactStore'
 import type { Message, ToolCall } from '@shared/types'
 
 /**
@@ -81,28 +84,38 @@ export function MessageScrollerList({
   isLoadingMore,
   onLoadMore
 }: MessageScrollerListProps) {
-  // T14：last-anchor 定位策略由 flag 控制，默认关（保持原"拉到底部"行为）
-  const useLastAnchor = useFeatureFlag('scrollLastAnchor')
-  // T12：新 turn 锚定由 flag 控制，默认开
-  const anchorTurns = useFeatureFlag('scrollAnchorTurns')
-  // T13：跳到最新按钮由 flag 控制，默认开
-  const showJumpButton = useFeatureFlag('scrollJumpButton')
+  // 跳转源消息：预览面板「跳转到源消息」写入 highlightMessageIdAtom 后，
+  // 这里消费该信号——滚动定位到对应消息并做短暂高亮，随后清除信号。
+  // 与 legacy MessageList 行为对齐（content-visibility 下元素仍可被 scrollIntoView）。
+  const highlightId = useAtomValue(highlightMessageIdAtom)
+  const clearHighlight = useSetAtom(clearHighlightAtom)
 
-  // T14：defaultScrollPosition
-  //   - end：拉到底部（与 legacy 一致，安全默认）
-  //   - last-anchor：定位到最后一条 user 消息（官方推荐，更符合阅读习惯）
-  const defaultScrollPosition = useLastAnchor ? 'last-anchor' : 'end'
+  useEffect(() => {
+    if (!highlightId) return
+    const t = window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(
+        `[data-slot="message-scroller-viewport"] [data-message-id="${highlightId}"]`
+      )
+      if (el) {
+        el.classList.add('artifact-source-highlight')
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        window.setTimeout(() => el.classList.remove('artifact-source-highlight'), 2200)
+      }
+      clearHighlight()
+    }, 140)
+    return () => window.clearTimeout(t)
+  }, [highlightId, clearHighlight])
 
   return (
     <MessageScrollerProvider
-      // T10：autoScroll 让流式输出自动跟随 live edge，
+      // autoScroll 让流式输出自动跟随 live edge，
       // 用户向上滚动后 Provider 自动停止跟随（多信号融合：
       // 滚动/文字选中/键盘/链接点击/搜索）。
       autoScroll
-      // T14：重开会话定位策略
-      defaultScrollPosition={defaultScrollPosition}
-      // T12：新 turn 锚定时，上方保留 80px 上一条消息作为上下文
-      scrollPreviousItemPeek={anchorTurns ? 80 : 0}
+      // 重开会话定位策略：拉到底部（与 legacy 一致，安全默认）
+      defaultScrollPosition="end"
+      // 新 turn 锚定时，上方保留 80px 上一条消息作为上下文
+      scrollPreviousItemPeek={80}
       // 距底部 80px 内视为"在边缘"，与 legacy isNearBottomRef 阈值一致
       scrollEdgeThreshold={80}
     >
@@ -126,8 +139,8 @@ export function MessageScrollerList({
             {messages.map((msg, index) => {
               const isStreamingMsg = isStreaming && msg.id === streamingMessageId
               const groupPosition = computeGroupPosition(messages, index)
-              // T12：user 消息标记为 scrollAnchor，让新 turn 锚定到视口顶部附近
-              const isScrollAnchor = anchorTurns && msg.role === 'user'
+              // user 消息标记为 scrollAnchor，让新 turn 锚定到视口顶部附近
+              const isScrollAnchor = msg.role === 'user'
               // T05：组内非末条减小底部间距（4px），组尾或最后一条保持 16px
               const isGroupTail =
                 groupPosition === 'end' || groupPosition === 'single'
@@ -141,6 +154,7 @@ export function MessageScrollerList({
                 <MessageScrollerItem
                   key={msg.id}
                   messageId={msg.id}
+                  data-message-id={msg.id}
                   scrollAnchor={isScrollAnchor}
                   className={itemClassName}
                 >
@@ -159,8 +173,8 @@ export function MessageScrollerList({
           </MessageScrollerContent>
         </MessageScrollerViewport>
 
-        {/* T13：跳到最新按钮，距底时自动显隐（弹性动画） */}
-        {showJumpButton && <MessageScrollerButton direction="end" />}
+        {/* 跳到最新按钮，距底时自动显隐（弹性动画） */}
+        <MessageScrollerButton direction="end" />
       </MessageScroller>
     </MessageScrollerProvider>
   )

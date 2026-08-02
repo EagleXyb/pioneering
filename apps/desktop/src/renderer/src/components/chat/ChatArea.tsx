@@ -2,21 +2,16 @@
 // ChatArea — 中栏对话区（消息流 + 输入框）
 // ============================================================
 //
-// T10/T11/T12/T13/T14：通过 feature flag messageScroller 切换
-//   - 关（默认）：使用 legacy ScrollArea + MessageList（虚拟化 + isNearBottomRef）
-//   - 开：使用 MessageScrollerList（@shadcn/react + content-visibility）
-//
-// 安全保障：
-//   1. legacy 路径完全保留，未做任何修改，flag 关闭时行为与改造前一致
-//   2. 新路径独立组件，flag 开启时才挂载
-//   3. 两条路径共用同一份 store 数据与 InputArea，无数据层改动
+// 收敛说明（原 T10/T11/T12/T13/T14 feature flag 已移除）：
+//   - 消息列表统一使用 MessageScrollerList（@shadcn/react + content-visibility）
+//   - legacy ScrollArea + MessageList（虚拟化 + isNearBottomRef）已删除
+//   - 流式自动跟随由 MessageScrollerProvider.autoScroll 接管
+//   - 滚动感知顶部栏的逻辑保留，统一查询 message-scroller-viewport
 // ============================================================
 
 import { useRef, useEffect, useMemo, useCallback, createElement } from 'react'
 import { useSetAtom } from 'jotai'
 import { chatScrolledAtom } from '@/stores/atoms'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { MessageList } from './MessageList'
 import { MessageScrollerList } from './MessageScrollerList'
 import { WelcomeScreen } from './WelcomeScreen'
 import { InputArea, type InputAreaSendOptions } from './input/InputArea'
@@ -53,18 +48,12 @@ export function ChatArea() {
   const messagesHasMore = useChatStore((s) => s.messagesHasMore)
   const messagesLoading = useChatStore((s) => s.messagesLoading)
 
-  // T10/T11/T12/T13/T14：feature flag 控制 Message Scroller 启用
-  const useMessageScroller = useFeatureFlag('messageScroller')
   // T09：dev-only 压测开关
   const devStress = useFeatureFlag('devStressMessages')
   const devStressCount = useFeatureFlag('devStressCount')
 
-  const scrollRef = useRef<HTMLDivElement>(null)
   // 消息区容器 ref：用于定位滚动容器，驱动顶部栏下边框显隐
   const messagesPaneRef = useRef<HTMLDivElement>(null)
-  // B8: 记录用户是否在底部附近，用于判断流式输出时是否自动滚动。
-  // 仅当用户在底部附近才自动滚动，避免用户向上回看历史时被强制拉回底部。
-  const isNearBottomRef = useRef(true)
 
   // 滚动感知顶部栏：消息区滚动离开顶部（scrollTop > 0）时，
   // ChatHeader 显示下边框；回到顶部/无滚动容器（欢迎页、内容不足一屏）时隐藏。
@@ -88,37 +77,6 @@ export function ChatArea() {
       loadSessions()
     }
   }, [sessionsLength, loadSessions])
-
-  // B8: 监听滚动位置，更新 isNearBottomRef
-  // 仅 legacy 路径需要，新路径由 MessageScrollerProvider 接管
-  useEffect(() => {
-    if (useMessageScroller) return
-    const root = scrollRef.current
-    if (!root) return
-    const viewport = root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
-    const target = viewport ?? root
-    const handleScroll = () => {
-      const threshold = 80 // 距底部 80px 内视为"在底部附近"
-      isNearBottomRef.current =
-        target.scrollHeight - target.scrollTop - target.clientHeight < threshold
-    }
-    target.addEventListener('scroll', handleScroll, { passive: true })
-    return () => target.removeEventListener('scroll', handleScroll)
-  }, [useMessageScroller])
-
-  useEffect(() => {
-    if (useMessageScroller) return
-    const root = scrollRef.current
-    if (!root) return
-    // ScrollArea 的滚动发生在内部 Viewport（Root 自身 overflow-hidden），
-    // 必须定位 Viewport 元素再设置 scrollTop，否则流式输出期间消息不会跟随到底部。
-    const viewport = root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
-    const target = viewport ?? root
-    // B8: 仅当用户在底部附近时才自动滚动，避免破坏向上回看历史的体验
-    if (isNearBottomRef.current) {
-      target.scrollTop = target.scrollHeight
-    }
-  }, [currentMessages, streamingContent, streamingThinking, streamingToolCalls, isStreaming, useMessageScroller])
 
   const handleSend = (
     content: string,
@@ -149,9 +107,8 @@ export function ChatArea() {
   useEffect(() => {
     const pane = messagesPaneRef.current
     if (!pane) return
-    // 两条消息列表路径的滚动容器：新 MessageScroller 视口 / 旧 Radix ScrollArea 视口
     const container = pane.querySelector<HTMLElement>(
-      '[data-slot="message-scroller-viewport"], [data-radix-scroll-area-viewport]'
+      '[data-slot="message-scroller-viewport"]'
     )
     if (!container) {
       setChatScrolled(false)
@@ -165,7 +122,7 @@ export function ChatArea() {
       container.removeEventListener('scroll', update)
       window.removeEventListener('resize', update)
     }
-  }, [useMessageScroller, showWelcome, currentSessionId, currentMessages.length, setChatScrolled])
+  }, [showWelcome, currentSessionId, currentMessages.length, setChatScrolled])
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -175,8 +132,8 @@ export function ChatArea() {
           {showWelcome ? (
             // 空会话：显示欢迎引导页
             <WelcomeScreen onQuickPrompt={handleQuickPrompt} />
-          ) : useMessageScroller ? (
-            // T10/T11/T12/T13/T14：新路径 — Message Scroller + content-visibility
+          ) : (
+            // Message Scroller + content-visibility（流式自动跟随 / 新 turn 锚定 / 跳到最新按钮）
             <MessageScrollerList
               messages={currentMessages}
               streamingContent={streamingContent}
@@ -190,27 +147,6 @@ export function ChatArea() {
               isLoadingMore={isLoadingMore}
               onLoadMore={loadMoreMessages}
             />
-          ) : (
-            // legacy 路径 — ScrollArea + 虚拟化 + isNearBottomRef
-            // 完全保留改造前实现，flag 关闭时行为一致
-            <ScrollArea className="h-full" ref={scrollRef}>
-              <div className="min-h-full">
-                <MessageList
-                  messages={currentMessages}
-                  streamingContent={streamingContent}
-                  streamingThinking={streamingThinking}
-                  streamingToolCalls={streamingToolCalls}
-                  streamingTraceNodes={streamingTraceNodes}
-                  streamingTraceRootOrder={streamingTraceRootOrder}
-                  streamingMessageId={streamingMessageId}
-                  isStreaming={isStreaming}
-                  hasMore={hasMore}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={loadMoreMessages}
-                  scrollElementRef={scrollRef}
-                />
-              </div>
-            </ScrollArea>
           )}
         </div>
       </div>

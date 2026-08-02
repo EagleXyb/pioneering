@@ -1,5 +1,5 @@
 // ============================================================
-// feature-flags — T10/T14 共用的特性开关基础设施
+// feature-flags — dev 压测开关基础设施
 // ============================================================
 // 设计目标：
 //   1. 默认关闭所有用户可感知行为变更的 feature（安全默认）
@@ -7,48 +7,21 @@
 //   3. 类型安全：所有 flag 在 FeatureFlags 类型中集中声明
 //   4. 可在控制台手动启用：window.__toggleFeature('xxx', true)
 //
-// 添加新 flag 步骤：
-//   1. 在 FeatureFlags 接口中声明，并在 DEFAULT_FLAGS 中给默认值
-//   2. 在 SettingsDialog 中暴露开关（可选）
-//   3. 通过 useFeatureFlag('xxx') 或 isFeatureEnabled('xxx') 读取
+// 收敛说明（原 T10/T11/T12/T13/T14/T15/P2 flag 已移除）：
+//   - messageScroller 系列（messageScroller/scrollLastAnchor/scrollAnchorTurns/
+//     scrollJumpButton）：MessageScrollerList 已成为唯一实现，flag 移除
+//   - mermaidPreview：mermaid 预览默认开启，降级路径安全，flag 移除
+//   - contextCompression：ContextRing 组件与 flag 均未被消费，一并移除
+//   - 仅保留 devStressMessages/devStressCount 用于开发期压测
 // ============================================================
 
 import { useSyncExternalStore } from 'react'
 
 /**
  * 全部特性开关集中声明。
- * 命名规范：domain-action，如 messageScroller、scrollLastAnchor。
+ * 收敛后仅保留 dev 压测相关 flag。
  */
 export interface FeatureFlags {
-  /**
-   * T10/T11：启用 Message Scroller 替换 ScrollArea + 虚拟化。
-   * 关闭时使用原有 ScrollArea + isNearBottomRef + @tanstack/react-virtual。
-   * 默认关，灰度验证后开。
-   */
-  messageScroller: boolean
-
-  /**
-   * T14：重开会话时定位到最后一条 user 消息（last-anchor）。
-   * 关闭时保持原行为（直接拉到底部）。
-   * 仅在 messageScroller 启用时生效。
-   * 默认关，避免改变用户习惯。
-   */
-  scrollLastAnchor: boolean
-
-  /**
-   * T12：新 turn 锚定到视口顶部附近（而非底部）。
-   * 仅在 messageScroller 启用时生效。
-   * 默认开（与官方默认一致，且解决流式拉回痛点）。
-   */
-  scrollAnchorTurns: boolean
-
-  /**
-   * T13：显示「跳到最新」浮动按钮。
-   * 仅在 messageScroller 启用时生效。
-   * 默认开。
-   */
-  scrollJumpButton: boolean
-
   /**
    * T09：开发期压测开关，注入大量 mock 消息。
    * 默认关，仅 dev 环境可用。
@@ -59,32 +32,11 @@ export interface FeatureFlags {
    * T09：dev 压测注入的消息条数。
    */
   devStressCount: number
-
-  /**
-   * T15：上下文压缩环启用开关。
-   * 待后端压缩 API 就绪后才能启用，目前保持关。
-   * ContextRing 组件已实现，仅在 InputArea 中接入时受此 flag 控制。
-   */
-  contextCompression: boolean
-
-  /**
-   * P2：mermaid 代码块的图表预览渲染。
-   * 关闭时 mermaid 块按纯文本 code 卡片渲染（与 P2 前行为完全一致）。
-   * 默认开：降级路径安全（动态导入/解析失败均回退源码视图），且仅影响
-   * 显式标记为 mermaid 的代码块；如发现异常可作为 kill switch 关闭。
-   */
-  mermaidPreview: boolean
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
-  messageScroller: false,
-  scrollLastAnchor: false,
-  scrollAnchorTurns: true,
-  scrollJumpButton: true,
   devStressMessages: false,
-  devStressCount: 1000,
-  contextCompression: false,
-  mermaidPreview: true
+  devStressCount: 1000
 }
 
 const STORAGE_KEY = 'pioneering:feature-flags'

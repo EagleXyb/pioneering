@@ -11,14 +11,6 @@ export const CONVERSATION_ROW_HEIGHT = 34
 export const CONVERSATION_LIST_OVERSCAN = 8
 
 /**
- * 消息列表虚拟化参数（P1 修复）
- * 消息高度差异大（短文本 ~60px，长代码块/工具调用可达数百 px），无法用固定行高，
- * 故 estimateSize 仅作初次渲染前的占位估算，实际高度由 measureElement 动态测量。
- */
-export const MESSAGE_LIST_ESTIMATE_HEIGHT = 120
-export const MESSAGE_LIST_OVERSCAN = 6
-
-/**
  * 工具名 → 中文显示名映射（P1）
  * 后端 toolName 为英文蛇形命名，这里归一为用户可读的自然语言。
  * 未命中的工具名原样返回，不阻断渲染。
