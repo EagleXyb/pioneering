@@ -22,13 +22,9 @@ import { buildSendText } from '../lib/input/select-file-editor'
 import {
   createStreamHandler,
   makeThinkingNodeId,
-  makeTextNodeId,
-  makeObservationNodeId
+  makeTextNodeId
 } from '../services/stream-handler'
-import {
-  extractEmbeddedToolResults,
-  classifyToolResult
-} from '../lib/embedded-tool-results'
+import { buildTraceFromContentBlocks } from '../services/trace-builder'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
@@ -129,184 +125,44 @@ function mapContentBlocks(
 }
 
 /**
- * 从后端持久化的 contentBlocks 重建 Trace 树（thinking / tool-call / observation / text）。
- *
- * 初次生成时 Trace 树由 stream-handler 在内存中构建，仅存在于流式会话期间；
- * 侧边栏加载历史消息时后端只回传 contentBlocks，若不做重建，useTrace 会为 false，
- * 导致历史消息回退到扁平 ToolCallCard（原始 JSON 折叠），与初次生成的
- * AgentTimeline 树形时间线样式不一致。本函数补齐该缺口，使两处渲染效果一致。
- *
- * 节点 id / label / 层级与 stream-handler 保持一致：
- *   - thinking 节点：${msgId}::thinking
- *   - text 节点：   ${msgId}::text
- *   - 工具节点：   executionId
- *   - observation 子节点：${executionId}::obs
- * 根节点顺序：thinking → 工具（按首次出现顺序）→ text。
+ * 收尾时统一清空流式快照。
+ * sendMessage 的 onFlush/onDone/onError 与 stopStreaming 四处共用，
+ * 替代原先散落的重复字段重置样板。导出以便单测复用。
  */
-function buildTraceFromContentBlocks(
-  blocks: ContentBlock[] | undefined,
+export function emptyStreaming(): Partial<ChatState> {
+  return {
+    streamingContent: '',
+    streamingThinking: '',
+    streamingToolCalls: [],
+    streamingTraceNodes: {},
+    streamingTraceRootOrder: [],
+    streamingMessageId: null,
+    isStreaming: false,
+    abortController: null
+  }
+}
+
+/**
+ * 把流式快照落盘到 messages[sid][idx] 并清空流式状态。
+ * 供 onDone / onError / stopStreaming 复用：定位目标消息、浅合并 patch、清空快照。
+ * 若目标消息不在列表中（如已被删除），仅清空快照，不写消息。
+ * 导出以便单测复用。
+ */
+export function finalizeStreamingMessage(
+  state: ChatState,
+  sid: string,
   msgId: string,
-  fallbackContent?: string
-): { nodes: Record<string, TraceNode>; roots: string[] } | undefined {
-  if (!blocks || blocks.length === 0) return undefined
-
-  const nodes: Record<string, TraceNode> = {}
-  const roots: string[] = []
-
-  // 收集工具 executionId（按首次出现顺序）、tool_result summary、最终状态
-  const toolOrder: string[] = []
-  const toolMeta = new Map<string, { toolName?: string; status: TraceNode['status'] }>()
-  const results = new Map<string, string>()
-
-  const mapStatus = (s?: string): TraceNode['status'] => {
-    if (s === 'error' || s === 'failed') return 'error'
-    if (s === 'pending') return 'pending'
-    return 'completed'
+  patch: Partial<Message>
+): Partial<ChatState> {
+  const msgs = state.messages[sid] ?? []
+  const idx = msgs.findIndex((m) => m.id === msgId)
+  if (idx === -1) return emptyStreaming()
+  const updated = [...msgs]
+  updated[idx] = { ...updated[idx]!, ...patch }
+  return {
+    messages: { ...state.messages, [sid]: updated },
+    ...emptyStreaming()
   }
-
-  for (const b of blocks) {
-    if (b.type === 'tool_call' && b.executionId) {
-      if (!toolMeta.has(b.executionId)) toolOrder.push(b.executionId)
-      toolMeta.set(b.executionId, {
-        toolName: b.toolName,
-        status: mapStatus(b.status)
-      })
-    } else if (b.type === 'tool_result' && b.executionId && b.summary) {
-      results.set(b.executionId, b.summary)
-    }
-  }
-
-  // 后端在落库时会把 tool_result.summary 截断到前 200 字符（见 backend-ts agent-bridge），
-  // 导致搜索结果这类较长的 JSON 被截断、无法 JSON.parse，渲染时会退化为原始文本而非
-  // SearchResultsCard。完整的结果其实内嵌在 text_stream 的正文里，这里提取出来作为
-  // observation content 的补充来源，按工具类型匹配填充。
-  const textContent = blocks
-    .filter((b) => b.type === 'text_stream')
-    .map((b) => b.text ?? '')
-    .join('')
-  const embeddedResults: { raw: string; kind: string | null }[] = []
-  for (const seg of extractEmbeddedToolResults(textContent)) {
-    if (seg.type !== 'toolResult') continue
-    let kind: string | null = null
-    try {
-      kind = classifyToolResult(seg.parsed)?.kind ?? null
-    } catch {
-      kind = null
-    }
-    embeddedResults.push({ raw: seg.raw, kind })
-  }
-
-  const isCompleteJson = (s: string): boolean => {
-    try {
-      JSON.parse(s)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  // 取一个工具的结果内容：优先 tool_result.summary（若为完整合法 JSON）；
-  // 否则从正文内嵌的完整 JSON 中按工具类型匹配一个，避免截断 JSON 导致渲染退化。
-  const usedEmbedded = new Set<number>()
-  const pickObservationContent = (toolName: string | undefined, summary: string | undefined): string | undefined => {
-    if (summary && isCompleteJson(summary)) return summary
-    const isSearch = /search|web|news|browse/i.test(toolName ?? '')
-    const isDatetime = /datetime|time|clock/i.test(toolName ?? '')
-    for (let i = 0; i < embeddedResults.length; i++) {
-      if (usedEmbedded.has(i)) continue
-      const er = embeddedResults[i]!
-      const kindMatch =
-        (isSearch && er.kind === 'search') ||
-        (isDatetime && er.kind === 'datetime') ||
-        (!isSearch && !isDatetime && er.kind === null)
-      if (kindMatch) {
-        usedEmbedded.add(i)
-        return er.raw
-      }
-    }
-    // 类型不匹配时按顺序取第一个未使用的完整 JSON 兜底
-    for (let i = 0; i < embeddedResults.length; i++) {
-      if (!usedEmbedded.has(i)) {
-        usedEmbedded.add(i)
-        return embeddedResults[i]!.raw
-      }
-    }
-    return summary || undefined
-  }
-
-  // thinking 根节点
-  const hasThinking = blocks.some((b) => b.type === 'thinking')
-  if (hasThinking) {
-    const id = makeThinkingNodeId(msgId)
-    const thinkingContent = blocks
-      .filter((b) => b.type === 'thinking')
-      .map((b) => b.summary ?? '')
-      .join('')
-    nodes[id] = {
-      id,
-      kind: 'thinking',
-      label: '思考过程',
-      status: 'completed',
-      parentId: null,
-      children: [],
-      content: thinkingContent || undefined
-    }
-    roots.push(id)
-  }
-
-  // 工具根节点 + observation 子节点
-  for (const id of toolOrder) {
-    const meta = toolMeta.get(id)!
-    const node: TraceNode = {
-      id,
-      kind: 'tool-call',
-      label: meta.toolName || 'tool',
-      toolName: meta.toolName || 'tool',
-      status: meta.status,
-      parentId: null,
-      children: [],
-      arguments: {}
-    }
-    const summary = results.get(id)
-    const obsContent = pickObservationContent(node.toolName, summary)
-    if (obsContent) {
-      const obsId = makeObservationNodeId(id)
-      nodes[obsId] = {
-        id: obsId,
-        kind: 'observation',
-        label: '观察结果',
-        status: meta.status === 'error' ? 'error' : 'completed',
-        parentId: id,
-        children: [],
-        content: obsContent,
-        toolName: node.toolName
-      }
-      node.children!.push(obsId)
-    }
-    nodes[id] = node
-    roots.push(id)
-  }
-
-  // text 根节点：优先用 text_stream 累积的正文（textContent 已在函数开头计算）；
-  // 若缺失（部分历史消息只存了 content 而无 text_stream 块），回退用 ChatMessage.content，
-  // 避免正文丢失。
-  const finalText = textContent || fallbackContent
-  if (finalText) {
-    const id = makeTextNodeId(msgId)
-    nodes[id] = {
-      id,
-      kind: 'text',
-      label: '最终回答',
-      status: 'completed',
-      parentId: null,
-      children: [],
-      content: finalText || undefined
-    }
-    roots.push(id)
-  }
-
-  if (roots.length === 0) return undefined
-  return { nodes, roots }
 }
 
 function chatMessageToMessage(msg: ChatMessage): Message {
@@ -594,52 +450,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onDone: ({ msgId, content, thinking, toolCalls, traceNodes, traceRootOrder, meta }) => {
         set((state) => {
-          const msgs = state.messages[_sessionId] || []
-          const idx = msgs.findIndex((m) => m.id === assistantMsgId)
           // 从 trace 树推导最终的 text 正文（避免依赖外部 content 闭包）
           const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
           const finalContent = textNode?.content ?? content
-          if (idx !== -1) {
-            const prevMsg = msgs[idx]!
-            const updated = [...msgs]
-            updated[idx] = {
-              ...prevMsg,
-              id: msgId,
-              sessionId: _sessionId,
-              content: finalContent,
-              thinking: thinking ? { content: thinking } : undefined,
-              toolCalls: toolCalls.length ? toolCalls : undefined,
-              traceNodes,
-              traceRootOrder,
-              model: meta.model,
-              tokenCount: meta.tokenCount,
-              tokenUsage: meta.tokenCount
-                ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
-                : undefined,
-              timestamp: Date.now()
-            }
-            return {
-              messages: { ...state.messages, [_sessionId]: updated },
-              isStreaming: false,
-              streamingContent: '',
-              streamingThinking: '',
-              streamingToolCalls: [],
-              streamingTraceNodes: {},
-              streamingTraceRootOrder: [],
-              streamingMessageId: null,
-              abortController: null
-            }
-          }
-          return {
-            isStreaming: false,
-            streamingContent: '',
-            streamingThinking: '',
-            streamingToolCalls: [],
-            streamingTraceNodes: {},
-            streamingTraceRootOrder: [],
-            streamingMessageId: null,
-            abortController: null
-          }
+          return finalizeStreamingMessage(state, _sessionId, assistantMsgId, {
+            id: msgId,
+            sessionId: _sessionId,
+            content: finalContent,
+            thinking: thinking ? { content: thinking } : undefined,
+            toolCalls: toolCalls.length ? toolCalls : undefined,
+            traceNodes,
+            traceRootOrder,
+            model: meta.model,
+            tokenCount: meta.tokenCount,
+            tokenUsage: meta.tokenCount
+              ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
+              : undefined,
+            timestamp: Date.now()
+          })
         })
         // 阶段二（AI 命名）：流结束后用后端生成的标题覆盖乐观标题；失败则保留阶段一结果
         const current = get().sessions.find((s) => s.id === _sessionId)
@@ -656,46 +484,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder }) => {
         set((state) => {
-          const msgs = state.messages[_sessionId] || []
-          const idx = msgs.findIndex((m) => m.id === assistantMsgId)
           const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
           const baseContent = textNode?.content ?? content
-          if (idx !== -1) {
-            const prevMsg = msgs[idx]!
-            const updated = [...msgs]
-            updated[idx] = {
-              ...prevMsg,
+          return {
+            ...finalizeStreamingMessage(state, _sessionId, assistantMsgId, {
               id: assistantMsgId,
               sessionId: _sessionId,
               content: baseContent ? `${baseContent}\n\n[Error] ${error}` : `[Error] ${error}`,
-              thinking: thinking ? { content: thinking } : prevMsg.thinking,
-              toolCalls: toolCalls.length ? toolCalls : prevMsg.toolCalls,
+              thinking: thinking ? { content: thinking } : undefined,
+              toolCalls: toolCalls.length ? toolCalls : undefined,
               traceNodes,
               traceRootOrder,
               timestamp: Date.now()
-            }
-            return {
-              messages: { ...state.messages, [_sessionId]: updated },
-              isStreaming: false,
-              streamingContent: '',
-              streamingThinking: '',
-              streamingToolCalls: [],
-              streamingTraceNodes: {},
-              streamingTraceRootOrder: [],
-              streamingMessageId: null,
-              abortController: null,
-              error
-            }
-          }
-          return {
-            isStreaming: false,
-            streamingContent: '',
-            streamingThinking: '',
-            streamingToolCalls: [],
-            streamingTraceNodes: {},
-            streamingTraceRootOrder: [],
-            streamingMessageId: null,
-            abortController: null,
+            }),
             error
           }
         })
@@ -771,28 +572,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
             traceRootOrder: streamingTraceRootOrder.length ? streamingTraceRootOrder : prev.traceRootOrder
           }
           return {
-            messages: { ...state.messages, [sid]: merged },
-            isStreaming: false,
-            streamingContent: '',
-            streamingThinking: '',
-            streamingToolCalls: [],
-            streamingTraceNodes: {},
-            streamingTraceRootOrder: [],
-            streamingMessageId: null,
-            abortController: null
+            ...finalizeStreamingMessage(state, sid, id, merged[idx]!)
           }
         }
       }
-      return {
-        isStreaming: false,
-        streamingContent: '',
-        streamingThinking: '',
-        streamingToolCalls: [],
-        streamingTraceNodes: {},
-        streamingTraceRootOrder: [],
-        streamingMessageId: null,
-        abortController: null
-      }
+      return emptyStreaming()
     })
   },
 
