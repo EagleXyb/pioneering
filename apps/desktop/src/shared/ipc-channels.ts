@@ -38,6 +38,8 @@ export enum IpcChannel {
   FILE_READ = 'file:read',
   FILE_WRITE = 'file:write',
   FILE_GET_PATH = 'file:getPath',
+  // 在系统文件管理器中显示指定路径（会话数据目录等）
+  FILE_SHOW_IN_FOLDER = 'file:showInFolder',
 
   // 通知
   NOTIFICATION_SHOW = 'notification:show',

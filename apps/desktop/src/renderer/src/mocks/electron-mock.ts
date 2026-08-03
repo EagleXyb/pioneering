@@ -65,7 +65,8 @@ const mockApi: PioneeringApi = {
       Promise.resolve({ success: false, error: 'IPC not available in browser' }),
     write: (_req: unknown) =>
       Promise.resolve({ success: false, error: 'IPC not available in browser' }),
-    getPath: (_name: string) => Promise.resolve('')
+    getPath: (_name: string) => Promise.resolve(''),
+    showInFolder: (_filePath?: string) => Promise.resolve(false)
   },
 
   notification: {

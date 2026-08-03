@@ -71,6 +71,10 @@ interface ChatState {
   setAgentMode: (mode: boolean) => void
   toggleMessageFeedback: (messageId: string, feedback: 'like' | 'dislike' | 'none') => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
+  /** 分享会话；后端未就绪时返回 null，由 UI 降级 */
+  shareSession: (sessionId: string) => Promise<string | null>
+  /** 保存会话到指定工作空间；后端未就绪时静默失败 */
+  moveSessionToWorkspace: (sessionId: string, workspaceId: string) => Promise<void>
   regenerateMessage: (messageId: string) => Promise<void>
   clearError: () => void
 }
@@ -221,6 +225,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   createSession: async (title) => {
     set({ error: null })
+    // 守卫：当前会话若是未命名的空白会话（标题仍为默认「新对话」），直接复用，
+    // 避免反复点击「新建任务」/快捷键在列表堆积大量空会话。
+    // 判据用标题而非 messageCount：发消息后阶段一/二会立即改写标题，
+    // 标题仍是默认值即代表该会话从未产生过内容。
+    const currentId = get().currentSessionId
+    if (currentId) {
+      const current = get().sessions.find((s) => s.id === currentId)
+      if (current && current.title === DEFAULT_SESSION_TITLE) {
+        return current
+      }
+    }
     try {
       const isAgent = get().agentMode
       const session = isAgent
@@ -379,18 +394,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const _sessionId = sessionId
     const targetSession = sessions.find((s) => s.id === _sessionId)
-    // 阶段一（乐观命名）：首条消息且标题仍是默认值时，立即截取前 30 字给用户瞬时反馈
+    // 阶段一（乐观命名）：首条消息且标题仍是默认值时，立即截取前 30 字给用户瞬时反馈。
+    // 仅更新本地并记录 optimisticTitle，供阶段二（AI 命名）判断是否仍待生成。
+    let optimisticTitle: string | null = null
     if (
       targetSession &&
       targetSession.title === DEFAULT_SESSION_TITLE &&
       (targetSession.messageCount ?? 0) === 0
     ) {
-      get().setSessionTitle(
-        _sessionId,
-        content.slice(0, 30) + (content.length > 30 ? '...' : '')
-      )
+      optimisticTitle = content.slice(0, 30) + (content.length > 30 ? '...' : '')
+      get().setSessionTitle(_sessionId, optimisticTitle)
     }
     const useAgent = isAgentSession(targetSession) || globalAgentMode
+    const service = useAgent ? agentService : chatService
     const now = Date.now()
     const mySeq = ++streamSeq
 
@@ -469,17 +485,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
             timestamp: Date.now()
           })
         })
-        // 阶段二（AI 命名）：流结束后用后端生成的标题覆盖乐观标题；失败则保留阶段一结果
-        const current = get().sessions.find((s) => s.id === _sessionId)
-        const isDefaultTitle =
-          !current || current.title === DEFAULT_SESSION_TITLE
-        if (isDefaultTitle) {
-          chatService
-            .generateTitle(_sessionId)
-            .then((title) => {
-              if (title) get().setSessionTitle(_sessionId, title)
-            })
-            .catch(() => {})
+        // 阶段二（AI 命名）：助手实际回复了内容，且标题仍是默认值或阶段一的临时截断值时，
+        // 调用后端生成 AI 摘要标题覆盖；失败则保留阶段一结果（后续消息可重试）。
+        // 触发判据用「标题值」而非时间标志：AI 标题生成后标题不再是默认/临时值，
+        // 刷新后从后端读回已持久化的固定标题，不会重复生成导致标题反复变化。
+        const doneTextNode = traceNodes[makeTextNodeId(assistantMsgId)]
+        const doneContent = doneTextNode?.content ?? content
+        if (doneContent) {
+          const current = get().sessions.find((s) => s.id === _sessionId)
+          const stillNeedsTitle =
+            current &&
+            (current.title === DEFAULT_SESSION_TITLE ||
+              (optimisticTitle !== null && current.title === optimisticTitle))
+          if (stillNeedsTitle) {
+            service
+              .generateTitle(_sessionId)
+              .then((title) => {
+                if (title) get().setSessionTitle(_sessionId, title)
+              })
+              .catch(() => {})
+          }
         }
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder }) => {
@@ -503,7 +528,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     })
 
-    const service = useAgent ? agentService : chatService
     const controller = service.sendMessageStream(
       {
         sessionId: _sessionId,
@@ -643,6 +667,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         error: err instanceof Error ? err.message : 'Failed to delete session'
       })
+    }
+  },
+
+  shareSession: async (sessionId) => {
+    try {
+      return await chatService.shareSession(sessionId)
+    } catch {
+      return null
+    }
+  },
+
+  moveSessionToWorkspace: async (sessionId, workspaceId) => {
+    try {
+      const updated = await chatService.updateSessionWorkspace(sessionId, workspaceId)
+      // 乐观写入本地 workspaceId；后端回包缺失时用入参兜底
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId
+            ? { ...s, workspaceId: updated.workspaceId ?? workspaceId }
+            : s
+        )
+      }))
+    } catch {
+      // 后端能力未就绪：静默保持现状，不阻断用户其他操作
     }
   },
 

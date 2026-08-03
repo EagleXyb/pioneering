@@ -42,6 +42,8 @@ declare global {
     read: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
     write: (req: FileWriteRequest) => Promise<{ success: boolean; error?: string }>
     getPath: (name: UserDataPath) => Promise<string>
+    /** 在系统文件管理器中显示路径；不传参时打开 userData 目录 */
+    showInFolder: (filePath?: string) => Promise<boolean>
   }
 
   interface NotificationApi {

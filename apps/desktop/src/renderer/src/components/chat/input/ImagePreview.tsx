@@ -45,7 +45,8 @@ export function ImagePreview({ images, onRemove, className }: ImagePreviewProps)
       </div>
 
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
-        <DialogContent className="max-w-3xl bg-transparent shadow-none">
+        {/* 图片预览需更暗遮罩突出大图，覆盖全局淡遮罩 */}
+        <DialogContent overlayClassName="bg-black/80" className="max-w-3xl bg-transparent shadow-none">
           <DialogTitle className="sr-only">图片预览</DialogTitle>
           {preview && (
             <img

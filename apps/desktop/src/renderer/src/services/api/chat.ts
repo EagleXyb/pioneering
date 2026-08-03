@@ -82,6 +82,36 @@ export const chatService = {
     }
   },
 
+  /**
+   * 分享会话，返回分享链接。
+   * 后端分享接口尚未就绪时返回 null，由 UI 层降级（复制会话信息到剪贴板）。
+   */
+  async shareSession(sessionId: string): Promise<string | null> {
+    try {
+      const res = await apiClient.post<{ shareUrl?: string; url?: string }>(
+        `/chat/sessions/${sessionId}/share`
+      )
+      return res.data?.shareUrl ?? res.data?.url ?? null
+    } catch {
+      return null
+    }
+  },
+
+  /**
+   * 将会话保存/移动到指定工作空间。
+   * 后端能力未就绪时静默失败，由 UI 层保持现状（不阻断其他操作）。
+   */
+  async updateSessionWorkspace(
+    sessionId: string,
+    workspaceId: string
+  ): Promise<ChatSession> {
+    const res = await apiClient.put<ChatSession>(
+      `/chat/sessions/${sessionId}`,
+      { workspaceId }
+    )
+    return res.data
+  },
+
   /** 获取消息列表 */
   async getMessages(
     sessionId: string,

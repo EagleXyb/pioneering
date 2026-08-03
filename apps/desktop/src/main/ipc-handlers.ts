@@ -390,6 +390,24 @@ export function registerIpcHandlers(): void {
     return app.getPath(name)
   })
 
+  // 在系统文件管理器中显示路径（会话操作菜单「打开文件夹」）。
+  // 安全：仅允许展示 userData 目录内的路径；无参数时直接打开 userData 目录，
+  // 禁止传入任意自由路径，防止渲染端被攻陷后诱导用户在文件管理器中定位任意文件。
+  ipcMain.handle(IpcChannel.FILE_SHOW_IN_FOLDER, (event, filePath?: string) => {
+    if (!isTrustedSender(event)) return false
+    const userData = app.getPath('userData')
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      void shell.openPath(userData)
+      return true
+    }
+    const resolved = path.resolve(filePath)
+    if (resolved !== userData && !resolved.startsWith(userData + path.sep)) {
+      return false
+    }
+    shell.showItemInFolder(resolved)
+    return true
+  })
+
   // ---- 通知 ----
   ipcMain.handle(IpcChannel.NOTIFICATION_SHOW, (event, options: NotificationOptions) => {
     if (!isTrustedSender(event)) return

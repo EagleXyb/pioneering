@@ -93,7 +93,10 @@ export const fileApi = {
     getApi()?.file.read(filePath) ?? Promise.resolve({ success: false, error: 'IPC not available' }),
   write: (req: FileWriteRequest) =>
     getApi()?.file.write(req) ?? Promise.resolve({ success: false, error: 'IPC not available' }),
-  getPath: (name: UserDataPath) => getApi()?.file.getPath(name) ?? Promise.resolve('')
+  getPath: (name: UserDataPath) => getApi()?.file.getPath(name) ?? Promise.resolve(''),
+  /** 在系统文件管理器中显示路径（无参 = 打开 userData 目录） */
+  showInFolder: (filePath?: string) =>
+    getApi()?.file.showInFolder(filePath) ?? Promise.resolve(false)
 }
 
 // ---- 通知 ----

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
@@ -103,6 +104,8 @@ function App() {
 
   return (
     <TooltipProvider delayDuration={200}>
+      {/* 全局自定义确认弹窗（替换系统 window.confirm）；通过 confirmDialogAtom 触发 */}
+      <ConfirmDialog />
       <HashRouter>
         <Routes>
           <Route element={<RootLayout />}>

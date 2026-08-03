@@ -41,6 +41,10 @@ export interface ChatSession {
   messageCount?: number
   /** 会话模式：普通对话为空，Agent 会话为 react_agent / rag_agent */
   agentMode?: string
+  /** 所属工作空间 ID（后端能力就绪后下发；本地保存到工作空间时乐观写入） */
+  workspaceId?: string
+  /** 会话分享链接（后端能力就绪后下发） */
+  shareUrl?: string
 }
 
 export interface CreateSessionRequest {

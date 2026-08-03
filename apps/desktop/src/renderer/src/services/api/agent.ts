@@ -7,6 +7,7 @@ import apiClient from './client'
 import { streamAgui, type AguiStreamCallbacks } from './agui'
 import type {
   AgentSession,
+  ChatSession,
   CreateAgentSessionRequest,
   UpdateSessionRequest,
   AgentToolExecution,
@@ -47,6 +48,22 @@ export const agentService = {
     cb: AguiStreamCallbacks
   ): AbortController {
     return streamAgui('/agent/completions', request, cb)
+  },
+
+  /**
+   * AI 生成 Agent 会话标题。
+   * Agent 会话与聊天会话共用 chat_sessions 表与 /chat/sessions/:id 端点，
+   * 故复用 chat 的 generate-title 接口；后端生成后自行持久化，前端仅同步本地。
+   */
+  async generateTitle(sessionId: string): Promise<string | null> {
+    try {
+      const res = await apiClient.post<{ title: string }>(
+        `/chat/sessions/${sessionId}/generate-title`
+      )
+      return res.data?.title || null
+    } catch {
+      return null
+    }
   },
 
   /** 查询某条消息的工具执行轨迹 */

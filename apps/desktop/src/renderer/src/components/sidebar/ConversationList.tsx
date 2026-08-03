@@ -4,7 +4,6 @@
 
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -13,14 +12,13 @@ import {
 import { cn } from '@/lib/utils'
 import { useChatStore } from '../../stores/chatStore'
 import { CONVERSATION_ROW_HEIGHT, CONVERSATION_LIST_OVERSCAN } from '@/lib/constants'
+import { SessionActionsDropdown } from './SessionActionsDropdown'
 
 export function ConversationList() {
   const navigate = useNavigate()
   const sessions = useChatStore((s) => s.sessions)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
   const selectSession = useChatStore((s) => s.selectSession)
-  const createSession = useChatStore((s) => s.createSession)
-  const deleteSession = useChatStore((s) => s.deleteSession)
   const renameSession = useChatStore((s) => s.renameSession)
 
   // 行内重命名：记录正在编辑的会话 id 与草稿文本
@@ -43,14 +41,7 @@ export function ConversationList() {
     navigate('/')
   }
 
-  const handleDelete = (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation()
-    if (!window.confirm('确定删除该对话？删除后不可恢复。')) return
-    deleteSession(sessionId)
-  }
-
-  const startRename = (e: React.MouseEvent, sessionId: string, currentTitle: string) => {
-    e.stopPropagation()
+  const startRename = (sessionId: string, currentTitle: string) => {
     setEditingId(sessionId)
     setDraft(currentTitle)
     // 等待 input 渲染后聚焦
@@ -132,20 +123,18 @@ export function ConversationList() {
                           </form>
                         ) : (
                           <span
-                            onDoubleClick={(e) => startRename(e, session.id, session.title || '新对话')}
+                            onDoubleClick={() => startRename(session.id, session.title || '新对话')}
                             className="text-[13px] truncate flex-1 pl-0.5"
                             title="双击重命名"
                           >
                             {session.title || '新对话'}
                           </span>
                         )}
-                        <button
-                          onClick={(e) => handleDelete(e, session.id)}
-                          className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all p-0.5"
-                          title="删除"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {/* 更多操作下拉菜单：打开文件夹 / 重命名 / 保存到工作空间 / 分享 / 删除 */}
+                        <SessionActionsDropdown
+                          session={session}
+                          onRename={() => startRename(session.id, session.title || '新对话')}
+                        />
                       </div>
                     </div>
                   )

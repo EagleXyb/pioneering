@@ -62,7 +62,8 @@ const fileApi = {
   saveDialog: (options: FileDialogOptions) => ipcRenderer.invoke(IpcChannel.FILE_SAVE_DIALOG, options),
   read: (filePath: string) => ipcRenderer.invoke(IpcChannel.FILE_READ, filePath),
   write: (req: FileWriteRequest) => ipcRenderer.invoke(IpcChannel.FILE_WRITE, req),
-  getPath: (name: UserDataPath) => ipcRenderer.invoke(IpcChannel.FILE_GET_PATH, name)
+  getPath: (name: UserDataPath) => ipcRenderer.invoke(IpcChannel.FILE_GET_PATH, name),
+  showInFolder: (filePath?: string) => ipcRenderer.invoke(IpcChannel.FILE_SHOW_IN_FOLDER, filePath)
 }
 
 const notificationApi = {
