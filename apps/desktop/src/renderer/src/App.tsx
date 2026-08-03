@@ -6,6 +6,11 @@ import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
 import { WorkspacePage } from './pages/WorkspacePage'
+import { AssistantPage } from './pages/AssistantPage'
+import { SkillsPage } from './pages/SkillsPage'
+import { PluginsPage } from './pages/PluginsPage'
+import { AutomationPage } from './pages/AutomationPage'
+import { MorePage } from './pages/MorePage'
 import { useAppStore } from './stores/useAppStore'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { platformAtom, isFullscreenAtom } from './stores/atoms'
@@ -112,6 +117,11 @@ function App() {
             <Route index element={<ChatPage />} />
             <Route path="/home" element={<HomePage />} />
             <Route path="/workspace" element={<WorkspacePage />} />
+            <Route path="/assistant" element={<AssistantPage />} />
+            <Route path="/skills" element={<SkillsPage />} />
+            <Route path="/plugins" element={<PluginsPage />} />
+            <Route path="/automation" element={<AutomationPage />} />
+            <Route path="/more" element={<MorePage />} />
           </Route>
         </Routes>
       </HashRouter>

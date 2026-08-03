@@ -20,7 +20,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -31,6 +31,7 @@ import { TitleBar } from './TitleBar'
 import { ChatHeader } from './ChatHeader'
 import { TopBarActions } from './TopBarActions'
 import { Sidebar } from '@/components/sidebar/Sidebar'
+import { NAV_ITEMS } from '@/components/sidebar/SidebarNav'
 import { ContextPanel } from '@/components/context-panel/ContextPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Drawer } from '@/components/layout/Drawer'
@@ -55,17 +56,31 @@ export function RootLayout() {
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
   const navigate = useNavigate()
-  const { createSession, sessions, currentSessionId } = useChatStore()
+  const location = useLocation()
+  const { sessions, currentSessionId, startNewTask } = useChatStore()
 
   const currentSession = currentSessionId
     ? sessions.find((s) => s.id === currentSessionId)
     : null
-  const currentTitle = currentSession?.title
+
+  // ============================================================
+  // 顶部栏模式判定（路由感知，与 Sidebar.activeNavKey 同源）：
+  //   - 路径 '/' 或 '' → 会话视图：标题取会话 title，显示搜索/分享/历史/右面板
+  //   - 路径匹配 NAV_ITEMS.route → 功能页视图：标题取对应 label，隐藏会话按钮
+  //   - 其余路径（/home /workspace）→ 兜底会话视图（后续可按需要扩展）
+  // ============================================================
+  const matchedNav = NAV_ITEMS.find((i) => i.route === location.pathname)
+  const isChatView = !matchedNav && (location.pathname === '/' || location.pathname === '')
+  const headerTitle = matchedNav
+    ? matchedNav.label
+    : currentSession?.title || '新对话'
+  const showSessionActions = isChatView
 
   const handleCreate = useCallback(async () => {
-    await createSession()
+    // Lazy Create：仅进入 draft 态（标题栏新建 / Cmd+N 快捷键），不创建后端会话
+    startNewTask()
     navigate('/')
-  }, [createSession, navigate])
+  }, [startNewTask, navigate])
 
   const handleToggleSidebar = useCallback(() => {
     setSidebarVisible(!sidebarVisible)
@@ -163,14 +178,16 @@ export function RootLayout() {
               {/* 中栏：独立白色圆角卡片 */}
               <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
                 <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
-                  {/* 中栏顶部栏：常驻渲染；侧边栏折叠时左侧显示"展开侧边栏/新建任务"按钮 */}
+                  {/* 中栏顶部栏：常驻渲染；侧边栏折叠时左侧显示"展开侧边栏/新建任务"按钮；
+                      路由感知：会话视图显示会话标题+按钮，功能页显示对应名称无会话按钮 */}
                   <ChatHeader
-                    title={currentTitle || '新对话'}
+                    title={headerTitle}
                     contextPanelVisible={contextPanelVisible}
                     onToggleContext={() => setContextPanelVisible(!contextPanelVisible)}
                     sidebarVisible={sidebarVisible}
                     onToggleSidebar={handleToggleSidebar}
                     onCreate={handleCreate}
+                    showSessionActions={showSessionActions}
                   />
 
                   <div className="flex-1 min-h-0">

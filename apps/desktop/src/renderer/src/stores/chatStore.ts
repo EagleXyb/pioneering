@@ -28,12 +28,19 @@ import { buildTraceFromContentBlocks } from '../services/trace-builder'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
-const DEFAULT_SESSION_TITLE = '新对话'
+export const DEFAULT_SESSION_TITLE = '新对话'
 
 interface ChatState {
   sessions: ChatSession[]
   sessionsLoading: boolean
   currentSessionId: string | null
+
+  /**
+   * 新建任务 draft 态标记（Lazy Create 延迟创建）：
+   * 点击「新建任务」仅进入本地 draft（currentSessionId=null、不调后端、列表无新记录），
+   * 首条消息发送时才真正创建会话。draft 态下高亮「新建任务」按钮。
+   */
+  isDraftNewSession: boolean
 
   messages: Record<string, Message[]>
   messagesLoading: boolean
@@ -57,6 +64,8 @@ interface ChatState {
   loadSessions: () => Promise<void>
   /** 清空所有会话与消息数据（登出/切换账号时调用，不触碰流式状态与业务 action） */
   resetSessions: () => void
+  /** 进入「新建任务」draft 态：不创建后端会话、不在列表落库，等待首条消息发送时才真正创建 */
+  startNewTask: () => void
   createSession: (title?: string) => Promise<ChatSession>
   setSessionTitle: (sessionId: string, title: string) => void
   renameSession: (sessionId: string, title: string) => Promise<void>
@@ -195,6 +204,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   sessionsLoading: false,
   currentSessionId: null,
+  isDraftNewSession: false,
   messages: {},
   messagesLoading: false,
   messagesNextCursor: {},
@@ -214,13 +224,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ sessionsLoading: true, error: null })
     try {
       const data = await chatService.getSessions(1, 50)
-      set({ sessions: data.sessions, sessionsLoading: false })
+      // 刷新兜底选中：
+      //   - 若 currentSessionId 为空，或选中的 id 不在新列表中（可能被其他端删除），
+      //     则自动选中列表第一个会话（后端按 createdAt DESC = 最新会话），
+      //   - 确保刷新后不会出现「导航高亮助理 + 会话列表无选中行」的错位。
+      //   参考经验 416906：selected 初始化缺失是刷新选中错位的常见根因。
+      const list = data.sessions
+      const prevId = get().currentSessionId
+      const stillValid = prevId && list.some((s) => s.id === prevId)
+      const nextCurrent = stillValid ? prevId : list[0]?.id ?? null
+      set({ sessions: list, sessionsLoading: false, currentSessionId: nextCurrent, isDraftNewSession: false })
+      // 兜底选中后拉取该会话消息，确保中栏内容与选中一致
+      if (nextCurrent && nextCurrent !== prevId) {
+        await get().loadMessages(nextCurrent)
+      }
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : 'Failed to load sessions',
         sessionsLoading: false
       })
     }
+  },
+
+  // Lazy Create：进入「新建任务」draft 态。
+  // 仅清理本地选中与流式残留，不创建后端会话、不在列表落库；
+  // 用户首条消息发送时 sendMessage 的「无 sessionId 兜底」才真正调用 createSession。
+  startNewTask: () => {
+    if (get().isStreaming) get().stopStreaming()
+    set({
+      currentSessionId: null,
+      isDraftNewSession: true,
+      ...emptyStreaming()
+    })
   },
 
   createSession: async (title) => {
@@ -233,6 +268,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (currentId) {
       const current = get().sessions.find((s) => s.id === currentId)
       if (current && current.title === DEFAULT_SESSION_TITLE) {
+        // 复用空白会话时同样退出 draft 态，保证高亮收敛到会话行
+        set({ isDraftNewSession: false })
         return current
       }
     }
@@ -259,7 +296,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       set((state) => ({
         sessions: [chatSession, ...state.sessions],
-        currentSessionId: chatSession.id
+        currentSessionId: chatSession.id,
+        // 真正创建成功，退出 draft 态（高亮从「新建任务」转移到会话行）
+        isDraftNewSession: false
       }))
       return chatSession
     } catch (err) {
@@ -308,6 +347,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const session = get().sessions.find((s) => s.id === sessionId)
     set({
       currentSessionId: sessionId,
+      isDraftNewSession: false,
       agentMode: isAgentSession(session)
     })
     const state = get()
@@ -353,7 +393,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (content, extra) => {
-    const { currentSessionId, abortController, sessions, agentMode: globalAgentMode } = get()
+    const { currentSessionId, abortController, agentMode: globalAgentMode } = get()
     const images = (extra?.images ?? []) as AttachedImage[]
     const model = extra?.model?.trim()
 
@@ -393,7 +433,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     const _sessionId = sessionId
-    const targetSession = sessions.find((s) => s.id === _sessionId)
+    // 必须从最新状态取 targetSession：无 sessionId 时上方 createSession 已异步 set 新会话，
+    // 闭包里的旧 sessions 引用找不到它，会导致阶段一乐观标题失效、agentMode 误判
+    const targetSession = get().sessions.find((s) => s.id === _sessionId)
     // 阶段一（乐观命名）：首条消息且标题仍是默认值时，立即截取前 30 字给用户瞬时反馈。
     // 仅更新本地并记录 optimisticTitle，供阶段二（AI 命名）判断是否仍待生成。
     let optimisticTitle: string | null = null
@@ -657,6 +699,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             state.currentSessionId === sessionId
               ? remaining[0]?.id ?? null
               : state.currentSessionId,
+          isDraftNewSession: false,
           agentMode:
             state.currentSessionId === sessionId
               ? isAgentSession(remaining[0])
@@ -702,6 +745,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessions: [],
       sessionsLoading: false,
       currentSessionId: null,
+      isDraftNewSession: false,
       messages: {},
       messagesLoading: false,
       messagesNextCursor: {},

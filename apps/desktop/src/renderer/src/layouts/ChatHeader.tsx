@@ -32,10 +32,16 @@ export interface ChatHeaderProps {
   onToggleContext: () => void
   onToggleSidebar: () => void
   onCreate: () => void | Promise<void>
+  /** 是否显示会话专用按钮（搜索/分享/历史/展开右面板）；非会话功能页传 false */
+  showSessionActions?: boolean
 }
 
 /**
- * 中栏会话顶部栏。
+ * 中栏顶部栏。
+ *
+ * 两种模式：
+ *   - 会话视图（showSessionActions=true，默认）：显示会话标题 + 右侧搜索/分享/历史/展开右面板
+ *   - 功能页视图（showSessionActions=false）：仅显示对应功能页标题，无会话专用操作
  *
  * 消息区滚动离开顶部时显示下边框；在顶部/无滚动内容时隐藏
  * （始终保留 border-b 的 1px 空间并仅切换颜色，避免边框显隐引起 1px 布局抖动）。
@@ -46,7 +52,8 @@ export function ChatHeader({
   sidebarVisible,
   onToggleContext,
   onToggleSidebar,
-  onCreate
+  onCreate,
+  showSessionActions = true
 }: ChatHeaderProps) {
   const isChatScrolled = useAtomValue(chatScrolledAtom)
 
@@ -79,19 +86,21 @@ export function ChatHeader({
           {title}
         </span>
         <div className="flex-1" />
-        <div className="flex items-center gap-1">
-          <HeaderButton icon={Search} title="在会话中搜索" />
-          <HeaderButton icon={Share2} title="分享" />
-          <HeaderButton icon={History} title="历史记录" />
-          {/* 右侧面板展开时不显示收起入口，折叠时显示展开入口 */}
-          {!contextPanelVisible && (
-            <HeaderButton
-              icon={PanelRight}
-              title="展开右侧面板"
-              onClick={onToggleContext}
-            />
-          )}
-        </div>
+        {showSessionActions && (
+          <div className="flex items-center gap-1">
+            <HeaderButton icon={Search} title="在会话中搜索" />
+            <HeaderButton icon={Share2} title="分享" />
+            <HeaderButton icon={History} title="历史记录" />
+            {/* 右侧面板展开时不显示收起入口，折叠时显示展开入口 */}
+            {!contextPanelVisible && (
+              <HeaderButton
+                icon={PanelRight}
+                title="展开右侧面板"
+                onClick={onToggleContext}
+              />
+            )}
+          </div>
+        )}
       </div>
     </TooltipProvider>
   )

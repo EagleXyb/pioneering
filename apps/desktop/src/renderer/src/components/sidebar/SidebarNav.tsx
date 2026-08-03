@@ -27,21 +27,21 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { key: 'assistant', label: '助理', icon: Sparkles, route: '/', placeholder: false },
-  { key: 'skills', label: '技能', icon: FolderOpen, route: '', placeholder: true },
+  { key: 'assistant', label: '助理', icon: Sparkles, route: '/assistant', placeholder: false },
+  { key: 'skills', label: '技能', icon: FolderOpen, route: '/skills', placeholder: true },
   {
     key: 'plugins',
     label: '插件',
     icon: GraduationCap,
-    route: '',
+    route: '/plugins',
     placeholder: true
   },
-  { key: 'automation', label: '自动化', icon: Zap, route: '', placeholder: true },
+  { key: 'automation', label: '自动化', icon: Zap, route: '/automation', placeholder: true },
   {
     key: 'more',
     label: '更多',
     icon: Ellipsis,
-    route: '',
+    route: '/more',
     placeholder: true,
     extra: '知识库'
   }
@@ -64,8 +64,9 @@ export function SidebarNav({ activeNavKey, onCreate, onNavClick }: SidebarNavPro
       <Button
         variant="ghost"
         className={cn(
-          'w-full h-[32px] px-3 gap-2 justify-start rounded-[8px] text-muted-foreground hover:bg-accent/40 hover:text-foreground shadow-none mb-1 font-normal [&_svg]:size-4',
-          activeNavKey === 'new-task' && 'bg-accent text-foreground hover:bg-accent/80'
+          'w-full h-[32px] px-3 gap-2 justify-start rounded-[8px] text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5 shadow-none mb-1 font-normal [&_svg]:size-4',
+          activeNavKey === 'new-task' &&
+            'bg-black/10 text-foreground font-medium hover:bg-black/10 dark:bg-white/10'
         )}
         onClick={onCreate}
       >
@@ -84,8 +85,8 @@ export function SidebarNav({ activeNavKey, onCreate, onNavClick }: SidebarNavPro
             className={cn(
               'flex items-center justify-between h-[32px] px-3 gap-2 rounded-[8px] cursor-pointer select-none transition-colors mb-1',
               isActive
-                ? 'bg-accent text-foreground'
-                : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'
+                ? 'bg-black/10 text-foreground font-medium dark:bg-white/10'
+                : 'text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5'
             )}
           >
             <div className="flex items-center gap-2">

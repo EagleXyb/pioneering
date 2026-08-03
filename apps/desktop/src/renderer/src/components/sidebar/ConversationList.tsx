@@ -14,7 +14,17 @@ import { useChatStore } from '../../stores/chatStore'
 import { CONVERSATION_ROW_HEIGHT, CONVERSATION_LIST_OVERSCAN } from '@/lib/constants'
 import { SessionActionsDropdown } from './SessionActionsDropdown'
 
-export function ConversationList() {
+export interface ConversationListProps {
+  /**
+   * 会话行选中态是否允许生效。
+   * 默认 true（会话视图，行高亮随 currentSessionId）；
+   * 当处于助理/技能/插件等功能页路由时由 Sidebar 传 false，
+   * 避免「导航项 + 会话行」双高亮互抢焦点（保持恰好一个高亮）。
+   */
+  selectionEnabled?: boolean
+}
+
+export function ConversationList({ selectionEnabled = true }: ConversationListProps) {
   const navigate = useNavigate()
   const sessions = useChatStore((s) => s.sessions)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
@@ -102,9 +112,11 @@ export function ConversationList() {
                         }}
                         className={cn(
                           'group flex items-center gap-2 h-[32px] px-2.5 rounded-[8px] cursor-pointer transition-colors',
-                          currentSessionId === session.id
-                            ? 'bg-[#E6E8EB] text-accent-foreground'
-                            : 'text-muted-foreground hover:bg-[#E6E8EB] hover:text-foreground'
+                          // 功能页路由（助理/技能/插件等）时 selectionEnabled=false，
+                          // 强制不显示会话行高亮，避免与导航项双高亮互抢焦点
+                          selectionEnabled && currentSessionId === session.id
+                            ? 'bg-black/10 text-foreground font-medium dark:bg-white/10'
+                            : 'text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5'
                         )}
                       >
                         {editingId === session.id ? (
