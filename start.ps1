@@ -12,6 +12,7 @@ New-Item -ItemType Directory -Force -Path "$LOGS_DIR\backend-ts" | Out-Null
 New-Item -ItemType Directory -Force -Path "$LOGS_DIR\frontend" | Out-Null
 New-Item -ItemType Directory -Force -Path "$LOGS_DIR\marketing" | Out-Null
 New-Item -ItemType Directory -Force -Path "$LOGS_DIR\desktop" | Out-Null
+New-Item -ItemType Directory -Force -Path "$LOGS_DIR\desktop-browser" | Out-Null
 
 $VENV_PYTHON = Join-Path $BACKEND_DIR "venv\Scripts\python.exe"
 
@@ -63,6 +64,14 @@ Start-Process -FilePath "cmd.exe" `
     -WindowStyle Hidden
 Write-Host "  Desktop   (Electron)"
 
+# 5. Desktop 开发期浏览器预览（port 5175）— 无需 Electron，支持 ?platform=mac|windows|linux
+$desktopBrowserLog = Join-Path $LOGS_DIR "desktop-browser\browser.log"
+Start-Process -FilePath "cmd.exe" `
+    -ArgumentList "/c npm run dev:browser > `"$desktopBrowserLog`" 2>&1" `
+    -WorkingDirectory $DESKTOP_DIR `
+    -WindowStyle Hidden
+Write-Host "  Desktop Preview (port 5175, browser)"
+
 Start-Sleep -Seconds 5
 
 Write-Host "[3/3] Checking running processes..."
@@ -84,3 +93,7 @@ Write-Host "  API Docs:       http://localhost:8088/docs"
 Write-Host "  Frontend Web:   http://localhost:5173"
 Write-Host "  Marketing:      http://localhost:9001"
 Write-Host "  Desktop:        Electron App (launched separately)"
+Write-Host "  Desktop Preview (browser): http://localhost:5175"
+Write-Host "    - mac:     http://localhost:5175/?platform=mac"
+Write-Host "    - windows: http://localhost:5175/?platform=windows"
+Write-Host "    - linux:   http://localhost:5175/?platform=linux"

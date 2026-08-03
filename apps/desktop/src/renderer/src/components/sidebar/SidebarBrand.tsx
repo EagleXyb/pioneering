@@ -29,7 +29,7 @@ export function SidebarBrand({ sidebarVisible, onToggleSidebar }: SidebarBrandPr
   const [, setSidebarVisible] = useAtom(sidebarVisibleAtom)
 
   return (
-    <div className="conversation-list-header px-3 pt-3 pb-0 shrink-0">
+    <div className="conversation-list-header px-3 pt-0 pb-0 shrink-0">
       <div className="flex items-center justify-end py-1">
         {/* 右侧：搜索/筛选/侧边栏切换 */}
         <div className="flex items-center gap-0.5">

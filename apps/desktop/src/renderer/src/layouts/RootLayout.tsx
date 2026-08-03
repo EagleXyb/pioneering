@@ -144,7 +144,11 @@ export function RootLayout() {
           <div
             className="absolute"
             style={{
-              top: '5px',
+              // macOS：TitleBar 只覆盖左侧 262px 区域（left-0 bg-transparent），
+              //       中栏从 left=267 开始横向不与 TitleBar 重叠，卡片可用 5px 顶部沟渠。
+              // Win/Linux：TitleBar 全宽覆盖（inset-x-0），卡片需让出顶部 titlebar 高度，
+              //       否则 ChatHeader 顶部会被 TitleBar 灰底遮挡。
+              top: isMac ? '5px' : 'var(--titlebar-h)',
               right: '5px',
               bottom: '5px',
               left: sidebarVisible ? `calc(${SIDEBAR_WIDTH}px + 5px)` : '5px'
