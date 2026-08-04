@@ -7,13 +7,17 @@
 //   - legacy ScrollArea + MessageList（虚拟化 + isNearBottomRef）已删除
 //   - 流式自动跟随由 MessageScrollerProvider.autoScroll 接管
 //   - 滚动感知顶部栏的逻辑保留，统一查询 message-scroller-viewport
+//
+// 布局模式：
+//   - 欢迎页模式（showWelcome=true）：整体垂直居中，InputArea 随欢迎内容流居中
+//   - 聊天模式（showWelcome=false）：三段式——消息区 flex-1 overflow / AgentStatus / InputArea
 // ============================================================
 
-import { useRef, useEffect, useMemo, useCallback, createElement } from 'react'
-import { useSetAtom } from 'jotai'
-import { chatScrolledAtom } from '@/stores/atoms'
+import { useRef, useEffect, useMemo, useCallback, useState, createElement } from 'react'
+import { useAtomValue, useSetAtom } from 'jotai'
+import { chatScrolledAtom, chatWelcomeModeAtom } from '@/stores/atoms'
 import { MessageScrollerList } from './MessageScrollerList'
-import { WelcomeScreen } from './WelcomeScreen'
+import { WelcomeScreenTop, WelcomeScreenBottom } from './WelcomeScreen'
 import { InputArea, type InputAreaSendOptions } from './input/InputArea'
 import { AgentStatus } from './ChatStatus'
 // P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
@@ -59,6 +63,12 @@ export function ChatArea() {
   // ChatHeader 显示下边框；回到顶部/无滚动容器（欢迎页、内容不足一屏）时隐藏。
   const setChatScrolled = useSetAtom(chatScrolledAtom)
 
+  // 欢迎页模式状态：同步到 chatWelcomeModeAtom 供 RootLayout 隐藏顶部栏
+  const setChatWelcomeMode = useSetAtom(chatWelcomeModeAtom)
+
+  // 欢迎页功能标签选中态（Top 组件切换时同步给 Bottom 组件）
+  const [welcomeFeature, setWelcomeFeature] = useState('doc')
+
   const realMessages: Message[] = currentSessionId ? messages[currentSessionId] || [] : []
   const hasMore = currentSessionId ? !!messagesHasMore[currentSessionId] : false
   const isLoadingMore = messagesLoading && realMessages.length > 0
@@ -102,9 +112,19 @@ export function ChatArea() {
   // 是否显示欢迎引导页（无消息且非流式状态）
   const showWelcome = currentMessages.length === 0 && !isStreaming && !streamingContent
 
+  // 同步欢迎页模式到 atom，供 RootLayout 控制顶部栏显隐
+  useEffect(() => {
+    setChatWelcomeMode(showWelcome)
+    return () => setChatWelcomeMode(false)
+  }, [showWelcome, setChatWelcomeMode])
+
   // 滚动感知顶部栏：消息区滚动离开顶部（scrollTop > 0）时，
   // ChatHeader 显示下边框；回到顶部/无滚动容器（欢迎页、内容不足一屏）时隐藏。
   useEffect(() => {
+    if (showWelcome) {
+      setChatScrolled(false)
+      return
+    }
     const pane = messagesPaneRef.current
     if (!pane) return
     const container = pane.querySelector<HTMLElement>(
@@ -124,30 +144,70 @@ export function ChatArea() {
     }
   }, [showWelcome, currentSessionId, currentMessages.length, setChatScrolled])
 
+  // ============================================================
+  // 欢迎页模式：整体垂直居中
+  // 布局顺序对齐 TRAE 参考图：
+  //   标题 → 功能标签 → 输入框 → 模板卡片
+  // ============================================================
+  if (showWelcome) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-background overflow-y-auto px-6 py-8">
+        <div className="w-full flex flex-col items-center gap-6" style={{ maxWidth: 'var(--chat-col-max)' }}>
+          {/* 上方：标题 + 功能标签 */}
+          <WelcomeScreenTop onFeatureChange={setWelcomeFeature} />
+
+          {/* 中间：输入框 */}
+          <div className="w-full">
+            <InputArea
+              sessionId={currentSessionId}
+              onSend={handleSend}
+              onStop={stopStreaming}
+              isStreaming={isStreaming}
+              disabled={false}
+              agentMode={agentMode}
+              onToggleAgent={() => setAgentMode(!agentMode)}
+              isWelcome={true}
+            />
+          </div>
+
+          {/* 下方：模板卡片网格 */}
+          <WelcomeScreenBottom activeFeature={welcomeFeature} onQuickPrompt={handleQuickPrompt} />
+
+          {/* 错误提示条（欢迎态也可能出错，例如发消息失败） */}
+          {createElement(AgentStatus, {
+            toolCalls: streamingToolCalls,
+            error,
+            onClearError: clearError
+          })}
+        </div>
+
+        {/* P1：图片放大预览 Lightbox（Portal 挂载，关闭时不渲染任何 DOM） */}
+        <ImageLightbox />
+      </div>
+    )
+  }
+
+  // ============================================================
+  // 聊天模式：三段式——消息区 flex-1 / AgentStatus / InputArea
+  // ============================================================
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Messages：与输入框同宽（由 --chat-col-max 令牌统一约束，既定 880px）并居中 */}
       <div className="chat-messages-pane flex-1 overflow-hidden" ref={messagesPaneRef}>
         <div className="mx-auto h-full w-full max-w-[var(--chat-col-max)] px-0">
-          {showWelcome ? (
-            // 空会话：显示欢迎引导页
-            <WelcomeScreen onQuickPrompt={handleQuickPrompt} />
-          ) : (
-            // Message Scroller + content-visibility（流式自动跟随 / 新 turn 锚定 / 跳到最新按钮）
-            <MessageScrollerList
-              messages={currentMessages}
-              streamingContent={streamingContent}
-              streamingThinking={streamingThinking}
-              streamingToolCalls={streamingToolCalls}
-              streamingTraceNodes={streamingTraceNodes}
-              streamingTraceRootOrder={streamingTraceRootOrder}
-              streamingMessageId={streamingMessageId}
-              isStreaming={isStreaming}
-              hasMore={hasMore}
-              isLoadingMore={isLoadingMore}
-              onLoadMore={loadMoreMessages}
-            />
-          )}
+          <MessageScrollerList
+            messages={currentMessages}
+            streamingContent={streamingContent}
+            streamingThinking={streamingThinking}
+            streamingToolCalls={streamingToolCalls}
+            streamingTraceNodes={streamingTraceNodes}
+            streamingTraceRootOrder={streamingTraceRootOrder}
+            streamingMessageId={streamingMessageId}
+            isStreaming={isStreaming}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={loadMoreMessages}
+          />
         </div>
       </div>
 
@@ -167,6 +227,7 @@ export function ChatArea() {
         disabled={false}
         agentMode={agentMode}
         onToggleAgent={() => setAgentMode(!agentMode)}
+        isWelcome={false}
       />
 
       {/* P1：图片放大预览 Lightbox（Portal 挂载，关闭时不渲染任何 DOM） */}

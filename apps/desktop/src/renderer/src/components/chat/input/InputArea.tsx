@@ -48,6 +48,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -60,6 +61,8 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip'
 import { fileApi, notificationApi } from '@/services/ipc'
+import { useSetAtom } from 'jotai'
+import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
 import {
   fileToImageAttachment,
@@ -110,6 +113,8 @@ export interface InputAreaProps {
   agentMode?: boolean
   /** 切换 Agent 模式 */
   onToggleAgent?: () => void
+  /** 欢迎页态：输入卡片使用增强阴影引导关注 */
+  isWelcome?: boolean
 }
 
 const CHAR_LIMIT = 10000
@@ -129,10 +134,15 @@ function getSlashQuery(
 // ============================================================
 // 模型选择器
 // ============================================================
-const DEFAULT_MODEL = 'deepseek-chat'
+const DEFAULT_MODEL = 'Auto'
 const MODEL_OPTIONS: { label: string; value: string }[] = [
-  { label: 'DeepSeek Chat', value: DEFAULT_MODEL },
-  { label: '自定义', value: '自定义' },
+  { label: 'Auto', value: 'Auto' },
+  { label: 'DeepSeek V4 Flash', value: 'deepseek-v4-flash' },
+  { label: 'DeepSeek V4 Pro', value: 'deepseek-v4-Pro' },
+  { label: 'GLM 5.2', value: 'GLM-5.2' },
+  { label: 'Kimi K3', value: 'Kimi-K3' },
+  { label: 'MiniMax M3', value: 'MiniMax-M3' },
+  { label: '配置模型', value: '配置模型' },
 ]
 
 function ModelSelect({
@@ -146,7 +156,19 @@ function ModelSelect({
 }) {
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState('')
-  const isCustomMode = value === '自定义' || (custom.length > 0 && value === custom)
+  const isCustomMode = value === '配置模型' || (custom.length > 0 && value === custom)
+  const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const setSettingsCategory = useSetAtom(settingsCategoryAtom)
+
+  const handleSelect = (optValue: string) => {
+    if (optValue === '配置模型') {
+      setSettingsCategory('model')
+      setSettingsOpen(true)
+      setOpen(false)
+      return
+    }
+    onChange(optValue)
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -158,17 +180,24 @@ function ModelSelect({
               className="pro-input-model-btn"
               disabled={disabled}
             >
-              <span>{isCustomMode && custom ? custom : value === '自定义' ? '自定义模型' : value}</span>
+              <span>{isCustomMode && custom ? custom : value === '配置模型' ? '配置模型' : value}</span>
               <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent>选择模型</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="start" side="top" className="pro-input-more-pop min-w-[200px]">
-        {MODEL_OPTIONS.map((opt) => (
-          <DropdownMenuItem key={opt.value} onSelect={() => onChange(opt.value)}>
-            <span>{opt.label === '自定义' ? '自定义模型' : `内置模型 · ${opt.label}`}</span>
+      <DropdownMenuContent align="start" side="top" sideOffset={4} alignOffset={0} avoidCollisions={true} className="pro-input-more-pop min-w-[200px]">
+        {MODEL_OPTIONS.slice(0, 6).map((opt) => (
+          <DropdownMenuItem key={opt.value} onSelect={() => handleSelect(opt.value)}>
+            <span>{opt.label}</span>
+            {value === opt.value && <Check className="ml-auto size-3.5 text-primary" />}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        {MODEL_OPTIONS.slice(6).map((opt) => (
+          <DropdownMenuItem key={opt.value} onSelect={() => handleSelect(opt.value)}>
+            <span>{opt.label}</span>
             {value === opt.value && <Check className="ml-auto size-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
@@ -204,7 +233,8 @@ export function InputArea({
   isStreaming = false,
   disabled = false,
   agentMode = false,
-  onToggleAgent
+  onToggleAgent,
+  isWelcome = false
 }: InputAreaProps) {
   const editorRef = useRef<FileAwareEditorHandle>(null)
   const [text, setText] = useState('')
@@ -547,7 +577,7 @@ export function InputArea({
 
         {/* 输入卡片 */}
         <div
-          className={cn('pro-input-card', isDragging && 'is-dragging')}
+          className={cn('pro-input-card', isDragging && 'is-dragging', isWelcome && 'is-welcome')}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -729,8 +759,10 @@ export function InputArea({
           </div>
         )}
 
-        {/* AI 生成内容免责声明 */}
-        <div className="pro-input-disclaimer">内容由AI生成，仅供参考</div>
+        {/* AI 生成内容免责声明（仅聊天模式显示，欢迎页隐藏） */}
+        {!isWelcome && (
+          <div className="pro-input-disclaimer">内容由AI生成，仅供参考</div>
+        )}
       </div>
       </div>
   )

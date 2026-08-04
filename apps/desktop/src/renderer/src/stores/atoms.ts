@@ -37,6 +37,10 @@ export const settingsCategoryAtom = atomWithStorage<string>('settings-category',
 // 中栏消息区是否滚动离开顶部：ChatHeader 据此决定是否显示下边框
 export const chatScrolledAtom = atom(false)
 
+// 聊天区是否处于欢迎页模式（空会话、输入框居中、顶部栏隐藏）
+// ChatArea 设置此状态，RootLayout/ChatHeader 据此控制顶部栏显隐
+export const chatWelcomeModeAtom = atom(false)
+
 // ============================================================
 // 通用确认弹层（删除会话等破坏性操作）
 // ============================================================

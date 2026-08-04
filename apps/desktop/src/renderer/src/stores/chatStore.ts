@@ -575,7 +575,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sessionId: _sessionId,
         message: buildSendText(content),
         stream: true,
-        model: model && model !== '自定义' ? model : undefined
+        model: model && model !== '配置模型' ? model : undefined
       },
       streamHandler
     )

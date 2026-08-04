@@ -27,6 +27,7 @@ import { AuthSection } from './sections/AuthSection'
 import { AppearanceSection } from './sections/AppearanceSection'
 import { AboutSection } from './sections/AboutSection'
 import { HelpSection } from './sections/HelpSection'
+import { ModelSection } from './sections/ModelSection'
 
 export interface SettingsCategory {
   id: string
@@ -61,7 +62,7 @@ export const settingsCategories: SettingsCategory[] = [
   placeholder('agent', '智能体配置', Bot),
   placeholder('shortcut', '快捷键', Keyboard),
   placeholder('memory', '记忆', BrainCircuit),
-  placeholder('model', '模型', Cpu),
+  { id: 'model', label: '模型', icon: Cpu, Component: ModelSection },
   placeholder('assistant', '助理设置', User),
   placeholder('personalize', '个性化', Sparkles),
   placeholder('data', '数据管理', Database),

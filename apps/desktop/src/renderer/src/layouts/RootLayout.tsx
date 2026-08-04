@@ -36,10 +36,11 @@ import { ContextPanel } from '@/components/context-panel/ContextPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Drawer } from '@/components/layout/Drawer'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
-import { useAtom } from 'jotai'
+import { useAtom, useAtomValue } from 'jotai'
 import {
   sidebarVisibleAtom,
-  contextPanelVisibleAtom
+  contextPanelVisibleAtom,
+  chatWelcomeModeAtom
 } from '@/stores/atoms'
 import { usePlatform } from '@/hooks/usePlatform'
 import { usePanelToggle } from '@/platform/usePanelToggle'
@@ -55,6 +56,7 @@ export function RootLayout() {
   const { contextRef, mode } = usePanelToggle()
   const [sidebarVisible, setSidebarVisible] = useAtom(sidebarVisibleAtom)
   const [contextPanelVisible, setContextPanelVisible] = useAtom(contextPanelVisibleAtom)
+  const isWelcomeMode = useAtomValue(chatWelcomeModeAtom)
   const navigate = useNavigate()
   const location = useLocation()
   const { sessions, currentSessionId, startNewTask } = useChatStore()
@@ -178,17 +180,20 @@ export function RootLayout() {
               {/* 中栏：独立白色圆角卡片 */}
               <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
                 <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
-                  {/* 中栏顶部栏：常驻渲染；侧边栏折叠时左侧显示"展开侧边栏/新建任务"按钮；
+                  {/* 中栏顶部栏：欢迎页模式下隐藏（输入框居中、无标题干扰）；
+                      侧边栏折叠时左侧显示"展开侧边栏/新建任务"按钮；
                       路由感知：会话视图显示会话标题+按钮，功能页显示对应名称无会话按钮 */}
-                  <ChatHeader
-                    title={headerTitle}
-                    contextPanelVisible={contextPanelVisible}
-                    onToggleContext={() => setContextPanelVisible(!contextPanelVisible)}
-                    sidebarVisible={sidebarVisible}
-                    onToggleSidebar={handleToggleSidebar}
-                    onCreate={handleCreate}
-                    showSessionActions={showSessionActions}
-                  />
+                  {!isWelcomeMode && (
+                    <ChatHeader
+                      title={headerTitle}
+                      contextPanelVisible={contextPanelVisible}
+                      onToggleContext={() => setContextPanelVisible(!contextPanelVisible)}
+                      sidebarVisible={sidebarVisible}
+                      onToggleSidebar={handleToggleSidebar}
+                      onCreate={handleCreate}
+                      showSessionActions={showSessionActions}
+                    />
+                  )}
 
                   <div className="flex-1 min-h-0">
                     <Outlet />
@@ -223,7 +228,7 @@ export function RootLayout() {
            ============================================================ */
         <div className="absolute inset-0 overflow-hidden p-[5px]" style={{paddingTop: isMac ? '5px' : 'var(--titlebar-h)'}}>
           <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
-            {showTopBarActions && (
+            {showTopBarActions && !isWelcomeMode && (
               <TopBarActions
                 platform={platform}
                 onExpandSidebar={() => setSidebarVisible(true)}
