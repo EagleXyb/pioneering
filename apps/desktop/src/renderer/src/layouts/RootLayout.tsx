@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { PanelLeft, MessageCirclePlus } from 'lucide-react'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -30,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { TitleBar } from './TitleBar'
 import { ChatHeader } from './ChatHeader'
 import { TopBarActions } from './TopBarActions'
+import { HeaderButton } from './HeaderButton'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { NAV_ITEMS } from '@/components/sidebar/SidebarNav'
 import { ContextPanel } from '@/components/context-panel/ContextPanel'
@@ -42,6 +44,7 @@ import {
   contextPanelVisibleAtom,
   chatWelcomeModeAtom
 } from '@/stores/atoms'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/usePlatform'
 import { usePanelToggle } from '@/platform/usePanelToggle'
 import { useChatStore } from '@/stores/chatStore'
@@ -179,11 +182,11 @@ export function RootLayout() {
             >
               {/* 中栏：独立白色圆角卡片 */}
               <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-                <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
-                  {/* 中栏顶部栏：欢迎页模式下隐藏（输入框居中、无标题干扰）；
-                      侧边栏折叠时左侧显示"展开侧边栏/新建任务"按钮；
+                <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col relative" style={{ borderRadius: 6 }}>
+                  {/* 中栏顶部栏：欢迎页模式下隐藏标题栏（输入框居中、无标题干扰），
+                      但侧边栏折叠时仍需在左上角显示"展开侧边栏/新建任务"按钮；
                       路由感知：会话视图显示会话标题+按钮，功能页显示对应名称无会话按钮 */}
-                  {!isWelcomeMode && (
+                  {!isWelcomeMode ? (
                     <ChatHeader
                       title={headerTitle}
                       contextPanelVisible={contextPanelVisible}
@@ -193,6 +196,21 @@ export function RootLayout() {
                       onCreate={handleCreate}
                       showSessionActions={showSessionActions}
                     />
+                  ) : (
+                    /* 欢迎页模式：侧边栏收起时在左上角显示浮动按钮
+                       位置与 ChatHeader 中按钮对齐：top-2(8px) 垂直居中于 48px 标题栏高度，
+                       left-4(16px) 对齐 ChatHeader 的 px-4 内边距，macOS 额外避让红绿灯 */
+                    !sidebarVisible && (
+                      <TooltipProvider delayDuration={200}>
+                        <div
+                          className="absolute top-2 left-4 z-10 flex items-center gap-1"
+                          style={{ paddingLeft: 'var(--traffic-light-w)' }}
+                        >
+                          <HeaderButton icon={PanelLeft} title="展开侧边栏" onClick={handleToggleSidebar} />
+                          <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={handleCreate} />
+                        </div>
+                      </TooltipProvider>
+                    )
                   )}
 
                   <div className="flex-1 min-h-0">
@@ -227,14 +245,26 @@ export function RootLayout() {
            与三栏模式一致：卡片四周 5px 沟渠
            ============================================================ */
         <div className="absolute inset-0 overflow-hidden p-[5px]" style={{paddingTop: isMac ? '5px' : 'var(--titlebar-h)'}}>
-          <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col" style={{ borderRadius: 6 }}>
-            {showTopBarActions && !isWelcomeMode && (
+          <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col relative" style={{ borderRadius: 6 }}>
+            {showTopBarActions && !isWelcomeMode ? (
               <TopBarActions
                 platform={platform}
                 onExpandSidebar={() => setSidebarVisible(true)}
                 onCreate={handleCreate}
               />
-            )}
+            ) : !sidebarVisible && isWelcomeMode ? (
+              /* 覆盖模式欢迎页：侧边栏收起时在左上角显示浮动按钮
+                 位置与三栏模式欢迎页一致：top-2(8px) left-4(16px)，macOS 额外避让红绿灯 */
+              <TooltipProvider delayDuration={200}>
+                <div
+                  className="absolute top-2 left-4 z-10 flex items-center gap-1"
+                  style={{ paddingLeft: 'var(--traffic-light-w)' }}
+                >
+                  <HeaderButton icon={PanelLeft} title="展开侧边栏" onClick={() => setSidebarVisible(true)} />
+                  <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={handleCreate} />
+                </div>
+              </TooltipProvider>
+            ) : null}
             <div className="flex-1 min-h-0">
               <Outlet />
             </div>
