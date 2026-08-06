@@ -43,7 +43,9 @@
 |------|------|
 | **LangGraph 编排** | 基于 `StateGraph` 的节点化流程，支持 ReAct 循环、条件路由、递归限制 |
 | **三种执行模式（互斥）** | 默认 ReAct / 多 Agent 协作（Supervisor + Send API）/ Plan-and-Execute（Planner + Dispatcher） |
+| **统一 LLM 接口层** | `ModuLLM` 抽象（`core/interfaces/llm.ts`）屏蔽底层 SDK，`ModuLLMAdapter` 包装 LangChain ChatModel |
 | **多 LLM 支持** | DeepSeek / GLM / GPT / Qwen，统一 OpenAI 兼容协议，原生 function calling |
+| **模型路由 + 成本核算** | `RuleBasedLLMRouter` 按规则分流模型；`CostTracker` 统计 token 用量并发布成本事件 |
 | **感知层** | 文本/图像/音频多模态输入，预处理管道 + 深度语义解析 + 安全守卫 |
 | **反馈进化闭环** | 响应质量评估 → 进化信号 → 参数调优 / 组件热替换 / 回滚 |
 | **可观测性** | OpenTelemetry tracing + Prometheus metrics + 结构化日志 |
@@ -149,24 +151,25 @@ modu-agent/
 ├── vitest.config.ts          # 测试配置（含 .js→.ts 解析插件 + @/ 别名）
 ├── src/
 │   ├── index.ts              # 顶层统一导出（13 个子模块）
-│   ├── core/                 # 组件注册中心 + 11 类基础接口
-│   │   ├── index.ts          # 导出 16 个符号
+│   ├── core/                 # 组件注册中心 + 11 类基础接口 + 统一 LLM 接口
+│   │   ├── index.ts          # 导出 26 个符号（16 运行时 + 10 个 LLM 类型）
 │   │   ├── registry.ts       # ComponentRegistry 单例
 │   │   └── interfaces/       # action/feedback/memory/perception/reasoning/skill
+│   │       └── llm.ts        # ModuLLM / LLMMessage / LLMResult / LLMRouter 等统一抽象
 │   ├── config/               # RuntimeConfig + schemas（9 个 Schema + ValueError）
 │   ├── graph/                # LangGraph 状态图编排（核心）
 │   │   ├── state.ts          # ModuAgentState + Annotation（含 Plan-Execute 字段）
-│   │   ├── nodes.ts          # 21 个图节点函数与路由函数
+│   │   ├── nodes.ts          # 22 个图节点函数与路由函数
 │   │   ├── graph.ts          # buildModuGraph + ModuGraph wrapper（Proxy 委托）
 │   │   ├── factory.ts        # create_agent 异步配置化工厂
 │   │   ├── runner.ts         # 运行入口（stream/sync/resume + 缓存 + 热更新）
-│   │   ├── adapters/         # LLM/Tool/Store/EventBridge/MCP/Retry 适配器
+│   │   ├── adapters/         # LLM/ModuLLM/Tool/Store/EventBridge/MCP/Retry/限流/工具编排
 │   │   ├── subgraph/         # 多 Agent 协作子图（Supervisor + Subagent）
 │   │   └── plan-execute/     # Plan-and-Execute 子系统（P4，planner/dispatcher/context）
 │   ├── tools/                # 内置工具（8 个，4 个 requiresApproval=true）
 │   ├── memory/               # 短期记忆 + 长期记忆（Chroma）
 │   ├── perception/           # 感知管道 + 融合 + text/vision/audio/security
-│   ├── reasoning/            # LLM 推理器（DeepSeek/GLM/GPT/Qwen）+ symbolic（空实现）
+│   ├── reasoning/            # LLM 推理器（DeepSeek/GLM/GPT/Qwen）+ router/cost-tracker + symbolic（空实现）
 │   ├── mcp/                  # MCP Client/Discovery/Transport/Lifecycle/Errors（15 个导出）
 │   ├── feedback/             # FeedbackLoop/QualityMonitor/EvolutionSignal/Metrics
 │   ├── evolution/            # Orchestrator/ParameterTune/ComponentSwap/Rollback/VersionedStore
@@ -176,6 +179,16 @@ modu-agent/
 └── tests/                    # vitest 测试（对应 src 各模块）
 ```
 
+### 3.1 代码规模（实测）
+
+| 指标 | 数值 |
+|------|------|
+| `src/` TypeScript 文件数 | **124** |
+| 顶层模块目录数 | **13**（core / config / graph / tools / memory / perception / reasoning / mcp / feedback / evolution / observability / orchestration / skills） |
+| 其中 `graph/` 文件数 | **29**（含 adapters / subgraph / plan-execute 三个子目录） |
+
+> 各模块文件数与行数会随迭代变化，本表为撰写时实测快照，仅用于把握量级。
+
 ---
 
 ## 4. 模块详解
@@ -184,7 +197,11 @@ modu-agent/
 
 **职责**: 定义所有组件的抽象接口，提供全局组件注册中心，支持运行时热替换。
 
-[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/index.ts) 导出 **16 个符号**：11 个接口抽象基类 + `ComponentRegistry` + `getRegistry` / `resetRegistry` / `overrideRegistry` + `setSkillToolWrapperFactory`。
+[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/index.ts) 导出 **26 个符号**：
+
+- **11 个接口抽象基类**：`BaseActionExecutor` / `BaseTool` / `BaseFeedbackLoop` / `BaseEvolutionSignal` / `BaseMemory` / `BaseStorageAdapter` / `BasePerception` / `BaseSensor` / `BaseReasoningEngine` / `BaseReasoningStrategy` / `BaseSkill`
+- **5 个注册中心工具**：`ComponentRegistry` / `getRegistry` / `resetRegistry` / `overrideRegistry` / `setSkillToolWrapperFactory`
+- **10 个统一 LLM 接口类型**（`interfaces/llm.ts`，纯 `export type`）：`LLMMessageRole` / `LLMToolCall` / `LLMMessage` / `LLMUsage` / `LLMResult` / `LLMInvokeOptions` / `LLMRetryOptions` / `ModuLLM` / `LLMRouteContext` / `LLMRouter`
 
 #### ComponentRegistry
 
@@ -260,12 +277,22 @@ modu-agent/
 ```
 llm:        default_provider=deepseek, temperature=0.7, max_tokens=512,
             max_reasoning_iterations=3, max_format_retries=2, retry.max_attempts=2
+            cost_tracking: { enabled=true }              # 统一 LLM 层成本核算开关
+                                                         # 启用后 invoke() 发布 EventDomain.LLM + EventAction.COST
+            router: { enabled=false, default_route=default, routes={...} }
+                                                         # RuleBasedLLMRouter：按 rules 顺序匹配，首个命中胜出
+                                                         # 启用后 create_agent 将 LLM 包装为 LLMRouter
 memory:     default_strategy=cache, context_window=last_5_turns,
             checkpointer_type=memory, store_type=chroma, chroma_persist_path=null
 orchestration: engine=langgraph
             multi_agent: { enabled=false, max_subagents=5, consensus_strategy=majority_vote,
                           consensus_quorum=2, subgraph_timeout_ms=30000,
                           consensus_failure_as_evolution_signal=true }
+            mode_router: [                               # 路由分叉配置化，按序匹配首个命中胜出
+              { when:{config_key:'orchestration.multi_agent.enabled', config_value:true}, route:'supervisor' },
+              { when:{configurable_key:'plan_execute_enabled', configurable_value:true}, route:'planner' },
+              { when:{config_key:'plan_execute.enabled', config_value:true}, route:'planner' },
+            ]                                            # 无命中则回退内置默认优先级 → agent
 plan_execute: { enabled=false, max_steps=10, max_replans=2, planner_temperature=0.2,
                 continue_on_failure=false, compact_completed_steps=false,
                 step_summary_max_chars=500 }      # P4，与 multi_agent 互斥
@@ -316,7 +343,19 @@ mcp:        enabled=false, default_timeout=30.0, servers=[]
 
 **职责**: 系统的核心编排层，将主流程构建为 LangGraph `StateGraph`。
 
-[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/index.ts) 导出：state（4）/ nodes（21）/ graph（2: `ModuGraph` + `buildModuGraph`）/ factory（5）/ runner（9）+ 子包 `adapters` / `subgraph` / `plan-execute`。
+[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/index.ts) 导出分布：
+
+| 来源 | 数量 | 符号 |
+|------|------|------|
+| `state.ts` | 10 | 6 个类型（`ModuAgentState` / `CoreState` / `HITLModeState` / `MultiAgentModeState` / `PlanExecuteModeState` / `FeedbackModeState`）+ `ModuAgentStateAnnotation` / `makeInitialState` / `mergeSubtaskResults` / `STATE_SCHEMA_VERSION` / `migrate_state` |
+| `nodes.ts` | 22 | 见下方节点表（18 节点/辅助 + 4 路由） |
+| `graph.ts` | 3 | `ModuGraph` / `buildModuGraph` / `ModuGraphInterface`（类型） |
+| `factory.ts` | 7 | `create_agent` / `build_checkpointer` / `build_store` / `_build_judge_llm` / **`_build_modu_llm`** / **`_build_llm_router`** / `_discover_and_register_mcp_tools` |
+| `runner.ts` | 11 | `stream_response` / `run_sync` / `get_runner` / `reset_runner_cache` / `process_request_compat` / `stream_request_compat` / `resume_sync` / `resume_stream` / `get_interrupt_state` / `checkInterruptTimeout` / `sweepExpiredInterrupts` |
+| 子包 | `export *` | `adapters/` / `subgraph/` / `plan-execute/` |
+
+> `_build_modu_llm` 与 `_build_llm_router` 为统一 LLM 接口层的装配入口：前者把 ChatModel 包装为 `ModuLLM`，
+> 后者在 `llm.router.enabled=true` 时构建 `RuleBasedLLMRouter`。
 
 #### State（状态定义）
 
@@ -347,7 +386,7 @@ reducer 三类：`messagesStateReducer`（messages）、`mergeSubtaskResults`（
 
 #### Nodes（节点函数）
 
-[nodes.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) — 21 个导出符号：
+[nodes.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) — 22 个导出符号（18 个节点/辅助函数 + 4 个路由函数）：
 
 | 节点/函数 | 说明 |
 |-----------|------|
@@ -370,7 +409,12 @@ reducer 三类：`messagesStateReducer`（messages）、`mergeSubtaskResults`（
 - `routeAfterPerception` — 敏感度熔断（`sensitivity_level >= threshold`） / 注入检测（`block_on_injection`） / PII 阻断（`block_on_pii`） → END
 - `routeAfterAgent` — 有 tool_calls → tools；P4 `plan_phase==='executing'` → step_finalize；否则 → END
 - `routeAfterHumanReview` — rejected/error → finalize_response；其他 → tools
-- `routeAfterMemoryQuery(state, config?)` — 四路分流：multi_agent → supervisor；`configurable.plan_execute_enabled===true` → planner；`plan_execute.enabled` → planner；否则 → agent（第二参数 `RunnableConfig` 支持 per-request 注入）
+- `routeAfterMemoryQuery(state, config?)` — 由 `mode_router` 配置驱动的分流：按 `orchestration.mode_router` 规则数组顺序匹配，首个命中者胜出；无命中时回退内置优先级（multi_agent → supervisor；`configurable.plan_execute_enabled===true` → planner；`plan_execute.enabled` → planner；否则 → agent）。第二参数 `RunnableConfig` 支持 per-request 注入
+
+> **配置化路由**：`mode_router` 默认规则见 `config/runtime-config.ts`，形如
+> `{ when: { config_key: 'orchestration.multi_agent.enabled', config_value: true }, route: 'supervisor' }`。
+> 支持 `config_key`（读 RuntimeConfig）与 `configurable_key`（读 RunnableConfig.configurable）两种条件源，
+> 运行时新增模式只需追加规则，无需改源码。
 
 #### Graph（图构建）
 
@@ -448,7 +492,7 @@ async create_agent(config?, runtimeConfig?, systemPrompt?): Promise<ModuGraph>
 
 #### Adapters（适配器层）
 
-[adapters/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/index.ts) 导出 7 项：`LangGraphEventBridge` / `build_chat_model` + `build_conservative_chat_model` / `MCPToolAdapter` / `with_tool_retry` + `apply_llm_retry` / `ChromaStore` + `InMemoryStoreAdapter` / `wrap_modu_tool` + `build_langchain_tools`。
+[adapters/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/index.ts) 导出 **9 组**符号：`LangGraphEventBridge` / `build_chat_model` + `build_conservative_chat_model` / `MCPToolAdapter` / **`ModuLLMAdapter` + `wrap_chat_model_as_modu`** / **`ToolRateLimiter` + `get_tool_rate_limiter` + `_reset_tool_rate_limiter_for_test`** / `with_tool_retry` + `apply_llm_retry` / `ChromaStore` + `InMemoryStoreAdapter` / `wrap_modu_tool` + `build_langchain_tools` / **工具编排（`hasDependency` + `planExecution` + `parseToolCalls` + `shouldOrchestrate` + `formatExecutionPlan` + 3 个类型）**。
 
 | 适配器 | 文件 | 职责 |
 |--------|------|------|
@@ -459,6 +503,9 @@ async create_agent(config?, runtimeConfig?, systemPrompt?): Promise<ModuGraph>
 | `LangGraphEventBridge` | [event-bridge.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/event-bridge.ts) | LangGraph stream 事件 → EventBus + SSE 细粒度事件 |
 | `MCPToolAdapter` | [mcp-tool-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts) | MCP 工具 → ModuAgent `BaseTool`（`name()` 返回 `qualifiedName`，`description()` 带 `[MCP:server]` 前缀） |
 | `with_tool_retry(func, toolName, config)` / `apply_llm_retry(llm, config)` | [retry.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/retry.ts) | 指数退避重试（`isRetryableException` 判定 HTTP 429/5xx、Node 错误码、timeout 等） |
+| `ModuLLMAdapter` / `wrap_chat_model_as_modu(chatModel)` | [modu-llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts) | 将 LangChain ChatModel 包装为统一 `ModuLLM` 接口（`invoke` / `stream` / `bindTools`），消除与 `BaseLLMReasoner` 的双轨抽象 |
+| `ToolRateLimiter` / `get_tool_rate_limiter()` / `_reset_tool_rate_limiter_for_test()` | [rate-limiter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts) | 工具级调用限流（进程内单例），防止高频外部调用击穿配额 |
+| `planExecution` / `parseToolCalls` / `hasDependency` / `shouldOrchestrate` / `formatExecutionPlan` | [tool-orchestrator.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-orchestrator.ts) | 动态工具编排：分析工具调用间依赖，切分为可并行的 `ExecutionGroup`，生成 `ExecutionPlan` |
 
 **Provider 环境变量映射**（`_PROVIDER_CONFIG`）：
 
@@ -617,9 +664,15 @@ apiKey 解析优先级：`process.env[pcfg.api_key] || process.env.LLM_API_KEY |
 
 ### 4.7 reasoning — 推理层
 
-**职责**: LLM 推理引擎实现（直接调用 OpenAI 兼容 API，基于原生 `fetch`）。
+**职责**: LLM 推理引擎实现（直接调用 OpenAI 兼容 API，基于原生 `fetch`），并提供**模型路由**与**成本核算**两项横切能力。
 
-[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/index.ts) 导出：`BaseLLMReasoner` / `DeepSeekLLMReasoner` / `GLMLLMReasoner` / `GPTLLMReasoner` / `QwenLLMReasoner`（**不导出 symbolic 模块**）。
+[index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/index.ts) 导出：
+
+- **推理器**：`BaseLLMReasoner` / `DeepSeekLLMReasoner` / `GLMLLMReasoner` / `GPTLLMReasoner` / `QwenLLMReasoner`
+- **模型路由**：`RuleBasedLLMRouter` 及其配套类型（[llm/router.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/router.ts)）
+- **成本核算**：`CostTracker` 及其配套类型（[llm/cost-tracker.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/cost-tracker.ts)）
+
+（**不导出 symbolic 模块**）
 
 #### 类层次
 
@@ -648,13 +701,60 @@ BaseReasoningEngine (abstract, core/interfaces/reasoning.ts)
 | `GPTLLMReasoner` | [gpt.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/gpt.ts) | `https://api.openai.com/v1` | `gpt-4o-mini` | `OPENAI_*` > `LLM_*` |
 | `QwenLLMReasoner` | [qwen.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/qwen.ts) | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | `MODU_QWEN_*` > `LLM_*` |
 
+#### 统一 LLM 接口层（`core/interfaces/llm.ts`）
+
+为屏蔽底层 SDK 差异（LangChain `ChatOpenAI` vs 原生 `fetch` Reasoner），项目定义了与框架无关的 `ModuLLM` 抽象：
+
+| 类型 | 说明 |
+|------|------|
+| `LLMMessageRole` | 消息角色联合类型（`system` / `user` / `assistant` / `tool`） |
+| `LLMMessage` | 统一消息结构，携带 `role` / `content` / 可选 `tool_calls` / `tool_call_id` |
+| `LLMToolCall` | 统一工具调用结构（`id` / `name` / `args`） |
+| `LLMUsage` | token 用量（`prompt_tokens` / `completion_tokens` / `total_tokens`） |
+| `LLMResult` | 统一返回结构（`content` / `tool_calls` / `usage` / `model`） |
+| `LLMInvokeOptions` | 单次调用参数（`temperature` / `max_tokens` / `tools` / `signal` 等） |
+| `LLMRetryOptions` | 重试策略参数 |
+| `ModuLLM` | **核心接口**：`invoke(messages, options?)` / `stream(messages, options?)` / `bindTools(tools)` |
+| `LLMRouteContext` | 路由决策上下文（供 `LLMRouter` 判断走哪个模型） |
+| `LLMRouter` | 路由接口：根据上下文选择具体 `ModuLLM` 实例 |
+
+**适配器**：[graph/adapters/modu-llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts) 导出 `ModuLLMAdapter` 与 `wrap_chat_model_as_modu()`，把 LangChain ChatModel 包装为 `ModuLLM`，使图内外共用同一抽象。
+
+#### 模型路由（`RuleBasedLLMRouter`）
+
+按 `orchestration`/`llm.router` 配置的 `rules` **顺序匹配，首个命中规则胜出**；无命中时回落 `default_route`。
+
+```jsonc
+// runtime-config.ts: llm.router
+{
+  "enabled": false,            // 默认关闭；启用后 create_agent 会把 LLM 包装为 LLMRouter
+  "default_route": "default",  // 兜底路由名
+  "routes": {                  // 路由名 → { provider, model, temperature?, max_tokens? }
+    "default": { "provider": "deepseek", "model": "deepseek-chat" }
+  }
+}
+```
+
+典型用途：简单问题走廉价小模型、复杂推理走大模型，从而在质量与成本间平衡。
+
+#### 成本核算（`CostTracker`）
+
+由 `llm.cost_tracking.enabled`（**默认 true**）控制。启用后，`invoke()` 会依据 token 用量与单价表估算费用，并发布 `EventDomain.LLM` + `EventAction.COST` 事件，供 observability 层采集与告警。
+
 #### Symbolic 推理（占位）
 
 [symbolic/rule-engine.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/symbolic/rule-engine.ts) —— **空文件**，仅含文件头注释，无任何导出。与 Python 源保持等价（Python 版同样为空）。后续如需符号推理可在该文件补充。`reasoning/index.ts` **不导出 symbolic 模块**。
 
 #### 与 LangGraph 的解耦关系
 
-`reasoning/` 模块**不直接接入** LangGraph 图节点；图内的 LLM 调用由 [graph/adapters/llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/llm-adapter.ts) 的 `build_chat_model()` 构建 `ChatOpenAI`（LangChain 抽象，仍走 OpenAI 兼容协议）。`reasoning/` 模块主要供：
+`reasoning/` 模块**不直接接入** LangGraph 图节点；图内的 LLM 调用由 [graph/adapters/llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/llm-adapter.ts) 的 `build_chat_model()` 构建 `ChatOpenAI`（LangChain 抽象，仍走 OpenAI 兼容协议）。
+
+> **双轨抽象的收敛**：历史上存在 `BaseLLMReasoner`（原生 fetch）与 `ChatOpenAI`（LangChain）两套并行抽象。
+> 现已引入 `ModuLLM` 统一接口作为收敛点——`ModuLLMAdapter` 把 ChatModel 包装成 `ModuLLM`，
+> 使路由（`LLMRouter`）与成本核算（`CostTracker`）等横切能力可同时作用于两条链路。
+> 但 `BaseLLMReasoner` 目前**尚未**实现 `ModuLLM` 接口，双轨收敛仍未完成（见 §9 技术债务）。
+
+`reasoning/` 模块主要供：
 - 直接代码层调用（不通过 LangGraph 的场景）
 - `perception/text/llm-parser.ts` 的 `LLMParser` 通过 `setLlmAdapter` 注入（解耦）
 - 测试与对照基准
@@ -1387,7 +1487,7 @@ finalize_response
 | 工具 | 防御层 |
 |------|--------|
 | `CalculatorTool` | 正则白名单 + 字符集合二次校验 + 手写递归下降解析器（非 `eval`） |
-| `CodeExecutionTool` | 源码白名单（`_FORBIDDEN_NAMES`/`_FORBIDDEN_ATTRS`）+ 子进程隔离（`-I` 模式）+ 超时 10s + 输出截断 4KB |
+| `CodeExecutorTool` | 源码白名单（`_FORBIDDEN_NAMES`/`_FORBIDDEN_ATTRS`）+ 子进程隔离（`-I` 模式）+ 超时 10s + 输出截断 4KB |
 | `FileOpsTool` | 路径校验（拒绝绝对路径/盘符/`..`/symlink 越界）+ read 截断 256KB |
 | `HttpRequestTool` | SSRF 防护（`_PRIVATE_CIDRS` + DNS 解析后检查）+ `redirect: 'manual'` + 域名白名单 |
 | `SqlQueryTool` | SQL 校验（必须 SELECT / 禁止 DDL/DML / 禁止多语句 / 禁止注释 / 表名白名单）+ `query_only = ON` |
@@ -1475,17 +1575,26 @@ finalize_response
 
 #### 9.1.2 消除 reasoning 与 graph/adapters 的能力重复
 
+> **进展（部分落地）**：已引入 `ModuLLM` 统一接口（`core/interfaces/llm.ts`）与 `ModuLLMAdapter`
+> （`graph/adapters/modu-llm-adapter.ts`）作为收敛点，路由与成本核算已可作用于统一抽象之上。
+> **但双轨仍未真正合并**——见下方"残留问题"。
+
 **现状问题**：存在两套 LLM 调用实现，维护成本高且行为可能漂移。
 
-| 实现 | 位置 | 协议 |
-|------|------|------|
-| `BaseLLMReasoner` | [reasoning/llm/base-llm.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) | 原生 `fetch` 调用 `/chat/completions` |
-| `build_chat_model` | [graph/adapters/llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/llm-adapter.ts) | `ChatOpenAI`（LangChain 抽象） |
+| 实现 | 位置 | 协议 | 是否实现 `ModuLLM` |
+|------|------|------|--------------------|
+| `BaseLLMReasoner` | [reasoning/llm/base-llm.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts) | 原生 `fetch` 调用 `/chat/completions` | ❌ 否 |
+| `build_chat_model` → `ModuLLMAdapter` | [graph/adapters/llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/llm-adapter.ts) / [modu-llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts) | `ChatOpenAI`（LangChain 抽象） | ✅ 是 |
 
 两者都走 OpenAI 兼容协议，但：环境变量解析逻辑重复（`_PROVIDER_CONFIG` vs 子类构造函数）、错误处理策略可能不一致、重试逻辑只在 `apply_llm_retry` 中存在。
 
+**残留问题**：
+
+1. `BaseLLMReasoner` 及其 4 个子类**尚未**实现 `ModuLLM`，因此 `LLMRouter` / `CostTracker` 对 `reasoning/` 直接调用链路**不生效**——成本统计存在盲区。
+2. Provider 环境变量解析仍有两处实现（`_PROVIDER_CONFIG` 与各 Reasoner 子类构造函数），默认 model / baseUrl 需人工保持同步。
+
 **建议**：
-- **方案 A（推荐）**：`BaseLLMReasoner` 内部委托 `build_chat_model` 构建的 `ChatOpenAI`，统一 LLM 调用入口；保留 `reasoning/` 作为面向直接调用的薄封装
+- **方案 A（推荐）**：让 `BaseLLMReasoner` 实现 `ModuLLM` 接口（或内部委托 `build_chat_model`），使两条链路统一收敛到 `ModuLLM`，路由与成本核算全覆盖
 - **方案 B**：若需保持 `reasoning/` 零 LangChain 依赖，则抽取共享的 provider 配置模块（`_PROVIDER_CONFIG` 提到 `config/` 中），确保两套实现的环境变量解析、默认值、错误码完全一致
 
 #### 9.1.3 清理占位空文件
@@ -1679,7 +1788,7 @@ finalize_response
 
 ### 9.4 安全层面（高优先级）
 
-#### 9.4.1 CodeExecutionTool 的 Python 依赖
+#### 9.4.1 CodeExecutorTool 的 Python 依赖
 
 **现状问题**：[tools/code-executor.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/tools/code-executor.ts) 通过 `execFileAsync` 调用 Python 子进程，假设运行环境已安装 Python。若 Python 未安装或版本不符，错误信息可能不友好。
 
@@ -1870,7 +1979,7 @@ setInterval(async () => {
 | 9.4.1 CodeExecution Python 探测 | 高 | 安全可用 | 低 | 待实施 |
 | 9.4.3 HITL 超时机制 | 高 | 生产稳定性 | 中 | ✅ 已实现（2026-07-24） |
 | 9.3.1 类型严格度 | 高 | 代码质量 | 中 | ✅ 已实现（2026-07-24） |
-| 9.1.2 消除 LLM 调用重复 | 高 | 维护成本 | 高 | 待实施 |
+| 9.1.2 消除 LLM 调用重复 | 高 | 维护成本 | 高 | ⚠️ 部分落地（已引入 `ModuLLM`/`ModuLLMAdapter`，`BaseLLMReasoner` 未接入） |
 | 9.2.1 feedback 异步边界 | 中 | 稳定性 | 低 | 待实施 |
 | 9.2.4 EventBus 背压 | 中 | 性能 | 中 | 待实施 |
 | 9.3.2 测试覆盖 | 中 | 质量保障 | 中 | 待实施 |
@@ -1881,7 +1990,10 @@ setInterval(async () => {
 | 9.1.3 清理空文件 | 低 | 整洁度 | 极低 | 待实施 |
 | 9.1.4 Proxy 类型安全 | 低 | 类型质量 | 中 | ✅ 已实现（2026-07-24） |
 
-**建议落地顺序**：先做低难度高收益项（9.1.1、9.4.1、9.3.4、9.1.3），再处理中难度项（9.2.1、9.3.2、9.4.2），最后推进高难度架构项（9.1.2、9.1.4）。
+| 9.1.5 `BaseLLMReasoner` 接入 `ModuLLM` | 高 | 成本可观测 | 中 | 待实施 |
+| 9.1.6 `llm.router` 默认关闭 | 中 | 成本优化 | 低 | 待实施（能力已就绪，未默认启用） |
+
+**建议落地顺序**：先做低难度高收益项（9.4.1、9.3.4、9.1.3、9.1.6），再处理中难度项（9.1.5、9.2.1、9.3.2、9.4.2），最后推进高难度架构项（9.1.2）。
 
 **已落地项（2026-07-24）**：
 - ✅ 9.1.1 `perception/index.ts` 补齐 barrel 导出（runPerceptionPipeline / PerceptionFusion / SecurityGuard 等 12 个符号）
@@ -1897,11 +2009,50 @@ setInterval(async () => {
 本文档基于 `packages/modu-agent/src/` 当前源码现状编写，与代码实际情况完全对齐。如代码结构发生变更，请同步更新本文档对应章节。
 
 **对应源码版本**：`@pioneering/modu-agent` 0.1.0
-**最后更新**：2026-07-24（同步 9.1.1 / 9.3.1 / 9.4.3 / 9.1.4 / 9.5.1 五项优化落地状态）
+**最后更新**：2026-08-06（同步统一 LLM 接口层 / 模型路由 / 成本核算 / 配置化路由等新增架构）
 
 ---
 
 ## 更新记录
+
+### 2026-08-06 统一 LLM 接口层与配置化路由同步
+
+基于对 `packages/modu-agent/src/` 全部 **124 个** TypeScript 源文件的深度复核，补充新增架构并修正文档漂移：
+
+**新增章节内容**：
+
+| # | 位置 | 补充内容 |
+|---|------|----------|
+| 1 | §1.2 核心特性 | 新增"统一 LLM 接口层"与"模型路由 + 成本核算"两行 |
+| 2 | §3.1 代码规模 | 新增实测快照表（124 个源文件 / 13 个模块 / graph 29 文件） |
+| 3 | §4.1 core | 导出符号从 16 → **26**，补充 `interfaces/llm.ts` 的 10 个 LLM 类型 |
+| 4 | §4.2 config | `DEFAULT_CONFIG` 补充 `llm.cost_tracking` / `llm.router` / `orchestration.mode_router` 三组新键 |
+| 5 | §4.3 graph/Adapters | 导出从 7 组 → **9 组**，新增 `ModuLLMAdapter` + `wrap_chat_model_as_modu`、`ToolRateLimiter` 系列、`tool-orchestrator` 工具编排 |
+| 6 | §4.7 reasoning | 新增"统一 LLM 接口层""模型路由（`RuleBasedLLMRouter`）""成本核算（`CostTracker`）"三个小节 |
+
+**修正的文档漂移**：
+
+| # | 位置 | 问题描述 | 修正内容 |
+|---|------|----------|----------|
+| 1 | §3 目录结构 / §4.3 | `nodes.ts` 声称 "21 个导出符号"，实际为 22 个 | 修正为 **22 个**（18 节点/辅助函数 + 4 路由函数） |
+| 2 | §9.4.1 / §8 对照表 | 工具类名误写为 `CodeExecutionTool` | 修正为实际类名 **`CodeExecutorTool`** |
+| 3 | §4.3 `routeAfterMemoryQuery` | 描述为硬编码四路分流，实际已由 `mode_router` 配置驱动 | 改写为"配置化路由 + 内置优先级回退"，并附默认规则说明 |
+| 4 | §9.1.2 消除 LLM 调用重复 | 状态标记为"待实施"，未反映 `ModuLLM` 已落地 | 改为 **⚠️ 部分落地**，补充"残留问题"（`BaseLLMReasoner` 未接入 `ModuLLM`，成本统计存在盲区） |
+| 5 | §4.3 `graph/index.ts` 导出分布 | 计数全面过时：state 4 / nodes 21 / graph 2 / factory 5 / runner 9 | 修正为 **state 10 / nodes 22 / graph 3 / factory 7 / runner 11**，并改为表格逐符号列出；新增 `_build_modu_llm`、`_build_llm_router` 两个装配入口说明 |
+
+**新增技术债务条目**：
+
+- **9.1.5** `BaseLLMReasoner` 接入 `ModuLLM` —— 使 `LLMRouter` / `CostTracker` 覆盖 `reasoning/` 直接调用链路，消除成本统计盲区（高优先级 / 中难度）
+- **9.1.6** `llm.router` 默认关闭 —— 路由能力已就绪但 `enabled=false`，尚未产生实际成本收益（中优先级 / 低难度）
+
+**校验通过项**（复核后确认与代码一致，无需修改）：
+
+- `tools/index.ts` 8 个工具 + 4 个 `requiresApproval=true` — 一致
+- `AGUIEventType` 枚举 20 种事件类型 — 一致
+- `reasoning/symbolic/rule-engine.ts` 为空文件（仅文件头注释，无导出）— 一致
+- `ComponentRegistry` 管理 11 类组件 Map — 一致
+- 顶层 `index.ts` 13 条 `export *` — 一致
+- §4.3 三种执行模式互斥逻辑（`multi_agent` 优先，强制关闭 `plan_execute`）— 一致
 
 ### 2026-07-24 文档与代码对齐校准
 
@@ -1920,6 +2071,7 @@ setInterval(async () => {
 - §2.1 `ComponentRegistry · 11 类基础接口` — registry.ts 实际管理 11 个 `Map`（reasoningEngines/reasoningStrategies/actionExecutors/tools/memories/storageAdapters/perceptions/sensors/feedbackLoops/evolutionSignals/skills），一致
 - §3 顶层 `index.ts` "13 个子模块" — 实际 13 条 `export *` 语句，一致
 - §4.3 graph/index.ts 导出分布（state 4 / nodes 21 / graph 2 / factory 5 / runner 9）— 逐项核对一致
+  > ⚠️ 该结论已于 2026-08-06 复核失效，实际为 state 10 / nodes 22 / graph 3 / factory 7 / runner 11，详见下方更新记录。
 - §4.4 tools/index.ts "8 个工具" + "4 个 requiresApproval=true" — 一致
 - §4.6 SecurityGuard "14 条越狱正则 + 5 种 PII 类型" — 一致
 - §4.8 mcp "15 个导出" — 一致（4+2+3+1+5=15）
