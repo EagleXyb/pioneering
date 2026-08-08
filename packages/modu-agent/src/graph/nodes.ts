@@ -133,15 +133,41 @@ function _buildPerceptionResult(
   fused: Record<string, any> | null,
   prompt: string,
 ): Partial<ModuAgentState> {
+  // 文档生成意图检测：更灵活的关键词匹配，覆盖"整理xxx成文档"、"帮我xxx成文档"等语序
+  // 策略：核心词匹配 + 文档目标词匹配
+  const docActionWords = [
+    '整理', '生成', '写', '创建', '制作', '编写', '撰写', '总结', '汇总', '输出',
+    '导出', '记录', '保存为', '保存成', '整理成', '生成一份', '写一份', '做一份',
+    'generate', 'create', 'write', 'summarize', 'save', 'output',
+  ]
+  const docTargetWords = [
+    // 注意：目标词不应包含「总结/汇总」等动作词——否则"总结今天的新闻"这类
+    // 纯摘要任务会因动作词∩目标词误判为文档生成，触发 doc_writer 强制回退。
+    // 真正的文档生成任务仍由「成文档」紧耦合短语或「文档/报告/文件」等目标词命中。
+    '文档', '报告', '日报', '周报', '月报', '.md', 'markdown',
+    '文件', '纪要', '方案', '计划书', '分析报告', '文档形式',
+    'document', 'report', 'file',
+  ]
+  const promptLower = prompt.toLowerCase()
+  const hasDocAction = docActionWords.some(kw => promptLower.includes(kw.toLowerCase()))
+  const hasDocTarget = docTargetWords.some(kw => promptLower.includes(kw.toLowerCase()))
+  // 同时包含动作词和目标词 → 文档生成意图
+  // 或者包含明确的"成文档"/"成报告"/"成.md"短语（动作+目标紧耦合）
+  const tightDocPhrases = ['成文档', '成报告', '成日报', '成周报', '成文件', '成.md', '成markdown', '成doc']
+  const hasTightPhrase = tightDocPhrases.some(p => promptLower.includes(p))
+  const isDocGenIntent = (hasDocAction && hasDocTarget) || hasTightPhrase
+
   if (!fused) {
     return {
-      perception_result: null,
+      perception_result: isDocGenIntent ? { metadata: { document_generation: true } } : null,
       cleaned_text: prompt,
       sensitivity_level: 0,
       confidence: 1.0,
       detected_language: null,
       injection_detected: false,
       pii_detected: false,
+      task_type: isDocGenIntent ? 'document_generation' : null,
+      doc_writer_enforcement_count: 0,
     }
   }
 
@@ -152,6 +178,9 @@ function _buildPerceptionResult(
   }
 
   const meta = fused['metadata'] ?? {}
+  if (isDocGenIntent) {
+    meta['document_generation'] = true
+  }
   const detectedLevel = meta['sensitivity_level'] ?? 0
   const confidence = fused['confidence'] ?? 1.0
   const injectionDetected = meta['injection_detected'] ?? false
@@ -166,6 +195,8 @@ function _buildPerceptionResult(
     detected_language: detectedLanguage,
     injection_detected: injectionDetected,
     pii_detected: piiDetected,
+    task_type: isDocGenIntent ? 'document_generation' : null,
+    doc_writer_enforcement_count: 0,
   }
 }
 
@@ -519,6 +550,24 @@ export function routeAfterAgent(state: ModuAgentState): string {
     return 'step_finalize'
   }
 
+  // 文档生成强制约束：检测到文档生成任务但尚未调用 doc_writer → 路由到强制节点
+  // 防止 LLM 忽略提示词规则，搜索后直接输出文本而不写文件
+  if (_shouldEnforceDocWriter(state)) {
+    const enforcementCount = state.doc_writer_enforcement_count ?? 0
+    if (enforcementCount < 2) {
+      logger.warning(
+        '[doc-gen-enforce] Document generation task detected but doc_writer not called yet (enforcement #%d). Routing to enforce node.',
+        enforcementCount + 1,
+      )
+      return 'doc_gen_enforce'
+    }
+    // 超过最大强制次数，放行（避免无限循环）
+    logger.warning(
+      '[doc-gen-enforce] Max enforcement count reached (%d). Allowing termination without doc_writer.',
+      enforcementCount,
+    )
+  }
+
   // P2 兜底检测: 承诺词 + 已有 ToolMessage → 可能提前终止
   // 不改变路由,仅打 warning 便于追踪
   _detectPrematureTermination(messages, lastMsg)
@@ -578,6 +627,64 @@ function _detectPrematureTermination(
       '可能发生"承诺但未执行"的提前终止。建议加强 P0 提示词约束。',
       matched,
     )
+  }
+}
+
+/**
+ * 检测文档生成任务是否需要强制回退（尚未调用 doc_writer）。
+ *
+ * 判定条件：
+ *   1. state.task_type === 'document_generation'
+ *   2. 消息历史中没有 name === 'doc_writer' 的 ToolMessage（即从未成功调用过 doc_writer）
+ *   3. state.artifacts 为空（没有已生成的产物）
+ */
+function _shouldEnforceDocWriter(state: ModuAgentState): boolean {
+  if (state.task_type !== 'document_generation') return false
+
+  // 检查是否已有 doc_writer 工具消息（已调用过 doc_writer）
+  const messages = state.messages ?? []
+  for (const msg of messages) {
+    if (msg instanceof ToolMessage && msg.name === 'doc_writer') {
+      return false
+    }
+  }
+
+  // 检查 artifacts 中是否已有文档产物（容错）
+  const artifacts = state.artifacts ?? []
+  if (artifacts.some(a => a && a['tool'] === 'doc_writer')) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * 文档生成强制回退节点。
+ *
+ * 当 routeAfterAgent 检测到文档生成任务但 LLM 未调用 doc_writer 就尝试结束时，
+ * 路由到此节点。此节点注入一条强提醒 SystemMessage，要求 LLM 必须调用 doc_writer，
+ * 然后回到 agent 节点继续推理。
+ *
+ * 通过 doc_writer_enforcement_count 限制最多强制 2 次，防止无限循环。
+ */
+export function docGenEnforceNode(state: ModuAgentState): Partial<ModuAgentState> {
+  const enforcementCount = (state.doc_writer_enforcement_count ?? 0) + 1
+  const isFirstEnforcement = enforcementCount === 1
+
+  const reminderContent = isFirstEnforcement
+    ? `CRITICAL REMINDER: The user asked you to generate a document/report/file, but you have not yet called the doc_writer tool. ` +
+      `You MUST call the doc_writer tool NOW to create the document. ` +
+      `Do NOT end your response with just text — you must call doc_writer with the document content. ` +
+      `Use auto_name=true and provide a descriptive title. The content should be a well-structured Markdown document.`
+    : `FINAL REMINDER: This is your last chance. You MUST call the doc_writer tool to complete the document generation task. ` +
+      `If you produce a final text response without calling doc_writer, the task will be considered incomplete. ` +
+      `Call doc_writer NOW with the complete Markdown content.`
+
+  const reminderMsg = new SystemMessage({ content: reminderContent })
+
+  return {
+    messages: [reminderMsg],
+    doc_writer_enforcement_count: 1,
   }
 }
 
@@ -695,6 +802,22 @@ export function makeAgentNode(
         const insertIdx = effectiveSystemPrompt ? 1 : 0
         messages.splice(insertIdx, 0, ctxMsg)
       }
+    }
+
+    // 注入任务类型上下文（文档生成任务专用强提醒）
+    if (state.task_type === 'document_generation') {
+      const docGenCtx = new SystemMessage({
+        content:
+          `TASK TYPE: document_generation\n\n` +
+          `This is a DOCUMENT GENERATION task. You MUST:\n` +
+          `1. First gather necessary information (e.g., call search_engine, datetime as needed)\n` +
+          `2. Then organize the information into a well-structured Markdown document\n` +
+          `3. Call the doc_writer tool with auto_name=true, a descriptive title, and the full Markdown content\n` +
+          `4. After doc_writer succeeds, produce a final response following the document delivery format\n` +
+          `Do NOT end the conversation without calling doc_writer. The doc_writer tool is your document output channel.`,
+      })
+      const insertIdx = effectiveSystemPrompt ? 1 : 0
+      messages.splice(insertIdx + 1, 0, docGenCtx)
     }
 
     // 注入长期知识
@@ -942,6 +1065,8 @@ export function makeToolResultProcessor(
     const toolResults: Array<Record<string, any>> = [...(state.tool_results ?? [])]
     // P0-3: 收集蒸馏后的 Observation 历史，写入 state.observation_history
     const observationHistoryEntries: Array<Record<string, any>> = []
+    // Artifact 产物收集：检测 doc_writer / file_ops write 成功结果
+    const newArtifacts: Array<Record<string, any>> = []
 
     for (const msg of messages) {
       // v1.2 §4.3 建议10：使用 instanceof 替代 (msg as any)._getType() 反射，
@@ -1004,6 +1129,29 @@ export function makeToolResultProcessor(
             )
           }
         }
+
+        // Artifact 产物收集：检测 doc_writer 成功结果
+        if (toolName === 'doc_writer' &&
+            typeof parsedContent === 'object' && parsedContent !== null &&
+            parsedContent['status'] === 'success') {
+          const artifactData = parsedContent['data'] ?? {}
+          if (artifactData['name'] && artifactData['path']) {
+            newArtifacts.push({
+              id: toolCallId,
+              name: artifactData['name'],
+              path: artifactData['path'],
+              absolute_path: artifactData['absolute_path'] ?? '',
+              size: artifactData['size'] ?? 0,
+              format: artifactData['format'] ?? 'md',
+              type: 'document',
+              operation: artifactData['operation'] ?? 'create',
+              summary: artifactData['summary'] ?? '',
+              title: artifactData['title'] ?? '',
+              tool: toolName,
+              created_at: Date.now(),
+            })
+          }
+        }
       }
     }
 
@@ -1015,6 +1163,9 @@ export function makeToolResultProcessor(
     const update: Partial<ModuAgentState> = { tool_results: toolResults }
     if (observationHistoryEntries.length > 0) {
       update.observation_history = observationHistoryEntries
+    }
+    if (newArtifacts.length > 0) {
+      update.artifacts = newArtifacts
     }
     return update
   }
@@ -1065,6 +1216,7 @@ export function responseNode(
       error_code: errorCode,
       error_message: state.error_message ?? '',
       tool_results: toolResults,
+      artifacts: state.artifacts ?? [],
       usage,
     }
   }
@@ -1072,6 +1224,7 @@ export function responseNode(
   return {
     response,
     tool_results: toolResults,
+    artifacts: state.artifacts ?? [],
     usage,
     error_code: '',
     error_message: '',

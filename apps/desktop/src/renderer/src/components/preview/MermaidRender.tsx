@@ -44,7 +44,11 @@ export function MermaidRender({ content }: MermaidRenderProps) {
           // 预览面板为白色底（与 ArtifactRender iframe 分支一致），用 neutral 主题
           theme: 'neutral'
         })
-        const { svg } = await mermaid.render(`mermaid-preview-${++mermaidIdSeq}`, content)
+        const renderResult = (await mermaid.render(`mermaid-preview-${++mermaidIdSeq}`, content)) as
+          | string
+          | { svg?: string }
+        // mermaid 不同版本返回结构不同：v11 返回 { svg }，旧版直接返回 SVG 字符串，两者兼容处理
+        const svg = typeof renderResult === 'string' ? renderResult : (renderResult.svg ?? '')
         if (cancelled) return
         if (containerRef.current) {
           containerRef.current.innerHTML = svg

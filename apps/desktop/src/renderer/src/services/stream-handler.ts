@@ -7,7 +7,7 @@
 // 保证 MessageBubble 现有扁平渲染不破坏。
 // ============================================================
 
-import type { ToolCall, TraceNode, TraceNodeStatus } from '@shared/types'
+import type { Attachment, ToolCall, TraceNode, TraceNodeStatus } from '@shared/types'
 import type { AguiStreamCallbacks } from './api/agui'
 
 export interface StreamFinalMeta {
@@ -31,6 +31,7 @@ export interface StreamHandlerOptions {
     // M1: Trace 树快照（不可变引用，每次 flush 重建）
     traceNodes: Record<string, TraceNode>
     traceRootOrder: string[]
+    attachments: Attachment[]
   }) => void
   onDone: (final: {
     msgId: string
@@ -39,6 +40,7 @@ export interface StreamHandlerOptions {
     toolCalls: ToolCall[]
     traceNodes: Record<string, TraceNode>
     traceRootOrder: string[]
+    attachments: Attachment[]
     meta: StreamFinalMeta
   }) => void
   onError: (error: string, partial: {
@@ -47,6 +49,7 @@ export interface StreamHandlerOptions {
     toolCalls: ToolCall[]
     traceNodes: Record<string, TraceNode>
     traceRootOrder: string[]
+    attachments: Attachment[]
   }) => void
 }
 
@@ -83,6 +86,11 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
   // text 节点延迟创建（第一条 content 到达时才加入，避免空回答也显示"最终回答"节点）
   let textNodeCreated = false
   let thinkingNodeCreated = false
+
+  // Artifact 附件（doc_writer 产物）
+  const liveAttachments: Attachment[] = []
+  // Plan-step 节点计数（用于生成唯一 id）
+  let planStepCounter = 0
 
   const thinkingNodeId = makeThinkingNodeId(assistantMsgId)
   const textNodeId = makeTextNodeId(assistantMsgId)
@@ -267,7 +275,8 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
         thinkingDelta: thinking,
         toolCalls: liveToolCalls.slice(),
         traceNodes: nodes,
-        traceRootOrder: roots
+        traceRootOrder: roots,
+        attachments: liveAttachments.slice()
       })
     })
   }
@@ -331,6 +340,7 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
       toolCalls: getToolCalls(),
       traceNodes: nodes,
       traceRootOrder: roots,
+      attachments: liveAttachments.slice(),
       meta
     })
   }
@@ -368,7 +378,8 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
       thinking: thinking || undefined,
       toolCalls: getToolCalls(),
       traceNodes: nodes,
-      traceRootOrder: roots
+      traceRootOrder: roots,
+      attachments: liveAttachments.slice()
     })
   }
 
@@ -457,6 +468,62 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
         upsertToolCallStart(id, name)
       }
       finishToolCall(id, result ?? '', finalStatus, errorMessage, toolArgs)
+      scheduleFlush()
+    },
+
+    onArtifactCreated: (artifact) => {
+      if (isStale()) return
+      resetIdleTimer()
+      // 将 artifact 转为 Attachment
+      const mediaType = artifact.format === 'md' ? 'text/markdown' : 'application/octet-stream'
+      liveAttachments.push({
+        id: artifact.artifactId,
+        name: artifact.name,
+        mediaType,
+        filePath: artifact.absolutePath || artifact.path,
+        size: artifact.size,
+      })
+      scheduleFlush()
+    },
+
+    onStateDelta: (delta) => {
+      if (isStale()) return
+      resetIdleTimer()
+      // P1-9/P1-10: Plan-and-Execute 步骤转为 plan-step TraceNode
+      if (delta.phase === 'plan' && delta.plan) {
+        // 收到完整计划，为每个 step 创建 plan-step 节点
+        for (const step of delta.plan) {
+          const stepId = `${assistantMsgId}::plan-step-${++planStepCounter}`
+          const description = (step as Record<string, unknown>).description as string || (step as Record<string, unknown>).task as string || `步骤 ${planStepCounter}`
+          traceNodes.set(stepId, {
+            id: stepId,
+            kind: 'plan-step',
+            label: description,
+            status: 'pending',
+            parentId: null,
+            children: [],
+            content: description,
+            startTime: Date.now(),
+          })
+          traceRootOrder.push(stepId)
+        }
+      } else if (delta.stepUpdate) {
+        // 步骤状态变更，更新对应 plan-step 节点状态
+        const update = delta.stepUpdate
+        const stepIdx = (update.index as number) ?? -1
+        const stepStatus = (update.status as string) ?? 'running'
+        if (stepIdx >= 0) {
+          const stepId = `${assistantMsgId}::plan-step-${stepIdx + 1}`
+          const n = traceNodes.get(stepId)
+          if (n) {
+            n.status = stepStatus === 'completed' ? 'completed' : stepStatus === 'error' ? 'error' : 'running'
+            if (n.status === 'completed' || n.status === 'error') {
+              n.endTime = Date.now()
+              if (n.startTime) n.durationMs = n.endTime - n.startTime
+            }
+          }
+        }
+      }
       scheduleFlush()
     },
 

@@ -186,7 +186,7 @@ export interface ToolCall {
 // ---- Trace 树（M1 新增）----
 // 将 thinking/tool-call/observation/text 等流式事件归一化为树形节点，
 // 替代扁平的 thinking + toolCalls[] 模型，支持折叠状态、耗时、嵌套层级。
-export type TraceNodeKind = 'thinking' | 'tool-call' | 'observation' | 'text' | 'error'
+export type TraceNodeKind = 'thinking' | 'tool-call' | 'observation' | 'text' | 'error' | 'plan-step'
 export type TraceNodeStatus = 'pending' | 'running' | 'completed' | 'error'
 
 export interface TraceNode {
@@ -259,7 +259,9 @@ export interface Attachment {
   /** MIME 类型（决定图标与打开/下载策略） */
   mediaType: string
   /** base64 dataUrl 或 http(s) URL；其它协议一律视为不可信，卡片禁用 */
-  dataUrl: string
+  dataUrl?: string
+  /** 本地文件绝对路径（桌面端 Agent 产物，通过 IPC 读取） */
+  filePath?: string
   /** 字节大小（可选，仅展示用） */
   size?: number
 }

@@ -28,7 +28,7 @@ import { EvolutionOrchestrator } from '../evolution/evolution-orchestrator.js'
 import { getMcpClient } from '../mcp/client.js'
 import { SkillLoader } from '../skills/loader.js'
 import { SkillPromptAggregator } from '../skills/prompt-aggregator.js'
-import { CalculatorTool, DateTimeTool, SearchTool } from '../tools/index.js'
+import { CalculatorTool, DateTimeTool, DocWriterTool, SearchTool } from '../tools/index.js'
 import { build_chat_model } from './adapters/llm-adapter.js'
 import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
 import { wrap_chat_model_as_modu } from './adapters/modu-llm-adapter.js'
@@ -81,7 +81,23 @@ TOOL BUDGET AWARENESS (CRITICAL — violations cause recursion-limit crashes):
 12. You have a LIMITED tool-call budget per task (typically 3-5 rounds). Plan your tool calls efficiently: each tool call must contribute meaningful new information toward the goal.
 13. NEVER call the same tool with the SAME arguments twice in a row. If a tool returned an error or empty results, either refine your query (different keywords, different parameters) or conclude that the information is unavailable — do not blindly retry.
 14. For multi-step tasks, prefer the MINIMAL sufficient sequence. For example, "summarize today's hot news" only needs: datetime (once) → search_engine (once with refined query) → final answer. Do NOT chain redundant calls like datetime → search → search again with same query → search third time.
-15. If a tool fails after 1 retry with refined parameters, STOP and inform the user that the information is temporarily unavailable. Do NOT exhaust the budget on repeated failures.`
+15. If a tool fails after 1 retry with refined parameters, STOP and inform the user that the information is temporarily unavailable. Do NOT exhaust the budget on repeated failures.
+
+SEARCH EFFICIENCY RULES (CRITICAL — applies to news/information gathering tasks):
+21. For news summarization or document generation tasks, call search_engine ONLY ONCE with a well-crafted query. Use a broad query like "今日热点新闻" or "today's top news" to get 5-8 diverse results in a single call. Do NOT do multiple rounds of searching for the same topic.
+22. NEVER search for the same topic more than once. If the first search returned sufficient results (5+ items), proceed to organize and write — do not search again for "more details" or "additional sources".
+23. The ideal workflow for a news document task is exactly 3 tool calls: datetime (get date) → search_engine (single search, get 5-8 hot news) → doc_writer (write document). Do NOT add extra search rounds.
+
+DOCUMENT GENERATION RULES (CRITICAL — applies when user asks to generate/create/write a document):
+24. When the user asks to "generate a document", "summarize into a document", "write to a file", or similar, you MUST call the doc_writer tool to create the document. Do NOT just output the content as plain text in your response.
+25. When calling doc_writer, use auto_name=true and provide a descriptive title. The tool will auto-generate a filename in the format {title}_{YYYY-MM-DD}.md.
+26. After successfully calling doc_writer, your final response MUST follow this format:
+    a. A brief confirmation sentence (e.g. "已为你梳理好今天的AI Agent新闻，整理成一份结构化中文日报文档。")
+    b. "文档位置：📄 [filename]" referencing the file returned by doc_writer
+    c. "## 核心内容速览" followed by 3-5 bullet points summarizing the key sections of the document
+    d. Optional: a brief note about data sources or suggested next steps
+27. The doc_writer tool's summary parameter should contain a brief description of the document content for artifact tracking.
+28. For multi-step document generation tasks (search → organize → write → output), ensure ALL steps are completed before producing the final response. Do not stop after only searching or only writing.`
 
 /**
  * 构建检查点保存器。
@@ -446,6 +462,7 @@ export async function create_agent(
       { name: 'datetime', ctor: () => new DateTimeTool() },
       { name: 'search_engine', ctor: () => new SearchTool() },
       { name: 'calculator', ctor: () => new CalculatorTool() },
+      { name: 'doc_writer', ctor: () => new DocWriterTool() },
     ]
     for (const t of defaults) {
       if (registry.getTool(t.name) === undefined) {

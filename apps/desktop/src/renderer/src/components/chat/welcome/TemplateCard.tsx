@@ -13,13 +13,13 @@ import type { TemplateItem } from '@/lib/welcome/templates'
 
 interface TemplateCardProps {
   template: TemplateItem
-  onSelect: (prompt: string) => void
+  onSelect?: (prompt: string) => void
 }
 
 export function TemplateCard({ template, onSelect }: TemplateCardProps) {
   return (
     <button
-      onClick={() => onSelect(template.prompt)}
+      onClick={() => onSelect?.(template.prompt)}
       className="group flex flex-col gap-2 text-left w-full transition-transform duration-200 ease-out hover:scale-[1.02]"
     >
       {/* 缩略图区域：大圆角 + 渐变背景 + 模拟文档图案 */}

@@ -33,6 +33,25 @@ export interface AguiStreamCallbacks {
     errorMessage?: string
     arguments?: Record<string, unknown>
   }) => void
+  /** Agent 产物创建（doc_writer 等工具生成文件时触发） */
+  onArtifactCreated?: (artifact: {
+    artifactId: string
+    name: string
+    path: string
+    absolutePath?: string
+    size: number
+    format: string
+    type: string
+    operation: string
+    summary?: string
+    title?: string
+  }) => void
+  /** Plan-and-Execute 状态增量（Plan 步骤更新） */
+  onStateDelta?: (delta: {
+    phase: string
+    plan?: Array<Record<string, unknown>>
+    stepUpdate?: Record<string, unknown>
+  }) => void
   /** 流结束元信息 */
   onDone: (meta: {
     messageId?: string
@@ -129,6 +148,17 @@ export function streamAgui(
               model?: string
               tokenCount?: number
               message?: string
+              // ARTIFACT_CREATED
+              artifactId?: string
+              name?: string
+              path?: string
+              absolutePath?: string
+              size?: number
+              format?: string
+              // STATE_DELTA
+              phase?: string
+              plan?: unknown[]
+              step_update?: Record<string, unknown>
             }
 
             switch (event.type) {
@@ -220,6 +250,38 @@ export function streamAgui(
                   model: event.model,
                   tokenCount: event.tokenCount
                 })
+                break
+
+              case 'ARTIFACT_CREATED':
+                if (event.artifactId && event.name) {
+                  cb.onArtifactCreated?.({
+                    artifactId: event.artifactId,
+                    name: event.name,
+                    path: event.path || '',
+                    absolutePath: event.absolutePath,
+                    size: event.size ?? 0,
+                    format: event.format || 'md',
+                    type: 'document',
+                    operation: (event as Record<string, unknown>).operation as string || 'create',
+                    summary: (event as Record<string, unknown>).summary as string | undefined,
+                    title: (event as Record<string, unknown>).title as string | undefined,
+                  })
+                }
+                break
+
+              case 'STATE_DELTA':
+                // P1-9: Plan-and-Execute 步骤事件，由 stream-handler 转为 plan-step TraceNode
+                if (event.phase === 'plan' && Array.isArray(event.plan)) {
+                  cb.onStateDelta?.({
+                    phase: 'plan',
+                    plan: event.plan as Array<Record<string, unknown>>,
+                  })
+                } else if (event.step_update) {
+                  cb.onStateDelta?.({
+                    phase: event.phase || 'execute',
+                    stepUpdate: event.step_update,
+                  })
+                }
                 break
 
               case 'RUN_ERROR':

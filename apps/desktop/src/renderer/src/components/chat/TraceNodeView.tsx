@@ -19,7 +19,8 @@ import {
   Search,
   Globe,
   Clock,
-  Code2
+  Code2,
+  ListChecks
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getToolDisplayName } from '@/lib/constants'
@@ -64,7 +65,8 @@ const KIND_ICON: Record<TraceNode['kind'], React.ComponentType<{ className?: str
   'tool-call': TerminalSquare,
   observation: Eye,
   text: Wand2,
-  error: CircleAlert
+  error: CircleAlert,
+  'plan-step': ListChecks
 }
 
 const KIND_TITLE: Record<TraceNode['kind'], string> = {
@@ -72,7 +74,8 @@ const KIND_TITLE: Record<TraceNode['kind'], string> = {
   'tool-call': '工具调用',
   observation: '观察结果',
   text: '最终回答',
-  error: '错误'
+  error: '错误',
+  'plan-step': '计划步骤'
 }
 
 export const TraceNodeView = memo(function TraceNodeView({

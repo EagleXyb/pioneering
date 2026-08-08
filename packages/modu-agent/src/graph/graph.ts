@@ -41,6 +41,7 @@ import {
   routeAfterHumanReview,
   routeAfterMemoryQuery,
   routeAfterPerception,
+  docGenEnforceNode,
 } from './nodes.js'
 // P0-1: 复杂度评估器
 import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
@@ -480,6 +481,8 @@ export function buildModuGraph(
   graph.addNode('tools', tools.length > 0 ? new ToolNode(tools) : _noopToolsNode)
   graph.addNode('tool_processor', toolResultProcessor)
   graph.addNode('finalize_response', responseNode)
+  // 文档生成强制节点：检测到 doc_writer 未调用时注入提醒并回退到 agent
+  graph.addNode('doc_gen_enforce', docGenEnforceNode)
   // P0-1: 反馈评估节点接入图
   if (feedbackNode) {
     graph.addNode('feedback', feedbackNode)
@@ -594,6 +597,8 @@ export function buildModuGraph(
   if (stepFinalizeNode) {
     agentRouteTargets['step_finalize'] = 'step_finalize'
   }
+  // 文档生成强制回退路由
+  agentRouteTargets['doc_gen_enforce'] = 'doc_gen_enforce'
 
   if (humanReviewNode) {
     graph.addConditionalEdges(
@@ -621,6 +626,8 @@ export function buildModuGraph(
   // 工具执行后处理结果，再回到 agent（ReAct 循环）
   graph.addEdge('tools', 'tool_processor')
   graph.addEdge('tool_processor', 'agent')
+  // 文档生成强制回退：注入提醒后回到 agent 继续推理
+  graph.addEdge('doc_gen_enforce', 'agent')
 
   // P0-1/P0-3: response → feedback → memory_update → END
   if (feedbackNode) {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { ChatState, Message } from '@renderer/stores/chatStore'
+import type { Message } from '@shared/types'
+import type { ChatState } from '@renderer/stores/chatStore'
 import { emptyStreaming, finalizeStreamingMessage } from '@renderer/stores/chatStore'
 
 // 构造最小可用的 ChatState（仅含纯函数读取的字段，其余用类型断言绕过）
@@ -53,7 +54,7 @@ describe('finalizeStreamingMessage', () => {
     const state = makeState({ messages: { s1: [baseMsg] } })
     const next = finalizeStreamingMessage(state, 's1', 'm1', {
       content: 'final',
-      toolCalls: [{ id: 't1', name: 'search', status: 'completed' }]
+      toolCalls: [{ id: 't1', name: 'search', status: 'completed', arguments: {} }]
     })
 
     // 流式字段已清空
@@ -66,7 +67,7 @@ describe('finalizeStreamingMessage', () => {
     expect(updated.id).toBe('m1')
     expect(updated.sessionId).toBe('s1')
     expect(updated.content).toBe('final')
-    expect(updated.toolCalls).toEqual([{ id: 't1', name: 'search', status: 'completed' }])
+    expect(updated.toolCalls).toEqual([{ id: 't1', name: 'search', status: 'completed', arguments: {} }])
     // 未 patch 的字段保留原值
     expect(updated.timestamp).toBe(0)
   })

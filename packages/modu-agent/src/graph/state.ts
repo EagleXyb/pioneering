@@ -139,6 +139,16 @@ export interface ModuAgentState {
   // P1-2: Observation 三级记忆（ObservationMemory.serialize() 整体替换）
   // toolResultProcessor 写入，agentNode 读取注入 SystemMessage
   observation_memory?: Record<string, any> | null
+
+  // === Artifact 产物追踪 ===
+  // 记录本次会话中生成/修改的文件产物，供前端展示附件卡片和"查看所有产物"
+  artifacts?: Array<Record<string, any>>
+
+  // === 任务类型识别（perception 节点写入，routeAfterAgent 读取用于强制约束）===
+  // 'document_generation'：用户要求生成文档/报告/文件，必须调用 doc_writer
+  task_type?: string | null
+  // doc_writer 强制回退计数（防止无限循环，最多 2 次）
+  doc_writer_enforcement_count?: number
 }
 
 /**
@@ -317,6 +327,20 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   // P1-2: Observation 三级记忆（last-write-wins，ObservationMemory.serialize() 整体替换）
   // 对应风险 R-06 规避策略②：reducer 整体替换避免并发覆盖
   observation_memory: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
+
+  // === Artifact 产物追踪（append reducer，toolResultProcessor 写入）===
+  artifacts: Annotation<Array<Record<string, any>>>({
+    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    default: () => [],
+  }),
+
+  // === 任务类型识别（last-write-wins，perception 节点写入）===
+  task_type: Annotation<string | null>(_lw<string | null>(() => null)),
+  // doc_writer 强制回退计数（累加 reducer，docGenEnforceNode 递增）
+  doc_writer_enforcement_count: Annotation<number>({
+    reducer: (prev, next) => (prev ?? 0) + (next ?? 0),
+    default: () => 0,
+  }),
 })
 
 // ============================================================
@@ -425,6 +449,9 @@ export function makeInitialState(
     information_gain_history: [],
     termination_advice: null,
     observation_memory: null,
+    artifacts: [],
+    task_type: null,
+    doc_writer_enforcement_count: 0,
   }
 }
 

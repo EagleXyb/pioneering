@@ -13,6 +13,7 @@ import type {
   ToolCall,
   ContentBlock,
   AttachedImage,
+  Attachment,
   TraceNode
 } from '@shared/types'
 import { chatService } from '../services/api/chat'
@@ -30,7 +31,7 @@ const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
 export const DEFAULT_SESSION_TITLE = '新对话'
 
-interface ChatState {
+export interface ChatState {
   sessions: ChatSession[]
   sessionsLoading: boolean
   currentSessionId: string | null
@@ -53,6 +54,7 @@ interface ChatState {
   // M1: 流式 trace 树快照（每帧 rAF 更新）
   streamingTraceNodes: Record<string, TraceNode>
   streamingTraceRootOrder: string[]
+  streamingAttachments: Attachment[]
   streamingMessageId: string | null
   isStreaming: boolean
   abortController: AbortController | null
@@ -149,6 +151,7 @@ export function emptyStreaming(): Partial<ChatState> {
     streamingToolCalls: [],
     streamingTraceNodes: {},
     streamingTraceRootOrder: [],
+    streamingAttachments: [],
     streamingMessageId: null,
     isStreaming: false,
     abortController: null
@@ -214,6 +217,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingToolCalls: [],
   streamingTraceNodes: {},
   streamingTraceRootOrder: [],
+  streamingAttachments: [],
   streamingMessageId: null,
   isStreaming: false,
   abortController: null,
@@ -486,6 +490,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingToolCalls: [],
       streamingTraceNodes: {},
       streamingTraceRootOrder: [],
+      streamingAttachments: [],
       streamingMessageId: assistantMsgId,
       isStreaming: true,
       error: null
@@ -497,16 +502,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       getCurrentStreamingId: () => get().streamingMessageId,
       assistantMsgId,
       idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS,
-      onFlush: ({ contentDelta, thinkingDelta, toolCalls, traceNodes, traceRootOrder }) => {
+      onFlush: ({ contentDelta, thinkingDelta, toolCalls, traceNodes, traceRootOrder, attachments }) => {
         set((state) => ({
           streamingContent: state.streamingContent + contentDelta,
           streamingThinking: state.streamingThinking + thinkingDelta,
           streamingToolCalls: toolCalls,
           streamingTraceNodes: traceNodes,
-          streamingTraceRootOrder: traceRootOrder
+          streamingTraceRootOrder: traceRootOrder,
+          streamingAttachments: attachments
         }))
       },
-      onDone: ({ msgId, content, thinking, toolCalls, traceNodes, traceRootOrder, meta }) => {
+      onDone: ({ msgId, content, thinking, toolCalls, traceNodes, traceRootOrder, attachments, meta }) => {
         set((state) => {
           // 从 trace 树推导最终的 text 正文（避免依赖外部 content 闭包）
           const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
@@ -519,6 +525,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             toolCalls: toolCalls.length ? toolCalls : undefined,
             traceNodes,
             traceRootOrder,
+            attachments: attachments.length ? attachments : undefined,
             model: meta.model,
             tokenCount: meta.tokenCount,
             tokenUsage: meta.tokenCount
@@ -549,7 +556,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         }
       },
-      onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder }) => {
+      onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder, attachments }) => {
         set((state) => {
           const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
           const baseContent = textNode?.content ?? content
@@ -562,6 +569,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               toolCalls: toolCalls.length ? toolCalls : undefined,
               traceNodes,
               traceRootOrder,
+              attachments: attachments.length ? attachments : undefined,
               timestamp: Date.now()
             }),
             error
@@ -592,6 +600,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingToolCalls,
       streamingTraceNodes,
       streamingTraceRootOrder,
+      streamingAttachments,
       currentSessionId,
       sessions,
       agentMode: globalAgentMode
@@ -635,7 +644,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             thinking: finalThinking ? { content: finalThinking } : prev.thinking,
             toolCalls: streamingToolCalls.length ? streamingToolCalls : prev.toolCalls,
             traceNodes: Object.keys(finalTraceNodes).length ? finalTraceNodes : prev.traceNodes,
-            traceRootOrder: streamingTraceRootOrder.length ? streamingTraceRootOrder : prev.traceRootOrder
+            traceRootOrder: streamingTraceRootOrder.length ? streamingTraceRootOrder : prev.traceRootOrder,
+            attachments: streamingAttachments.length ? streamingAttachments : prev.attachments
           }
           return {
             ...finalizeStreamingMessage(state, sid, id, merged[idx]!)

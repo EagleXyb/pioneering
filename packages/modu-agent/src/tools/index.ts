@@ -9,6 +9,7 @@ export { SearchTool } from './search.js'
 export { DateTimeTool } from './datetime-tool.js'
 export { HttpRequestTool } from './http-request.js'
 export { FileOpsTool } from './file-ops.js'
+export { DocWriterTool } from './doc-writer.js'
 export { CodeExecutorTool } from './code-executor.js'
 export { SqlQueryTool } from './sql-query.js'
 // P1-5: 工具能力矩阵 + 意图路由

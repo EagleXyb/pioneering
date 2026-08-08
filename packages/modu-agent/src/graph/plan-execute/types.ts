@@ -121,6 +121,8 @@ export interface PlanStateDelta {
   plan?: Array<Record<string, any>>
   step_update?: {
     id: string
+    /** 步骤在 plan 数组中的下标（0 基），供前端映射到 plan-step 节点 */
+    index?: number
     status: PlanStep['status']
     result?: string
     error?: string

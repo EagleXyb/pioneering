@@ -2,12 +2,15 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": true,
+    "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": ["node"],
+    "skipLibCheck": true,
+    "strictNullChecks": true,
     "outDir": "out/web",
     "baseUrl": ".",
     "paths": {

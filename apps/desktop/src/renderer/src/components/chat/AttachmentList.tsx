@@ -70,6 +70,32 @@ export function AttachmentList({ attachments, isUser }: AttachmentListProps) {
   const [failedId, setFailedId] = useState<string | null>(null)
 
   const handleOpen = async (att: Attachment) => {
+    // 本地文件路径（Agent 产物）→ 「另存为」下载
+    if (att.filePath) {
+      const result = await fileApi.saveDialog({
+        title: '保存附件',
+        defaultPath: att.name || 'attachment'
+      })
+      const savePath = result?.filePaths?.[0]
+      if (result?.canceled || !savePath) return
+      setDownloadingId(att.id)
+      setFailedId(null)
+      try {
+        const readResult = await fileApi.read(att.filePath)
+        if (readResult.success && readResult.content !== undefined) {
+          const writeResult = await fileApi.write({ filePath: savePath, content: readResult.content })
+          if (!writeResult.success) setFailedId(att.id)
+        } else {
+          setFailedId(att.id)
+        }
+      } catch {
+        setFailedId(att.id)
+      } finally {
+        setDownloadingId(null)
+      }
+      return
+    }
+    if (!att.dataUrl) return
     if (isHttpUrl(att.dataUrl)) {
       shellApi.openExternal(att.dataUrl)
       return
@@ -99,7 +125,7 @@ export function AttachmentList({ attachments, isUser }: AttachmentListProps) {
   return (
     <div className={cn('flex flex-wrap gap-2', isUser && 'justify-end')}>
       {attachments.map((att) => {
-        const trusted = isHttpUrl(att.dataUrl) || att.dataUrl.startsWith('data:')
+        const trusted = !!att.filePath || (!!att.dataUrl && (isHttpUrl(att.dataUrl) || att.dataUrl.startsWith('data:')))
         const Icon = trusted ? attachmentIcon(att.mediaType) : FileWarning
         const downloading = downloadingId === att.id
         const failed = failedId === att.id
@@ -113,9 +139,11 @@ export function AttachmentList({ attachments, isUser }: AttachmentListProps) {
             title={
               !trusted
                 ? '不支持的附件协议，已禁用'
-                : isHttpUrl(att.dataUrl)
-                  ? '在系统浏览器中打开'
-                  : '另存为下载'
+                : att.filePath
+                  ? '另存为下载'
+                  : isHttpUrl(att.dataUrl!)
+                    ? '在系统浏览器中打开'
+                    : '另存为下载'
             }
             aria-label={`附件 ${att.name || '未命名'}`}
             className={cn(

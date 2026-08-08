@@ -13,7 +13,18 @@ import {
   AgentChatRequestSchema,
   AgentFeedbackRequestSchema,
 } from '../schemas/agent.js'
+import { StopGenerationRequestSchema } from '../schemas/chat.js'
 import { StreamContext, streamAgentCompletion, mergePlanSteps } from '../core/agent-bridge.js'
+
+// ===== Agent 流式运行注册表（供 /agent/completions/stop 中止生成）=====
+// 对齐 chat.ts 的 runningRuns：注册当前用户的运行中生成任务，
+// /completions/stop 按 sessionId+userId 查找并 abort，SSE 写循环检测到中止后退出。
+interface AgentRunningRun {
+  sessionId: string
+  userId: string
+  controller: AbortController
+}
+const agentRunningRuns = new Map<string, AgentRunningRun>()
 
 // 对应 Python: _verify_session_owner
 // 验证会话存在且属于当前用户，否则抛 NotFoundError("会话不存在")
@@ -347,6 +358,14 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           let streamError = false
           let sseCount = 0
 
+          // 注册运行（供 /completions/stop 中止本流），连接关闭时自动清理
+          const stopController = new AbortController()
+          const stopRunId = genId('arun_')
+          agentRunningRuns.set(stopRunId, { sessionId, userId, controller: stopController })
+          reply.raw.on('close', () => {
+            agentRunningRuns.delete(stopRunId)
+          })
+
           fastify.log.info(
             { sessionId, userId, agentMode: dto.agentMode, messageLen: dto.message.length },
             '[agent.completions] stream.start',
@@ -365,6 +384,10 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               // P4: 透传 agentMode 以启用 Plan-Execute 图
               agentMode: dto.agentMode,
             })) {
+              if (stopController.signal.aborted) {
+                fastify.log.info({ sessionId }, '[agent.completions] stream aborted by /stop')
+                break
+              }
               sseCount++
               reply.raw.write(`data: ${eventDict.data}\n\n`)
             }
@@ -430,6 +453,25 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           )
         }
         return messageToResponse(assistantMsg)
+      })
+
+      // 对应 Python: @router.post("/completions/stop")
+      // 通过 sessionId 查找该用户运行中的 Agent 生成任务并 abort（对齐 chat.ts 的实现）。
+      app.post('/completions/stop', buildSchema({
+        body: StopGenerationRequestSchema,
+        tags: ['agent'],
+        summary: '停止 Agent 生成',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const dto = StopGenerationRequestSchema.parse(req.body)
+        let aborted = false
+        for (const run of agentRunningRuns.values()) {
+          if (run.sessionId === dto.sessionId && run.userId === req.user.id) {
+            run.controller.abort()
+            aborted = true
+          }
+        }
+        return { message: 'stopped', aborted }
       })
 
       // ========== Plan 步骤时间轴恢复 ==========

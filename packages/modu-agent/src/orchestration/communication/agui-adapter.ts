@@ -34,6 +34,7 @@ export const AGUIEventType = {
   STATE_SNAPSHOT: 'STATE_SNAPSHOT',
   STATE_DELTA: 'STATE_DELTA',
   MESSAGES_SNAPSHOT: 'MESSAGES_SNAPSHOT',
+  ARTIFACT_CREATED: 'ARTIFACT_CREATED',
 } as const
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType]
 
@@ -69,6 +70,18 @@ export interface AGUIEventPayloadMap {
   STATE_SNAPSHOT: Record<string, unknown>
   STATE_DELTA: Record<string, unknown>
   MESSAGES_SNAPSHOT: { messages: unknown[] }
+  ARTIFACT_CREATED: {
+    artifactId: string
+    name: string
+    path: string
+    absolutePath?: string
+    size: number
+    format: string
+    type: string
+    operation: string
+    summary?: string
+    title?: string
+  }
 }
 
 /** 按事件类型提取对应 payload 类型的辅助类型 */
@@ -504,6 +517,23 @@ export class AGUIStateMachine {
   emit_state_delta(kwargs: Record<string, any>): AGUIEvent | string {
     const data: Record<string, any> = { traceId: this.trace_id, ...kwargs }
     return this._emit(AGUIEventType.STATE_DELTA, data)
+  }
+
+  // ---- 产物事件 ----
+
+  emit_artifact_created(artifact: {
+    artifactId: string
+    name: string
+    path: string
+    absolutePath?: string
+    size: number
+    format: string
+    type: string
+    operation: string
+    summary?: string
+    title?: string
+  }): AGUIEvent | string {
+    return this._emit(AGUIEventType.ARTIFACT_CREATED, artifact)
   }
 
   // ---- 批量结束事件 ----
@@ -1052,6 +1082,30 @@ export class AGUIStreamAdapter {
             const tool_name = msg.name ?? 'unknown'
             const content = msg.content ?? ''
             events.push(...sm.emit_tool_result(tool_call_id, tool_name, content, 'success'))
+
+            // 检测 doc_writer 成功结果，发出 ARTIFACT_CREATED 事件
+            if (tool_name === 'doc_writer') {
+              try {
+                const parsed = typeof content === 'string' ? JSON.parse(content) : content
+                if (parsed?.status === 'success' && parsed?.data?.name) {
+                  const ad = parsed.data
+                  events.push(sm.emit_artifact_created({
+                    artifactId: tool_call_id || randomUUID(),
+                    name: ad.name ?? '',
+                    path: ad.path ?? '',
+                    absolutePath: ad.absolute_path ?? '',
+                    size: ad.size ?? 0,
+                    format: ad.format ?? 'md',
+                    type: 'document',
+                    operation: ad.operation ?? 'create',
+                    summary: ad.summary,
+                    title: ad.title,
+                  }))
+                }
+              } catch {
+                // 解析失败时忽略，不影响主流程
+              }
+            }
           }
         }
       }

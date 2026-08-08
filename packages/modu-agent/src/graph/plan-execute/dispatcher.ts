@@ -108,6 +108,8 @@ export function makeStepDispatchNode(): (
         phase: 'execute',
         step_update: {
           id: stepId,
+          // 步骤在 plan 数组中的下标（0 基），供前端映射到 plan-step 节点
+          index: idx,
           status: 'running',
           started_at: startedAt,
           ...(retryCount > 0 ? { retry_count: retryCount } : {}),
@@ -504,6 +506,8 @@ export function makeStepFinalizeNode(): (
             phase: 'execute',
             step_update: {
               id: stepId,
+              // 步骤在 plan 数组中的下标（0 基），供前端映射到 plan-step 节点
+              index: idx,
               status: 'retrying' as any,  // 自定义 status 用于 SSE 展示
               retry_count: newRetryCount,
               max_attempts: retryDecision.maxAttempts,
@@ -573,6 +577,8 @@ export function makeStepFinalizeNode(): (
         phase: 'execute',
         step_update: {
           id: stepId,
+          // 步骤在 plan 数组中的下标（0 基），供前端映射到 plan-step 节点
+          index: idx,
           status,
           result: stepResult['output'],
           ...(stepResult['error'] ? { error: stepResult['error'] } : {}),

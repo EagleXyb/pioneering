@@ -13,7 +13,7 @@ import { TEMPLATES_BY_FEATURE } from '@/lib/welcome/templates'
 
 interface TemplateGalleryProps {
   featureId: string
-  onSelect: (prompt: string) => void
+  onSelect?: (prompt: string) => void
 }
 
 export function TemplateGallery({ featureId, onSelect }: TemplateGalleryProps) {

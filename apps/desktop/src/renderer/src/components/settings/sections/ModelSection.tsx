@@ -131,9 +131,9 @@ export function ModelSection() {
       provider: form.provider,
       iconKey: providerToIcon(form.provider),
       enabled: form.enabled,
-      value: form.value.trim() || name,
-      apiBase: form.apiBase.trim() || undefined,
-      apiKey: form.apiKey.trim() || undefined
+      value: (form.value ?? '').trim() || name,
+      apiBase: (form.apiBase ?? '').trim() || undefined,
+      apiKey: (form.apiKey ?? '').trim() || undefined
     }
     upsertModelConfig(next)
     setDialogOpen(false)

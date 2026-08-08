@@ -3,6 +3,7 @@
 //
 // 此文件为全局类型声明（无顶层 import/export），所有 interface 均为全局 ambient 类型，
 // 供渲染进程（含浏览器模式 mock）直接引用，无需 import。
+import type { FileDialogOptions, FileWriteRequest, UserDataPath } from '../shared/ipc-channels'
 
 declare global {
   interface MinimalElectronAPI {
