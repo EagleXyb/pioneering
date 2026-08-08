@@ -2,15 +2,16 @@
 // SidebarNav — Sidebar 功能按钮区（新建任务 + 导航项）
 // ============================================================
 // 包含 NAV_ITEMS 配置与导航项渲染逻辑。
-// 主操作按钮「新建任务」+ 助理/技能/插件/自动化/更多 导航项。
+// 主操作按钮「新建任务」+ 助理/插件/自动化/我的文件/更多 导航项。
+// 技能已合并到插件页面。
 // 提取自 Sidebar.tsx。
 // ============================================================
 
 import {
   Sparkles,
-  FolderOpen,
   GraduationCap,
   Zap,
+  Folder,
   Ellipsis,
   MessageCirclePlus
 } from 'lucide-react'
@@ -28,7 +29,6 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { key: 'assistant', label: '助理', icon: Sparkles, route: '/assistant', placeholder: false },
-  { key: 'skills', label: '技能', icon: FolderOpen, route: '/skills', placeholder: true },
   {
     key: 'plugins',
     label: '插件',
@@ -37,6 +37,13 @@ export const NAV_ITEMS: NavItem[] = [
     placeholder: true
   },
   { key: 'automation', label: '自动化', icon: Zap, route: '/automation', placeholder: true },
+  {
+    key: 'my-files',
+    label: '我的文件',
+    icon: Folder,
+    route: '/my-files',
+    placeholder: true
+  },
   {
     key: 'more',
     label: '更多',

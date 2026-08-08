@@ -509,19 +509,76 @@ export function routeAfterAgent(state: ModuAgentState): string {
   const toolCalls = lastMsg.tool_calls
 
   if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
-    // P0-1: 有 tool_calls 时递增 Thought 轮数计数器
+    // P0-1: 有 tool_calls 时检测推理轮数，超出预算则强制终止（防止无限循环）
     // 通过返回 Partial<ModuAgentState> 无法在路由函数中更新 state，
     // 故此处仅做 advisory 检测；实际计数由 agentNode 返回时累加。
-    // 这里检测是否超出 reasoning_budget，超出则强制终止（防止无限循环）
+    const roundCount = state.reasoning_round_count ?? 0
     const assessment = state.complexity_assessment
+
+    // === 文档生成任务特殊保护：防止 doc_writer 无限重试 ===
+    const isDocGen = state.task_type === 'document_generation'
+    if (isDocGen) {
+      // 保护1: doc_writer 已成功 → 直接结束，不允许再调用任何工具（防止重复写文档）
+      if (state.doc_writer_succeeded) {
+        logger.warning(
+          '[doc-gen-guard] doc_writer already succeeded, blocking further tool calls and forcing termination',
+        )
+        return '__end__'
+      }
+      // 保护2: doc_writer 连续失败次数过多 → 强制终止，避免无限重试
+      const failCount = state.doc_writer_fail_count ?? 0
+      if (failCount >= 2) {
+        logger.warning(
+          '[doc-gen-guard] doc_writer failed %d times, forcing termination to avoid infinite loop',
+          failCount,
+        )
+        return '__end__'
+      }
+      // 保护3: 检查本次 tool_calls 是否只包含 doc_writer（如果是，且已有 artifacts，说明可能重复调用）
+      const hasDocWriterCall = toolCalls.some((tc: any) => tc.name === 'doc_writer')
+      if (hasDocWriterCall) {
+        const artifacts = state.artifacts ?? []
+        if (artifacts.some(a => a && (a['tool'] === 'doc_writer' || a['type'] === 'document'))) {
+          logger.warning(
+            '[doc-gen-guard] doc_writer artifact already exists, blocking duplicate doc_writer call',
+          )
+          return '__end__'
+        }
+      }
+    }
+
+    // 优先级1: complexity_assessment 提供的 reasoning_budget（tier 自适应）
     if (assessment && assessment.reasoning_budget > 0) {
-      const roundCount = state.reasoning_round_count ?? 0
       if (roundCount >= assessment.reasoning_budget) {
         logger.warning(
           '[P0-1] Reasoning budget exhausted: %d >= %d (tier=%s), forcing termination',
           roundCount, assessment.reasoning_budget, assessment.tier,
         )
         return '__end__'
+      }
+    } else {
+      // 优先级2: 兜底限制——不依赖 complexity_assessment，直接使用 max_reasoning_iterations 配置
+      // 额外 +3 轮容忍度，给文档生成等需要多轮工具调用的任务留出空间（搜索+写文档）
+      try {
+        const _cfg = getConfig()
+        const maxIterations = Number(_cfg.get('llm.max_reasoning_iterations', 3))
+        const hardLimit = maxIterations + 3
+        if (roundCount >= hardLimit) {
+          logger.warning(
+            '[route-after-agent] Max tool iterations reached: %d >= %d (max_iterations=%d + 3 tolerance), forcing termination',
+            roundCount, hardLimit, maxIterations,
+          )
+          return '__end__'
+        }
+      } catch {
+        // 配置读取异常时使用保守的硬编码限制（8 轮）
+        if (roundCount >= 8) {
+          logger.warning(
+            '[route-after-agent] Max tool iterations reached (fallback limit): %d >= 8, forcing termination',
+            roundCount,
+          )
+          return '__end__'
+        }
       }
     }
 
@@ -631,28 +688,65 @@ function _detectPrematureTermination(
 }
 
 /**
- * 检测文档生成任务是否需要强制回退（尚未调用 doc_writer）。
+ * 检测文档生成任务是否需要强制回退（尚未成功调用 doc_writer）。
  *
- * 判定条件：
+ * 判定条件（全部满足才需要强制回退）：
  *   1. state.task_type === 'document_generation'
- *   2. 消息历史中没有 name === 'doc_writer' 的 ToolMessage（即从未成功调用过 doc_writer）
- *   3. state.artifacts 为空（没有已生成的产物）
+ *   2. state.doc_writer_succeeded !== true（未标记为成功）
+ *   3. 消息历史中没有 doc_writer 的成功 ToolMessage
+ *   4. state.artifacts 中没有已生成的文档产物
  */
 function _shouldEnforceDocWriter(state: ModuAgentState): boolean {
   if (state.task_type !== 'document_generation') return false
 
-  // 检查是否已有 doc_writer 工具消息（已调用过 doc_writer）
-  const messages = state.messages ?? []
-  for (const msg of messages) {
-    if (msg instanceof ToolMessage && msg.name === 'doc_writer') {
-      return false
-    }
+  // 最优先检查：已标记为成功，直接放行
+  if (state.doc_writer_succeeded) return false
+
+  // 检查 artifacts 中是否已有文档产物（tool_processor 写入，最可靠的成功标记）
+  const artifacts = state.artifacts ?? []
+  if (artifacts.some(a => a && (a['tool'] === 'doc_writer' || a['type'] === 'document'))) {
+    return false
   }
 
-  // 检查 artifacts 中是否已有文档产物（容错）
-  const artifacts = state.artifacts ?? []
-  if (artifacts.some(a => a && a['tool'] === 'doc_writer')) {
+  // 检查 tool_results 中是否已有 doc_writer 成功记录（tool_processor 写入）
+  const toolResults = state.tool_results ?? []
+  if (toolResults.some(r => r && r['tool'] === 'doc_writer' && r['status'] === 'success')) {
     return false
+  }
+
+  // 最后通过消息历史检查（容错，不再只依赖 msg.name === 'doc_writer'）
+  const messages = state.messages ?? []
+  for (const msg of messages) {
+    if (msg instanceof ToolMessage) {
+      try {
+        const rawContent = msg.content
+        const content = typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)
+        // 多层识别：msg.name 或 ToolMessage.content.tool 字段或内容特征
+        let isDocWriter = false
+        if (msg.name === 'doc_writer') {
+          isDocWriter = true
+        } else if (content.includes('"tool":"doc_writer"') || content.includes('"tool": "doc_writer"')) {
+          isDocWriter = true
+        } else if ((content.includes('"format":"md"') || content.includes('"format": "md"')) &&
+                   content.includes('.md')) {
+          isDocWriter = true
+        }
+        if (!isDocWriter) continue
+        // 确认是成功结果而非错误消息
+        if (content.includes('"status":"success"') || content.includes('"status": "success"')) {
+          return false
+        }
+        // 如果包含 "format":"md" + .md 文件名 + 有文件路径/size 特征，也认为成功（非 error 情况）
+        if ((content.includes('"format":"md"') || content.includes('"format": "md"')) &&
+            content.includes('.md') && !content.includes('"status":"error"') &&
+            !content.includes('DOC_001') && !content.includes('DOC_002') &&
+            !content.includes('DOC_003') && !content.includes('DOC_004')) {
+          return false
+        }
+      } catch {
+        // 解析失败跳过
+      }
+    }
   }
 
   return true
@@ -661,7 +755,7 @@ function _shouldEnforceDocWriter(state: ModuAgentState): boolean {
 /**
  * 文档生成强制回退节点。
  *
- * 当 routeAfterAgent 检测到文档生成任务但 LLM 未调用 doc_writer 就尝试结束时，
+ * 当 routeAfterAgent 检测到文档生成任务但 LLM 未成功调用 doc_writer 就尝试结束时，
  * 路由到此节点。此节点注入一条强提醒 SystemMessage，要求 LLM 必须调用 doc_writer，
  * 然后回到 agent 节点继续推理。
  *
@@ -670,13 +764,19 @@ function _shouldEnforceDocWriter(state: ModuAgentState): boolean {
 export function docGenEnforceNode(state: ModuAgentState): Partial<ModuAgentState> {
   const enforcementCount = (state.doc_writer_enforcement_count ?? 0) + 1
   const isFirstEnforcement = enforcementCount === 1
+  const failCount = state.doc_writer_fail_count ?? 0
 
   const reminderContent = isFirstEnforcement
-    ? `CRITICAL REMINDER: The user asked you to generate a document/report/file, but you have not yet called the doc_writer tool. ` +
+    ? `CRITICAL REMINDER: The user asked you to generate a document/report/file, but you have not yet successfully called the doc_writer tool. ` +
       `You MUST call the doc_writer tool NOW to create the document. ` +
-      `Do NOT end your response with just text — you must call doc_writer with the document content. ` +
-      `Use auto_name=true and provide a descriptive title. The content should be a well-structured Markdown document.`
+      `Do NOT end your response with just text — you must call doc_writer with BOTH 'title' AND 'content' parameters. ` +
+      `Required parameters:
+- title (string, REQUIRED): A descriptive document title, e.g. "AI Agent行业新闻日报_2026-08-08"
+- content (string, REQUIRED): The complete Markdown document content
+- auto_name: true (default, recommended)
+Example: doc_writer({title: "AI Agent新闻日报_2026-08-08", content: "# AI Agent新闻日报\\n\\n## 今日要点\\n..."})`
     : `FINAL REMINDER: This is your last chance. You MUST call the doc_writer tool to complete the document generation task. ` +
+      `Previous attempts failed. Make sure you provide BOTH required parameters: 'title' (descriptive document name) and 'content' (full Markdown text). ` +
       `If you produce a final text response without calling doc_writer, the task will be considered incomplete. ` +
       `Call doc_writer NOW with the complete Markdown content.`
 
@@ -684,7 +784,8 @@ export function docGenEnforceNode(state: ModuAgentState): Partial<ModuAgentState
 
   return {
     messages: [reminderMsg],
-    doc_writer_enforcement_count: 1,
+    // 修复：使用正确的递增值而非硬编码 1
+    doc_writer_enforcement_count: enforcementCount,
   }
 }
 
@@ -1067,13 +1168,15 @@ export function makeToolResultProcessor(
     const observationHistoryEntries: Array<Record<string, any>> = []
     // Artifact 产物收集：检测 doc_writer / file_ops write 成功结果
     const newArtifacts: Array<Record<string, any>> = []
+    // doc_writer 状态追踪
+    let docWriterSucceeded = state.doc_writer_succeeded === true  // 保留已成功状态（reducer 语义：|| 永不重置）
+    let docWriterFailIncrement = 0
 
     for (const msg of messages) {
       // v1.2 §4.3 建议10：使用 instanceof 替代 (msg as any)._getType() 反射，
       // 类型安全且消除 any 断言（ToolMessage 已在文件头部导入）
       if (msg instanceof ToolMessage) {
         const content = msg.content ?? ''
-        const toolName = msg.name ?? 'unknown'
         const toolCallId = msg.tool_call_id ?? ''
 
         let parsedContent: any
@@ -1083,19 +1186,65 @@ export function makeToolResultProcessor(
           parsedContent = { raw: content }
         }
 
+        // === 关键修复：工具名识别优先级 ===
+        // 1) 优先读 ToolMessage.content JSON 里的 tool 字段（_formatToolResult 已显式写入，最可靠）
+        // 2) 其次用 ToolMessage.name（LangChain ToolNode 填充，某些版本可能未正确赋值）
+        // 3) 通过 content 特征识别（doc_writer 有 format="md" + .md 路径）
+        // 4) 都没识别到才用 'unknown'
+        let toolName: string = ''
+        if (typeof parsedContent === 'object' && parsedContent !== null &&
+            typeof parsedContent['tool'] === 'string' && parsedContent['tool'].length > 0) {
+          toolName = parsedContent['tool']
+        } else if (typeof msg.name === 'string' && msg.name.length > 0) {
+          toolName = msg.name
+        } else {
+          // 容错：通过 payload 特征判断
+          try {
+            const cStr = typeof content === 'string' ? content : JSON.stringify(content)
+            if ((cStr.includes('"format":"md"') || cStr.includes('"format": "md"')) &&
+                 cStr.includes('.md')) {
+              toolName = 'doc_writer'
+            }
+          } catch {
+            // 识别失败保持空串
+          }
+        }
+        if (!toolName) toolName = 'unknown'
+
         const existingIds = new Set(toolResults.map((r) => r['execution_id']))
         if (!existingIds.has(toolCallId)) {
           // 修复: 读取工具返回的真实 status，而非硬编码 'success'
           // 工具返回格式: { status: 'success'|'error', error_code: string, data: {...} }
-          const toolStatus = (typeof parsedContent === 'object' && parsedContent !== null)
-            ? (parsedContent['status'] === 'error' ? 'failed' : 'success')
-            : 'success'
+          // 特殊处理：content 是字符串且无法解析为 JSON，或包含错误关键词，视为失败
+          let toolStatus: 'success' | 'failed'
+          if (typeof content === 'string' && (
+              content.includes('did not match expected schema') ||
+              content.includes('Please fix your mistakes') ||
+              content.includes('Error:')
+            )) {
+            // LangChain ToolNode schema 验证错误
+            toolStatus = 'failed'
+            parsedContent = { status: 'error', error_code: 'SCHEMA_ERROR', tool: toolName, data: { message: String(content).substring(0, 500) } }
+          } else if (typeof parsedContent === 'object' && parsedContent !== null) {
+            toolStatus = parsedContent['status'] === 'error' ? 'failed' : 'success'
+          } else {
+            toolStatus = 'success'
+          }
           toolResults.push({
             tool: toolName,
             execution_id: toolCallId,
             result: typeof parsedContent === 'object' && parsedContent !== null ? parsedContent : { data: parsedContent },
             status: toolStatus,
           })
+
+          // 追踪 doc_writer 成功/失败状态（按解析后的工具名）
+          if (toolName === 'doc_writer') {
+            if (toolStatus === 'success') {
+              docWriterSucceeded = true
+            } else {
+              docWriterFailIncrement++
+            }
+          }
         }
 
         // P0-3: Observation 蒸馏
@@ -1130,8 +1279,16 @@ export function makeToolResultProcessor(
           }
         }
 
-        // Artifact 产物收集：检测 doc_writer 成功结果
-        if (toolName === 'doc_writer' &&
+        // Artifact 产物收集：检测 doc_writer 成功结果（toolName 识别 + content 结构双保险）
+        const isDocWriterResult =
+          toolName === 'doc_writer' ||
+          (typeof parsedContent === 'object' && parsedContent !== null &&
+           typeof (parsedContent['data'] ?? {})['format'] === 'string' &&
+           (parsedContent['data'] ?? {})['format'] === 'md' &&
+           typeof (parsedContent['data'] ?? {})['path'] === 'string' &&
+           String((parsedContent['data'] ?? {})['path']).endsWith('.md'))
+
+        if (isDocWriterResult &&
             typeof parsedContent === 'object' && parsedContent !== null &&
             parsedContent['status'] === 'success') {
           const artifactData = parsedContent['data'] ?? {}
@@ -1147,7 +1304,7 @@ export function makeToolResultProcessor(
               operation: artifactData['operation'] ?? 'create',
               summary: artifactData['summary'] ?? '',
               title: artifactData['title'] ?? '',
-              tool: toolName,
+              tool: 'doc_writer',
               created_at: Date.now(),
             })
           }
@@ -1166,6 +1323,15 @@ export function makeToolResultProcessor(
     }
     if (newArtifacts.length > 0) {
       update.artifacts = newArtifacts
+    }
+    // 写入 doc_writer 状态追踪
+    if (docWriterSucceeded && !state.doc_writer_succeeded) {
+      update.doc_writer_succeeded = true
+      logger.info('[doc-gen-guard] doc_writer succeeded, marking completion')
+    }
+    if (docWriterFailIncrement > 0) {
+      update.doc_writer_fail_count = docWriterFailIncrement
+      logger.warning('[doc-gen-guard] doc_writer failed %d time(s)', docWriterFailIncrement)
     }
     return update
   }

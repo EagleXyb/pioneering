@@ -7,6 +7,13 @@ import { buildAppMenu } from './menu'
 import { IpcChannel } from '../shared/ipc-channels'
 import appIcon from '../../resources/icon.png?asset'
 
+// 文档生成产物根目录：打包态下由 desktop 主进程注入为 userData/Documents，
+// 使生成的文档落在 Electron 的 userData 内（UI 的「在 Finder 中显示」白名单天然命中）。
+// 仅当 desktop 负责拉起 backend 子进程时生效；backend 独立启动时由自身 env 配置兜底。
+if (!process.env['MODU_DOC_WRITER_ROOT']) {
+  process.env['MODU_DOC_WRITER_ROOT'] = join(app.getPath('userData'), 'Documents')
+}
+
 // H4: 注入 Content-Security-Policy（CSP），收缩渲染进程可加载/执行的资源来源，
 // 即使存在 XSS 也禁止其通过 window.electron.ipcRenderer（已移除）或在内联脚本中
 // 放行本地 TS 后端与开发期 HMR 的 ws。

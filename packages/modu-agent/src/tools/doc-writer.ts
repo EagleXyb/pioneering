@@ -57,7 +57,9 @@ export class DocWriterTool extends BaseTool {
       if (envRoot) {
         this._allowedRoot = path.resolve(envRoot)
       } else {
-        this._allowedRoot = path.resolve(os.tmpdir(), 'modu_documents')
+        // 默认不再使用 os.tmpdir()，因为临时目录会被系统定期清理，导致生成的文档丢失。
+        // 改用跨平台稳定的 ~/.pioneering/documents。
+        this._allowedRoot = path.resolve(os.homedir(), '.pioneering', 'documents')
       }
     }
     fs.mkdirSync(this._allowedRoot, { recursive: true })
@@ -83,37 +85,48 @@ export class DocWriterTool extends BaseTool {
       properties: {
         op: {
           type: 'string',
-          description: '操作类型：create（新建/覆盖）/ append（追加到已有文件）',
+          description: '操作类型：create（新建/覆盖）/ append（追加到已有文件）。默认 create',
           enum: ['create', 'append'],
           default: 'create',
         },
         title: {
           type: 'string',
-          description: '文档标题，用于自动命名和展示（auto_name=true 时必需）',
+          description:
+            '【强烈建议提供】文档标题，用于自动命名和展示。' +
+            '若未提供，工具会自动从 content 的首个 Markdown # 标题提取，仍失败时则生成默认 document_日期.md。' +
+            '建议示例："AI Agent行业新闻日报_2026-08-08"',
         },
         content: {
           type: 'string',
-          description: 'Markdown 文档内容',
+          description: '【必填】完整的 Markdown 文档内容，必须是结构良好的 Markdown 格式',
         },
         path: {
           type: 'string',
-          description: '指定文件路径（相对工作目录）。与 auto_name 二选一，指定 path 时忽略 auto_name',
+          description:
+            '【可选】指定文件路径（相对工作目录，建议省略使用 auto_name 自动命名）。' +
+            '只有当你需要覆盖/追加到一个已存在的精确路径时才填写',
         },
         auto_name: {
           type: 'boolean',
-          description: '是否自动生成文件名（{title}_{YYYY-MM-DD}.md）。默认 true',
+          description:
+            '是否自动生成文件名（{title}_{YYYY-MM-DD}.md）。默认 true，强烈建议保持默认。' +
+            '如果填了 path 则此项无效（直接使用 path）',
           default: true,
         },
         summary: {
           type: 'string',
-          description: '文档摘要（用于"核心内容速览"展示）',
+          description: '【可选】文档摘要（一句话核心内容，用于产物预览）',
         },
         validate: {
           type: 'boolean',
-          description: '写后是否校验内容完整性（读取文件验证非空、大小匹配）。默认 true',
+          description: '写后是否校验内容完整性。默认 true',
           default: true,
         },
       },
+      // 关键修复：只把 content 放 required，不再把 title 硬加入 required。
+      // 原因：LangChain DynamicStructuredTool 会先 Zod.parse() 校验 schema，校验失败时直接返回
+      // "Received tool input did not match expected schema"，根本不会进入 invoke 容错逻辑。
+      // 改为仅 content 必填，title / path / auto_name 全部由 invoke 内的容错智能降级处理。
       required: ['content'],
     }
   }
@@ -168,14 +181,45 @@ export class DocWriterTool extends BaseTool {
     _context: Record<string, any>,
   ): Record<string, any> {
     const op = params.op ?? 'create'
-    const content = params.content ?? ''
-    const title = params.title ?? ''
+    let content = params.content ?? ''
+    let title = (params.title ?? '').trim()
     const summary = params.summary ?? ''
     const shouldValidate = params.validate !== false
-    const autoName = params.path ? false : (params.auto_name !== false)
+    let autoName: boolean
+
+    // === 容错处理：LLM 可能传错参数组合，这里智能降级 ===
+    // 规则1：如果有 path，忽略 auto_name
+    // 规则2：如果没有 path 但有 title，强制 auto_name=true（不管 LLM 传的 auto_name 是什么）
+    // 规则3：如果有 path 但不是 .md 结尾，自动补 .md
+    // 规则4：如果 title 没有，尝试从 content 第一行提取（Markdown # 标题）
+    // 规则5：都没有时生成通用标题
+    if (params.path && String(params.path).trim()) {
+      autoName = false
+    } else if (title) {
+      autoName = true
+    } else {
+      // 没 path，没 title：先从 content 尝试提取 # 标题
+      if (content) {
+        const firstLine = String(content).split('\n').find((l: string) => l.trim())
+        if (firstLine) {
+          const m = firstLine.match(/^#\s+(.+)$/)
+          if (m && m[1]) {
+            title = m[1].trim().slice(0, 60)
+            logger.info('[doc-writer] Extracted title from Markdown H1: "%s"', title)
+          }
+        }
+      }
+      // 降级：无论如何使用 auto_name，标题不行就用 document_日期
+      autoName = true
+      if (!title) {
+        title = `document_${_dateStr()}`
+        logger.warning('[doc-writer] No title provided, fallback to auto title: "%s"', title)
+      }
+    }
 
     if (!content) {
       return {
+        tool: 'doc_writer',
         status: 'error',
         error_code: 'DOC_001',
         data: { message: 'content is required' },
@@ -184,23 +228,12 @@ export class DocWriterTool extends BaseTool {
 
     // 确定文件路径
     let relPath: string
-    if (params.path) {
-      relPath = params.path
-    } else if (autoName) {
-      if (!title) {
-        return {
-          status: 'error',
-          error_code: 'DOC_002',
-          data: { message: 'title is required when auto_name is true and no explicit path given' },
-        }
-      }
-      relPath = `${_sanitizeTitle(title)}_${_dateStr()}.md`
+    if (!autoName) {
+      // 有 path
+      relPath = String(params.path).trim()
     } else {
-      return {
-        status: 'error',
-        error_code: 'DOC_003',
-        data: { message: 'Either path or auto_name=true with title must be provided' },
-      }
+      // auto_name=true（此时 title 一定有，已在上方容错逻辑中兜底）
+      relPath = `${_sanitizeTitle(title)}_${_dateStr()}.md`
     }
 
     // 路径校验
@@ -209,6 +242,7 @@ export class DocWriterTool extends BaseTool {
       fullPath = this._validatePath(relPath)
     } catch (e) {
       return {
+        tool: 'doc_writer',
         status: 'error',
         error_code: 'DOC_004',
         data: { message: String(e) },
@@ -240,6 +274,7 @@ export class DocWriterTool extends BaseTool {
         const written = fs.readFileSync(fullPath, 'utf-8')
         if (!written || written.length === 0) {
           return {
+            tool: 'doc_writer',
             status: 'error',
             error_code: 'DOC_005',
             data: { message: 'Post-write validation failed: file is empty', path: relPath },
@@ -255,6 +290,7 @@ export class DocWriterTool extends BaseTool {
       logger.info('Document created: %s (%d bytes, op=%s)', fileName, stat.size, op)
 
       return {
+        tool: 'doc_writer',
         status: 'success',
         error_code: '',
         data: {
@@ -272,6 +308,7 @@ export class DocWriterTool extends BaseTool {
     } catch (e: any) {
       logger.error('DocWriter error: %s', String(e))
       return {
+        tool: 'doc_writer',
         status: 'error',
         error_code: 'DOC_006',
         data: { message: `Failed to write document: ${e}` },

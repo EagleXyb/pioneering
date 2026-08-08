@@ -149,6 +149,10 @@ export interface ModuAgentState {
   task_type?: string | null
   // doc_writer 强制回退计数（防止无限循环，最多 2 次）
   doc_writer_enforcement_count?: number
+  // doc_writer 调用成功标记（成功后设为 true，阻止后续重复调用和强制回退）
+  doc_writer_succeeded?: boolean
+  // doc_writer 连续失败次数（达到上限后强制终止，避免无限重试）
+  doc_writer_fail_count?: number
 }
 
 /**
@@ -341,6 +345,16 @@ export const ModuAgentStateAnnotation = Annotation.Root({
     reducer: (prev, next) => (prev ?? 0) + (next ?? 0),
     default: () => 0,
   }),
+  // doc_writer 成功标记（last-write-wins，toolResultProcessor 在成功时写入 true，一旦成功永不重置）
+  doc_writer_succeeded: Annotation<boolean>({
+    reducer: (prev, next) => (prev ?? false) || (next ?? false),
+    default: () => false,
+  }),
+  // doc_writer 失败次数（累加 reducer，toolResultProcessor 在失败时递增）
+  doc_writer_fail_count: Annotation<number>({
+    reducer: (prev, next) => (prev ?? 0) + (next ?? 0),
+    default: () => 0,
+  }),
 })
 
 // ============================================================
@@ -452,6 +466,8 @@ export function makeInitialState(
     artifacts: [],
     task_type: null,
     doc_writer_enforcement_count: 0,
+    doc_writer_succeeded: false,
+    doc_writer_fail_count: 0,
   }
 }
 

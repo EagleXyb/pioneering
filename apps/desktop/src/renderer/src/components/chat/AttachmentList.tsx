@@ -147,14 +147,14 @@ export function AttachmentList({ attachments, isUser }: AttachmentListProps) {
             }
             aria-label={`附件 ${att.name || '未命名'}`}
             className={cn(
-              'flex max-w-56 items-center gap-2 rounded-lg border border-border/60 bg-muted px-3 py-2 text-left transition-colors',
+              'flex h-[65px] w-full items-center gap-3 rounded-2xl border border-border/60 bg-muted px-3.5 text-left transition-colors',
               trusted ? 'hover:bg-accent/60' : 'cursor-not-allowed opacity-60'
             )}
           >
             {downloading ? (
-              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+              <Loader2 className="size-5 shrink-0 animate-spin text-muted-foreground" />
             ) : (
-              <Icon className="size-4 shrink-0 text-muted-foreground" />
+              <Icon className="size-5 shrink-0 text-muted-foreground" />
             )}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs text-foreground">
@@ -165,7 +165,7 @@ export function AttachmentList({ attachments, isUser }: AttachmentListProps) {
               </span>
             </span>
             {trusted && !downloading && (
-              <Download className="size-3.5 shrink-0 text-muted-foreground/70" />
+              <Download className="size-4 shrink-0 text-muted-foreground/70" />
             )}
           </button>
         )

@@ -655,26 +655,27 @@ export function buildModuGraph(
   if (recursionLimit) {
     compiledAny.recursionLimit = recursionLimit
   } else {
-    // 默认：max_reasoning_iterations * 3 + 12（每个 ReAct 循环实际 3 个节点
-    //   agent → tools → tool_processor，加固定开销 perception + memory_query
-    //   + 终答 agent + finalize_response + memory_update/feedback 共 5~6 节点）
+    // 默认递归预算计算：
+    //   每轮 ReAct 循环实际 3 个节点：agent → tools → tool_processor
+    //   固定开销：perception + memory_query + 终答 agent + finalize_response + memory_update/feedback ≈ 7 节点
     //
-    // P0-修复(2026-07-30): 固定余量从 +7 提到 +12。
-    //   原公式 +7 在 max_reasoning_iterations=3 时给出 recursionLimit=16,
-    //   仅能容纳 4 轮 ReAct(14 节点)+ 2 步余量。但防幻觉提示词规则 7-11
-    //   逼迫 LLM 多步闭环(如"日期→搜索→验证→总结"),LLM 倾向多调工具,
-    //   5 轮 ReAct(17 节点)即超限,触发 GraphRecursionError。
-    //   提到 +12 后 recursionLimit=21,可容纳 5 轮 ReAct(15 节点)+ 6 固定开销,
-    //   与 max_reasoning_iterations=3 的语义("最多 3 轮工具调用 + 终答")匹配,
-    //   并为多步任务留出足够预算。
+    // P0-修复(2026-08-08): 调整预算公式以支持文档生成等多工具调用场景：
+    //   - 基础轮次预算从 maxIterations*3 调整为 (maxIterations+2)*3，额外预留 2 轮工具调用预算
+    //     （文档生成典型流程：datetime + 多次搜索 + doc_writer，远超 maxIterations=3）
+    //   - 固定开销从 +12 提高到 +15，为 doc_gen_enforce 强制节点预留预算（最多 2 次 × 2 步 + 1 余量）
+    //   - 这样 maxIterations=3 时 baseLimit = 5*3 + 15 = 30，可容纳约 7 轮工具调用 + 8 固定开销
     //
-    // 注：旧公式按"每循环 2 个节点"计算会低估，导致 max_reasoning_iterations=3 时
-    //   合法运行的节点数(14) 超过预算(13)，正常推理也会抛 GraphRecursionError。
+    // 历史问题：
+    //   - 旧公式 maxIterations*3+12 在 maxIterations=3 时为 21，仅能容纳 5 轮 ReAct
+    //   - 文档生成等任务需要 6-7 轮工具调用（datetime + 5次搜索 + doc_writer），
+    //     加上 doc_gen_enforce 强制回退（最多 2 次 × 2 步），21 步不够用
     // P3-12.3.2: HITL 开启时额外加 2（human_review + 路由开销）
     // P3-12.3.1: multi_agent 开启时额外加 4（supervisor + subagent_run + consensus + 路由开销）
     const config = getConfig()
     const maxIterations = config.get('llm.max_reasoning_iterations', 3)
-    let baseLimit = maxIterations * 3 + 12
+    // 额外预留 2 轮工具调用预算，支持文档生成等多步任务
+    const effectiveIterations = maxIterations + 2
+    let baseLimit = effectiveIterations * 3 + 15
     if (humanReviewNode) {
       baseLimit += 2  // 为 human_review 节点预留递归预算
     }

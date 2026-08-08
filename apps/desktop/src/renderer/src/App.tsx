@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { RootLayout } from './layouts/RootLayout'
@@ -7,9 +7,9 @@ import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { AssistantPage } from './pages/AssistantPage'
-import { SkillsPage } from './pages/SkillsPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { AutomationPage } from './pages/AutomationPage'
+import { MyFilesPage } from './pages/MyFilesPage'
 import { MorePage } from './pages/MorePage'
 import { useAppStore } from './stores/useAppStore'
 import { useAtomValue, useSetAtom } from 'jotai'
@@ -118,9 +118,10 @@ function App() {
             <Route path="/home" element={<HomePage />} />
             <Route path="/workspace" element={<WorkspacePage />} />
             <Route path="/assistant" element={<AssistantPage />} />
-            <Route path="/skills" element={<SkillsPage />} />
             <Route path="/plugins" element={<PluginsPage />} />
+            <Route path="/skills" element={<Navigate to="/plugins" replace />} />
             <Route path="/automation" element={<AutomationPage />} />
+            <Route path="/my-files" element={<MyFilesPage />} />
             <Route path="/more" element={<MorePage />} />
           </Route>
         </Routes>

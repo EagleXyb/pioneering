@@ -99,14 +99,15 @@ export interface AGUITypedEvent<T extends AGUIEventType = AGUIEventType> {
 
 export class AGUIEncoder {
   static toSse(eventType: AGUIEventType, data: Record<string, any>): string {
-    const payload = JSON.stringify({ type: eventType, ...data })
+    // type 放在展开之后，确保事件类型不被 payload 中的同名字段（如 artifact 的 type:'document'）覆盖
+    const payload = JSON.stringify({ ...data, type: eventType })
     // 防止 SSE 注入：转义 payload 中的换行符
     const escaped = payload.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
     return `data: ${escaped}\n\n`
   }
 
   static toEventDict(eventType: AGUIEventType, data: Record<string, any>): Record<string, string> {
-    const payload = JSON.stringify({ type: eventType, ...data })
+    const payload = JSON.stringify({ ...data, type: eventType })
     const escaped = payload.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
     return { data: escaped }
   }
@@ -1079,15 +1080,48 @@ export class AGUIStreamAdapter {
         for (const msg of messages) {
           if (msg?.type === 'tool') {
             const tool_call_id = msg.tool_call_id ?? ''
-            const tool_name = msg.name ?? 'unknown'
+            const raw_tool_name = msg.name ?? 'unknown'
             const content = msg.content ?? ''
+            // === 解析 content JSON 作为工具名的权威来源（修复 _formatToolResult 之前的 tool 字段为空时漏识别）
+            // 工具名识别优先级：content JSON.tool > msg.name > content 特征
+            let parsed: any = null
+            try {
+              parsed = typeof content === 'string' ? JSON.parse(content) : content
+            } catch {
+              parsed = null
+            }
+            let tool_name = raw_tool_name
+            if (parsed && typeof parsed === 'object' &&
+                typeof parsed['tool'] === 'string' && parsed['tool'].length > 0) {
+              tool_name = parsed['tool']
+            } else if (!tool_name || tool_name === 'unknown') {
+              // 容错：通过内容特征识别 doc_writer
+              try {
+                const cStr = typeof content === 'string' ? content : JSON.stringify(content)
+                if ((cStr.includes('"format":"md"') || cStr.includes('"format": "md"')) &&
+                     cStr.includes('.md')) {
+                  tool_name = 'doc_writer'
+                }
+              } catch {
+                // 识别失败维持原值
+              }
+            }
+
             events.push(...sm.emit_tool_result(tool_call_id, tool_name, content, 'success'))
 
-            // 检测 doc_writer 成功结果，发出 ARTIFACT_CREATED 事件
-            if (tool_name === 'doc_writer') {
+            // 检测 doc_writer 成功结果，发出 ARTIFACT_CREATED 事件（用 content 结构判定，不再只依赖 tool_name）
+            const isDocWriterSuccess =
+              tool_name === 'doc_writer' ||
+              (parsed && typeof parsed === 'object' &&
+               parsed['status'] === 'success' &&
+               typeof (parsed['data'] ?? {})['format'] === 'string' &&
+               (parsed['data'] ?? {})['format'] === 'md' &&
+               typeof (parsed['data'] ?? {})['path'] === 'string' &&
+               String((parsed['data'] ?? {})['path']).endsWith('.md'))
+
+            if (isDocWriterSuccess && parsed && typeof parsed === 'object') {
               try {
-                const parsed = typeof content === 'string' ? JSON.parse(content) : content
-                if (parsed?.status === 'success' && parsed?.data?.name) {
+                if (parsed.status === 'success' && parsed?.data?.name) {
                   const ad = parsed.data
                   events.push(sm.emit_artifact_created({
                     artifactId: tool_call_id || randomUUID(),
@@ -1140,9 +1174,62 @@ export class AGUIStreamAdapter {
     if (event_type === 'tool_result') {
       const tc_data = event.data ?? {}
       const tc_id = tc_data.tool_call_id ?? ''
-      const tc_name = tc_data.tool_name ?? 'unknown'
+      const raw_tc_name = tc_data.tool_name ?? 'unknown'
       const result_content = tc_data.result ?? '{}'
-      return sm.emit_tool_result(tc_id, tc_name, result_content, 'success')
+
+      // 同样解析 tool 名（多路径识别 doc_writer）
+      let parsedResult: any = null
+      try {
+        parsedResult = typeof result_content === 'string' ? JSON.parse(result_content) : result_content
+      } catch { parsedResult = null }
+      let tc_name = raw_tc_name
+      if (parsedResult && typeof parsedResult === 'object' &&
+          typeof parsedResult['tool'] === 'string' && parsedResult['tool'].length > 0) {
+        tc_name = parsedResult['tool']
+      } else if (!tc_name || tc_name === 'unknown') {
+        try {
+          const cStr = typeof result_content === 'string' ? result_content : JSON.stringify(result_content)
+          if ((cStr.includes('"format":"md"') || cStr.includes('"format": "md"')) && cStr.includes('.md')) {
+            tc_name = 'doc_writer'
+          }
+        } catch {}
+      }
+
+      const events: any[] = [...sm.emit_tool_result(tc_id, tc_name, result_content, 'success')]
+
+      // SSE 细粒度分支也要检测 doc_writer 产物
+      const isDocWriterSuccess =
+        tc_name === 'doc_writer' ||
+        (parsedResult && typeof parsedResult === 'object' &&
+         parsedResult['status'] === 'success' &&
+         typeof (parsedResult['data'] ?? {})['format'] === 'string' &&
+         (parsedResult['data'] ?? {})['format'] === 'md' &&
+         typeof (parsedResult['data'] ?? {})['path'] === 'string' &&
+         String((parsedResult['data'] ?? {})['path']).endsWith('.md'))
+
+      if (isDocWriterSuccess && parsedResult && typeof parsedResult === 'object') {
+        try {
+          if (parsedResult.status === 'success' && parsedResult?.data?.name) {
+            const ad = parsedResult.data
+            events.push(sm.emit_artifact_created({
+              artifactId: tc_id || randomUUID(),
+              name: ad.name ?? '',
+              path: ad.path ?? '',
+              absolutePath: ad.absolute_path ?? '',
+              size: ad.size ?? 0,
+              format: ad.format ?? 'md',
+              type: 'document',
+              operation: ad.operation ?? 'create',
+              summary: ad.summary,
+              title: ad.title,
+            }))
+          }
+        } catch {
+          // 解析失败时忽略，不影响主流程
+        }
+      }
+
+      return events
     }
 
     // --- P4 Plan-and-Execute 事件（由 LangGraphEventBridge 生成） ---

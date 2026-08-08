@@ -51,10 +51,15 @@ function _schema_to_zod(
   }
 
   const shape: Record<string, z.ZodTypeAny> = {}
+  // OpenAI structured outputs（Responses API）要求：所有字段必须出现在 required 中，
+  // 且不支持 .optional()，可选字段必须用 .nullable() 声明。否则模型调用时会触发
+  // "Received tool input did not match expected schema"。因此无论原 schema 是否标注 required，
+  // 这里统一把所有字段加入 required，并对非必填字段改用 .nullable().default(...)。
   for (const [fieldName, fieldSpecRaw] of Object.entries(properties)) {
     const fieldSpec = fieldSpecRaw as Record<string, any>
     const jsonType = fieldSpec.type || 'string'
     const description = fieldSpec.description || ''
+    const isRequired = required.has(fieldName)
 
     let zodType: z.ZodTypeAny
     switch (jsonType) {
@@ -85,15 +90,28 @@ function _schema_to_zod(
       zodType = zodType.describe(description)
     }
 
-    // 可选字段
-    if (!required.has(fieldName)) {
-      zodType = zodType.optional()
+    // 非必填字段：用 .nullable() + .default() 替代 .optional()，兼容 structured outputs。
+    // 这样模型省略该字段时也能通过 schema 校验，并得到一个合法的兜底值。
+    if (!isRequired) {
+      const fallback: any =
+        jsonType === 'boolean'
+          ? false
+          : jsonType === 'array'
+            ? []
+            : jsonType === 'object'
+              ? {}
+              : jsonType === 'number' || jsonType === 'integer'
+                ? 0
+                : ''
+      zodType = zodType.nullable().default(fallback)
     }
 
     shape[fieldName] = zodType
   }
 
-  return z.object(shape)
+  // 统一把所有字段标记为 required，满足 structured outputs 的约束。
+  // Zod 的 .required() 无参会把所有属性标记为必填。
+  return z.object(shape).required()
 }
 
 /**
@@ -156,27 +174,36 @@ function _truncateToolResult(
  *   - 非标准结构: 透传整个 result,保证未知工具格式不被破坏
  *
  * @param result ModuAgent BaseTool.invoke 返回的字典
+ * @param toolName 工具名（必填，显式写入返回 JSON 的 tool 字段，避免 result 缺失 tool 导致识别错误）
  * @returns ToolMessage 用的 JSON 字符串
  */
-function _formatToolResult(result: Record<string, any>): string {
+function _formatToolResult(result: Record<string, any>, toolName: string): string {
   if (!result || typeof result !== 'object') {
-    return JSON.stringify(result)
+    return JSON.stringify({ tool: toolName, status: 'unknown', data: result })
   }
   const status = result['status']
   if (status === 'success') {
     // 精简: 只保留 tool 名与 data 字段,去掉 error_code 包装
+    // 关键修复：显式使用传入的 toolName 参数，而非 result['tool']（BaseTool.invoke 通常不返回 tool 字段）
     return JSON.stringify({
-      tool: result['tool'] ?? '',
+      tool: toolName,
       status: 'success',
       data: result['data'] ?? {},
     })
   }
   if (status === 'error') {
     // 错误: 保留完整结构,LLM 需要 error_code 判断错误类型
-    return JSON.stringify(result)
+    // 同时显式补 tool 字段，便于 tool_processor 识别
+    return JSON.stringify({
+      ...result,
+      tool: toolName,
+    })
   }
-  // 非标准结构(无 status 字段等): 透传,避免破坏未知工具格式
-  return JSON.stringify(result)
+  // 非标准结构(无 status 字段等): 透传,但补 tool 字段
+  return JSON.stringify({
+    ...result,
+    tool: toolName,
+  })
 }
 
 /**
@@ -236,6 +263,7 @@ export function wrap_modu_tool(
           message: `Tool '${toolName}' rate limit exceeded, please retry later`,
           tool_name: toolName,
         },
+        tool: toolName,
       })
     }
 
@@ -253,7 +281,7 @@ export function wrap_modu_tool(
         return cached
       }
       const result = await moduTool.invoke(input, {})
-      const json = _formatToolResult(result)
+      const json = _formatToolResult(result, toolName)
       // 仅缓存成功结果，避免错误结果被反复返回
       if (result?.['status'] === 'success') {
         cache.set(cacheKey, json, cacheCfg.ttlMs)
@@ -263,7 +291,7 @@ export function wrap_modu_tool(
     }
 
     const result = await moduTool.invoke(input, {})
-    const json = _formatToolResult(result)
+    const json = _formatToolResult(result, toolName)
     // 工具结果字符级截断（对应文档 §4.3 建议1）：
     //   按 tools.max_result_chars.{tool_name} 截断，避免大响应撑爆 LLM 上下文
     //   - 工具名未单独配置时回退到 default（default=0 表示不截断）

@@ -151,7 +151,7 @@ export const Sidebar = memo(function Sidebar() {
               {/* 
                 conversationSelectionEnabled：
                   - 会话视图（/）= true → 允许会话行按 currentSessionId 高亮
-                  - 功能页（助理/技能/插件/自动化/更多）= false → 强制不高亮会话行，
+                  - 功能页（助理/插件/自动化/我的文件/更多）= false → 强制不高亮会话行，
                     避免「导航项 + 会话行」双高亮互抢焦点（恰好一个承载选中态）
               */}
               <ConversationList selectionEnabled={conversationSelectionEnabled} />

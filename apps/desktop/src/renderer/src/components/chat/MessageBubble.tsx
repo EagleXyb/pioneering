@@ -175,11 +175,6 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {/* P3：通用文件附件（非图片；无附件时不渲染，布局与此前完全一致） */}
-        {message.attachments && message.attachments.length > 0 && (
-          <AttachmentList attachments={message.attachments} isUser={isUser} />
-        )}
-
         {(displayContent || message.content || isStreaming || useTrace) && (
           <Bubble
             variant={isUser ? 'secondary' : 'ghost'}
@@ -226,6 +221,11 @@ export const MessageBubble = memo(function MessageBubble({
               )}
             </BubbleContent>
           </Bubble>
+        )}
+
+        {/* P3：通用文件附件（非图片）置于正文之后、点赞点踩栏之前 */}
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentList attachments={message.attachments} isUser={isUser} />
         )}
 
         {/* T07：actions 由 MessageFooter 承载，align="end" 时自动右对齐 */}

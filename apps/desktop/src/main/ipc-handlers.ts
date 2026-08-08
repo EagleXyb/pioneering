@@ -10,12 +10,14 @@ import {
   dialog,
   clipboard,
   shell,
+  screen,
   Notification,
   type SaveDialogOptions,
   type OpenDialogOptions
 } from 'electron'
 import { readFile, writeFile, stat } from 'fs/promises'
 import { realpathSync } from 'fs'
+import os from 'node:os'
 import path from 'path'
 import Store from 'electron-store'
 import { IpcChannel } from '../shared/ipc-channels'
@@ -390,18 +392,25 @@ export function registerIpcHandlers(): void {
     return app.getPath(name)
   })
 
-  // 在系统文件管理器中显示路径（会话操作菜单「打开文件夹」）。
-  // 安全：仅允许展示 userData 目录内的路径；无参数时直接打开 userData 目录，
-  // 禁止传入任意自由路径，防止渲染端被攻陷后诱导用户在文件管理器中定位任意文件。
+  // 在系统文件管理器中显示路径（会话操作菜单「打开文件夹」/ 产物卡片）。
+  // 安全：仅允许展示应用自身数据目录内的路径（userData 与开发态 ~/.pioneering），
+  // 无参数时直接打开 userData 目录。禁止传入任意自由路径，防止渲染端被攻陷后
+  // 诱导用户在文件管理器中定位任意文件。
   ipcMain.handle(IpcChannel.FILE_SHOW_IN_FOLDER, (event, filePath?: string) => {
     if (!isTrustedSender(event)) return false
-    const userData = app.getPath('userData')
+    const allowedRoots = [
+      app.getPath('userData'),
+      path.join(os.homedir(), '.pioneering') // 开发态 backend 独立启动时的文档根（env.ts 默认）
+    ]
     if (typeof filePath !== 'string' || !filePath.trim()) {
-      void shell.openPath(userData)
+      void shell.openPath(allowedRoots[0])
       return true
     }
     const resolved = path.resolve(filePath)
-    if (resolved !== userData && !resolved.startsWith(userData + path.sep)) {
+    const insideAllowed = allowedRoots.some(
+      (root) => resolved === root || resolved.startsWith(root + path.sep),
+    )
+    if (!insideAllowed) {
       return false
     }
     shell.showItemInFolder(resolved)
@@ -504,10 +513,20 @@ export function registerIpcHandlers(): void {
     const dragState = dragStates.get(id)
     if (!dragTarget || !dragState) return
     if (!Number.isFinite(data.screenX) || !Number.isFinite(data.screenY)) return
-    dragTarget.setPosition(
-      Math.round(data.screenX - dragState.offsetX),
-      Math.round(data.screenY - dragState.offsetY)
-    )
+
+    let targetX = Math.round(data.screenX - dragState.offsetX)
+    let targetY = Math.round(data.screenY - dragState.offsetY)
+
+    // 仅约束顶部：窗口向上拖动时不超出当前显示器工作区顶部，
+    // 避免标题栏完全移出屏幕导致无法抓回。
+    // 左/右/下方向不做约束，与原生窗口可移出屏幕的行为保持一致。
+    // 多显示器：用 getDisplayMatching 取窗口当前所在显示器，
+    // 其 workArea.y 可能为负（上方副屏），此时允许继续上移。
+    const display = screen.getDisplayMatching(dragTarget.getBounds())
+    const minY = display.workArea.y
+    if (targetY < minY) targetY = minY
+
+    dragTarget.setPosition(targetX, targetY)
   })
 
   ipcMain.on(IpcChannel.WINDOW_DRAG_END, (event) => {
