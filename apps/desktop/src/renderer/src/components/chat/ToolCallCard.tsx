@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Wrench, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { FolderSymlink, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ToolCall } from '@shared/types'
 
@@ -7,14 +7,26 @@ interface ToolCallCardProps {
   toolCall: ToolCall
 }
 
+// 工具名 → 人类可读的中文说明（原始英文名以 title 形式展示，鼠标悬停可查）
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  doc_writer: '文档生成',
+  search_engine: '联网搜索',
+  datetime: '日期时间',
+  calculator: '计算器',
+}
+
+function getToolDisplayName(name: string): string {
+  return TOOL_DISPLAY_NAMES[name] ?? name
+}
+
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const statusIcon = {
-    pending: <Loader2 className="size-3.5 text-muted-foreground animate-spin" />,
-    running: <Loader2 className="size-3.5 text-primary animate-spin" />,
-    completed: <CheckCircle2 className="size-3.5 text-green-500" />,
-    error: <XCircle className="size-3.5 text-red-500" />
+    pending: <Loader2 className="size-2.5 text-muted-foreground animate-spin" />,
+    running: <Loader2 className="size-2.5 text-primary animate-spin" />,
+    completed: <CheckCircle2 className="size-2.5 text-green-500" />,
+    error: <XCircle className="size-2.5 text-red-500" />
   }
 
   const hasArgs = toolCall.arguments && Object.keys(toolCall.arguments).length > 0
@@ -33,8 +45,13 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       <span className="mt-0.5 shrink-0">{statusIcon[toolCall.status]}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <Wrench className="size-3 text-muted-foreground shrink-0" />
-          <span className="font-medium text-foreground break-words">{toolCall.name}</span>
+          <FolderSymlink className="size-2 text-muted-foreground shrink-0" />
+          <span
+            className="font-medium text-foreground break-words"
+            title={getToolDisplayName(toolCall.name) === toolCall.name ? undefined : toolCall.name}
+          >
+            {getToolDisplayName(toolCall.name)}
+          </span>
         </div>
 
         {/* P3: 工具调用参数（来自 TOOL_CALL_ARGS 事件，流式补全后此处展示） */}

@@ -13,7 +13,7 @@
 // ============================================================
 
 import { useMemo, useState } from 'react'
-import { Check, ChevronRight, FileText, Folder, FolderOpen } from 'lucide-react'
+import { Check, ChevronRight, FileText, FolderOpen, FolderSymlink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/stores/chatStore'
 import type { Attachment } from '@shared/types'
@@ -31,7 +31,7 @@ interface TaskMonitorProps {
 
 // 示例待办数据（真实任务待办后续可由 plan/state_delta 事件注入，这里暂时沿用默认值）
 const DEFAULT_TODO_ITEMS: TodoItem[] = [
-  { id: '1', text: '搜索今天（2026年8月9日）关于 AI Agent 的相关新闻', completed: true },
+  { id: '1', text: '搜索今天关于 AI Agent 的相关新闻', completed: true },
   { id: '2', text: '按专题整理成一份中文日报文档', completed: true },
   { id: '3', text: '生成并展示 AI Agent 新闻日报文档', completed: true },
 ]
@@ -229,7 +229,7 @@ export function TaskMonitor({ todoItems = DEFAULT_TODO_ITEMS }: TaskMonitorProps
       {/* 产物：读取会话附件（来自 ARTIFACT_CREATED）。无产物时显示空提示；默认展开以利于可见。 */}
       <SectionRow
         title="产物"
-        icon={<Folder size={20} />}
+        icon={<FolderSymlink size={18} strokeWidth={1.5} />}
         defaultExpanded
         badge={artifacts.length > 0 ? String(artifacts.length) : undefined}
       >
