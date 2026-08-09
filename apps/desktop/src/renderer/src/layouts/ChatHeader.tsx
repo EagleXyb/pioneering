@@ -14,7 +14,7 @@
 import { useAtomValue } from 'jotai'
 import {
   PanelLeft,
-  MessageCirclePlus,
+  SquarePen,
   PanelRight,
   Search,
   Share2,
@@ -73,7 +73,7 @@ export function ChatHeader({
             style={{ paddingLeft: 'var(--traffic-light-w)' }}
           >
             <HeaderButton icon={PanelLeft} title="展开侧边栏" onClick={onToggleSidebar} />
-            <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={onCreate} />
+            <HeaderButton icon={SquarePen} title="新建任务" onClick={onCreate} />
           </div>
         )}
         {/* 会话标题：展开状态下左侧留 9px 边距（16px 容器内边距 + 9px ≈ 25px 距卡片左缘） */}

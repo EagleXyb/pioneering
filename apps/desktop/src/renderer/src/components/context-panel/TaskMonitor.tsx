@@ -31,9 +31,10 @@ interface TaskMonitorProps {
 
 // 示例待办数据（真实任务待办后续可由 plan/state_delta 事件注入，这里暂时沿用默认值）
 const DEFAULT_TODO_ITEMS: TodoItem[] = [
-  { id: '1', text: '搜索今天关于 AI Agent 的相关新闻', completed: true },
-  { id: '2', text: '按专题整理成一份中文日报文档', completed: true },
-  { id: '3', text: '生成并展示 AI Agent 新闻日报文档', completed: true },
+  { id: '1', text: '搜索今日（2026-08-09）AI Agent 相关新闻', completed: true },
+  { id: '2', text: '深入抓取重点文章核实细节按专题整理', completed: true },
+  { id: '3', text: '汇总撰写Markdown 文档中文新闻综述', completed: true },
+  { id: '4', text: '生成并展示 AI Agent 新闻日报文档', completed: true },
 ]
 
 interface SectionRowProps {
@@ -100,8 +101,8 @@ function formatArtifactMeta(a: Attachment): string {
 
 function ArtifactItem({ artifact }: { artifact: Attachment }) {
   const meta = formatArtifactMeta(artifact)
-  const handleShowInFolder = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleShowInFolder = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
     if (artifact.filePath) {
       fileApi.showInFolder(artifact.filePath).catch(() => {})
     }
@@ -116,7 +117,7 @@ function ArtifactItem({ artifact }: { artifact: Attachment }) {
         showInFolderDisabled
           ? undefined
           : (e) => {
-              if (e.key === 'Enter' || e.key === ' ') handleShowInFolder(e)
+              if (e.key === 'Enter' || e.key === ' ') handleShowInFolder()
             }
       }
       title={artifact.filePath ? '点击在 Finder 中定位' : undefined}
@@ -198,7 +199,7 @@ export function TaskMonitor({ todoItems = DEFAULT_TODO_ITEMS }: TaskMonitorProps
       <SectionRow title="待办" defaultExpanded>
         <div className="space-y-3">
           {todoItems.map((item) => (
-            <div key={item.id} className="text-[14px] leading-[1.6]">
+            <div key={item.id} className="text-[13px] leading-[1.6]">
               <span
                 className={cn(
                   'inline-flex items-center justify-center w-3.5 h-3.5 rounded-full mr-2 -mt-[1px] align-middle shrink-0',

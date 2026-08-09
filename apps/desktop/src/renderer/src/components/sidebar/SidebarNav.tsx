@@ -8,12 +8,12 @@
 // ============================================================
 
 import {
-  Sparkles,
-  GraduationCap,
-  Zap,
-  Folder,
+  SquareUser,
+  LayoutDashboard,
+  Clock4,
+  FolderClosed,
   Ellipsis,
-  MessageCirclePlus
+  SquarePen
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -21,26 +21,26 @@ import { cn } from '@/lib/utils'
 export interface NavItem {
   key: string
   label: string
-  icon: typeof Sparkles
+  icon: typeof SquareUser
   route: string
   placeholder: boolean
   extra?: string
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { key: 'assistant', label: '助理', icon: Sparkles, route: '/assistant', placeholder: false },
+  { key: 'assistant', label: '助理', icon: SquareUser, route: '/assistant', placeholder: false },
   {
     key: 'plugins',
     label: '插件',
-    icon: GraduationCap,
+    icon: LayoutDashboard,
     route: '/plugins',
     placeholder: true
   },
-  { key: 'automation', label: '自动化', icon: Zap, route: '/automation', placeholder: true },
+  { key: 'automation', label: '自动化', icon: Clock4, route: '/automation', placeholder: true },
   {
     key: 'my-files',
     label: '我的文件',
-    icon: Folder,
+    icon: FolderClosed,
     route: '/my-files',
     placeholder: true
   },
@@ -77,7 +77,7 @@ export function SidebarNav({ activeNavKey, onCreate, onNavClick }: SidebarNavPro
         )}
         onClick={onCreate}
       >
-        <MessageCirclePlus className="shrink-0" strokeWidth={1.5} />
+        <SquarePen className="shrink-0" strokeWidth={1.5} />
         <span className="text-sm font-normal">新建任务</span>
       </Button>
 

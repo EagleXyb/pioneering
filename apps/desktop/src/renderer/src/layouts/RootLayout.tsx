@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { PanelLeft, MessageCirclePlus } from 'lucide-react'
+import { PanelLeft, SquarePen } from 'lucide-react'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -207,7 +207,7 @@ export function RootLayout() {
                           style={{ paddingLeft: 'var(--traffic-light-w)' }}
                         >
                           <HeaderButton icon={PanelLeft} title="展开侧边栏" onClick={handleToggleSidebar} />
-                          <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={handleCreate} />
+                          <HeaderButton icon={SquarePen} title="新建任务" onClick={handleCreate} />
                         </div>
                       </TooltipProvider>
                     )
@@ -261,7 +261,7 @@ export function RootLayout() {
                   style={{ paddingLeft: 'var(--traffic-light-w)' }}
                 >
                   <HeaderButton icon={PanelLeft} title="展开侧边栏" onClick={() => setSidebarVisible(true)} />
-                  <HeaderButton icon={MessageCirclePlus} title="新建任务" onClick={handleCreate} />
+                  <HeaderButton icon={SquarePen} title="新建任务" onClick={handleCreate} />
                 </div>
               </TooltipProvider>
             ) : null}
