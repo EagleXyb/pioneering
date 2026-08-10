@@ -369,11 +369,13 @@ async function* _normalizeLangGraphStream(
       } else if (mode === 'messages') {
         // LangGraph JS messages streamMode 产出 [message_chunk, metadata] 元组
         // message_chunk（如 AIMessageChunk）才是实际的消息对象，需提取后传递
+        // 保留 metadata（含 langgraph_node / langgraph_step 等）供下游区分轮次/节点
         const msgObj = Array.isArray(chunk) ? chunk[0] : chunk
+        const msgMeta = Array.isArray(chunk) && chunk.length > 1 ? (chunk[1] ?? {}) : {}
         normIdx++
         const msgType = msgObj?._getType?.() ?? msgObj?.constructor?.name ?? typeof msgObj
-        console.info('[runner.normalize] yield[%d] type=messages msg_type=%s', normIdx, msgType)
-        yield { type: 'messages', event: msgObj, data: msgObj }
+        console.info('[runner.normalize] yield[%d] type=messages msg_type=%s node=%s', normIdx, msgType, msgMeta?.langgraph_node ?? '')
+        yield { type: 'messages', event: msgObj, data: msgObj, metadata: msgMeta }
       } else {
         normIdx++
         console.info('[runner.normalize] yield[%d] type=%s', normIdx, mode)

@@ -296,7 +296,7 @@ export function AttachmentList({ attachments, isUser }: AttachmentListProps) {
             }
             aria-label={`附件 ${att.name || '未命名'}`}
             className={cn(
-              'group flex h-[64px] w-full items-center gap-3.5 rounded-2xl bg-muted text-left transition-all duration-150',
+              'group flex h-[68px] w-full items-center gap-3.5 rounded-2xl bg-muted text-left transition-all duration-150',
               trusted && 'hover:bg-accent/70',
               !trusted && 'cursor-not-allowed opacity-60'
             )}
