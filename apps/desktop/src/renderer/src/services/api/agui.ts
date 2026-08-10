@@ -20,6 +20,9 @@ export interface AguiStreamCallbacks {
   onChunk: (delta: string) => void
   /** 思考过程增量（reasoning） */
   onThinking?: (delta: string) => void
+  /** 思考会话开始（THINKING_START）。一轮思考会话对应一段独立的思考叙述，
+   *  收到此事件时若已有思考内容，应插入轮次分隔，避免多段叙述粘连。 */
+  onThinkingStart?: () => void
   /** 工具调用开始（参数可能随后通过 onToolCallArgs 补全） */
   onToolCallStart?: (tool: { id: string; name: string; arguments?: Record<string, unknown> }) => void
   /** 工具调用参数增量（TOOL_CALL_ARGS 事件，delta 为 JSON 字符串片段） */
@@ -167,6 +170,10 @@ export function streamAgui(
                 break
 
               case 'THINKING_START':
+                // 通知上层新一轮思考会话开始（用于在已有多段叙述时插入轮次分隔）
+                cb.onThinkingStart?.()
+                break
+
               case 'THINKING_TEXT_MESSAGE_START':
                 // 准备阶段，真正的增量在 THINKING_TEXT_MESSAGE_CONTENT
                 break

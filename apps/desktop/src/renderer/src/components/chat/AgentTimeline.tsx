@@ -19,7 +19,8 @@ import {
   Search,
   Globe,
   Clock,
-  Code2
+  Code2,
+  Brain
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getToolDisplayName } from '@/lib/constants'
@@ -261,31 +262,72 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
 
   const indent = depth * 14
 
-  // 深度思考：标题是灰色小标题，不带折叠箭头，默认展开内容
+  // 深度思考：可折叠行（与其他时间线行对齐：标题行 + 右侧折叠箭头），
+  // 内容左侧竖线引用，段落间空行分隔
   if (isThinking) {
+    // 按空行拆分段落，过滤末尾因流式/分隔符产生的空段落，避免抖动
+    const paragraphs = (node.content ?? '')
+      .split(/\n\n+/)
+      .map((p) => p.trim())
+      .filter((p, idx, arr) => p || idx !== arr.length - 1)
+
     return (
       <div className="py-0.5" style={{ paddingLeft: indent }}>
-        <div className="text-[12px] text-foreground/40 py-0.5">深度思考</div>
-        <div className="relative pl-3">
-          <div className="absolute left-0 top-0.5 bottom-0.5 w-[2px] rounded-full bg-border/70" />
-          <div className="text-[12px] text-foreground/55 leading-relaxed whitespace-pre-wrap break-words">
-            {node.content}
-            {node.status === 'running' && (
-              <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-foreground/30 align-middle" aria-hidden>
-                ▊
-              </span>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="flex w-full items-center gap-2 text-left py-0.5 min-h-[22px] rounded cursor-pointer hover:opacity-70 transition-opacity"
+        >
+          <Brain className="size-4 shrink-0 text-foreground/40" />
+          <span className="text-[15px] text-foreground/55 flex-1">深度思考</span>
+          {durationMs !== undefined && durationMs > 0 && !isRunning && (
+            <span className="text-[13px] text-foreground/35 font-mono tabular-nums shrink-0">
+              {formatDuration(durationMs)}
+            </span>
+          )}
+          {isRunning && (
+            <span className="text-[13px] text-foreground/40 shrink-0">思考中</span>
+          )}
+          <ChevronRight
+            className={cn(
+              'size-4 shrink-0 text-foreground/30 transition-transform duration-200',
+              expanded && 'rotate-90'
+            )}
+          />
+        </button>
+
+        <div
+          className={cn(
+            'grid transition-[grid-template-rows] duration-200 ease-out',
+            expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          )}
+        >
+          <div className="overflow-hidden">
+            <div className="relative pl-3 py-0.5">
+              <div className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-border/70" />
+              <div className="text-[12px] text-foreground/50 leading-relaxed break-words space-y-2">
+                {paragraphs.map((para, idx) => (
+                  <p key={idx} className="whitespace-pre-wrap">{para}</p>
+                ))}
+                {node.status === 'running' && (
+                  <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-foreground/30 align-middle" aria-hidden>
+                    ▊
+                  </span>
+                )}
+              </div>
+            </div>
+            {hasChildren && (
+              <div className="mt-0.5">
+                {node.children.map((childId) => {
+                  const child = nodes[childId]
+                  if (!child) return null
+                  return <TimelineItem key={childId} node={child} nodes={nodes} depth={depth} />
+                })}
+              </div>
             )}
           </div>
         </div>
-        {hasChildren && (
-          <div className="mt-0.5">
-            {node.children.map((childId) => {
-              const child = nodes[childId]
-              if (!child) return null
-              return <TimelineItem key={childId} node={child} nodes={nodes} depth={depth} />
-            })}
-          </div>
-        )}
       </div>
     )
   }

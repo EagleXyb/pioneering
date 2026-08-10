@@ -405,6 +405,17 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
       scheduleFlush()
     },
 
+    onThinkingStart: () => {
+      if (isStale()) return
+      resetIdleTimer()
+      // 桌面端将整条消息的 thinking 累积到单一容器（accumulatedThinking / ::thinking 节点），
+      // 后端开启新一轮思考会话时，若已有前轮叙述则插入轮次分隔，避免多段叙述粘连。
+      if (accumulatedThinking || pendingThinking) {
+        pendingThinking += '\n\n'
+        scheduleFlush()
+      }
+    },
+
     onToolCallStart: ({ id, name }) => {
       if (isStale()) return
       resetIdleTimer()

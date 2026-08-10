@@ -915,7 +915,10 @@ export function makeAgentNode(
           `2. Then organize the information into a well-structured Markdown document\n` +
           `3. Call the doc_writer tool with auto_name=true, a descriptive title, and the full Markdown content\n` +
           `4. After doc_writer succeeds, produce a final response following the document delivery format\n` +
-          `Do NOT end the conversation without calling doc_writer. The doc_writer tool is your document output channel.`,
+          `Do NOT end the conversation without calling doc_writer. The doc_writer tool is your document output channel.\n\n` +
+          `LANGUAGE: All narration, thinking, and the final answer MUST be in the same language as the user's message. ` +
+          `If the user speaks Chinese, think and answer in Chinese — do NOT use English for intermediate narration.\n` +
+          `FINAL ANSWER: Keep it clean and concise. Do NOT repeat intermediate reasoning in the final answer.`,
       })
       const insertIdx = effectiveSystemPrompt ? 1 : 0
       messages.splice(insertIdx + 1, 0, docGenCtx)

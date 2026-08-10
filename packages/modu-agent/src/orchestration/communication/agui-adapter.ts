@@ -371,6 +371,14 @@ export class AGUIStateMachine {
   pending_tool_calls: Record<string, Record<string, any>> = {}
   tool_call_records: ToolCallRecord[] = []
 
+  // ---- ReAct 中间轮叙述缓冲 ----
+  // 流式 chunk 的 content 与 tool_calls 是分离的（工具调用在 content 之后才流式发出），
+  // 无法靠单个 chunk 判定该消息是否为"中间轮"。因此按消息 id 缓冲 content，
+  // 待该消息轮次结束（id 切换或流终止）时，根据其是否带 tool_calls 决定走 thinking 还是 text。
+  private _buf_msg_id = ''
+  private _buf_content = ''
+  private _buf_has_tool_calls = false
+
   constructor(trace_id: string, message_id: string, output_format: string = 'dict') {
     this.trace_id = trace_id
     this.message_id = message_id
@@ -420,6 +428,7 @@ export class AGUIStateMachine {
 
   emit_thinking_end(): AGUIEvent | string | null {
     if (this.thinking_started) {
+      this.thinking_started = false
       return this._emit(AGUIEventType.THINKING_END, {})
     }
     return null
@@ -458,6 +467,76 @@ export class AGUIStateMachine {
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_START, { messageId: this.message_id, role: 'assistant' }))
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_CONTENT, { messageId: this.message_id, delta: this.response_text }))
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_END, { messageId: this.message_id }))
+    }
+    return events
+  }
+
+  /**
+   * 处理流式 messages chunk（按消息 id 缓冲）。
+   *
+   * 流式 chunk 的 content 与 tool_calls 分离：同一消息的 content token 先流出，
+   * tool_call_chunks 后流出。因此必须缓冲整段 content，待该消息轮次结束时
+   * 才能确定它是"中间轮叙述"（带 tool_calls → thinking）还是"最终回答"（text）。
+   *
+   * 调用时机：每收到一个 messages chunk。
+   * 返回：本轮需要立即发出的事件（通常为空；id 切换时冲刷上一段缓冲）。
+   */
+  process_message_chunk(msg: any, content: string): (AGUIEvent | string)[] {
+    const msgId: string = msg?.id ?? msg?.kwargs?.id ?? ''
+    const chunkToolCalls =
+      !!(msg?.tool_calls?.length) || !!(msg?.tool_call_chunks?.length)
+
+    // 消息 id 未变：继续累积到当前缓冲
+    if (msgId && msgId === this._buf_msg_id) {
+      this._buf_content += content
+      if (chunkToolCalls) this._buf_has_tool_calls = true
+      return []
+    }
+
+    // 消息 id 变化：先冲刷上一段缓冲，再开启新缓冲
+    const events = this.flush_message_buffer()
+    this._buf_msg_id = msgId
+    this._buf_content = content
+    this._buf_has_tool_calls = chunkToolCalls
+    return events
+  }
+
+  /**
+   * 冲刷消息缓冲：根据缓冲消息是否带 tool_calls，
+   * 将其 content 路由到 thinking（中间轮叙述）或 text（最终回答）。
+   *
+   * @param authoritativeToolCalls 可选。来自 updates 事件的权威 tool_calls 判定，
+   *   优先于流式 chunk 累积的 _buf_has_tool_calls（因为流式 chunk 的 tool_calls
+   *   可能晚于 content 到达，updates 里完整 AIMessage 的 tool_calls 才是权威）。
+   */
+  flush_message_buffer(authoritativeToolCalls?: boolean): (AGUIEvent | string)[] {
+    const events: (AGUIEvent | string)[] = []
+    const content = this._buf_content
+    const hasToolCalls =
+      authoritativeToolCalls !== undefined ? authoritativeToolCalls : this._buf_has_tool_calls
+
+    // 重置缓冲
+    this._buf_msg_id = ''
+    this._buf_content = ''
+    this._buf_has_tool_calls = false
+
+    if (!content) {
+      return events
+    }
+
+    if (hasToolCalls) {
+      // 中间轮叙述 → thinking 通道
+      // thinking_started 在整个运行期间持续为 true，恰好可用作"已有前轮叙述"的判定：
+      // 合流新一轮叙述前插入轮次分隔，避免多轮叙述首尾粘连（如 "...news.我已经..."）。
+      const sep = this.thinking_started ? '\n\n' : ''
+      events.push(...this.emit_thinking(sep + content))
+    } else {
+      // 最终回答 → text 通道（若 thinking 仍开启，先关闭）
+      if (this.thinking_started) {
+        const te = this.emit_thinking_end()
+        if (te !== null) events.push(te)
+      }
+      events.push(...this.emit_text_content(content))
     }
     return events
   }
@@ -1003,6 +1082,12 @@ export class AGUIStreamAdapter {
       return
     }
 
+    // 冲刷残余的消息缓冲（最后一段 content 尚未发出），
+    // 根据该消息是否带 tool_calls 决定走 thinking 还是 text。
+    for (const ev of sm.flush_message_buffer()) {
+      yield ev as Record<string, string>
+    }
+
     const thinking_end = sm.emit_thinking_end()
     if (thinking_end !== null) {
       yield thinking_end as Record<string, string>
@@ -1013,6 +1098,17 @@ export class AGUIStreamAdapter {
       for (const ev of sm.emit_text_content(final_response)) {
         yield ev as Record<string, string>
       }
+    }
+
+    // 步骤4 兜底：若 responseNode 提取的 final_response 比流式累积的 collected_text 更完整，
+    // 用 final_response 覆盖 collected_text（仅影响持久化，不重发流式事件）。
+    // 防御流式管道可能遗漏最终回答边缘 token 的情况。
+    if (final_response && final_response.length > sm.collected_text.length) {
+      console.info(
+        '[agui-adapter] transform.override_collected_text stream_len=%d final_len=%d',
+        sm.collected_text.length, final_response.length,
+      )
+      sm.collected_text = final_response
     }
 
     for (const ev of sm.emit_text_end()) {
@@ -1034,14 +1130,24 @@ export class AGUIStreamAdapter {
 
     if (event_type === 'messages') {
       const msg = event.event ?? event.data ?? {}
+      // content 可能是 string 或结构化数组（如 [{type:'text',text:...}]），统一提取纯文本
       let content = ''
-      if (msg && typeof msg === 'object' && 'content' in msg) {
-        content = msg.content ?? ''
-      } else if (typeof msg === 'object' && msg !== null) {
-        content = (msg as Record<string, any>).content ?? ''
+      const rawContent = msg?.content ?? ''
+      if (typeof rawContent === 'string') {
+        content = rawContent
+      } else if (Array.isArray(rawContent)) {
+        content = rawContent
+          .filter((c: any) => c?.type === 'text')
+          .map((c: any) => c?.text ?? '')
+          .join('')
       }
-      if (content) {
-        return sm.emit_text_content(content)
+
+      // 工具调用 chunk（无 content 但带 tool_call_chunks）也要喂给缓冲器，
+      // 以便把当前消息标记为"中间轮"——这是分流的关键判定依据。
+      const chunkToolCalls =
+        !!(msg?.tool_calls?.length) || !!(msg?.tool_call_chunks?.length)
+      if (content || chunkToolCalls) {
+        return sm.process_message_chunk(msg, content)
       }
       return []
     }
@@ -1060,7 +1166,15 @@ export class AGUIStreamAdapter {
         if (messages && messages.length > 0) {
           const last_msg = messages[messages.length - 1]
           const tool_calls = last_msg?.tool_calls
-          if (tool_calls && Array.isArray(tool_calls) && tool_calls.length > 0) {
+          const authoritativeToolCalls =
+            !!(tool_calls && Array.isArray(tool_calls) && tool_calls.length > 0)
+
+          // agent 节点完成 = 一个 LLM 轮次结束（权威轮次边界）。
+          // 用完整 AIMessage 的 tool_calls 做权威判定，冲刷该轮缓冲的 content：
+          // 中间轮（带 tool_calls）→ thinking；最终轮（无 tool_calls）→ text。
+          events.push(...sm.flush_message_buffer(authoritativeToolCalls))
+
+          if (authoritativeToolCalls) {
             for (const tc of tool_calls) {
               const tc_id = tc.id ?? randomUUID()
               const tc_name = tc.name ?? 'unknown'
