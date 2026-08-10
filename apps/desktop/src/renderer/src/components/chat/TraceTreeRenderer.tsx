@@ -24,7 +24,7 @@ export const TraceTreeRenderer = memo(function TraceTreeRenderer({
   depth = 0
 }: TraceTreeRendererProps) {
   return (
-    <div className={depth > 0 ? 'ml-3 border-l border-border/50 pl-3' : ''}>
+    <div className={depth > 0 ? 'ml-4' : ''}>
       {rootIds.map((id) => {
         const node = nodes[id]
         if (!node) return null
@@ -62,24 +62,23 @@ function NodeChildrenOrContent({
   // 若节点有显式子节点（嵌套 tool/obs），递归渲染子树
   if (node.children.length > 0) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-0.5">
         {node.kind === 'tool-call' && node.arguments && Object.keys(node.arguments).length > 0 && (
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">参数</div>
-            <pre className="max-h-60 overflow-auto rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/80">
+            <pre className="max-h-60 overflow-auto font-mono text-[11px] text-foreground/50">
 {JSON.stringify(node.arguments, null, 2)}
             </pre>
           </div>
         )}
         <TraceTreeRenderer nodes={nodes} rootIds={node.children} depth={depth + 1} />
         {node.kind === 'tool-call' && node.status === 'running' && (
-          <div className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
-            <span className="inline-block size-1.5 animate-pulse rounded-full bg-blue-500" />
+          <div className="flex items-center gap-1.5 pt-1 text-[13px] text-foreground/40">
+            <span className="inline-block size-1.5 animate-pulse rounded-full bg-foreground/30" />
             <span>正在执行...</span>
           </div>
         )}
         {node.kind === 'tool-call' && node.status === 'error' && node.errorMessage && (
-          <div className="pt-1 text-xs text-destructive">{node.errorMessage}</div>
+          <div className="pt-1 text-[13px] text-destructive/80">{node.errorMessage}</div>
         )}
       </div>
     )

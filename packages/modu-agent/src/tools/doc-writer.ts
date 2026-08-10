@@ -233,7 +233,11 @@ export class DocWriterTool extends BaseTool {
       relPath = String(params.path).trim()
     } else {
       // auto_name=true（此时 title 一定有，已在上方容错逻辑中兜底）
-      relPath = `${_sanitizeTitle(title)}_${_dateStr()}.md`
+      // 如果 title 中已包含日期（如 "xxx日报_2026-08-10" / "xxx日报 2026-8-10 周一"），
+      // 不再重复追加日期。兼容非补零格式与日期不在末尾的情况。
+      const sanitized = _sanitizeTitle(title)
+      const hasDate = /\d{4}-\d{1,2}-\d{1,2}/.test(sanitized)
+      relPath = hasDate ? `${sanitized}.md` : `${sanitized}_${_dateStr()}.md`
     }
 
     // 路径校验

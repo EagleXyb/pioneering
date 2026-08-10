@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
+import { ChevronRight, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   type SearchResultItem,
@@ -38,21 +38,21 @@ export function SearchResultsCard({ results, source }: { results: SearchResultIt
   }, [results])
 
   return (
-    <div className="my-1.5 rounded-xl bg-muted/60 px-3 py-2.5">
+    <div className="my-1 rounded-xl bg-muted/70 px-3 py-2">
       <ul className="space-y-1.5">
         {results.map((item, idx) => {
           const key = item.url || item.source || item.title || String(idx)
           const color = getFaviconColor(key)
           const letter = getFaviconLetter(item.title, item.url)
           const titleEl = (
-            <span className="text-[13.5px] leading-snug text-foreground/80 hover:text-foreground transition-colors">
+            <span className="text-[13px] leading-snug text-foreground/80 hover:text-foreground transition-colors">
               {item.title}
             </span>
           )
           return (
             <li key={idx} className="flex items-start gap-2 min-w-0">
               <span
-                className="mt-0.5 shrink-0 size-4 rounded-[5px] flex items-center justify-center text-[9px] font-bold select-none"
+                className="mt-0.5 shrink-0 size-4 rounded-[4px] flex items-center justify-center text-[9px] font-bold select-none"
                 style={{ backgroundColor: color.bg, color: color.fg }}
                 title={item.url ? getDomainFromUrl(item.url) : item.source}
               >
@@ -79,11 +79,11 @@ export function SearchResultsCard({ results, source }: { results: SearchResultIt
         <span className="text-[11px] text-foreground/40">
           {source ? `来源：${source}` : `共 ${results.length} 条结果`}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1 text-[11px] text-foreground/40 hover:text-foreground/70 transition-colors px-1.5 py-0.5 rounded"
+            className="flex items-center gap-0.5 text-[11px] text-foreground/40 hover:text-foreground/70 transition-colors px-1 py-0.5 rounded"
           >
             {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
             {copied ? '已复制' : '复制'}
@@ -91,18 +91,27 @@ export function SearchResultsCard({ results, source }: { results: SearchResultIt
           <button
             type="button"
             onClick={() => setShowRaw(v => !v)}
-            className="flex items-center gap-0.5 text-[11px] text-foreground/40 hover:text-foreground/70 transition-colors px-1.5 py-0.5 rounded"
+            className="flex items-center gap-0.5 text-[11px] text-foreground/40 hover:text-foreground/70 transition-colors px-1 py-0.5 rounded"
           >
-            {showRaw ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+            <ChevronRight
+              className={cn('size-3 transition-transform duration-200', showRaw && 'rotate-90')}
+            />
             原始数据
           </button>
         </div>
       </div>
-      {showRaw && (
-        <pre className="mt-1.5 max-h-60 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] text-foreground/60 leading-relaxed">
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          showRaw ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        )}
+      >
+        <div className="overflow-hidden">
+          <pre className="mt-1.5 max-h-60 overflow-auto rounded-lg bg-background/60 p-2 font-mono text-[10px] text-foreground/60 leading-relaxed">
 {JSON.stringify(results, null, 2)}
-        </pre>
-      )}
+          </pre>
+        </div>
+      </div>
     </div>
   )
 }
@@ -111,8 +120,8 @@ export function SearchResultsCard({ results, source }: { results: SearchResultIt
 
 export function DatetimeChip({ datetime }: { datetime: string }) {
   return (
-    <div className="my-1.5 inline-flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1 text-[12.5px] text-foreground/70">
-      <span className="size-1.5 rounded-full bg-foreground/30" />
+    <div className="my-1 inline-flex items-center gap-1 rounded-lg bg-muted/50 px-2 py-0.5 text-[12px] text-foreground/70">
+      <span className="size-1 rounded-full bg-foreground/30" />
       <span>当前时间：</span>
       <span className="font-medium tabular-nums text-foreground/80">{datetime}</span>
     </div>
@@ -150,30 +159,32 @@ export function GenericJsonCard({
 
   if (variant === 'embedded') {
     return (
-      <div className="my-3 rounded-xl border border-border/50 bg-muted/30 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 hover:bg-muted/50 transition-colors">
+      <div className="my-1.5 rounded-xl border border-border/40 bg-muted/20 overflow-hidden">
+        <div className="flex items-center justify-between px-2.5 py-1.5 hover:bg-muted/40 transition-colors">
           <button
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors min-w-0 flex-1"
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors min-w-0 flex-1"
             onClick={() => setExpanded(v => !v)}
           >
-            <ChevronDown
-              className={cn('size-3.5 shrink-0 transition-transform', expanded && 'rotate-180')}
+            <ChevronRight
+              className={cn('size-3 shrink-0 transition-transform duration-200', expanded && 'rotate-90')}
             />
             <span className="truncate">{defaultSummary}</span>
           </button>
           <button
             onClick={handleCopy}
-            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
           >
-            {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
           </button>
         </div>
         <div
-          className="grid transition-[grid-template-rows] duration-200 ease-in-out"
-          style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
+          className={cn(
+            'grid transition-[grid-template-rows] duration-200 ease-out',
+            expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          )}
         >
           <div className="min-h-0 overflow-hidden">
-            <pre className="overflow-x-auto p-3 text-xs leading-relaxed bg-muted/20 border-t border-border/40">
+            <pre className="overflow-x-auto p-2.5 text-[11px] leading-relaxed bg-muted/10 border-t border-border/30">
               <code className="font-mono">{formatted}</code>
             </pre>
           </div>
@@ -184,31 +195,38 @@ export function GenericJsonCard({
 
   // timeline 轻量样式
   return (
-    <div className="my-1.5 rounded-lg bg-muted/30">
-      <button
-        type="button"
-        onClick={() => setExpanded(v => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left transition-colors hover:bg-muted/50 rounded-lg"
-      >
-        <ChevronRight
-          className={cn('size-3 shrink-0 text-foreground/40 transition-transform', expanded && 'rotate-90')}
-        />
-        <span className="flex-1 min-w-0 truncate text-[12.5px] text-foreground/60">{defaultSummary}</span>
+    <div className="my-0.5">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="flex flex-1 items-center gap-1 py-0.5 text-left transition-opacity hover:opacity-70 rounded"
+        >
+          <ChevronRight
+            className={cn('size-3 shrink-0 text-foreground/30 transition-transform duration-200', expanded && 'rotate-90')}
+          />
+          <span className="min-w-0 truncate text-[12px] text-foreground/55">{defaultSummary}</span>
+        </button>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); handleCopy() }}
-          className="shrink-0 text-foreground/40 hover:text-foreground/70 transition-colors p-0.5 rounded"
+          className="shrink-0 text-foreground/30 hover:text-foreground/60 transition-colors p-0.5 rounded"
         >
           {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
         </button>
-      </button>
-      {expanded && (
-        <div className="border-t border-border/30 px-2.5 py-2">
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/70 leading-relaxed">
+      </div>
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        )}
+      >
+        <div className="overflow-hidden">
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words pl-3 font-mono text-[11px] text-foreground/55 leading-relaxed">
 {formatted}
           </pre>
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -35,7 +35,9 @@ const TOOL_NAME_MAP: Record<string, string> = {
   rag: '知识库检索',
   sql_query: '数据库查询',
   api_call: 'API 调用',
-  url_fetch: '网页抓取'
+  url_fetch: '网页抓取',
+  doc_writer: '写入修改文档',
+  file_ops: '文件操作'
 }
 
 /** 根据工具名获取中文显示名，未匹配时返回原始名称 */

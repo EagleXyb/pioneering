@@ -47,17 +47,66 @@ function getToolIcon(toolName: string | undefined): React.ComponentType<{ classN
 }
 
 // ---- 从工具参数中提取简短摘要 ----
+// 支持：嵌套对象递归、数组拼接、更多关键词 key、兜底第一个字符串参数
 function extractArgSummary(args: Record<string, unknown> | undefined): string | null {
   if (!args) return null
-  const keys = ['query', 'q', 'keyword', 'keywords', 'search_query', 'question', 'prompt', 'url', 'pattern']
-  for (const k of keys) {
+  const preferredKeys = [
+    'query', 'q', 'keyword', 'keywords', 'search_query', 'searchQuery', 'search_term', 'searchTerm',
+    'question', 'prompt', 'input', 'text', 'content', 'title', 'topic', 'subject',
+    'url', 'urls', 'pattern', 'path', 'file', 'filepath', 'name', 'target', 'operation',
+    'action', 'request', 'command'
+  ]
+
+  // 1. 优先在顶层按偏好 key 顺序查找（匹配到字符串/字符串数组即用）
+  for (const k of preferredKeys) {
+    if (!(k in args)) continue
+    const s = stringifyValue(args[k])
+    if (s) return s
+  }
+
+  // 2. 递归搜索嵌套对象中的偏好 key（最多两层）
+  for (const k of Object.keys(args)) {
     const v = args[k]
-    if (typeof v === 'string' && v.trim()) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const nested = v as Record<string, unknown>
+      for (const pk of preferredKeys) {
+        if (pk in nested) {
+          const s = stringifyValue(nested[pk])
+          if (s) return s
+        }
+      }
+    }
+  }
+
+  // 3. 兜底：找到第一个非空字符串参数（排除明显技术字段）
+  const skipKeys = new Set(['id', 'type', 'format', 'mode', 'version', 'token', 'api_key', 'apikey', 'session', 'callback'])
+  for (const k of Object.keys(args)) {
+    if (skipKeys.has(k)) continue
+    const v = args[k]
+    if (typeof v === 'string' && v.trim() && !/^(true|false|null)$/.test(v.trim())) {
       const t = v.trim()
-      return t.length > 40 ? t.slice(0, 40) + '…' : t
+      return t.length > 50 ? t.slice(0, 50) + '…' : t
     }
   }
   return null
+
+  function stringifyValue(v: unknown): string | null {
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (!t) return null
+      return t.length > 50 ? t.slice(0, 50) + '…' : t
+    }
+    if (Array.isArray(v)) {
+      const parts = v
+        .map((x) => typeof x === 'string' ? x.trim() : (x != null ? String(x) : ''))
+        .filter(Boolean)
+      if (parts.length === 0) return null
+      const joined = parts.join(' ')
+      return joined.length > 50 ? joined.slice(0, 50) + '…' : joined
+    }
+    if (v && typeof v === 'object') return null
+    return null
+  }
 }
 
 const KIND_ICON: Record<TraceNode['kind'], React.ComponentType<{ className?: string }>> = {
@@ -143,10 +192,8 @@ export const TraceNodeView = memo(function TraceNodeView({
   return (
     <div
       className={cn(
-        'trace-node my-2 overflow-hidden rounded-lg border text-sm',
-        isError
-          ? 'border-destructive/40 bg-destructive/5'
-          : 'border-border/60 bg-muted/30'
+        'trace-node my-0.5 text-sm',
+        isError && 'text-destructive/80'
       )}
       data-node-kind={node.kind}
       data-node-status={node.status}
@@ -156,41 +203,41 @@ export const TraceNodeView = memo(function TraceNodeView({
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         className={cn(
-          'flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-accent/40',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60'
+          'flex w-full items-center gap-1.5 py-1 text-left transition-opacity hover:opacity-70',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40 rounded'
         )}
       >
         <ChevronRight
           className={cn(
-            'size-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
+            'size-3 shrink-0 text-foreground/30 transition-transform duration-200',
             expanded && 'rotate-90'
           )}
         />
         <Icon
           className={cn(
-            'size-3.5 shrink-0',
+            'size-3 shrink-0',
             isRunning && 'animate-spin text-foreground/40',
-            isError && 'text-destructive',
-            !isRunning && !isError && 'text-muted-foreground'
+            isError && 'text-destructive/70',
+            !isRunning && !isError && 'text-foreground/30'
           )}
         />
         <span className={cn(
-          'truncate text-xs font-medium',
-          isError ? 'text-destructive' : 'text-foreground/70'
+          'truncate text-[13px]',
+          isError ? 'text-destructive/80' : 'text-foreground/55'
         )}>
           {title}
         </span>
         {node.fromHistory && (
-          <span className="ml-1 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="ml-1 shrink-0 text-[10px] text-foreground/30">
             历史
           </span>
         )}
         <NodeDuration node={node} />
         {isRunning && (
-          <span className="ml-auto shrink-0 text-[10px] text-foreground/50">执行中</span>
+          <span className="ml-auto shrink-0 text-[11px] text-foreground/40">执行中</span>
         )}
         {isError && node.errorMessage && (
-          <span className="ml-auto shrink-0 truncate text-[10px] text-destructive/80">
+          <span className="ml-auto shrink-0 truncate text-[11px] text-destructive/70">
             {node.errorMessage}
           </span>
         )}
@@ -198,12 +245,12 @@ export const TraceNodeView = memo(function TraceNodeView({
 
       <div
         className={cn(
-          'grid transition-[grid-template-rows] duration-300 ease-out',
+          'grid transition-[grid-template-rows] duration-200 ease-out',
           expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         )}
       >
         <div className="overflow-hidden">
-          <div className="px-3 pb-3 pt-0">
+          <div className="pl-4.5 pb-1.5 pt-0">
             {children ?? <TraceNodeContent node={node} />}
           </div>
         </div>
@@ -247,8 +294,8 @@ const TraceNodeContent = memo(function TraceNodeContent({ node }: { node: TraceN
   // 深度思考：WorkBuddy 风格 — 左侧竖线 + 浅灰文字
   if (node.kind === 'thinking') {
     return (
-      <div className="relative pl-3.5">
-        <div className="absolute left-0 top-1 bottom-1 w-[2.5px] rounded-full bg-border/70" />
+      <div className="relative pl-3">
+        <div className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-border/60" />
         <div className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-foreground/45">
           {node.content}
           {node.status === 'running' && (
@@ -263,17 +310,16 @@ const TraceNodeContent = memo(function TraceNodeContent({ node }: { node: TraceN
     const hasObservationChildren = node.children.length > 0
     const showArgs = hasArgs && !hasObservationChildren
     return (
-      <div className="space-y-2 text-xs">
+      <div className="space-y-1.5 text-[13px]">
         {showArgs && (
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-foreground/25">参数</div>
-            <pre className="max-h-60 overflow-auto rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/55 whitespace-pre-wrap break-all">
+            <pre className="max-h-60 overflow-auto font-mono text-[11px] text-foreground/50 whitespace-pre-wrap break-all">
 {JSON.stringify(node.arguments, null, 2)}
             </pre>
           </div>
         )}
         {!hasArgs && node.argumentsRaw && !hasObservationChildren && (
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono text-[11px] text-foreground/40">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/40">
 {node.argumentsRaw}
           </pre>
         )}

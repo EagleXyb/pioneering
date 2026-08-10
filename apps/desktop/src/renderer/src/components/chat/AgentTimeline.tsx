@@ -1,22 +1,20 @@
 // ============================================================
-// AgentTimeline — 时间线样式的 Agent 运行过程展示
-// 对齐 WorkBuddy 视觉风格：
-//   - 顶部状态行：图标 + "已完成/正在执行" + 耗时 + 下拉箭头
-//   - 深度思考：左侧灰色竖线 + 浅灰文字（blockquote 风格）
-//   - 工具步骤：工具中文名 + 参数摘要（如查询词）
-//   - 搜索结果：直接展示为浅灰圆角卡片 + 彩色来源图标 + 标题列表
-//   - 其他工具结果：智能判别（时间芯片 / 折叠JSON）
-//   - 已完成步骤默认折叠，仅 running 自动展开
+// AgentTimeline — WorkBuddy 风格的 Agent 运行过程展示
+// 对齐截图视觉：
+//   - 顶部状态行：图标 + "已完成/正在执行" + 耗时 + 下拉箭头（最右侧）
+//   - 深度思考：灰色小标题，默认展开，内容左侧灰色竖线引用
+//   - 工具步骤：工具图标 + 中文名/参数摘要，右侧耗时 + 下拉箭头
+//   - 搜索结果：浅灰圆角卡片（由 ToolResultRenderer 渲染）
+//   - 所有可折叠项使用统一的 grid 平滑动画
+//   - 无左侧圆点时间线轨道，整体为缩进对齐的列表
 // ============================================================
 
 import { useState, useEffect, useMemo } from 'react'
 import {
-  ChevronDown,
   ChevronRight,
   Loader2,
   CheckCircle2,
   CircleAlert,
-  Brain,
   TerminalSquare,
   Search,
   Globe,
@@ -69,42 +67,51 @@ export function AgentTimeline({ nodes, rootOrder, isStreaming = false }: AgentTi
   }[overallStatus]
 
   return (
-    <div className="agent-timeline mb-3">
-      {/* 顶部状态行 */}
+    <div className="agent-timeline mb-1">
+      {/* 顶部状态行：图标 + 状态文字 + 耗时 + 折叠箭头（最右） */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 py-1 text-left text-[13px] transition-opacity hover:opacity-70"
+        className="flex w-full items-center gap-2 py-0.5 text-left transition-opacity hover:opacity-70 rounded"
       >
         {overallStatus === 'running' ? (
-          <Loader2 className="size-3.5 animate-spin text-foreground/50 shrink-0" />
+          <Loader2 className="size-4 shrink-0 animate-spin text-foreground/40" />
         ) : overallStatus === 'error' ? (
-          <CircleAlert className="size-3.5 text-destructive/80 shrink-0" />
+          <CircleAlert className="size-4 shrink-0 text-destructive/80" />
         ) : (
-          <CheckCircle2 className="size-3.5 text-foreground/40 shrink-0" />
+          <CheckCircle2 className="size-4 shrink-0 text-foreground/40" />
         )}
-        <span className="text-foreground/50">{statusText}</span>
+        <span className="text-[15px] text-foreground/50">{statusText}</span>
         {totalDurationMs > 0 && (
-          <span className="text-foreground/40 font-mono tabular-nums">
+          <span className="text-[15px] text-foreground/40 font-mono tabular-nums">
             {formatDuration(totalDurationMs)}
           </span>
         )}
-        {expanded ? (
-          <ChevronDown className="size-3.5 ml-0.5 text-foreground/30 shrink-0" />
-        ) : (
-          <ChevronRight className="size-3.5 ml-0.5 text-foreground/30 shrink-0" />
-        )}
+        <ChevronRight
+          className={cn(
+            'ml-auto size-4 shrink-0 text-foreground/30 transition-transform duration-200',
+            expanded && 'rotate-90'
+          )}
+        />
       </button>
 
-      {expanded && (
-        <div className="mt-0.5">
-          {rootOrder.map((nodeId) => {
-            const node = nodes[nodeId]
-            if (!node || node.kind === 'text') return null
-            return <TimelineItem key={nodeId} node={node} nodes={nodes} />
-          })}
+      {/* 内容区：平滑折叠动画 */}
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="mt-0.5">
+            {rootOrder.map((nodeId) => {
+              const node = nodes[nodeId]
+              if (!node || node.kind === 'text') return null
+              return <TimelineItem key={nodeId} node={node} nodes={nodes} depth={0} />
+            })}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -128,67 +135,98 @@ function ToolIcon({ toolName, isRunning, isError, className }: {
 
   return (
     <Icon className={cn(
-      'size-3 shrink-0',
+      'size-4 shrink-0',
       isRunning && 'animate-spin text-foreground/40',
       isError && 'text-destructive/70',
-      !isRunning && !isError && 'text-foreground/30',
+      !isRunning && !isError && 'text-foreground/40',
       className
     )} />
   )
 }
 
 // ---- 从工具参数中提取简短摘要（用于折叠标题） ----
-function extractArgSummary(toolName: string | undefined, args: Record<string, unknown> | undefined): string | null {
+// 支持：嵌套对象递归、数组拼接、更多关键词 key、兜底第一个字符串参数
+function extractArgSummary(_toolName: string | undefined, args: Record<string, unknown> | undefined): string | null {
   if (!args) return null
-  const keys = ['query', 'q', 'keyword', 'keywords', 'search_query', 'question', 'prompt', 'url', 'pattern']
-  for (const k of keys) {
+  const preferredKeys = [
+    'query', 'q', 'keyword', 'keywords', 'search_query', 'searchQuery', 'search_term', 'searchTerm',
+    'question', 'prompt', 'input', 'text', 'content', 'title', 'topic', 'subject',
+    'url', 'urls', 'pattern', 'path', 'file', 'filepath', 'name', 'target', 'operation',
+    'action', 'request', 'command'
+  ]
+
+  // 1. 优先在顶层按偏好 key 顺序查找（匹配到字符串/字符串数组即用）
+  for (const k of preferredKeys) {
+    if (!(k in args)) continue
     const v = args[k]
-    if (typeof v === 'string' && v.trim()) {
+    const s = stringifyValue(v)
+    if (s) return s
+  }
+
+  // 2. 递归搜索嵌套对象中的偏好 key（最多两层）
+  for (const k of Object.keys(args)) {
+    const v = args[k]
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const nested = v as Record<string, unknown>
+      for (const pk of preferredKeys) {
+        if (pk in nested) {
+          const s = stringifyValue(nested[pk])
+          if (s) return s
+        }
+      }
+    }
+  }
+
+  // 3. 兜底：找到第一个非空字符串参数（排除明显技术字段）
+  const skipKeys = new Set(['id', 'type', 'format', 'mode', 'version', 'token', 'api_key', 'apikey', 'session', 'callback'])
+  for (const k of Object.keys(args)) {
+    if (skipKeys.has(k)) continue
+    const v = args[k]
+    if (typeof v === 'string' && v.trim() && !/^(true|false|null)$/.test(v.trim())) {
       const t = v.trim()
-      // 截断过长的摘要
-      return t.length > 40 ? t.slice(0, 40) + '…' : t
+      return t.length > 50 ? t.slice(0, 50) + '…' : t
     }
   }
   return null
-}
 
-// ---- 判断工具的observation结果是否可以"直接展示"（无需折叠整个步骤） ----
-function isDirectlyVisibleResult(node: TraceNode, nodes: Record<string, TraceNode>): boolean {
-  if (node.kind !== 'tool-call') return false
-  // 如果子节点只有一个 observation 且内容是搜索结果/时间，则直接展示
-  if (node.children.length === 0) return false
-  for (const cid of node.children) {
-    const child = nodes[cid]
-    if (!child) continue
-    if (child.kind === 'observation') {
-      const raw = child.content ?? ''
-      if (raw.includes('"results"') && raw.includes('"title"')) return true
-      if (raw.includes('"datetime"')) return true
+  function stringifyValue(v: unknown): string | null {
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (!t) return null
+      return t.length > 50 ? t.slice(0, 50) + '…' : t
     }
+    if (Array.isArray(v)) {
+      const parts = v
+        .map((x) => typeof x === 'string' ? x.trim() : (x != null ? String(x) : ''))
+        .filter(Boolean)
+      if (parts.length === 0) return null
+      const joined = parts.join(' ')
+      return joined.length > 50 ? joined.slice(0, 50) + '…' : joined
+    }
+    if (v && typeof v === 'object') return null // 嵌套对象不直接用，在上层递归处理
+    return null
   }
-  return false
 }
 
 // ---- 单个时间线项目 ----
 interface TimelineItemProps {
   node: TraceNode
   nodes: Record<string, TraceNode>
+  depth: number
 }
 
-function TimelineItem({ node, nodes }: TimelineItemProps) {
+function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
   const isThinking = node.kind === 'thinking'
   const isObservation = node.kind === 'observation'
   const isToolCall = node.kind === 'tool-call'
   const isRunning = node.status === 'running'
   const isError = node.status === 'error'
 
-  // 搜索/时间类工具：有结果后默认展开（因为结果直接可见，不冗长）
   const directVisible = isToolCall && isDirectlyVisibleResult(node, nodes) && node.status === 'completed'
   const [expanded, setExpanded] = useState(() => defaultExpanded(node, directVisible))
 
   useEffect(() => {
     if (isRunning) setExpanded(true)
-    // 搜索/时间工具刚完成时也展开一下显示结果，后续可手动折叠
     if (node.status === 'completed' && directVisible) setExpanded(true)
   }, [node.status, directVisible])
 
@@ -202,7 +240,8 @@ function TimelineItem({ node, nodes }: TimelineItemProps) {
     node.content ||
     hasChildren ||
     (isToolCall && node.arguments && Object.keys(node.arguments).length > 0) ||
-    (isToolCall && node.status === 'running')
+    (isToolCall && node.status === 'running') ||
+    (isThinking && node.content)
   )
 
   // 标题
@@ -220,82 +259,109 @@ function TimelineItem({ node, nodes }: TimelineItemProps) {
     node.durationMs ??
     (node.startTime && node.endTime ? node.endTime - node.startTime : undefined)
 
-  return (
-    <div className="flex gap-2">
-      {/* 左侧时间线轨道 */}
-      <div className="flex flex-col items-center w-4 shrink-0">
-        <div
-          className={cn(
-            'size-2 rounded-full border shrink-0 mt-[7px]',
-            isRunning && 'border-foreground/40 bg-foreground/10',
-            isError && 'border-destructive/60 bg-destructive/10',
-            !isRunning && !isError && 'border-foreground/20'
-          )}
-        />
-        {(hasContent || hasChildren) && (
-          <div className="w-px flex-1 bg-border/50 mt-1" />
+  const indent = depth * 14
+
+  // 深度思考：标题是灰色小标题，不带折叠箭头，默认展开内容
+  if (isThinking) {
+    return (
+      <div className="py-0.5" style={{ paddingLeft: indent }}>
+        <div className="text-[12px] text-foreground/40 py-0.5">深度思考</div>
+        <div className="relative pl-3">
+          <div className="absolute left-0 top-0.5 bottom-0.5 w-[2px] rounded-full bg-border/70" />
+          <div className="text-[12px] text-foreground/55 leading-relaxed whitespace-pre-wrap break-words">
+            {node.content}
+            {node.status === 'running' && (
+              <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-foreground/30 align-middle" aria-hidden>
+                ▊
+              </span>
+            )}
+          </div>
+        </div>
+        {hasChildren && (
+          <div className="mt-0.5">
+            {node.children.map((childId) => {
+              const child = nodes[childId]
+              if (!child) return null
+              return <TimelineItem key={childId} node={child} nodes={nodes} depth={depth} />
+            })}
+          </div>
         )}
       </div>
+    )
+  }
 
-      {/* 右侧内容 */}
-      <div className="flex-1 min-w-0 pb-2">
-        <button
-          type="button"
-          onClick={() => hasContent && setExpanded((v) => !v)}
+  // observation 节点不单独渲染标题行，直接渲染内容（作为 tool-call 的子内容）
+  if (isObservation && !hasContent) {
+    return null
+  }
+
+  // 工具调用/其他节点：可折叠行
+  return (
+    <div className="py-0.5" style={{ paddingLeft: indent }}>
+      <button
+        type="button"
+        onClick={() => hasContent && setExpanded((v) => !v)}
+        className={cn(
+          'flex w-full items-center gap-2 text-left py-0.5 min-h-[22px] rounded',
+          hasContent && 'cursor-pointer hover:opacity-70 transition-opacity',
+          !hasContent && 'cursor-default'
+        )}
+      >
+        <ToolIcon toolName={node.toolName} isRunning={isRunning} isError={isError} />
+        <span
           className={cn(
-            'flex w-full items-center gap-1.5 text-left py-0.5 min-h-[22px]',
-            hasContent && 'cursor-pointer hover:opacity-70 transition-opacity',
-            !hasContent && 'cursor-default'
+            'text-[15px] flex-1 truncate',
+            isError ? 'text-destructive/80' : 'text-foreground/55'
           )}
         >
-          {isThinking ? (
-            <Brain className={cn(
-              'size-3 shrink-0',
-              isRunning && 'animate-pulse text-foreground/40',
-              isError && 'text-destructive/70',
-              !isRunning && !isError && 'text-foreground/30'
-            )} />
-          ) : isToolCall ? (
-            <ToolIcon toolName={node.toolName} isRunning={isRunning} isError={isError} />
-          ) : isObservation ? (
-            <ChevronRight className="size-3 shrink-0 text-foreground/30" />
-          ) : null}
-          <span
-            className={cn(
-              'text-[13px] flex-1 truncate',
-              isError ? 'text-destructive/80' : 'text-foreground/55'
-            )}
-          >
-            {title}
+          {title}
+        </span>
+        {durationMs !== undefined && durationMs > 0 && !isRunning && (
+          <span className="text-[13px] text-foreground/35 font-mono tabular-nums shrink-0">
+            {formatDuration(durationMs)}
           </span>
-          {durationMs !== undefined && durationMs > 0 && (
-            <span className="text-[11px] text-foreground/35 font-mono tabular-nums shrink-0">
-              {formatDuration(durationMs)}
-            </span>
-          )}
-          {hasContent && (
-            expanded ? (
-              <ChevronDown className="size-3 text-foreground/30 shrink-0" />
-            ) : (
-              <ChevronRight className="size-3 text-foreground/30 shrink-0" />
-            )
-          )}
-        </button>
+        )}
+        {isRunning && (
+          <span className="text-[13px] text-foreground/40 shrink-0">执行中</span>
+        )}
+        {hasContent && (
+          <ChevronRight
+            className={cn(
+              'size-4 shrink-0 text-foreground/30 transition-transform duration-200',
+              expanded && 'rotate-90'
+            )}
+          />
+        )}
+      </button>
 
-        {expanded && hasContent && (
-          <div className="mt-1">
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          expanded && hasContent ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="py-0.5">
             <NodeContent node={node} />
             {hasChildren && (
-              <div className="mt-1 space-y-0">
+              <div className="mt-0.5">
                 {node.children.map((childId) => {
                   const child = nodes[childId]
                   if (!child) return null
-                  return <TimelineItem key={childId} node={child} nodes={nodes} />
+                  // observation 子节点直接渲染内容（无标题行），深度+1缩进
+                  if (child.kind === 'observation') {
+                    return (
+                      <div key={childId} className="pl-3">
+                        <ObservationResult raw={child.content ?? ''} />
+                      </div>
+                    )
+                  }
+                  return <TimelineItem key={childId} node={child} nodes={nodes} depth={depth + 1} />
                 })}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
@@ -303,78 +369,66 @@ function TimelineItem({ node, nodes }: TimelineItemProps) {
 
 // ---- 节点正文内容 ----
 function NodeContent({ node }: { node: TraceNode }) {
-  // 深度思考：WorkBuddy 风格 — 左侧灰色竖线 + 浅灰文字
-  if (node.kind === 'thinking') {
-    return (
-      <div className="relative pl-3.5">
-        <div className="absolute left-0 top-1 bottom-1 w-[2.5px] rounded-full bg-border/70" />
-        <div className="text-[13px] text-foreground/45 leading-relaxed whitespace-pre-wrap break-words">
-          {node.content}
-          {node.status === 'running' && (
-            <span className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-foreground/30 align-middle" aria-hidden>
-              ▊
-            </span>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   if (node.kind === 'tool-call') {
-    // 搜索/时间等有直接可视化结果的工具，不显示参数区（结果会直接在子observation节点展示）
     const hasObservationWithResult = node.children.length > 0
     const hasArgs = node.arguments && Object.keys(node.arguments).length > 0
     const showArgs = hasArgs && !hasObservationWithResult
 
     return (
-      <div className="space-y-1">
+      <div className="space-y-0.5 pl-3">
         {showArgs && (
-          <div className="rounded-md bg-muted/20 px-2.5 py-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-foreground/25 mb-0.5">参数</div>
-            <pre className="max-h-40 overflow-auto font-mono text-[11px] text-foreground/55 whitespace-pre-wrap break-all">
+          <pre className="max-h-40 overflow-auto font-mono text-[11px] text-foreground/50 whitespace-pre-wrap break-all">
 {JSON.stringify(node.arguments, null, 2)}
-            </pre>
-          </div>
+          </pre>
         )}
         {!hasArgs && node.argumentsRaw && !hasObservationWithResult && (
-          <div className="rounded-md bg-muted/20 px-2.5 py-1.5">
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/40">
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/40">
 {node.argumentsRaw}
-            </pre>
-          </div>
+          </pre>
         )}
         {node.status === 'running' && (
-          <div className="flex items-center gap-1.5 text-[13px] text-foreground/40 pl-0.5">
+          <div className="flex items-center gap-1 text-[12px] text-foreground/40">
             <Loader2 className="size-3 animate-spin" />
             <span>正在执行...</span>
           </div>
         )}
         {node.status === 'error' && node.errorMessage && (
-          <div className="text-[13px] text-destructive/80 pl-0.5">{node.errorMessage}</div>
+          <div className="text-[12px] text-destructive/80">{node.errorMessage}</div>
         )}
       </div>
     )
   }
 
-  // observation：智能展示（搜索卡片/时间芯片/折叠JSON）
-  if (node.kind === 'observation') {
-    return <ObservationResult raw={node.content ?? ''} />
-  }
-
   if (node.kind === 'error' && node.errorMessage) {
-    return <div className="text-[13px] text-destructive/80 pl-0.5">{node.errorMessage}</div>
+    return <div className="pl-3 text-[12px] text-destructive/80">{node.errorMessage}</div>
   }
 
   return null
 }
 
+// ---- 判断工具结果是否可以直接展示（搜索/时间等） ----
+function isDirectlyVisibleResult(node: TraceNode, nodes: Record<string, TraceNode>): boolean {
+  if (node.kind !== 'tool-call') return false
+  if (node.children.length === 0) return false
+  for (const cid of node.children) {
+    const child = nodes[cid]
+    if (!child) continue
+    if (child.kind === 'observation') {
+      const raw = child.content ?? ''
+      if (raw.includes('"results"') && raw.includes('"title"')) return true
+      if (raw.includes('"datetime"')) return true
+    }
+  }
+  return false
+}
+
 // ---- 默认展开策略 ----
 function defaultExpanded(node: TraceNode, directVisible: boolean): boolean {
   if (node.kind === 'text') return true
+  if (node.kind === 'thinking') return true // 思考默认展开
   if (node.status === 'error') return true
   if (node.status === 'running') return true
-  if (node.kind === 'observation') return false
-  if (node.kind === 'thinking' && node.status === 'completed') return false
+  if (node.kind === 'observation') return true
   if (node.kind === 'tool-call' && node.status === 'completed') {
     return directVisible // 有可视化结果的工具默认展开
   }
