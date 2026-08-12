@@ -16,7 +16,6 @@ import {
   TerminalSquare,
   Wand2,
   Eye,
-  Search,
   Globe,
   Clock,
   Code2,
@@ -39,7 +38,7 @@ interface TraceNodeViewProps {
 function getToolIcon(toolName: string | undefined): React.ComponentType<{ className?: string }> {
   if (!toolName) return TerminalSquare
   const n = toolName.toLowerCase()
-  if (n.includes('search') || n.includes('web_search') || n === 'news') return Search
+  if (n.includes('search') || n.includes('web_search') || n === 'news') return Globe
   if (n.includes('fetch') || n.includes('url') || n.includes('browser')) return Globe
   if (n.includes('datetime') || n.includes('time') || n.includes('clock')) return Clock
   if (n.includes('python') || n.includes('code') || n.includes('execute')) return Code2

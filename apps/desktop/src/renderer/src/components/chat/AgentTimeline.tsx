@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   CircleAlert,
   TerminalSquare,
-  Search,
   Globe,
   Clock,
   Code2,
@@ -127,7 +126,7 @@ function ToolIcon({ toolName, isRunning, isError, className }: {
   const Icon = useMemo(() => {
     if (!toolName) return TerminalSquare
     const n = toolName.toLowerCase()
-    if (n.includes('search') || n.includes('web_search') || n === 'news') return Search
+    if (n.includes('search') || n.includes('web_search') || n === 'news') return Globe
     if (n.includes('fetch') || n.includes('url') || n.includes('browser')) return Globe
     if (n.includes('datetime') || n.includes('time') || n.includes('clock')) return Clock
     if (n.includes('python') || n.includes('code') || n.includes('execute')) return Code2
@@ -280,7 +279,7 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
           className="flex w-full items-center gap-2 text-left py-0.5 min-h-[22px] rounded cursor-pointer hover:opacity-70 transition-opacity"
         >
           <Brain className="size-4 shrink-0 text-foreground/40" />
-          <span className="text-[15px] text-foreground/55 flex-1">深度思考</span>
+          <span className="text-[14px] text-foreground/55 flex-1">深度思考</span>
           {durationMs !== undefined && durationMs > 0 && !isRunning && (
             <span className="text-[13px] text-foreground/35 font-mono tabular-nums shrink-0">
               {formatDuration(durationMs)}
@@ -352,7 +351,7 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
         <ToolIcon toolName={node.toolName} isRunning={isRunning} isError={isError} />
         <span
           className={cn(
-            'text-[15px] flex-1 truncate',
+            'text-[14px] flex-1 truncate',
             isError ? 'text-destructive/80' : 'text-foreground/55'
           )}
         >
