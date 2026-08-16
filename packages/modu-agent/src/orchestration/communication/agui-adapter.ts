@@ -450,6 +450,7 @@ export class AGUIStateMachine {
 
   emit_text_content(content: string): (AGUIEvent | string)[] {
     this.response_text += content
+    this.collected_text = this.response_text
     const events: (AGUIEvent | string)[] = []
     if (!this.text_message_started) {
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_START, { messageId: this.message_id, role: 'assistant' }))
@@ -1093,6 +1094,15 @@ export class AGUIStreamAdapter {
       yield thinking_end as Record<string, string>
     }
 
+    // 最终保护：工具已执行但流式全程无正文、且 state.response 兜底缺失时，
+    // 基于 tool_call_records 合成摘要文本，确保前端一定收到 TEXT_MESSAGE 事件
+    if (!sm.text_message_started && !final_response && sm.tool_call_records.length > 0) {
+      const toolNames = Array.from(new Set(sm.tool_call_records.map((r) => r.tool_name)))
+      final_response =
+        `任务已完成：共执行 ${sm.tool_call_records.length} 次工具调用（${toolNames.join('、')}）。`
+      console.info('[agui-adapter] transform.final_fallback len=%d', final_response.length)
+    }
+
     if (!sm.text_message_started && final_response) {
       console.info('[agui-adapter] transform.fallback_text_content len=%d', final_response.length)
       for (const ev of sm.emit_text_content(final_response)) {
@@ -1130,6 +1140,18 @@ export class AGUIStreamAdapter {
 
     if (event_type === 'messages') {
       const msg = event.event ?? event.data ?? {}
+
+      // 只处理 AI 消息（AIMessageChunk）：messages 流中混有 ToolMessage（工具结果）
+      // 与 HumanMessage 等非 AI 消息。ToolMessage 不带 tool_calls，若进入缓冲器，
+      // 冲刷时会被误判为"最终回答"路由到 text 通道——工具结果 JSON 顶替正文，
+      // 并提前置位 text_message_started，使末尾所有最终正文兜底逻辑失效。
+      const msgType = typeof msg?._getType === 'function' ? msg._getType() : (msg?.type ?? '')
+      const isToolMessage =
+        msgType === 'tool' || !!(msg?.tool_call_id ?? msg?.kwargs?.tool_call_id)
+      if (isToolMessage || (msgType && msgType !== 'ai')) {
+        return []
+      }
+
       // content 可能是 string 或结构化数组（如 [{type:'text',text:...}]），统一提取纯文本
       let content = ''
       const rawContent = msg?.content ?? ''

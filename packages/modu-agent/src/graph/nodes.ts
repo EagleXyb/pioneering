@@ -518,10 +518,20 @@ export function routeAfterAgent(state: ModuAgentState): string {
     // === 文档生成任务特殊保护：防止 doc_writer 无限重试 ===
     const isDocGen = state.task_type === 'document_generation'
     if (isDocGen) {
-      // 保护1: doc_writer 已成功 → 直接结束，不允许再调用任何工具（防止重复写文档）
+      // 保护1: doc_writer 已成功 → 阻止再调用任何工具（防止重复写文档）。
+      // 但不能直接结束：LLM 尚未输出最终回复正文（规则 26 的确认语+核心内容速览），
+      // 直接结束会导致 responseNode 只能产出程序化兜底模板。
+      // 因此先注入一次"最终回复提醒"（doc_final_answer 节点），让 LLM 补写终答；
+      // 已注入过则强制结束，走兜底。
       if (state.doc_writer_succeeded) {
+        if (!state.doc_final_answer_enforced) {
+          logger.info(
+            '[doc-gen-guard] doc_writer succeeded but final answer missing, injecting final-answer reminder',
+          )
+          return 'doc_final_answer'
+        }
         logger.warning(
-          '[doc-gen-guard] doc_writer already succeeded, blocking further tool calls and forcing termination',
+          '[doc-gen-guard] doc_writer already succeeded and final-answer reminder already injected, forcing termination',
         )
         return '__end__'
       }
@@ -767,18 +777,17 @@ export function docGenEnforceNode(state: ModuAgentState): Partial<ModuAgentState
   const failCount = state.doc_writer_fail_count ?? 0
 
   const reminderContent = isFirstEnforcement
-    ? `CRITICAL REMINDER: The user asked you to generate a document/report/file, but you have not yet successfully called the doc_writer tool. ` +
-      `You MUST call the doc_writer tool NOW to create the document. ` +
-      `Do NOT end your response with just text — you must call doc_writer with BOTH 'title' AND 'content' parameters. ` +
-      `Required parameters:
-- title (string, REQUIRED): A descriptive document title, e.g. "AI Agent行业新闻日报_2026-08-08"
-- content (string, REQUIRED): The complete Markdown document content
-- auto_name: true (default, recommended)
-Example: doc_writer({title: "AI Agent新闻日报_2026-08-08", content: "# AI Agent新闻日报\\n\\n## 今日要点\\n..."})`
-    : `FINAL REMINDER: This is your last chance. You MUST call the doc_writer tool to complete the document generation task. ` +
-      `Previous attempts failed. Make sure you provide BOTH required parameters: 'title' (descriptive document name) and 'content' (full Markdown text). ` +
-      `If you produce a final text response without calling doc_writer, the task will be considered incomplete. ` +
-      `Call doc_writer NOW with the complete Markdown content.`
+    ? `【重要提醒】用户要求生成文档/报告/文件，但你尚未成功调用 doc_writer 工具。` +
+      `你必须【立即】调用 doc_writer 工具来创建文档，不要只输出文本就结束回复。` +
+      `调用时必须同时提供 title 和 content 两个参数：\n` +
+      `- title（字符串，必填）：具有描述性的文档标题，例如 "AI Agent行业新闻日报_2026-08-08"\n` +
+      `- content（字符串，必填）：完整的 Markdown 文档正文\n` +
+      `- auto_name: true（默认值，推荐使用）\n` +
+      `示例：doc_writer({title: "AI Agent新闻日报_2026-08-08", content: "# AI Agent新闻日报\\n\\n## 今日要点\\n..."})`
+    : `【最后提醒】这是你最后一次机会。你必须调用 doc_writer 工具来完成文档生成任务。` +
+      `此前的尝试未成功，请确保同时提供两个必填参数：title（描述性的文档名称）和 content（完整的 Markdown 正文）。` +
+      `如果你不调用 doc_writer 就直接输出最终文本，本次任务将被视为未完成。` +
+      `请立即使用完整的 Markdown 内容调用 doc_writer。`
 
   const reminderMsg = new SystemMessage({ content: reminderContent })
 
@@ -786,6 +795,66 @@ Example: doc_writer({title: "AI Agent新闻日报_2026-08-08", content: "# AI Ag
     messages: [reminderMsg],
     // 修复：使用正确的递增值而非硬编码 1
     doc_writer_enforcement_count: enforcementCount,
+  }
+}
+
+/**
+ * 文档生成最终回复提醒节点。
+ *
+ * doc_writer 成功后，若 LLM 下一轮仍输出 tool_calls（未产出最终回复正文），
+ * routeAfterAgent 会路由到此节点。注入一条 SystemMessage 提醒 LLM：
+ * 文档已生成，禁止再调用任何工具，按提示词规则 26 的模板输出最终回复
+ * （确认语 + 文档位置 + 核心内容速览）。
+ *
+ * 通过 doc_final_answer_enforced 标记保证最多注入一次，之后仍无正文则走兜底。
+ */
+export function docFinalAnswerNode(state: ModuAgentState): Partial<ModuAgentState> {
+  const artifacts = state.artifacts ?? []
+  const docArtifact = artifacts.find(
+    (a) => a && (a['type'] === 'document' || a['tool'] === 'doc_writer'),
+  )
+  const fileName = String(docArtifact?.['name'] ?? '')
+  const docTitle = String(docArtifact?.['title'] ?? '')
+
+  const reminderContent =
+    `【重要提醒】文档已通过 doc_writer 成功生成${docTitle ? `《${docTitle}》` : ''}` +
+    `${fileName ? `（文件名：${fileName}）` : ''}。` +
+    `【禁止】再调用任何工具（包括 doc_writer / search_engine 等）。` +
+    `请【直接输出最终回复文本】结束本次任务，格式严格遵循：\n` +
+    `1. 开头一句简短的中文确认语（例如："已为你梳理好今天的新闻，整理成一份结构化中文日报文档。"）\n` +
+    `2. 换行后输出「文档位置：📄 ${fileName || '[实际文件名]'}」\n` +
+    `3. 换行后输出「## 核心内容速览」，下面用 3-5 条 bullet（-）列出文档的关键要点\n` +
+    `4. 可选：一句关于数据来源或下一步建议的补充说明\n` +
+    `全文使用与用户消息相同的语言。`
+
+  logger.info('[doc-final-answer] injecting final-answer reminder (file=%s)', fileName)
+
+  const newMessages: BaseMessage[] = []
+
+  // 清除悬挂的 tool_calls：到达此节点时，末尾 AIMessage 的 tool_calls 被路由拦截、
+  // 不会送去 tools 节点执行。若原样保留，agent 节点再次调用 LLM 时 API 会报
+  // INVALID_TOOL_RESULTS（tool_calls 后缺少对应 ToolMessage）。
+  // LangGraph 的 messages reducer 按 id 原地更新，用同 id 的无 tool_calls 消息替换即可。
+  const stateMessages = state.messages ?? []
+  const lastMsg = stateMessages[stateMessages.length - 1]
+  if (lastMsg instanceof AIMessage && (lastMsg.tool_calls?.length ?? 0) > 0) {
+    newMessages.push(
+      new AIMessage({
+        content: lastMsg.content,
+        id: lastMsg.id,
+      }),
+    )
+    logger.info(
+      '[doc-final-answer] stripped %d dangling tool_call(s) from last AIMessage',
+      lastMsg.tool_calls?.length ?? 0,
+    )
+  }
+
+  newMessages.push(new SystemMessage({ content: reminderContent }))
+
+  return {
+    messages: newMessages,
+    doc_final_answer_enforced: true,
   }
 }
 
@@ -1347,6 +1416,70 @@ export function makeToolResultProcessor(
 // ============================================================
 
 /**
+ * 从 AIMessage.content 提取纯文本。
+ *
+ * content 可能是字符串，也可能是结构化数组（如 [{type:'text',text:...}]），
+ * 统一提取 text 块，避免结构化 content 被当作字符串透传导致正文丢失。
+ */
+function _extractAiText(rawContent: unknown): string {
+  if (typeof rawContent === 'string') {
+    return rawContent.trim()
+  }
+  if (Array.isArray(rawContent)) {
+    return rawContent
+      .filter((c: any) => c?.type === 'text')
+      .map((c: any) => String(c?.text ?? ''))
+      .join('')
+      .trim()
+  }
+  return ''
+}
+
+/**
+ * 程序化兜底正文。
+ *
+ * LLM 使用 function calling 时，中间轮 AIMessage.content 常为空字符串；
+ * 若最终轮也未生成文本，responseNode 将提取不到任何正文，导致前端收不到
+ * TEXT_MESSAGE 事件。此函数基于工具执行结果合成回复，保证 response 非空：
+ *
+ * 优先级：
+ *   1. 文档产物（doc_writer）→ 按 factory.ts 提示词规则 26 的格式输出确认信息
+ *   2. 其他工具 → 输出工具执行摘要
+ *   3. 无工具执行 → 返回空串（保持原行为）
+ */
+function _buildFallbackResponse(state: ModuAgentState): string {
+  const artifacts = state.artifacts ?? []
+  const toolResults = state.tool_results ?? []
+
+  const docArtifact = artifacts.find(
+    (a) => a && (a['type'] === 'document' || a['tool'] === 'doc_writer'),
+  )
+  if (docArtifact) {
+    const name = String(docArtifact['name'] ?? '')
+    const title = String(docArtifact['title'] ?? '')
+    const summary = String(docArtifact['summary'] ?? '')
+    const lines: string[] = [
+      title ? `已为你完成文档《${title}》的生成。` : '文档已生成完成。',
+      `文档位置：📄 ${name}`,
+    ]
+    if (summary) {
+      lines.push('', '## 核心内容速览', '', summary)
+    }
+    return lines.join('\n')
+  }
+
+  if (toolResults.length > 0) {
+    const successCount = toolResults.filter((r) => r['status'] === 'success').length
+    const toolNames = Array.from(
+      new Set(toolResults.map((r) => String(r['tool'] ?? '')).filter(Boolean)),
+    )
+    return `本次任务共执行 ${toolResults.length} 次工具调用（成功 ${successCount} 次），涉及工具：${toolNames.join('、')}。`
+  }
+
+  return ''
+}
+
+/**
  * 最终响应节点：提取最终响应文本。
  *
  * 对应 coordinator.py 中 process_request 的返回结构构建。
@@ -1363,18 +1496,34 @@ export function responseNode(
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (msg instanceof AIMessage && msg.content) {
-      response = msg.content as string
-      // 尝试从 AIMessage 获取 usage 信息
-      const usageMetadata = (msg as any).usage_metadata
-      if (usageMetadata) {
-        usage = {
-          prompt_tokens: usageMetadata['input_tokens'] ?? 0,
-          completion_tokens: usageMetadata['output_tokens'] ?? 0,
-          total_tokens: usageMetadata['total_tokens'] ?? 0,
+    if (msg instanceof AIMessage) {
+      // content 可能是字符串或结构化数组，统一提取纯文本
+      const text = _extractAiText(msg.content)
+      if (text) {
+        response = text
+        // 尝试从 AIMessage 获取 usage 信息
+        const usageMetadata = (msg as any).usage_metadata
+        if (usageMetadata) {
+          usage = {
+            prompt_tokens: usageMetadata['input_tokens'] ?? 0,
+            completion_tokens: usageMetadata['output_tokens'] ?? 0,
+            total_tokens: usageMetadata['total_tokens'] ?? 0,
+          }
         }
+        break
       }
-      break
+    }
+  }
+
+  // 兜底：LLM 全程只发 tool_calls 未生成正文时，基于工具执行结果程序化合成回复，
+  // 确保下游（AGUI adapter 经 values 事件的 final_response fallback）能发出正文
+  if (!response) {
+    response = _buildFallbackResponse(state)
+    if (response) {
+      logger.info(
+        '[response-fallback] No AIMessage text found, synthesized fallback response (len=%d)',
+        response.length,
+      )
     }
   }
 

@@ -153,6 +153,8 @@ export interface ModuAgentState {
   doc_writer_succeeded?: boolean
   // doc_writer 连续失败次数（达到上限后强制终止，避免无限重试）
   doc_writer_fail_count?: number
+  // doc_writer 成功后已注入过"最终回复提醒"标记（仅注入一次，防止循环）
+  doc_final_answer_enforced?: boolean
 }
 
 /**
@@ -355,6 +357,11 @@ export const ModuAgentStateAnnotation = Annotation.Root({
     reducer: (prev, next) => (prev ?? 0) + (next ?? 0),
     default: () => 0,
   }),
+  // 最终回复提醒注入标记（last-write-wins，一旦注入永不重置）
+  doc_final_answer_enforced: Annotation<boolean>({
+    reducer: (prev, next) => (prev ?? false) || (next ?? false),
+    default: () => false,
+  }),
 })
 
 // ============================================================
@@ -468,6 +475,7 @@ export function makeInitialState(
     doc_writer_enforcement_count: 0,
     doc_writer_succeeded: false,
     doc_writer_fail_count: 0,
+    doc_final_answer_enforced: false,
   }
 }
 

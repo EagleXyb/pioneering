@@ -31,7 +31,7 @@ interface TaskMonitorProps {
 
 // 示例待办数据（真实任务待办后续可由 plan/state_delta 事件注入，这里暂时沿用默认值）
 const DEFAULT_TODO_ITEMS: TodoItem[] = [
-  { id: '1', text: '搜索今日（2026-08-09）AI Agent 相关新闻', completed: true },
+  { id: '1', text: '搜索今日（2026-08-16）AI Agent 相关新闻', completed: true },
   { id: '2', text: '深入抓取重点文章核实细节按专题整理', completed: true },
   { id: '3', text: '汇总撰写Markdown 文档中文新闻综述', completed: true },
   { id: '4', text: '生成并展示 AI Agent 新闻日报文档', completed: true },
