@@ -1,0 +1,26 @@
+{
+  "name": "@pioneering/evals",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent 评测工程（一等公民）：YAML 配置驱动的分层评测、CI 门禁与进化闭环",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "eval": "node dist/cli.js",
+    "eval:smoke": "node dist/cli.js run --dataset smoke",
+    "eval:gate": "node dist/cli.js gate --gate ci"
+  },
+  "dependencies": {
+    "@pioneering/modu-agent": "^0.1.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

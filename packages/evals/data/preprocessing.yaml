@@ -1,0 +1,21 @@
+# ============================================================
+# 评测数据预处理规则（evals/data/preprocessing.yaml）
+#
+# 作用：用例加载后、执行前的数据清洗与归一化，
+#       保证评测输入确定、可复现、无脏数据。
+# ============================================================
+
+version: 1
+
+preprocessing:
+  # 去除首尾空白
+  trim_whitespace: true
+  # prompt 超长截断（与 modu-agent perception.max_length 对齐）
+  max_prompt_chars: 2000
+  # 占位符替换：用例中 {{key}} 在加载时替换为固定值
+  # （解决"今天"类时间敏感用例的不可复现问题——评测时日期被钉死）
+  placeholders:
+    date: "2026-08-20"
+    lang: "zh-CN"
+  # 跳过带这些标签的用例（草稿/禁用中）
+  exclude_tags: [draft, disabled]

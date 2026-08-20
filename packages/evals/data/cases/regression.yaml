@@ -1,0 +1,30 @@
+# ============================================================
+# 历史失败回归用例（evals/data/cases/regression.yaml）
+#
+# 机制：线上/评测失败用例经确认后沉淀于此（"失败即入库"）。
+#       每次 prompt/模型/工具变更，回归集必须全绿才允许发版。
+#       用例注释保留失败根因，便于回归时定位。
+# ============================================================
+
+version: 1
+cases:
+  - id: reg-multistep-001
+    category: regression
+    # 根因：早停（premature termination）——取得中间结果后提前输出，
+    #       未完成后续工具调用（对应 modu-agent 防幻觉 prompt 规则 7/8）
+    input: "先计算 99*98，然后判断结果是奇数还是偶数，最后把两个结论合成一句话回答。"
+    ground_truth: "9702"
+    expected_tools: [calculator]
+    max_tool_calls: 4
+    tags: [regression, multistep, premature_termination]
+    source: failure
+
+  - id: reg-toolretry-001
+    category: regression
+    # 根因：工具失败后盲目原样重试，未调整参数（对应 prompt 规则 13/15）
+    input: "计算 100/7 的结果，保留四位小数。如果第一次没有算对请换一种方式再算。"
+    ground_truth: "14.2857"
+    expected_tools: [calculator]
+    max_tool_calls: 3
+    tags: [regression, tool_use, blind_retry]
+    source: failure

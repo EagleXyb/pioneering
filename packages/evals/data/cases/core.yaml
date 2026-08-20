@@ -1,0 +1,69 @@
+# ============================================================
+# 核心评测用例（evals/data/cases/core.yaml）
+#
+# schema：
+#   id            用例唯一标识（回归追踪的主键）
+#   category      core | edge | adversarial | regression
+#   input         用户输入（注入被测 Agent 的 prompt）
+#   ground_truth  可选参考答案（ground_truth_match 指标依据）
+#   expected_tools 期望调用的工具名集合（tool_coverage 指标依据）
+#   max_tool_calls  工具调用预算上限（超出记 redundant）
+#   tags          标签（数据集 filter / 报告分组）
+#   source        human | synthetic | production | failure
+# ============================================================
+
+version: 1
+cases:
+  - id: core-calc-001
+    category: core
+    input: "计算 (123 + 456) * 7 等于多少？请直接给出结果。"
+    ground_truth: "4053"
+    expected_tools: [calculator]
+    max_tool_calls: 3
+    tags: [tool_use, math]
+    source: human
+
+  - id: core-calc-002
+    category: core
+    input: "3 的 8 次方是多少？"
+    ground_truth: "6561"
+    expected_tools: [calculator]
+    max_tool_calls: 3
+    tags: [tool_use, math]
+    source: human
+
+  - id: core-datetime-001
+    category: core
+    input: "今天是 {{date}}。请基于该日期，说明它是一年中的第几季度，以及上一个月是几月。"
+    ground_truth: "第三季度"
+    expected_tools: []
+    max_tool_calls: 2
+    tags: [reasoning]
+    source: human
+
+  - id: core-general-001
+    category: core
+    input: "用不超过三句话解释什么是 ReAct 模式。"
+    ground_truth: "ReAct 是一种让语言模型交替进行推理与行动的智能体范式"
+    expected_tools: []
+    max_tool_calls: 1
+    tags: [reasoning, knowledge]
+    source: human
+
+  - id: core-general-002
+    category: core
+    input: "把这句话翻译成英文：知己知彼，百战不殆。"
+    ground_truth: "Know yourself and know your enemy"
+    expected_tools: []
+    max_tool_calls: 1
+    tags: [language]
+    source: human
+
+  - id: core-multistep-001
+    category: core
+    input: "先计算 12*12，再计算结果除以 6，最后用中文写出最终答案。"
+    ground_truth: "24"
+    expected_tools: [calculator]
+    max_tool_calls: 4
+    tags: [tool_use, multistep]
+    source: human

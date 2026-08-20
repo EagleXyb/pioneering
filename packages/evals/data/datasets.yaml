@@ -1,0 +1,52 @@
+# ============================================================
+# 评测数据集注册表（evals/data/datasets.yaml）
+#
+# 作用：声明命名数据集 = 用例文件 + 标注引用 + 采样策略。
+# 机制：
+#   - includes：引用继承——数据集可复用其他数据集的用例文件
+#   - sample：采样策略（all / random，random 用 seed 保证可复现）
+#   - filter.tags：按标签筛选用例子集（如仅回归集）
+# ============================================================
+
+version: 1
+
+datasets:
+  # 冒烟集：PR 必跑，秒级~分钟级，覆盖核心路径
+  smoke:
+    description: 冒烟集——核心路径最小覆盖
+    sources:
+      - file: cases/core.yaml
+    sample:
+      strategy: all
+
+  # 全量集：发版前跑，覆盖核心+边界+历史回归
+  full:
+    description: 全量集——核心 + 边界 + 历史回归
+    sources:
+      - file: cases/core.yaml
+      - file: cases/edge.yaml
+      - file: cases/regression.yaml
+    sample:
+      strategy: all
+
+  # 回归集：仅历史失败用例，用于快速防退化验证
+  regression:
+    description: 回归集——历史失败用例沉淀
+    sources:
+      - file: cases/regression.yaml
+    sample:
+      strategy: all
+
+  # 抽样子集：本地开发快速迭代（随机 4 条，seed 可复现）
+  dev:
+    description: 开发抽样集——随机抽取 4 条
+    sources:
+      - file: cases/core.yaml
+      - file: cases/edge.yaml
+    sample:
+      strategy: random
+      n: 4
+      seed: 42
+    filter:
+      tags: []          # 空数组 = 不过滤；如 [news, tool_use] 仅保留带这些标签的用例
+      exclude_tags: [draft]

@@ -1,0 +1,83 @@
+# ============================================================
+# 指标阈值与权重定义（evals/metrics/thresholds.yaml）
+#
+# 作用：分层指标树的唯一定义源（评测标准）。
+#   - category: output（输出层）| process（过程层）| system（系统层）
+#   - weight:   加权总分权重（同一 layer 内归一化）
+#   - threshold:单用例通过线；aggregate 门槛见 gates/ci_gates.yaml
+#   - gate:     block（硬门禁，低于阈值直接判失败）| warn（软告警）| off
+#   - higher_is_better: false 时指标越低越好（如 redundant_calls）
+#
+# 指标 key 由 evals 引擎内置 MetricGroup 产出（src/metrics.ts）：
+#   output.*  —— 复用 modu-agent QualityMonitor（rule/llm/hybrid）
+#   process.* —— 基于 tool_results/iteration 轨迹分析
+#   system.*  —— 端到端任务达成（含 ground_truth_match）
+# ============================================================
+
+version: 1
+
+metrics:
+  # ---------- 输出层：最终回答质量 ----------
+  output_relevance:
+    category: output
+    weight: 0.25
+    threshold: 0.6
+    gate: block
+  output_completeness:
+    category: output
+    weight: 0.15
+    threshold: 0.5
+    gate: warn
+  output_accuracy:
+    category: output
+    weight: 0.25
+    threshold: 0.6
+    gate: block
+  output_confidence:
+    category: output
+    weight: 0.10
+    threshold: 0.5
+    gate: warn
+
+  # ---------- 过程层：轨迹行为质量 ----------
+  process_tool_success_rate:
+    category: process
+    weight: 0.30
+    threshold: 0.7
+    gate: block
+  process_tool_coverage:
+    category: process
+    weight: 0.20
+    threshold: 0.8
+    gate: warn
+  process_redundant_calls:
+    category: process
+    weight: 0.15
+    threshold: 0.34      # 冗余调用占比上限（<= 1/3）
+    gate: warn
+    higher_is_better: false
+  process_recovery_rate:
+    category: process
+    weight: 0.20
+    threshold: 0.5
+    gate: warn
+  process_iteration_efficiency:
+    category: process
+    weight: 0.15
+    threshold: 0.5
+    gate: off
+
+  # ---------- 系统层：端到端任务达成 ----------
+  system_task_success:
+    category: system
+    weight: 0.60
+    threshold: 0.8
+    gate: block
+  system_ground_truth_match:
+    category: system
+    weight: 0.40
+    threshold: 0.6
+    gate: block
+
+# 单用例综合判定：任一 block 级指标低于阈值 → 该用例 fail
+case_pass_rule: any_block_metric_below_threshold_fails

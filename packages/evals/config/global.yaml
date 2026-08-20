@@ -1,0 +1,68 @@
+# ============================================================
+# 评测全局配置（evals/config/global.yaml）
+#
+# 作用：定义评测标准、执行环境、judge 评判器与报告策略等全局参数。
+# 机制：
+#   - 环境变量插值：${VAR:default}（运行时由 process.env 展开）
+#   - agent_overrides 中的点分键在评测执行前经 RuntimeConfig.updateMany
+#     注入被测 Agent（YAML -> 对象 -> RuntimeConfig 的桥接），
+#     不替代 modu-agent 的配置体系
+# ============================================================
+
+version: 1
+
+# ---------- 被测 Agent 运行时配置覆盖（注入 RuntimeConfig） ----------
+agent_overrides:
+  llm.temperature: 0.3
+  # 评测运行时关闭运行中进化，避免评测过程被 ParameterTune 干扰
+  # （评测驱动的进化统一走 gate 之后的 evolution_bridge，见下）
+  feedback.enable_evolution: false
+  memory.checkpointer_type: memory
+  memory.store_type: in_memory
+  mcp.enabled: false
+  skills.enabled: false
+
+# ---------- 执行环境（注入 process.env，供被测 Agent 读取密钥等） ----------
+env:
+  MODU_LLM_PROVIDER: ${MODU_LLM_PROVIDER:deepseek}
+  # 密钥类仅引用，不落盘：值为空时由宿主环境提供
+  # MODU_LLM_API_KEY: ${MODU_LLM_API_KEY:}
+
+# ---------- 评测执行参数 ----------
+runner:
+  # 单用例并发度（控制 LLM 调用成本与速率）
+  concurrency: 4
+  # 单用例超时（毫秒）：超时记为 failure（timeout），不阻塞其他用例
+  timeout_ms: 120000
+  # 超时/瞬时错误重试次数
+  retries: 1
+
+# ---------- LLM-as-Judge 评判器 ----------
+# mode: rule（纯规则，零成本）| llm（纯 LLM 评判）| hybrid（规则+LLM 加权）
+# 复用 modu-agent 的 QualityMonitor（feedback/quality-monitor.ts）
+judge:
+  mode: hybrid
+  provider: ${EVAL_JUDGE_PROVIDER:deepseek}
+  temperature: 0.0
+  max_tokens: 256
+  timeout_seconds: 15
+  hybrid_rule_weight: 0.4
+  hybrid_llm_weight: 0.6
+
+# ---------- 报告 ----------
+report:
+  # 报告输出目录（相对 evals 包根；CI 中作为 artifact 上传）
+  output_dir: reports
+  # baseline 对比策略：latest=与最近一次同数据集 run 对比（回归检测）
+  baseline: latest
+  # 保留最近 N 份历史报告（0=不限）
+  keep_runs: 30
+
+# ---------- 评测 -> 进化闭环 ----------
+# gate 评估完成后，将失败用例转译为 EvolutionSignal 喂给
+# modu-agent 的 EvolutionSignalCollector，供 ParameterTuneStrategy 消费
+evolution_bridge:
+  enabled: true
+  # 低于此 quality_score 的用例才生成进化信号
+  min_quality_score: 0.6
+  severity: medium

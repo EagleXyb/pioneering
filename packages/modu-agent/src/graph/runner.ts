@@ -640,6 +640,11 @@ export async function run_sync(
         response: finalState['response'] ?? '',
         tool_results: finalState['tool_results'] ?? [],
         trace_id: traceId,
+        // 评测支持（向后兼容的新增字段）：过程层指标（token 成本/迭代效率）所需的过程数据。
+        // 供 @pioneering/evals 评测引擎消费；现有调用方不受影响。
+        usage: finalState['usage'] ?? {},
+        iteration: finalState['iteration'] ?? 0,
+        reasoning_round_count: finalState['reasoning_round_count'] ?? 0,
       },
     }
   } catch (e: any) {

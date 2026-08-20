@@ -1,0 +1,83 @@
+# ============================================================
+# CI/CD 门禁规则（evals/gates/ci_gates.yaml）
+#
+# 作用：定义门禁的触发条件、数据集、通过/失败标准与通知策略。
+# 契约：CLI `evals gate --gate <name>` 以退出码对接任意 CI 系统——
+#       0=pass（含 warn），1=block；报告 JSON 路径打印到 stdout 供 CI 上传 artifact。
+#
+# rules 语义：
+#   metric: 聚合指标名（thresholds.yaml 中定义的 key 的数据集聚合值）
+#   op / value: 比较运算与门槛
+#   action: block（阻断发布）| warn（告警不阻断）
+#   scope: dataset（数据集聚合）| delta（相对 baseline 的变化量）
+# ============================================================
+
+version: 1
+
+gates:
+  # ---------- 冒烟门禁：每次 PR 必跑 ----------
+  ci:
+    description: PR 冒烟门禁——核心路径不可退化
+    datasets: [smoke]
+    triggers: [pull_request, push]
+    rules:
+      - metric: system_task_success
+        op: ">="
+        value: 0.8
+        action: block
+      - metric: output_relevance
+        op: ">="
+        value: 0.6
+        action: block
+      - metric: process_tool_success_rate
+        op: ">="
+        value: 0.7
+        action: block
+      # 回归检测：相对 baseline 的聚合分下降不得超过 0.10
+      - metric: overall_score
+        scope: delta
+        op: ">="
+        value: -0.10
+        action: warn
+    on_failure:
+      exit_code: 1
+      upload_report: true
+      fail_fast: false
+    notifications:
+      - channel: stdout_summary
+      - channel: github_step_summary
+
+  # ---------- 发版门禁：全量 + 回归集全绿 ----------
+  release:
+    description: 发版门禁——全量数据集 + 回归集零失败
+    datasets: [full, regression]
+    triggers: [release, manual]
+    rules:
+      - metric: system_task_success
+        op: ">="
+        value: 0.9
+        action: block
+      - metric: system_ground_truth_match
+        op: ">="
+        value: 0.7
+        action: block
+      - metric: case_pass_rate
+        op: ">="
+        value: 0.85
+        action: block
+      # 回归集专项：历史失败用例不允许再次失败
+      - metric: regression_failure_count
+        op: "<="
+        value: 0
+        action: block
+      - metric: overall_score
+        scope: delta
+        op: ">="
+        value: -0.05
+        action: warn
+    on_failure:
+      exit_code: 1
+      upload_report: true
+      fail_fast: false
+    notifications:
+      - channel: stdout_summary
