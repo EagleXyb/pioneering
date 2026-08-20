@@ -38,10 +38,33 @@ const _SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
     'You are a specialized Agent. Complete the assigned subtask accurately and concisely.',
 }
 
-/** 根据 task_type 获取系统提示词。 */
-export function _getSystemPrompt(taskType: string, customPrompt?: string | null): string {
+/**
+ * 根据 task_type 获取系统提示词。
+ *
+ * P1 外置：当未传入 customPrompt 时，优先从配置 `agents.<task_type>.prompt`
+ * 读取覆盖模板；配置缺失/关闭时才回退到内置硬编码模板。
+ *
+ * 行为等价性：customPrompt 优先级不变；不传 config（或 config 中无
+ * `agents.<task_type>.prompt`）时，返回结果与改造前完全一致。
+ *
+ * @param taskType 子任务类型（research/coding/review/default）
+ * @param customPrompt 显式传入的提示词（优先级最高）
+ * @param config 可选运行时配置，用于读取 agents.<task_type>.prompt 覆盖模板
+ */
+export function _getSystemPrompt(
+  taskType: string,
+  customPrompt?: string | null,
+  config?: import('../../config/runtime-config.js').RuntimeConfig | null,
+): string {
   if (customPrompt) {
     return customPrompt
+  }
+  // P1 外置：配置覆盖默认模板（可选增强，默认无配置时等价现状）
+  if (config) {
+    const configured = config.get(`agents.${taskType}.prompt`, null)
+    if (configured && typeof configured === 'string' && configured.trim() !== '') {
+      return configured
+    }
   }
   return _SYSTEM_PROMPT_TEMPLATES[taskType] || _SYSTEM_PROMPT_TEMPLATES.default
 }

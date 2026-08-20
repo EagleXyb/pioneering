@@ -3,6 +3,7 @@
 import { EventEmitter } from 'events'
 import path from 'path'
 import fs from 'fs'
+import { loadConfigYaml, deepMergeConfig } from './yaml-loader.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[config] ${msg}`, ...args),
@@ -20,7 +21,10 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     default_provider: 'deepseek',
     temperature: 0.7,
     max_tokens: 512,
-    prompt_template: '',
+    // 注：原 `prompt_template: ''` 为声明冗余，实际 prompt 模板由
+    //     graph/subgraph/builder.ts 的 _SYSTEM_PROMPT_TEMPLATES 承载，
+    //     无任何代码通过 RuntimeConfig.get('llm.prompt_template') 读取，
+    //     故在 P0 清理中移除（见文档 4.4）。
     tool_call_pattern: /```tool_call\s*\n(.*?)\n```/,
     max_reasoning_iterations: 3,
     max_format_retries: 2,
@@ -58,8 +62,11 @@ export const DEFAULT_CONFIG: Record<string, any> = {
   },
   memory: {
     default_strategy: 'cache',
-    context_window: 'last_5_turns',
-    enable_compression: false,
+    // 注：`context_window` / `enable_compression` 原声明在 DEFAULT_CONFIG.memory 中，
+    //     但实际由 config/schemas.ts 的 MemoryQuerySchema 与
+    //     orchestration/communication/protocol.ts 的 MessageContext 作为独立入参消费，
+    //     并无代码通过 RuntimeConfig.get('memory.context_window' / 'memory.enable_compression') 读取，
+    //     故在 P0 清理中移除（见文档 4.4）。
     checkpointer_type: 'memory',
     store_type: 'chroma',
     chroma_persist_path: null,
@@ -98,7 +105,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     step_summary_max_chars: 500,
   },
   tools: {
-    default_timeout_ms: 1800000,
+    // 注：原 `default_timeout_ms: 1800000` 为声明冗余，无任何代码通过
+    //     RuntimeConfig.get('tools.default_timeout_ms') 读取（工具超时由
+    //     tools 包装层各自管理），故在 P0 清理中移除（见文档 4.4）。
     retry: {
       max_attempts: 3,
       base_delay: 0.5,
@@ -159,7 +168,10 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     active: [],
   },
   streaming: {
-    chunk_size: 4,
+    // 注：原 `chunk_size: 4` 为声明冗余，streaming 切片粒度由
+    //     orchestration/communication/agui-adapter.ts 的局部参数承载，
+    //     无代码通过 RuntimeConfig.get('streaming.chunk_size') 读取，
+    //     故在 P0 清理中移除（见文档 4.4）。
   },
   event_bus: {
     max_log_size: 1000,
@@ -313,6 +325,12 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     parallel_tools: {
       enabled: false,  // R-12 高风险，默认关闭；灰度开启
       conservative_mode: true,  // 依赖不明确时串行
+    },
+    // P1: Markdown 文档提示注入（AGENTS.md/SOUL.md/USER.md/MEMORY.md）
+    // 默认关闭（零侵入）；启用后在 system prompt 组装时注入约定 .md 片段。
+    // 无 .md 文件时行为与关闭完全一致（等价现状）。
+    markdown_prompt: {
+      enabled: false,  // 默认关闭；开启后注入项目根目录约定 .md
     },
   },
 }
@@ -519,9 +537,19 @@ export function getConfig(override?: RuntimeConfig | null): RuntimeConfig {
   if (_config === null) {
     const configPath = process.env.MODU_CONFIG_PATH ?? ''
     if (configPath) {
+      // MODU_CONFIG_PATH 显式指定时，保持原 JSON 加载行为（零侵入）
       _config = RuntimeConfig.fromFile(configPath)
     } else {
-      _config = RuntimeConfig.fromEnv()
+      // P0（文档 4.4）：未指定 JSON 路径时，尝试加载可选 config.yaml 分层配置。
+      // 解析成功则与内置 DEFAULT_CONFIG 深度合并；失败/缺失则降级到 fromEnv，
+      // 与现状行为完全等价（不引入新缺陷）。
+      const yamlConfig = loadConfigYaml()
+      if (yamlConfig) {
+        const base = deepMergeConfig(deepCopyDict(DEFAULT_CONFIG), yamlConfig)
+        _config = new RuntimeConfig(base)
+      } else {
+        _config = RuntimeConfig.fromEnv()
+      }
     }
   }
   return _config

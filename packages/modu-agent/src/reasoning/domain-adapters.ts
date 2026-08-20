@@ -9,6 +9,8 @@
 //   - DOMAIN_ADAPTERS 查找失败时返回 null，PromptComposer 跳过 domain 层
 //   - 默认 domain 为空字符串，等价现状（零侵入）
 
+import { loadDomainAdaptersFromMarkdown } from '../config/markdown-loader.js'
+
 /**
  * 领域适配器结构（对应文档 §2.1 DOMAIN_ADAPTERS 字典条目）。
  *
@@ -84,4 +86,33 @@ export function renderDomainAdapter(adapter: DomainAdapter | null): string {
   }
   if (adapter.output_requirements) parts.push(`输出要求：${adapter.output_requirements}`)
   return parts.join('\n\n')
+}
+
+/**
+ * P1（文档 4.3 建议6）：从 `config/domains/<domain>.md` 批量加载并注册领域适配器。
+ *
+ * 将 markdown-loader 解析出的领域文档注册进 DOMAIN_ADAPTERS 注册表，
+ * 供 PromptComposer 的 domain 层使用。
+ *
+ * 行为等价性：目录不存在 / 无 `.md` 文件时为空操作，DOMAIN_ADAPTERS 保持原状
+ * （默认仍为空注册表，等价现状）。由宿主在需要时显式调用，框架不自动加载。
+ *
+ * @param opts.rootDir 项目根目录（默认 getPackageRoot()）
+ * @returns 成功注册的领域数
+ */
+export function registerDomainsFromMarkdown(
+  opts: { rootDir?: string } = {},
+): number {
+  const items = loadDomainAdaptersFromMarkdown({ rootDir: opts.rootDir })
+  let count = 0
+  for (const item of items) {
+    try {
+      registerDomainAdapter(item.domain, item.adapter)
+      count++
+    } catch (e: any) {
+      // 单个领域注册失败隔离，不影响其他领域
+      console.warn('[domain-adapters] 注册领域适配失败 domain=%s: %s', item.domain, String(e?.message ?? e))
+    }
+  }
+  return count
 }

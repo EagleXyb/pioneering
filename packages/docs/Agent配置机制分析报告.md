@@ -288,6 +288,123 @@ else _config = RuntimeConfig.fromEnv()
 ### 4.4 落地路径建议（分阶段）
 - **P0（低风险）**：先清理死配置字段（`llm.prompt_template`、`memory.default_strategy/context_window/enable_compression`、`tools.default_timeout_ms`、`streaming.chunk_size`），再新增 `yaml-loader` + 改造 `getConfig` 支持 `config.yaml` 分层，将 `DEFAULT_CONFIG` 抽为 `config.yaml` 默认值；保持 JSON 兼容。→ 解决"参数全硬编码"。
 - **P1（中风险）**：实现 `markdown-loader` + `MarkdownPromptAggregator`，接入 `factory.ts`；外置 `AGENTS.md`/`SOUL.md`/`USER.md`，子 Agent 模板与领域适配外置。→ 解决"提示词/角色硬编码"。
+
+#### 4.4.1 P0 实施记录（已落地）
+> 本小节记录 P0 的实际代码改动，供后续 P1/P2 复用与回溯。改动严守"不修改原有业务逻辑、不引入新缺陷"的约束，并通过系统化测试与原业务逻辑对比验证。
+
+**① 死配置字段清理**
+对 `src/config/runtime-config.ts` 的 `DEFAULT_CONFIG` 做了如下清理（仅删除"声明但从未被 `RuntimeConfig.get()` 消费"的字段，不改动任何读取逻辑）：
+
+| 字段 | 清理结论 | 依据 |
+| --- | --- | --- |
+| `llm.prompt_template` | **已删除** | 全代码无 `get('llm.prompt_template')` 读取，实际模板由 `graph/subgraph/builder.ts` 的 `_SYSTEM_PROMPT_TEMPLATES` 承载 |
+| `memory.context_window` | **已删除** | 该语义由 `config/schemas.ts` 的 `MemoryQuerySchema` 与 `orchestration/communication/protocol.ts` 的 `MessageContext` 作为独立入参消费，非从 `RuntimeConfig` 读取 |
+| `memory.enable_compression` | **已删除** | 同上 |
+| `tools.default_timeout_ms` | **已删除** | 全代码无 `get('tools.default_timeout_ms')` 读取，工具超时由工具包装层各自管理 |
+| `streaming.chunk_size` | **已删除** | 切片粒度由 `orchestration/communication/agui-adapter.ts` 局部参数承载，无 `get()` 读取 |
+
+> ⚠️ **与原始方案偏差（重要）**：原 4.4 将 `memory.default_strategy` 一并列入"死配置"，但经代码核查，**该字段实际被 `RuntimeConfig.fromEnv()` 消费**（`MODU_MEMORY_STRATEGY` 环境变量写入 `memory.default_strategy`；无环境变量时 `DEFAULT_CONFIG` 提供默认值 `'cache'`）。若删除会破坏"无环境变量默认 cache"的既有语义，故**保留 `memory.default_strategy`**，不在本次清理范围内。建议原文档第 145、156、228 行对该字段"死配置"的描述同步修正。
+
+**② 新增 `src/config/yaml-loader.ts`（零外部依赖）**
+- 内置一个**最小且安全的 YAML 子集解析器**（`parseYamlSubset`），仅支持本仓库 `config.yaml` 实际用到的语法：2 空格缩进的嵌套 map、块列表（`- item` 与 `- key: value` 列表项为 map，含跨行兄弟键与嵌套值）、标量（字符串/数字/布尔/null）、行内注释、单/双引号字符串。不支持多文档、锚点、流样式、多行文本块（`|`/`>`）；遇到无法识别结构**抛错**，由上层捕获降级。
+- `findConfigYaml()`：在包根查找 `config.yaml`/`config.yml`。
+- `loadConfigYaml(path?)`：读文件并解析；**文件缺失或解析失败时返回 `null`**（不抛异常），触发降级。
+- `deepMergeConfig(base, override)`：对象递归合并、数组/标量覆盖，语义与 `RuntimeConfig._deepMerge` 一致。
+
+**③ 改造 `getConfig`（分层 + 兼容不变）**
+- `MODU_CONFIG_PATH` 显式指定时：仍走原 `fromFile`（JSON）路径，**零侵入**。
+- 未指定时：尝试 `loadConfigYaml()`；解析成功则将结果与内置 `DEFAULT_CONFIG` 深度合并（先 `deepCopyDict` 克隆，避免污染单例）后构造 `RuntimeConfig`；失败/缺失则降级到原 `RuntimeConfig.fromEnv()` —— 与现状行为**完全等价**。
+- 即：`DEFAULT_CONFIG` 仍作为内存默认值（满足"抽为 config.yaml 默认值"的语义，配置文件仅作为可选的覆盖层），JSON 与环境变量两条原有链路保持不变。
+
+**④ 测试覆盖（`tests/config/p0-config-optimization.test.ts`，共 18 例，全绿）**
+- 死字段清理后 `get(fallback)` 返回 fallback，且被保留的相关业务字段（`memory.default_strategy`、`llm.default_provider`、`feedback.*` 等）语义不变；
+- `parseYamlSubset` 对嵌套 map、块列表、列表项为 map（含跨行兄弟键/嵌套）、注释、引号字符串的解析；
+- `deepMergeConfig` 的递归合并与数组覆盖语义；
+- `loadConfigYaml` 对合法文件、文件缺失、损坏文件的降级；
+- `getConfig` 在无 `MODU_CONFIG_PATH` 且无 yaml 时等价于 `fromEnv`、JSON 路径仍兼容、`MODU_LLM_PROVIDER` 等环境变量仍覆盖默认值；
+- factory 实际读取字段的集成校验，确保清理未误伤业务消费点。
+
+**⑤ 回归结论**：`tests/config` 全绿（含原有 `runtime-config.test.ts` 22 例 + 新增 18 例）。完整套件 532 例通过；剩余 7 例 `tests/tools/sql-query.test.ts` 失败经 `git stash` 基线验证为**预先存在、与本次改动无关**（该测试仅依赖 `@/tools/sql-query.js`）。
+
+#### 4.4.2 P1 实施记录（已落地）
+> P1（中风险）目标：让 `AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md` 作为提示词/角色文档被加载注入，子 Agent 模板与领域适配外置。实现同样严守"不修改原有业务逻辑、不引入新缺陷"，所有新增注入默认关闭（gated）或在无文件时行为与现状完全等价。
+
+**① 新增 `src/config/markdown-loader.ts`（零外部依赖）**
+- 复用 P0 的 `yaml-loader.parseYamlSubset` 解析 YAML frontmatter（零重复实现）。
+- `findConventionalMarkdownDocs()`：在项目根扫描约定文档 `AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md`。
+- `parseMarkdownDoc(content, name, source)`：解析 `--- frontmatter ---` 与正文，输出 `MarkdownDoc { name, content, meta, injectTo, source }`。注入目标推断：`meta.inject_to ?? 按文档类型（AGENTS/SOUL→system_prompt，USER/MEMORY→runtime_context）`；空正文返回 `null`；frontmatter 非法时忽略其元信息，正文仍可用（不抛异常）。
+- `loadMarkdownDocs({ rootDir, onlyLoad })`：加载全部/按 load 类型过滤的约定文档；**目录/文件缺失、解析失败一律返回空数组**。
+- 领域适配：`docToDomainAdapter()` + `loadDomainAdaptersFromMarkdown({ rootDir })`，读取 `config/domains/<domain>.md`，frontmatter 提供 `domain_context/terminology/reasoning_patterns/output_requirements`（正文作为 domain_context 兜底），目录缺失返回空数组。
+
+**② 新增 `src/config/markdown-prompt-aggregator.ts`**
+- `MarkdownPromptAggregator`（静态、无副作用，沿用 `SkillPromptAggregator` 聚合模式）：
+  - `aggregateToSystemPrompt(base, docs)`：聚合 `inject_to=system_prompt` 文档；**无片段时返回 base 原样**（等价现状）。
+  - `collectRuntimeContext(docs)`：收集 `inject_to=runtime_context` 文档为字符串；无则返回空串。
+  - `aggregateFromDocs(base, docs)`：一次返回 `{ systemPrompt, runtimeContext }`。
+  - 按 `priority`（大者在前）+ 文档名稳定排序，保证确定性。
+
+**③ 接入 `src/graph/factory.ts`（gated，默认关闭零侵入）**
+- 在 Skill 聚合之后、`PromptComposer` 之前新增 Markdown 注入块，由 **`react_optimization.markdown_prompt.enabled`（默认 `false`）** 门控（已在 `DEFAULT_CONFIG.react_optimization` 新增该开关）。
+- 启用时：`inject_to=system_prompt` 文档并入 `effectiveSystemPrompt`；`runtime_context` 文档收集为 `markdownRuntimeContext`，供后续 `PromptComposer` 的 runtimeContext 层使用。
+- **优先级**：宿主显式传入的 `configurable['runtime_context']` 始终高于 Markdown 文档（`markdownRuntimeContext` 初值即 `configurable['runtime_context']`，关闭 md 时与改造前逐字等价）。
+- 无任何 `.md` 文件时行为与关闭完全一致；注入失败捕获降级到 base prompt。
+
+**④ 子 Agent 模板外置 `src/graph/subgraph/builder.ts`**
+- `_getSystemPrompt(taskType, customPrompt?, config?)`：保持 `customPrompt` 优先级不变；新增可选 `config` 参数，当未传 customPrompt 时读取 `agents.<task_type>.prompt` 覆盖默认模板；**配置缺失时回退内置硬编码模板，与改造前完全一致**。
+- `build_subagent_subgraph` 内部调用不传 config，行为不变；`makeSubagentNode` 的回退路径同样保持。即默认下子 Agent 提示词与现状完全相同，仅提供可选外置通道。
+
+**⑤ 领域适配外置 `src/reasoning/domain-adapters.ts`**
+- 新增 `registerDomainsFromMarkdown({ rootDir })`：调用 `loadDomainAdaptersFromMarkdown` 解析 `config/domains/<domain>.md` 并 `registerDomainAdapter`。
+- **由宿主显式调用，框架不自动加载**（避免副作用与默认行为偏移）；`config/domains` 目录不存在时为空操作，`DOMAIN_ADAPTERS` 保持空注册表（等价现状）。
+
+**⑥ 导出 `src/config/index.ts`**：导出 `loadMarkdownDocs` / `parseMarkdownDoc` / `parseFrontmatter` / `docToDomainAdapter` / `loadDomainAdaptersFromMarkdown` / `findConventionalMarkdownDocs` / `getPackageRoot` / `MarkdownDoc` / `MarkdownMeta` / `MarkdownInjectTarget` / `MarkdownPromptAggregator`。
+
+**⑦ 测试覆盖（`tests/config/p1-markdown-prompt.test.ts`，共 23 例，全绿）**
+- `parseMarkdownDoc`：无 frontmatter/有 frontmatter、注入目标推断、空正文返回 null；
+- `parseFrontmatter`：非法输入返回空对象（不抛异常）；
+- `loadMarkdownDocs`：无文件空数组、扫描约定文档并忽略非约定、`onlyLoad` 过滤；
+- `MarkdownPromptAggregator`：无文档返回 base、system/runtime 分类聚合、priority 排序；
+- `_getSystemPrompt`：customPrompt 优先、配置覆盖、无配置回退硬编码、未知类型回退 default、不传 config 兼容旧调用；
+- 领域加载：目录缺失空操作、从 `<domain>.md` 注册、frontmatter 优先于正文；
+- `getPackageRoot` 与"项目根当前无约定 .md 时零侵入"断言。
+
+**⑧ 回归结论**：`tests/config` 全绿（63 例）。完整套件 555 例通过；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0 基线已确认）。`factory.ts` 的 `PromptComposer` 调用改造（引入 `markdownRuntimeContext`）经回归验证：md 开关关闭或无语义变化时与改造前输出逐字一致。
+
+#### 4.4.3 P2 实施记录（已落地）
+> P2（增强）目标：对齐 Hermes/Trae 的"进化 + 可观测"能力——`MEMORY.md` 持久化、`knowledge-index.json`、插件 manifest、配置溯源快照 `/debug/config`。四项均为**宿主显式调用的纯增强模块**，不侵入任何既有运行时路径，默认行为与现状完全一致（文件缺失/解析失败一律降级，不抛异常）。
+
+**① `MEMORY.md` 持久化 `src/config/memory-md-persistence.ts`**
+- `serializeMemoryToMarkdown(meta, entries)`：把长期记忆条目序列化为 `MEMORY.md`（YAML frontmatter + `### <n>` 分节，人类可读、可 diff）。
+- `parseMemoryFromMarkdown(text, source)`：反向解析；**含分节时严格按分节解析并忽略标题行，无分节时整篇作为单条记忆**；解析失败返回空条目（不抛异常）。
+- `writeMemoryToMarkdownFile`（原子写：临时文件 + rename）/ `readMemoryFromMarkdownFile`（文件缺失返回空条目）。
+- **不接入 `InMemoryShortTermMemory` 等既有记忆实现**，仅由宿主在需要时显式调用以沉淀/回读经验。
+
+**② `knowledge-index.json` `src/config/knowledge-index.ts`**
+- `KnowledgeIndex` 类：`add/remove/get/all/size/search` 基础内存检索（大小写不敏感，匹配 id/title/content/tags），`saveToFile`/`loadFromFile`（JSON，原子写）。
+- 文件缺失/损坏加载返回空索引（不抛异常）。供 `memory/` 检索模块或宿主显式消费，不自动接入 Chroma 路径。
+
+**③ 插件 manifest `src/config/plugin-manifest.ts`**
+- `PluginManifest` 结构（name/version/capabilities/dependencies/entry/description + 扩展字段）。
+- `validateManifest` / `parseManifest` / `loadManifestFromFile`（读 `<pluginDir>/manifest.json`，文件缺失/损坏/校验失败返回 null）。
+- 供 `skills/loader.ts` 等消费方可选使用；**不改变 SkillLoader 现有扫描/激活逻辑**（默认路径不依赖本模块）。
+
+**④ 配置溯源快照 `/debug/config` `src/config/snapshot.ts`**
+- `maskSensitiveValues`：递归掩盖 `api_key/token/secret/password/credential/authorization/bearer` 等敏感键值，返回新对象不改动原配置。
+- `buildConfigSnapshot(runtimeConfig, { sources })`：返回 `{ generated_at, sources, config(脱敏) }`，对齐 Trae 的 `/debug/config`。
+- `buildDebugConfigHandler(runtimeConfig, { sources })`：返回 `(req, res)` 处理器（GET 返回 JSON，其他方法 405），**不启动服务器**，由宿主挂载到现有 HTTP 框架。
+- 溯源信息 `sources` 由调用方提供（如 `{ base: 'DEFAULT_CONFIG', file: 'config.yaml' }`），记录配置来源以支撑"到底哪个值生效"的调试。
+
+**⑤ 导出 `src/config/index.ts`**：导出上述 4 个模块全部类型与函数。
+
+**⑥ 测试覆盖（`tests/config/p2-enhancements.test.ts`，共 24 例，全绿）**
+- MEMORY.md：serialize 格式、parse round-trip、无分节单条、文件写/读、文件缺失降级、写入失败降级；
+- knowledge-index：基本操作、search 匹配、save/load 往返、缺失文件降级、空 id 保护；
+- plugin manifest：合法/非法校验、capabilities/dependencies 类型校验、parse 失败返回 null、文件加载（正常/缺失/损坏）；
+- snapshot：脱敏（含嵌套数组对象）、快照结构、GET handler、405 处理；
+- 回归：RuntimeConfig 基础行为不变、asDict 深拷贝未被快照污染。
+
+**⑦ 回归结论**：`tests/config` 全绿（87 例）。完整套件 **579 例通过**；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0/P1 基线一致）。P2 四项均为独立纯增强模块，未触碰任何既有业务代码路径。
+
 - **P2（增强）**：`MEMORY.md` 持久化、`knowledge-index.json`、插件 manifest、配置溯源快照端点 `/debug/config`。→ 对齐 Hermes/Trae 的进化与可观测能力。
 
 ### 4.5 风险与注意

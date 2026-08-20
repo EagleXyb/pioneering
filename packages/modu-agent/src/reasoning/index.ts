@@ -26,6 +26,7 @@ export { PromptComposer, type PromptComposerInput } from './prompt-composer.js'
 export {
   DOMAIN_ADAPTERS,
   registerDomainAdapter,
+  registerDomainsFromMarkdown,
   getDomainAdapter,
   renderDomainAdapter,
   type DomainAdapter,

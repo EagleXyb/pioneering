@@ -28,6 +28,9 @@ import { EvolutionOrchestrator } from '../evolution/evolution-orchestrator.js'
 import { getMcpClient } from '../mcp/client.js'
 import { SkillLoader } from '../skills/loader.js'
 import { SkillPromptAggregator } from '../skills/prompt-aggregator.js'
+// P1: Markdown 文档提示注入
+import { loadMarkdownDocs } from '../config/markdown-loader.js'
+import { MarkdownPromptAggregator } from '../config/markdown-prompt-aggregator.js'
 import { CalculatorTool, DateTimeTool, DocWriterTool, SearchTool } from '../tools/index.js'
 import { build_chat_model } from './adapters/llm-adapter.js'
 import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
@@ -525,6 +528,33 @@ export async function create_agent(
     }
   }
 
+  // P1: Markdown 文档提示注入（gated by react_optimization.markdown_prompt.enabled，默认关闭）
+  // 启用后在项目根目录扫描 AGENTS.md/SOUL.md/USER.md/MEMORY.md：
+  //   - inject_to=system_prompt 的文档（AGENTS/SOUL）并入 system prompt；
+  //   - inject_to=runtime_context 的文档（USER/MEMORY）作为 runtimeContext，
+  //     供后续 PromptComposer 的 runtimeContext 层使用。
+  // 无任何 .md 文件时行为与关闭完全一致（等价现状，零侵入）。
+  // runtimeContext 优先级：宿主显式传入 configurable['runtime_context'] > Markdown 文档。
+  let markdownRuntimeContext = configurable['runtime_context'] ?? null
+  if (runtimeConfig.get('react_optimization.markdown_prompt.enabled', false)) {
+    try {
+      const mdDocs = loadMarkdownDocs()
+      const aggregated = MarkdownPromptAggregator.aggregateFromDocs(effectiveSystemPrompt, mdDocs)
+      effectiveSystemPrompt = aggregated.systemPrompt ?? effectiveSystemPrompt
+      if (configurable['runtime_context'] === undefined || configurable['runtime_context'] === null) {
+        const rc = aggregated.runtimeContext
+        markdownRuntimeContext = rc !== '' ? rc : null
+      }
+      logger.info('[P1] Markdown prompt injected: docs=%s systemP=%s runtimeCtx=%s',
+        mdDocs.length > 0 ? mdDocs.map((d) => d.name).join(',') : '(none)',
+        aggregated.systemPrompt !== effectiveSystemPrompt ? 'updated' : '(none)',
+        markdownRuntimeContext ? '(set)' : '(none)',
+      )
+    } catch (e: any) {
+      logger.warning('[P1] Markdown prompt injection failed, using base prompt: %s', String(e))
+    }
+  }
+
   // P1-4: 四层 Prompt 解耦架构（gated by react_optimization.prompt_composer.enabled）
   // 启用后通过 PromptComposer 组装 systemCore + domain + taskSpec + runtimeContext
   // domain 为空时行为与现状完全一致（字符等价回归，对应 R-08 策略①）
@@ -534,12 +564,12 @@ export async function create_agent(
         systemCore: effectiveSystemPrompt ?? '',
         domain: configurable['domain'] ?? null,
         taskSpec: configurable['task_spec'] ?? null,
-        runtimeContext: configurable['runtime_context'] ?? null,
+        runtimeContext: markdownRuntimeContext,
       })
       logger.info('[P1-4] PromptComposer enabled: domain=%s taskSpec=%s runtimeContext=%s',
         configurable['domain'] ?? '(none)',
         configurable['task_spec'] ? '(set)' : '(none)',
-        configurable['runtime_context'] ? '(set)' : '(none)',
+        markdownRuntimeContext ? '(set)' : '(none)',
       )
     } catch (e: any) {
       logger.warning('[P1-4] PromptComposer failed, using aggregated prompt: %s', String(e))
