@@ -412,6 +412,30 @@ else _config = RuntimeConfig.fromEnv()
 - **类型安全**：YAML 覆盖需类型校验，避免环境层误写静默失效（借鉴 Trae 的 `int` 强校验）。
 - **优先级清晰**：明确 L0–L8 覆盖顺序并文档化，避免"到底哪个值生效"的调试黑洞（提供溯源快照）。
 
+#### 4.5.1 风险处置实施记录（已落地）
+> 针对上述三点风险的系统化处置，均以"不改既有业务逻辑、默认行为等价、类型不符回退默认"为原则落地。
+
+**① Token 膨胀（长度预算 + 按需加载 + 层级 cascade）**
+- `markdown-prompt-aggregator.ts` 新增 `MarkdownBudget`（`systemPromptMaxChars`/`runtimeContextMaxChars`/`truncateMarker`，默认 `DEFAULT_MARKDOWN_BUDGET` 8000/4000），`aggregateToSystemPrompt`/`collectRuntimeContext` 在拼接后按字符预算截断并追加 `[truncated]` 标记；`estimateTokens()` 与 `few-shot-selector` 同口径（4 字符=1 token）。
+- `DEFAULT_CONFIG.react_optimization.markdown_prompt` 新增 `system_prompt_max_chars`（默认 8000）/`runtime_context_max_chars`（默认 4000），`factory.ts` 注入时读取并传入预算。
+- **按需加载**：`markdown-loader.ts` 新增 `DEFAULT_LOAD` 映射（MEMORY 默认 `lazy`，其余 `eager`）；`factory.ts` 注入改为 `loadMarkdownDocs({ onlyLoad: 'eager' })`，`MEMORY.md` 不再常驻，由宿主按需显式加载。
+- **层级 cascade**：`MarkdownMeta` 新增 `cascade_level`（`global`/`project`/`user`，`CASCADE_LEVEL_ORDER`）与 `cascade` 开关。仅 frontmatter 显式声明时生效；`sortedDocs` 先按 cascade 级别排序（底层→上层），同级别内仍按 priority；`cascade: false` 的文档不参与注入。未声明时保持既有 priority 语义（向后兼容）。
+
+**② 类型安全（YAML 覆盖类型校验）**
+- `yaml-loader.ts` 新增 `validateAgainstBase` + `loadConfigYamlValidated(base, filePath?)`：对照 `DEFAULT_CONFIG` 递归校验 YAML 覆盖值的类型，**标量类型不符的字段丢弃并记录 `droppedKeys` 告警**（如 `temperature: abc` 会被丢弃、回退默认 `0.7`）；对象递归校验、数组放行、`null` 视为显式置空、base 中不存在的新键放行。解析失败/文件缺失返回 `null` 降级。
+- `getConfig` 改为调用 `loadConfigYamlValidated(DEFAULT_CONFIG)`，类型不符字段在加载期即被剔除并告警，杜绝"误写静默失效"。
+
+**③ 优先级清晰（溯源快照）**
+- `RuntimeConfig` 新增 `_sources` 溯源字段 + `getSources()`；`getConfig` 在 JSON/YAML/环境变量三条加载路径分别记录来源（`base`/`file`/`dropped`/`env.*`）。
+- `snapshot.ts` 的 `buildConfigSnapshot` 改为**自动读取 `runtimeConfig.getSources()`**（调用方显式传入的 sources 作为补充覆盖），使 `/debug/config` 溯源快照真正可用，不再返回空 `sources`。
+
+**④ 测试覆盖（`tests/config/p3-risk-safety.test.ts`，共 17 例，全绿）**
+- Token 膨胀：注入超预算截断+标记、未超预算不截断、runtimeContext 预算、estimateTokens、MEMORY 按需加载过滤、层级 cascade 排序、未声明保持 priority 排序、cascade:false 不注入、层级顺序常量。
+- 类型安全：类型不符丢弃并记录 droppedKeys、类型正确保留、新键放行、null 放行。
+- 溯源快照：getSources、buildConfigSnapshot 自动读取 sources、脱敏不污染原配置、dropped 字段记录。
+
+**⑤ 回归结论**：`tests/config` 全绿（104 例）。完整套件 **596 例通过**；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0 基线已确认）。`tsc --noEmit` 编译通过，0 错误。
+
 ---
 
 ## 五、小结

@@ -3,7 +3,7 @@
 import { EventEmitter } from 'events'
 import path from 'path'
 import fs from 'fs'
-import { loadConfigYaml, deepMergeConfig } from './yaml-loader.js'
+import { loadConfigYaml, deepMergeConfig, loadConfigYamlValidated, findConfigYaml } from './yaml-loader.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[config] ${msg}`, ...args),
@@ -331,6 +331,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     // 无 .md 文件时行为与关闭完全一致（等价现状）。
     markdown_prompt: {
       enabled: false,  // 默认关闭；开启后注入项目根目录约定 .md
+      // 4.5 风险① Token 膨胀：对注入内容做字符预算截断（<=0 表示不限制）
+      system_prompt_max_chars: 8000,   // system prompt 注入片段总字符上限
+      runtime_context_max_chars: 4000, // runtime context 注入片段总字符上限
     },
   },
 }
@@ -366,12 +369,17 @@ export class RuntimeConfig {
   private _data: Record<string, any>
   // P2-10: 配置变更回调（用 EventEmitter 替代 Python 的回调列表）
   private _emitter = new EventEmitter()
+  // 4.5 风险③「优先级清晰」：配置来源溯源（哪个来源覆盖了哪个值）
+  private _sources: Record<string, string> = {}
 
-  constructor(configData?: Record<string, any> | null) {
+  constructor(configData?: Record<string, any> | null, sources?: Record<string, string> | null) {
     // P2-4 修复：深拷贝 DEFAULT_CONFIG，避免嵌套 dict 被多个实例共享
     this._data = deepCopyDict(DEFAULT_CONFIG)
     if (configData) {
       RuntimeConfig._deepMerge(this._data, configData)
+    }
+    if (sources) {
+      this._sources = { ...sources }
     }
   }
 
@@ -508,6 +516,11 @@ export class RuntimeConfig {
     return deepCopyDict(this._data)
   }
 
+  /** 返回配置来源溯源映射（4.5 风险③：提供溯源快照）。 */
+  getSources(): Record<string, string> {
+    return { ...this._sources }
+  }
+
   private static _deepMerge(base: Record<string, any>, override: Record<string, any>): void {
     for (const [key, value] of Object.entries(override)) {
       if (key in base && base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])
@@ -526,6 +539,20 @@ export class RuntimeConfig {
 
 let _config: RuntimeConfig | null = null
 
+/** 记录当前生效的 config.yaml 路径（用于来源溯源）。 */
+function findConfigYamlForLogging(): string | null {
+  return findConfigYaml()
+}
+
+/** 构建环境变量来源映射（4.5 风险③ 溯源）。 */
+function buildEnvSources(): Record<string, string> {
+  const sources: Record<string, string> = {}
+  if (process.env.MODU_LLM_PROVIDER) sources['env.MODU_LLM_PROVIDER'] = 'llm.default_provider'
+  if (process.env.MODU_LLM_TEMPERATURE) sources['env.MODU_LLM_TEMPERATURE'] = 'llm.temperature'
+  if (process.env.MODU_MEMORY_STRATEGY) sources['env.MODU_MEMORY_STRATEGY'] = 'memory.default_strategy'
+  return sources
+}
+
 /**
  * 获取全局 RuntimeConfig 单例。
  * P2-1: 新增 override 参数用于测试隔离。
@@ -538,17 +565,32 @@ export function getConfig(override?: RuntimeConfig | null): RuntimeConfig {
     const configPath = process.env.MODU_CONFIG_PATH ?? ''
     if (configPath) {
       // MODU_CONFIG_PATH 显式指定时，保持原 JSON 加载行为（零侵入）
-      _config = RuntimeConfig.fromFile(configPath)
+      // 4.5 风险③：附加来源溯源（base + 文件路径）
+      const loaded = RuntimeConfig.fromFile(configPath)
+      _config = new RuntimeConfig(loaded.asDict(), { base: 'DEFAULT_CONFIG', file: configPath })
     } else {
       // P0（文档 4.4）：未指定 JSON 路径时，尝试加载可选 config.yaml 分层配置。
+      // 4.5 风险②：解析后做类型安全校验，类型不符字段丢弃并告警，采用内置默认。
+      // 4.5 风险③：记录来源溯源（base/file），供 /debug/config 溯源快照使用。
       // 解析成功则与内置 DEFAULT_CONFIG 深度合并；失败/缺失则降级到 fromEnv，
       // 与现状行为完全等价（不引入新缺陷）。
-      const yamlConfig = loadConfigYaml()
-      if (yamlConfig) {
-        const base = deepMergeConfig(deepCopyDict(DEFAULT_CONFIG), yamlConfig)
-        _config = new RuntimeConfig(base)
+      const yamlFile = findConfigYamlForLogging()
+      const validated = loadConfigYamlValidated(DEFAULT_CONFIG)
+      if (validated) {
+        const base = deepMergeConfig(deepCopyDict(DEFAULT_CONFIG), validated.cleaned)
+        const sources: Record<string, string> = {
+          base: 'DEFAULT_CONFIG',
+          file: yamlFile ?? 'config.yaml',
+        }
+        if (validated.droppedKeys.length > 0) {
+          sources.dropped = validated.droppedKeys.join(', ')
+        }
+        _config = new RuntimeConfig(base, sources)
       } else {
+        // 无 yaml 或解析失败：降级到 fromEnv，并标注环境变量来源
         _config = RuntimeConfig.fromEnv()
+        const envSources = buildEnvSources()
+        _config = new RuntimeConfig(_config.asDict(), { base: 'DEFAULT_CONFIG', ...envSources })
       }
     }
   }

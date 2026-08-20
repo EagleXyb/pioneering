@@ -233,3 +233,133 @@ export function deepMergeConfig(
   }
   return base
 }
+
+// ============================================================
+// 类型安全校验（对应文档 4.5 风险②「类型安全」）
+// ============================================================
+//
+// YAML 覆盖值需与 DEFAULT_CONFIG 中对应字段类型一致，否则丢弃并告警，
+// 避免"环境层误写静默失效"（借鉴 Trae 的 int 强校验）。
+//
+// 校验规则：
+//   - 仅校验 override 中**已存在于 base** 的键（新增键不做类型假设，放行）。
+//   - 标量类型必须一致（string/number/boolean），不符则丢弃该键。
+//   - null 值放行（视为"显式置空"，业务上等价于未覆盖）。
+//   - 对象/数组递归校验；类型不同（如 base 是对象、override 是标量）则丢弃整个键。
+
+export interface TypeValidationResult {
+  /** 清洗后、类型合法的配置对象 */
+  cleaned: Record<string, any>
+  /** 因类型不符被丢弃的字段（点分路径） */
+  droppedKeys: string[]
+}
+
+function sameScalarType(a: any, b: any): boolean {
+  return typeof a === typeof b
+}
+
+/**
+ * 对照 base 递归校验并清洗 override，丢弃类型不符的字段。
+ *
+ * @param base 基准配置（通常为 DEFAULT_CONFIG 的深拷贝）
+ * @param override 待校验的 YAML 覆盖配置
+ * @param pathPrefix 点分路径前缀（内部递归用）
+ * @returns 清洗结果（cleaned 与 droppedKeys）
+ */
+function validateAgainstBase(
+  base: Record<string, any>,
+  override: Record<string, any>,
+  pathPrefix = '',
+): TypeValidationResult {
+  const cleaned: Record<string, any> = {}
+  const droppedKeys: string[] = []
+
+  for (const [key, value] of Object.entries(override)) {
+    const fullPath = pathPrefix ? `${pathPrefix}.${key}` : key
+
+    // 新增键（base 中不存在）：放行，不做类型假设
+    if (!(key in base)) {
+      cleaned[key] = value
+      continue
+    }
+
+    const baseVal = base[key]
+
+    // 值类型不一致且非 null：丢弃
+    if (value === null || value === undefined) {
+      // 显式置空：放行
+      cleaned[key] = value
+      continue
+    }
+
+    if (Array.isArray(value) && Array.isArray(baseVal)) {
+      // 数组：直接放行（元素级校验过于激进，且 config.yaml 中数组较少）
+      cleaned[key] = value
+      continue
+    }
+
+    if (
+      typeof value === 'object' &&
+      typeof baseVal === 'object' &&
+      baseVal !== null &&
+      !Array.isArray(value) &&
+      !Array.isArray(baseVal)
+    ) {
+      // 嵌套对象：递归校验
+      const sub = validateAgainstBase(baseVal, value, fullPath)
+      cleaned[key] = sub.cleaned
+      droppedKeys.push(...sub.droppedKeys)
+      continue
+    }
+
+    if (sameScalarType(baseVal, value)) {
+      cleaned[key] = value
+    } else {
+      // 类型不符：丢弃并记录
+      droppedKeys.push(fullPath)
+      logger.warning(
+        '[type-safety] 丢弃类型不符的配置字段 %s：期望 %s，实际 %s',
+        fullPath,
+        typeof baseVal,
+        typeof value,
+      )
+    }
+  }
+
+  return { cleaned, droppedKeys }
+}
+
+/**
+ * 加载 config.yaml 并做类型安全校验。
+ *
+ * 与 loadConfigYaml 的区别：本函数在解析后对照 base 校验类型，
+ * 返回 { cleaned, droppedKeys }；解析失败/文件缺失返回 null。
+ *
+ * @param filePath 可选文件路径（默认 findConfigYaml()）
+ * @param base 类型基准（默认 DEFAULT_CONFIG 由调用方传入）
+ * @returns 校验结果；文件缺失/解析失败返回 null
+ */
+export function loadConfigYamlValidated(
+  base: Record<string, any>,
+  filePath?: string,
+): TypeValidationResult | null {
+  const p = filePath ?? findConfigYaml()
+  if (!p || !fs.existsSync(p)) {
+    return null
+  }
+  try {
+    const text = fs.readFileSync(p, 'utf-8')
+    const parsed = parseYamlSubset(text)
+    const result = validateAgainstBase(base, parsed)
+    if (result.droppedKeys.length > 0) {
+      logger.warning(
+        '[type-safety] config.yaml 校验完成：%d 个字段因类型不符被丢弃，采用内置默认值',
+        result.droppedKeys.length,
+      )
+    }
+    return result
+  } catch (e: any) {
+    logger.warning('解析 config.yaml 失败，降级使用内置默认配置: %s', String(e?.message ?? e))
+    return null
+  }
+}

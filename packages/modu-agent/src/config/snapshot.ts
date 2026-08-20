@@ -68,9 +68,14 @@ export function buildConfigSnapshot(
   opts: { sources?: Record<string, string> } = {},
 ): ConfigSnapshot {
   const dict = runtimeConfig.asDict()
+  // 4.5 风险③：优先使用 RuntimeConfig 内部记录的溯源信息（getSources），
+  // 调用方显式传入的 sources 作为补充覆盖。
+  const trackedSources = typeof runtimeConfig.getSources === 'function'
+    ? runtimeConfig.getSources()
+    : {}
   return {
     generated_at: new Date().toISOString(),
-    sources: opts.sources ?? {},
+    sources: { ...trackedSources, ...(opts.sources ?? {}) },
     config: maskSensitiveValues(dict),
   }
 }

@@ -30,7 +30,7 @@ import { SkillLoader } from '../skills/loader.js'
 import { SkillPromptAggregator } from '../skills/prompt-aggregator.js'
 // P1: Markdown 文档提示注入
 import { loadMarkdownDocs } from '../config/markdown-loader.js'
-import { MarkdownPromptAggregator } from '../config/markdown-prompt-aggregator.js'
+import { MarkdownPromptAggregator, type MarkdownBudget } from '../config/markdown-prompt-aggregator.js'
 import { CalculatorTool, DateTimeTool, DocWriterTool, SearchTool } from '../tools/index.js'
 import { build_chat_model } from './adapters/llm-adapter.js'
 import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
@@ -538,8 +538,16 @@ export async function create_agent(
   let markdownRuntimeContext = configurable['runtime_context'] ?? null
   if (runtimeConfig.get('react_optimization.markdown_prompt.enabled', false)) {
     try {
-      const mdDocs = loadMarkdownDocs()
-      const aggregated = MarkdownPromptAggregator.aggregateFromDocs(effectiveSystemPrompt, mdDocs)
+      // 4.5 风险① Token 膨胀：eager 文档常驻注入；lazy 文档（如 MEMORY.md）按需加载，
+      // 此处仅加载 eager，lazy 文档由宿主按需显式加载（loadMarkdownDocs({ onlyLoad: 'lazy' })）。
+      const mdDocs = loadMarkdownDocs({ onlyLoad: 'eager' })
+      // 4.5 风险①：按配置的长度预算截断注入内容
+      const budget: MarkdownBudget = {
+        systemPromptMaxChars: runtimeConfig.get('react_optimization.markdown_prompt.system_prompt_max_chars', 8000),
+        runtimeContextMaxChars: runtimeConfig.get('react_optimization.markdown_prompt.runtime_context_max_chars', 4000),
+        truncateMarker: '\n\n[truncated]',
+      }
+      const aggregated = MarkdownPromptAggregator.aggregateFromDocs(effectiveSystemPrompt, mdDocs, budget)
       effectiveSystemPrompt = aggregated.systemPrompt ?? effectiveSystemPrompt
       if (configurable['runtime_context'] === undefined || configurable['runtime_context'] === null) {
         const rc = aggregated.runtimeContext

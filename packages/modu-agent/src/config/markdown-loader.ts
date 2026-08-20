@@ -31,6 +31,15 @@ const logger = {
 /** frontmatter 支持的注入目标 */
 export type MarkdownInjectTarget = 'system_prompt' | 'runtime_context' | 'none'
 
+/**
+ * 层级 cascade 级别（对应文档 4.5 风险①「AGENTS.md 分层级 cascade」）。
+ * 级别越小越"底层/全局"，越大越"上层/具体"；聚合时按此顺序级联叠加。
+ */
+export type CascadeLevel = 'global' | 'project' | 'user'
+
+/** 层级顺序（用于 cascade 排序，索引越小越靠前） */
+export const CASCADE_LEVEL_ORDER: readonly CascadeLevel[] = ['global', 'project', 'user']
+
 /** Markdown 文档元信息 */
 export interface MarkdownMeta {
   /** 注入目标；缺省由文档类型决定（AGENTS/SOUL→system_prompt，USER/MEMORY→runtime_context） */
@@ -41,6 +50,10 @@ export interface MarkdownMeta {
   priority?: number
   /** 角色标识（可选，如领域名） */
   role?: string
+  /** 层级 cascade 级别（可选，仅 frontmatter 显式声明时生效） */
+  cascade_level?: CascadeLevel
+  /** 是否参与 cascade 级联（可选，仅 frontmatter 显式声明时生效） */
+  cascade?: boolean
   /** 其余 frontmatter 字段原样保留，供领域适配等扩展使用 */
   [key: string]: any
 }
@@ -65,6 +78,14 @@ const CONVENTIONAL_DOCS: Record<string, MarkdownInjectTarget> = {
   SOUL: 'system_prompt',
   USER: 'runtime_context',
   MEMORY: 'runtime_context',
+}
+
+/** 约定文档名 → 默认加载方式（4.5 风险①：MEMORY 按需加载，默认 lazy；其余 eager 常驻） */
+const DEFAULT_LOAD: Record<string, 'eager' | 'lazy'> = {
+  AGENTS: 'eager',
+  SOUL: 'eager',
+  USER: 'eager',
+  MEMORY: 'lazy',
 }
 
 /** 项目根目录（packages/modu-agent）。 */
@@ -127,10 +148,10 @@ export function parseMarkdownDoc(content: string, name: string, source: string):
   }
 
   const injectTo = meta.inject_to ?? CONVENTIONAL_DOCS[name] ?? 'system_prompt'
-  const effectiveMeta: MarkdownMeta = {
-    ...meta,
-    inject_to: injectTo,
-  }
+  const load = meta.load ?? DEFAULT_LOAD[name] ?? 'eager'
+  // 4.5 风险①「层级 cascade」：cascade_level / cascade 仅在 frontmatter 显式提供时才生效；
+  // 未显式声明时不设置（保持 undefined），以维持既有 priority 排序语义（向后兼容）。
+  const effectiveMeta: MarkdownMeta = { ...meta, inject_to: injectTo, load }
 
   return {
     name,

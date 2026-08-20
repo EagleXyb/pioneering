@@ -10,7 +10,8 @@
 //   - 纯函数 + 无副作用，便于单元测试。
 //   - 按 priority 排序（数值大者在前），再按文档名稳定排序，保证确定性。
 
-import type { MarkdownDoc } from './markdown-loader.js'
+import type { MarkdownDoc, CascadeLevel } from './markdown-loader.js'
+import { CASCADE_LEVEL_ORDER } from './markdown-loader.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[config.markdown_prompt] ${msg}`, ...args),
@@ -19,13 +20,63 @@ const logger = {
   debug: (msg: string, ...args: any[]) => console.debug(`[config.markdown_prompt] ${msg}`, ...args),
 }
 
+/**
+ * 按层级 cascade 排序文档（4.5 风险①「AGENTS.md 分层级 cascade」）：
+ *   1. cascade 级别小的（global < project < user）在前（底层级联，上层追加）；
+ *   2. 同级别内按 priority 数值大者在前；
+ *   3. 再按文档名稳定排序，保证确定性。
+ */
 function sortedDocs(docs: MarkdownDoc[]): MarkdownDoc[] {
+  const levelOrder = (lvl?: CascadeLevel): number => {
+    if (!lvl) return CASCADE_LEVEL_ORDER.length
+    const idx = CASCADE_LEVEL_ORDER.indexOf(lvl)
+    return idx === -1 ? CASCADE_LEVEL_ORDER.length : idx
+  }
   return [...docs].sort((a, b) => {
+    const la = levelOrder(a.meta.cascade_level)
+    const lb = levelOrder(b.meta.cascade_level)
+    if (la !== lb) return la - lb
     const pa = a.meta.priority ?? 0
     const pb = b.meta.priority ?? 0
     if (pa !== pb) return pb - pa
     return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
   })
+}
+
+/**
+ * 长度预算配置（对应文档 4.5 风险①「Token 膨胀」）。
+ * 对注入 system prompt / runtime context 的 Markdown 内容做字符级截断，
+ * 避免 AGENTS.md/MEMORY.md 过大时撑爆 LLM 上下文。
+ */
+export interface MarkdownBudget {
+  /** 注入 system prompt 的内容总字符上限；<=0 表示不限制 */
+  systemPromptMaxChars: number
+  /** 注入 runtime context 的内容总字符上限；<=0 表示不限制 */
+  runtimeContextMaxChars: number
+  /** 截断时追加的标记 */
+  truncateMarker: string
+}
+
+export const DEFAULT_MARKDOWN_BUDGET: MarkdownBudget = {
+  systemPromptMaxChars: 8000,
+  runtimeContextMaxChars: 4000,
+  truncateMarker: '\n\n[truncated]',
+}
+
+/**
+ * 按字符预算截断字符串：超过上限时保留前 maxChars 个字符并追加标记。
+ * maxChars <= 0 时原样返回（不限制）。
+ */
+function applyCharBudget(text: string, maxChars: number, marker: string): string {
+  if (maxChars <= 0 || text.length <= maxChars) return text
+  return text.slice(0, maxChars) + marker
+}
+
+/**
+ * 估算字符串 token 数（粗略：4 字符 = 1 token），与 few-shot-selector 保持一致。
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4)
 }
 
 export class MarkdownPromptAggregator {
@@ -39,15 +90,22 @@ export class MarkdownPromptAggregator {
    * @param docs 已加载的 Markdown 文档列表
    * @returns 合并后的提示；无片段则返回 base
    */
-  static aggregateToSystemPrompt(base: string | null, docs: MarkdownDoc[]): string | null {
+  static aggregateToSystemPrompt(
+    base: string | null,
+    docs: MarkdownDoc[],
+    budget: MarkdownBudget = DEFAULT_MARKDOWN_BUDGET,
+  ): string | null {
     const frags = sortedDocs(docs)
-      .filter((d) => d.injectTo === 'system_prompt')
+      .filter((d) => d.injectTo === 'system_prompt' && d.meta.cascade !== false)
       .map((d) => d.content)
 
     if (frags.length === 0) {
       return base
     }
-    const merged = (base || '') + '\n\n' + frags.join('\n\n')
+    let injected = frags.join('\n\n')
+    // 对注入片段做字符预算截断（4.5 风险① Token 膨胀）
+    injected = applyCharBudget(injected, budget.systemPromptMaxChars, budget.truncateMarker)
+    const merged = (base || '') + '\n\n' + injected
     return merged
   }
 
@@ -60,15 +118,20 @@ export class MarkdownPromptAggregator {
    * @param docs 已加载的 Markdown 文档列表
    * @returns 聚合后的 runtime context 字符串
    */
-  static collectRuntimeContext(docs: MarkdownDoc[]): string {
+  static collectRuntimeContext(
+    docs: MarkdownDoc[],
+    budget: MarkdownBudget = DEFAULT_MARKDOWN_BUDGET,
+  ): string {
     const frags = sortedDocs(docs)
-      .filter((d) => d.injectTo === 'runtime_context')
+      .filter((d) => d.injectTo === 'runtime_context' && d.meta.cascade !== false)
       .map((d) => d.content)
 
     if (frags.length === 0) {
       return ''
     }
-    return frags.join('\n\n')
+    const joined = frags.join('\n\n')
+    // 对运行时上下文做字符预算截断（4.5 风险① Token 膨胀）
+    return applyCharBudget(joined, budget.runtimeContextMaxChars, budget.truncateMarker)
   }
 
   /**
@@ -83,9 +146,10 @@ export class MarkdownPromptAggregator {
   static aggregateFromDocs(
     base: string | null,
     docs: MarkdownDoc[],
+    budget: MarkdownBudget = DEFAULT_MARKDOWN_BUDGET,
   ): { systemPrompt: string | null; runtimeContext: string } {
-    const systemPrompt = MarkdownPromptAggregator.aggregateToSystemPrompt(base, docs)
-    const runtimeContext = MarkdownPromptAggregator.collectRuntimeContext(docs)
+    const systemPrompt = MarkdownPromptAggregator.aggregateToSystemPrompt(base, docs, budget)
+    const runtimeContext = MarkdownPromptAggregator.collectRuntimeContext(docs, budget)
     return { systemPrompt, runtimeContext }
   }
 }
