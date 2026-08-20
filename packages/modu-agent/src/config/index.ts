@@ -78,3 +78,13 @@ export {
   parseYamlSubset,
   type TypeValidationResult,
 } from './yaml-loader.js'
+// 首次安装初始化：自动生成默认模板文件（AGENTS.md/SOUL.md/USER.md/MEMORY.md + config.yaml）
+export {
+  initDefaultConfigFiles,
+  hasDefaultConfigFiles,
+  getDefaultConfigRoot,
+  DEFAULT_TEMPLATES,
+  type DefaultTemplate,
+  type InitDefaultsResult,
+  type InitResultEntry,
+} from './init-defaults.js'

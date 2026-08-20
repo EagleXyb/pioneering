@@ -236,15 +236,21 @@ output_requirements: 数值保留2位小数
   })
 })
 
-describe('P1: getPackageRoot 与项目根默认（无文件时零侵入）', () => {
-  it('项目根目录可解析且不含约定 .md（当前仓库状态）', () => {
+describe('P1: getPackageRoot 与无 .md 时零侵入', () => {
+  it('getPackageRoot 返回可解析的绝对路径', () => {
     const root = getPackageRoot()
     expect(path.isAbsolute(root)).toBe(true)
-    // 当前仓库根无 AGENTS.md/SOUL.md/USER.md/MEMORY.md，loadMarkdownDocs 应返回空
-    const docs = loadMarkdownDocs({ rootDir: root })
-    const hasConventional = docs.some((d) =>
-      ['AGENTS', 'SOUL', 'USER', 'MEMORY'].includes(d.name),
-    )
-    expect(hasConventional).toBe(false)
+    expect(fs.existsSync(root)).toBe(true)
+  })
+
+  it('无约定 .md 目录时 loadMarkdownDocs 返回空（零侵入）', () => {
+    // 用临时空目录验证，避免依赖项目根是否已生成模板文件
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'p1-empty-'))
+    try {
+      const docs = loadMarkdownDocs({ rootDir: dir })
+      expect(docs).toHaveLength(0)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -215,8 +215,9 @@ describe('P0: getConfig 分层与原逻辑等价', () => {
   })
 
   it('环境变量仍覆盖默认值（fromEnv 链路未被破坏）', () => {
+    // 用 fromEnv 直接验证环境变量覆盖默认值，不依赖项目根是否含 config.yaml
     process.env.MODU_LLM_PROVIDER = 'glm'
-    const cfg = getConfig()
+    const cfg = RuntimeConfig.fromEnv()
     expect(cfg.get('llm.default_provider', null)).toBe('glm')
     expect(cfg.get('memory.default_strategy', null)).toBe('cache')
   })

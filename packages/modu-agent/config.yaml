@@ -1,0 +1,13 @@
+# pioneering modu-agent 默认配置模板（首次安装自动生成，可安全修改）
+
+react_optimization:
+  # 4.5 风险①：Markdown 文档提示注入（首次安装默认开启，配合下方 .md 模板）
+  markdown_prompt:
+    enabled: true
+    system_prompt_max_chars: 8000
+    runtime_context_max_chars: 4000
+
+# 示例：参数覆盖（类型不符会自动丢弃并回退默认，见 4.5 风险②）
+# llm:
+#   default_provider: deepseek
+#   temperature: 0.7

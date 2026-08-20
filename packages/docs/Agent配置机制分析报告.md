@@ -436,6 +436,23 @@ else _config = RuntimeConfig.fromEnv()
 
 **⑤ 回归结论**：`tests/config` 全绿（104 例）。完整套件 **596 例通过**；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0 基线已确认）。`tsc --noEmit` 编译通过，0 错误。
 
+#### 4.5.2 首次安装自动生成默认模板（已落地）
+> 打包成安装包后，第一次运行/安装时由宿主调用一次，即可自动生成一套默认配置模板，开箱即用。
+
+- **新增 `src/config/init-defaults.ts`**：
+  - `DEFAULT_TEMPLATES`：内置 5 个模板（`AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md` + `config.yaml`），内容与仓库领域（编码助手）及 4.5 规范对齐；`config.yaml` 内置 `markdown_prompt.enabled: true`，使首次安装即可注入 Markdown 提示。
+  - `initDefaultConfigFiles({ rootDir?, templates?, logger? })`：**幂等**生成缺失模板；已存在文件跳过、绝不覆盖用户修改；单文件失败隔离（`skipped`）；原子写（临时文件 + rename）。
+  - `hasDefaultConfigFiles(rootDir?)`：判断是否已初始化（供宿主选择是否调用）。
+  - `getDefaultConfigRoot()`：模板写入目录（默认 `getPackageRoot`，可用 `rootDir` 覆盖）。
+- **导出**：`config/index.ts` 导出 `initDefaultConfigFiles` / `hasDefaultConfigFiles` / `getDefaultConfigRoot` / `DEFAULT_TEMPLATES` 及类型。
+- **使用方式**：宿主在安装完成/首次启动时调用一次即可：
+  ```ts
+  import { initDefaultConfigFiles } from '@pioneering/modu-agent/config'
+  const r = initDefaultConfigFiles() // 幂等，可安全重复调用
+  // r.created / r.existed / r.skipped 分别统计新建/已存在/失败
+  ```
+- **测试覆盖（`tests/config/p4-init-defaults.test.ts`，共 9 例，全绿）**：全量生成、幂等不覆盖已存在文件、重复调用幂等、自定义模板、单文件失败隔离、`hasDefaultConfigFiles`、`getDefaultConfigRoot`、MEMORY 默认 lazy、模板内容校验。`tests/config` 全绿（**113 例**），`tsc --noEmit` 编译通过。
+
 ---
 
 ## 五、小结
