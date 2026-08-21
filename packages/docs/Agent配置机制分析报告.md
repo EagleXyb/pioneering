@@ -1,460 +1,294 @@
 # Agent 配置机制分析报告
 
-> 分析范围：`packages/` 目录全部代码（核心在 `packages/modu-agent/src/`，共 125 个 TS 源文件）
-> 分析日期：2026-08-20
-> 分析目标：判断当前 Agent 是否支持通过 `.md` 文档文件（如 `AGENTS.md`、`SOUL.md`、`USER.md`、`user_profile.md`）进行配置
+> 分析范围：`packages/modu-agent/src/`（TypeScript 源码，共 11 个 `*.ts` 配置相关文件集中于 `src/config/`）
+> 分析日期：2026-08-21（基于 V2.2 分支代码现状复核）
+> 分析目标：梳理 `packages/modu-agent` 的 Agent 配置机制——是否支持 `.md` 文档配置、YAML 分层配置，以及各项优化能力（P0–P4）的真实落地情况
 
-## 结论先行
+---
 
-**当前该 Agent 不支持通过 `.md` 文档文件进行配置**，不存在读取 `AGENTS.md` / `SOUL.md` / `USER.md` / `user_profile.md` 等作为配置的机制。
+## 结论先行（基于代码现状）
+
+1. **`.md` 文档配置机制「已实现且当前实际生效」**。代码中存在完整的 Markdown 配置加载与注入链路（`src/config/markdown-loader.ts` + `markdown-prompt-aggregator.ts`，由 `src/graph/factory.ts` 在 `react_optimization.markdown_prompt.enabled` 开关下接入）。`DEFAULT_CONFIG` 中该开关默认为 `false`，但**包根目录已存在 `config.yaml`（内容为 `markdown_prompt.enabled: true`）及 `AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md` 四个文档**——因此在本包环境下 `getConfig()` 会加载该 YAML 覆盖默认开关，`create_agent()` 实际会注入 AGENTS/SOUL（→system_prompt）与 USER（→runtime_context，eager），MEMORY（lazy）不注入。
+2. **YAML 分层配置「已落地」**。`getConfig()` 在未指定 `MODU_CONFIG_PATH` 时，会尝试加载包根 `config.yaml`、做类型安全校验后深度合并到 `DEFAULT_CONFIG`（失败/缺失则降级到 `fromEnv`）。零外部依赖（内置最小 YAML 子集解析器）。
+3. **首次安装初始化模板「已实现」**。`init-defaults.ts` 提供幂等生成 `AGENTS.md/SOUL.md/USER.md/MEMORY.md + config.yaml` 默认模板的能力，但目前**仅导出、未被 `getConfig()` 自动调用**（需宿主显式调用）。
+4. **大量 P2/P3 规划项「尚未落地」**。原报告将 `llm-as-judge / early-stop / testing / rag / behavior / sandbox / factory-config / mcp-config` 等描述为已落地模块，但当前代码中**这些独立 config 子模块均不存在**（仅有 `feedback.*`、`mcp.*` 等配置块，以及 `factory.ts` 内联逻辑）。详见第 6 节「未落地项」。
+
+> 说明：本文档为对 `packages/modu-agent` 源码的复核结果。下文所有「✅ 已落地」「❌ 未落地」标记均以当前代码事实为准；原文档中将其作为「实施记录」描述的未落地项已校正。
 
 ---
 
 ## 1）当前配置系统的实现方式
 
-配置核心全部集中在 `packages/modu-agent/src/config/runtime-config.ts`，是一个名为 `RuntimeConfig` 的内存配置对象，多种来源按以下方式组合：
+配置核心集中在 `packages/modu-agent/src/config/runtime-config.ts`，是一个名为 `RuntimeConfig` 的内存配置对象，多种来源按以下方式组合：
 
-### a. 硬编码默认值（`DEFAULT_CONFIG`，`runtime-config.ts:18-318`）
+```text
+RuntimeConfig（内存单例）
+  ├─ DEFAULT_CONFIG（内置默认，react_optimization.* 等默认关闭）
+  ├─ 可选 config.yaml 分层覆盖（loadConfigYamlValidated → deepMerge，类型安全校验）
+  ├─ 可选 MODU_CONFIG_PATH 指定的 JSON 文件（原逻辑，零侵入保留）
+  ├─ 环境变量（fromEnv，兜底降级链路）
+  └─ overrideConfig(...)（测试隔离用）
+```
 
-绝大多数行为参数写死在源码里：LLM provider、温度、记忆策略、多 Agent 开关、工具超时/重试/人审（`tools.human_in_loop`）、各 `react_optimization` feature flag 等。这是当前最主要的配置方式。（注意：`DEFAULT_CONFIG` 中并无"权限门禁/gating"类字段；写操作防护由 `tools/tool-guardrails.ts` 的 `ACTION_GUARDRAILS` 注册表承担，受 `react_optimization.action_guardrails.enabled` 门控。）
+入口 `getConfig(override?)`（`runtime-config.ts:560`）：
 
-### b. JSON 配置文件（唯一支持的文件加载，`runtime-config.ts:360-368`）
+- 若 `override` 显式传入 → 直接作为单例（测试隔离）。
+- 若 `process.env.MODU_CONFIG_PATH` 指定 → 走原 JSON `fromFile` 加载（零侵入）。
+- 否则 → 尝试 `loadConfigYamlValidated(DEFAULT_CONFIG)`：
+  - 成功 → `deepMergeConfig(DEFAULT_CONFIG, validated.cleaned)` → 附带来源溯源（base/file/dropped）。
+  - 失败/缺失 → 降级 `RuntimeConfig.fromEnv()`，标注环境变量来源。
+  - **等价原行为**：解析失败或文件缺失时一律回退 `fromEnv`，与未接入 YAML 前完全等价（不引入新缺陷）。
 
-```typescript
-static fromFile(filePath: string): RuntimeConfig {
-  const data = JSON.parse(fs.readFileSync(p, 'utf-8'))  // 仅 JSON.parse
-  return new RuntimeConfig(data)
+`RuntimeConfig` 关键方法（`runtime-config.ts`）：`get(keyPath, default?)`（点分路径取值，返回浅拷贝）、`set`、`update`（返回旧值并触发回调）、`updateMany`（批量原子更新）、`registerChangeCallback`（返回注销函数）、`asDict()`（深拷贝）、`getSources()`（来源溯源）；类工厂 `fromFile`/`fromEnv`；模块级 `getConfig`/`resetConfig`/`overrideConfig`。变更通知基于 `EventEmitter`（异常隔离），支持热更新。
+
+### 1.1 内置默认配置 DEFAULT_CONFIG
+
+位于 `runtime-config.ts` 顶部，涵盖 `llm`、`memory`、`perception`、`feedback`、`observability`、`mcp`、`streaming`、`event_bus`、`skills`、`react_optimization` 等模块。所有 P0/P1 优化项均通过 `react_optimization.*` 下的 feature flag 控制，**默认关闭（低风险项默认开启除外）**，满足风险登记表 R-01~R-12 的「字段全 optional + 异常降级 + 默认关闭高风险项」。
+
+```text
+react_optimization:
+  complexity_assessment.enabled          = false   // P0-1
+  cot_anchor.enabled                     = false   // P0-2
+  observation_distillation.enabled       = true    // P0-3（异常自动降级）
+  adaptive_termination.enabled           = false   // P0-4
+  prompt_composer.enabled                = false   // P1-4
+  tool_capability_matrix.enabled         = false   // P1-5
+  markdown_prompt.enabled                = false   // P1（Markdown 文档配置注入）
+  action_guardrails.enabled              = false   // P2-1
+  few_shot.enabled                       = false   // P2-2
+  parallel_tools.enabled                 = false   // P2-3
+```
+
+---
+
+## 2）Markdown 文档配置机制（P1，✅ 已落地；因包根 config.yaml 当前实际生效）
+
+这是原报告「结论」中被误判为「不支持」的机制。代码实际已实现完整链路：
+
+### 2.1 约定文件与 frontmatter
+
+`src/config/markdown-loader.ts` 按约定文件名扫描**包根目录**（`getPackageRoot() = path.resolve(__dirname, '..', '..')`）：
+
+| 文件名 | 默认注入目标 `inject_to` | 默认加载方式 `load` |
+|--------|--------------------------|---------------------|
+| `AGENTS.md`  | `system_prompt`（行为准则/SOP）   | `eager`（常驻） |
+| `SOUL.md`    | `system_prompt`（人格/语气/边界）  | `eager`（常驻） |
+| `USER.md`    | `runtime_context`（用户画像）      | `eager`（常驻） |
+| `MEMORY.md`  | `runtime_context`（长期记忆）      | `lazy`（按需）  |
+
+每个文档通过 YAML frontmatter 声明元信息（`MarkdownMeta`）：
+
+```yaml
+---
+inject_to: system_prompt      # system_prompt | runtime_context | none
+load: eager                  # eager | lazy
+priority: 0                  # 数值越大越靠前
+cascade_level: global        # global < project < user（层级级联）
+cascade: true
+---
+正文内容...
+```
+
+`parseFrontmatter()` 复用 `yaml-loader.ts` 的最小 YAML 子集解析器，解析失败返回空对象（不抛异常，走降级）。`parseMarkdownDoc()` 输出结构化 `MarkdownDoc { name, content, meta, injectTo, source }`。
+
+> 注：原报告指出的「全仓 0 个 `AGENTS.md` 等文件」**已过时**。当前包根已存在 `AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md` 四个文件。它们的 frontmatter 与 `init-defaults.ts` 的 `DEFAULT_TEMPLATES` 一致（如 AGENTS.md：`inject_to: system_prompt, load: eager, cascade_level: global`）。
+
+### 2.2 加载与聚合
+
+- `loadMarkdownDocs({ onlyLoad?: 'eager'|'lazy' })`：扫描 4 个约定文件 + `config/domains/<domain>.md` 领域适配目录，返回 `MarkdownDoc[]`。文件缺失/frontmatter 非法 → 返回空数组（纯增强、零侵入）。
+- `MarkdownPromptAggregator`（`markdown-prompt-aggregator.ts`）：
+  - `aggregateToSystemPrompt(base, docs, budget)`：过滤 `inject_to=system_prompt` 且 `cascade!==false` 的文档，按层级→优先级→文档名确定性排序后并入 system prompt。
+  - `collectRuntimeContext(docs, budget)`：收集 `inject_to=runtime_context` 的文档作为 runtime context。
+  - 长度预算（`MarkdownBudget`，对应原报告 4.5 风险①「Token 膨胀」）：`systemPromptMaxChars=8000`、`runtimeContextMaxChars=4000`，超限字符级截断并追加 `[truncated]`。
+  - 无相关文档时返回 `base` 原样（行为等价现状）。
+
+### 2.3 在 factory 中的接入点（gated）
+
+`src/graph/factory.ts:531-564`：
+
+```ts
+let markdownRuntimeContext = configurable['runtime_context'] ?? null
+if (runtimeConfig.get('react_optimization.markdown_prompt.enabled', false)) {
+  const mdDocs = loadMarkdownDocs({ onlyLoad: 'eager' })
+  const budget = {
+    systemPromptMaxChars: runtimeConfig.get('react_optimization.markdown_prompt.system_prompt_max_chars', 8000),
+    runtimeContextMaxChars: runtimeConfig.get('react_optimization.markdown_prompt.runtime_context_max_chars', 4000),
+    truncateMarker: '\n\n[truncated]',
+  }
+  const aggregated = MarkdownPromptAggregator.aggregateFromDocs(effectiveSystemPrompt, mdDocs, budget)
+  effectiveSystemPrompt = aggregated.systemPrompt ?? effectiveSystemPrompt
+  // runtimeContext 优先级：宿主显式传入 configurable['runtime_context'] > Markdown 文档
+  if (configurable['runtime_context'] === undefined || configurable['runtime_context'] === null) {
+    markdownRuntimeContext = aggregated.runtimeContext || null
+  }
 }
 ```
 
-注意：使用 `JSON.parse`，**只认 JSON，不认 `.md`、不认 YAML、不解析 frontmatter**。
+`markdownRuntimeContext` 进一步被 P1-4 的 `PromptComposer`（位于 `src/reasoning/prompt-composer.ts`，**不在 config 目录**）在 `react_optimization.prompt_composer.enabled` 开启时组装为 `runtimeContext` 层。
 
-### c. 环境变量（`fromEnv()`，`runtime-config.ts:370-385`）
-
-`fromEnv()` 仅将 **3 个**环境变量写入 `RuntimeConfig`：
-
-- `MODU_LLM_PROVIDER` → `llm.default_provider`
-- `MODU_LLM_TEMPERATURE` → `llm.temperature`
-- `MODU_MEMORY_STRATEGY` → `memory.default_strategy`
-
-> **注意**：若把"环境变量"理解为整个代码库实际读取的变量，则远不止 3 个。各模块散落读取约 20 个：`MODU_CONFIG_PATH`（`getConfig()`）；LLM 密钥/端点/模型（`MODU_{GLM|DEEPSEEK|QWEN|OPENAI}_{API_KEY|BASE_URL|MODEL}`、通用 `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_DEFAULT_MODEL`，经 `graph/adapters/llm-adapter.ts` 的 `_PROVIDER_CONFIG` 映射表与 `reasoning/llm/*` 子类解析）；Chroma（`MODU_CHROMA_IN_MEMORY`/`MODU_CHROMA_PATH`）；工具根目录（`MODU_DOC_WRITER_ROOT`/`MODU_FILE_OPS_ROOT`）；检索与代理（`TAVILY_API_KEY`、`HTTP(S)_PROXY`）等。即 LLM 连接类参数事实上已通过环境变量外部化，但**无统一清单、无集中校验**，与 `RuntimeConfig` 体系脱节。
-
-### d. 全局初始化入口（`getConfig()`，`runtime-config.ts:515-528`）
-
-```typescript
-const configPath = process.env.MODU_CONFIG_PATH ?? ''
-if (configPath) _config = RuntimeConfig.fromFile(configPath)
-else _config = RuntimeConfig.fromEnv()
-```
-
-即 `MODU_CONFIG_PATH` 指向一个 **JSON 文件** 才生效。
-
-### e. 运行时动态修改（代码内 API）
-
-`get/update/updateMany/registerChangeCallback` + EventEmitter 热更新；`evolution` 模块可在运行时调参。这部分仍是代码驱动，非文档驱动。
-
-### f. 角色 / System Prompt（另有一套，但同样非 `.md`）
-
-`factory.ts:515` 的优先级链：`configurable['system_prompt']` > 传入 `systemPrompt` > `_DEFAULT_ANTI_HALLUCINATION_PROMPT`（硬编码兜底）。子 Agent 提示词模板硬性写死在 `subgraph/builder.ts:27` 的 `_SYSTEM_PROMPT_TEMPLATES`。
-
-此外 `create_agent` 还有两个运行时注入点（均为代码/配置驱动，非文档驱动）：
-- **SkillPromptAggregator**（`factory.ts:520`，gated by `skills.enabled`）：聚合已注册 Skill 的提示片段追加到系统提示词；
-- **PromptComposer 四层组装**（`factory.ts:533`，gated by `react_optimization.prompt_composer.enabled`，默认关闭）：`systemCore + domain + taskSpec + runtimeContext` 四层拼接，其中 `domain`/`task_spec`/`runtime_context` 均来自 `configurable`；`runtimeContext` 层（用户画像、环境信息）即未来 `USER.md` 类文档的天然挂载点。
-
-### 数据库
-
-当前 Agent 运行时无任何数据库依赖。`packages/docs/角色提示词配置功能优化方案.md` 是一份**未来方案设计文档**（非已实现的代码），它规划用 SQLite + HTTP API 承载角色提示词——但截至当前代码，这套存储层**尚未落地**（`llm.prompt_template` 字段被该文档明确指出"形同虚设，从未被读取"）。
+**关键事实**：`DEFAULT_CONFIG` 中 `markdown_prompt.enabled = false`，但包根 `config.yaml` 将其覆盖为 `true`（经 `loadConfigYamlValidated` 类型校验后深度合并），因此**该链路在当前包环境下实际生效**：AGENTS.md/SOUL.md 并入 system prompt，USER.md 进入 runtimeContext，MEMORY.md 因 `load: lazy` 不参与常驻注入（仅宿主显式调用 `loadMarkdownDocs({ onlyLoad: 'lazy' })` 时加载）。
 
 ---
 
-## 2）是否存在读取 / 加载 `.md` 文档作为配置的机制
-
-**不存在。** 全仓检索结果：
-
-- `packages/` 下 0 个 `AGENTS.md` / `SOUL.md` / `USER.md` / `user_profile.md` 文件。
-- 所有 `.md` 文件都是**文档 / 分析报告**（`docs/` 下 9 个 `.md`，含本报告自身），与配置无关。
-- 代码中对 `.md` 的全部引用都属于**工具能力**，而非配置加载：
-  - `tools/doc-writer.ts`：*生成* `.md` 文档（写文件）
-  - `tools/file-ops.ts`：`readFileSync` 读取任意文件**内容**（作为工具行为，不是配置解析）
-  - `tools/search.ts` 的 `USER_AGENT` 是 HTTP 请求头，与用户画像无关
-- 没有 `parseMarkdown`、`frontmatter`、`yaml.parse`、`.md` 配置加载器任何形式的实现；唯一的 `frontmatter` 字样出现在 `CODE_WIKI.md` 谈文档版本管理，与配置加载无关。
-- `skills/loader.ts` 扫描的是 `<skill>/skill.{js,ts}` 代码模块，不是 `.md`。
-
----
-
-## 3）若支持，支持哪些 `.md` 及其路径 / 优先级
-
-**不适用**——当前不支持，故无此类文件、路径、优先级定义。
-
----
-
-## 4）当前架构缺失的关键组件 & 实现 `.md` 配置需修改的模块
-
-### 缺失的关键组件
-
-1. **Markdown 配置解析层**：没有能够读取、解析 `.md`（含可选 YAML frontmatter 或结构化分段）为配置对象的模块。
-2. **文件型配置发现与加载器**：现有 `fromFile` 仅做 `JSON.parse`，缺一个"按约定文件名扫描目录 → 解析 → 合并"的 loader。
-3. **`.md` 配置 schema 与映射规则**：没有把 `AGENTS.md` / `SOUL.md` / `USER.md` 等语义映射到 `RuntimeConfig` 字段或 `configurable` 的约定。
-4. **加载时机 / 优先级编排**：配置初始化在 `getConfig()`（`runtime-config.ts:515`），目前只有"JSON 文件 或 环境变量"二选一，缺 `.md` 文档层及其与默认 / JSON / 环境变量的合并顺序。
-
-### 需修改 / 新增的模块
-
-- **`config/runtime-config.ts`**（核心改动点）
-  - 新增 `fromMarkdown(dirOrPath)` 类工厂方法；
-  - `getConfig()`（`runtime-config.ts:515`）增加"扫描约定 `.md` 文件"分支及与 `MODU_CONFIG_PATH`(JSON)、`fromEnv()` 的合并优先级；
-  - 可选：在 `DEFAULT_CONFIG` 增加指向 `.md` 文件路径的字段（如 `docs: { agents_md: 'AGENTS.md', ... }`）。
-- **新增 `config/markdown-loader.ts`**（建议）：负责 glob 查找 `AGENTS.md` / `SOUL.md` / `USER.md` / `user_profile.md`，解析文本 / frontmatter，输出 `Record<string,any>` 交给 `RuntimeConfig._deepMerge`。
-- **角色 / System Prompt 注入点 `graph/factory.ts:515`**：当前仅 `configurable['system_prompt']` 优先级最高。若要让 `SOUL.md` / `USER.md` 影响人格，需在此把解析出的文档内容注入 `effectiveSystemPrompt`（可经现有 `SkillPromptAggregator` / `PromptComposer` 路径聚合）。
-- **子 Agent 提示词 `graph/subgraph/builder.ts:27`**：若希望 `AGENTS.md` 覆盖子 Agent 模板，需从配置读取而非硬编码。
-- **`skills/loader.ts`**：若希望 `.md` 作为"技能说明 / 指令片段"被加载，可复用其 discover 机制扩展 `.md` 读取。
-- **`config/index.ts`**：导出新增的 loader 与类型。
-
-> 设计层面可参考已有的 `角色提示词配置功能优化方案.md`，它已确立"宿主负责来源、`configurable` 注入、SDK 不感知存储"的**控制反转**原则——实现 `.md` 配置时应同样通过 `configurable` / `RuntimeConfig` 注入，而非在 Agent 框架内硬编码文档路径。
-
----
-
-## 5）总结
-
-| 维度 | 现状 |
-|------|------|
-| 配置主来源 | 源码硬编码 `DEFAULT_CONFIG` |
-| 文件配置 | 仅 JSON（`MODU_CONFIG_PATH` → `JSON.parse`） |
-| 环境变量 | `fromEnv()` 仅 3 个写入 `RuntimeConfig`；另有约 20 个散落读取（LLM 密钥/端点/模型、Chroma、工具根目录、代理等），无统一治理 |
-| 数据库 | 运行时无；角色配置 SQLite 方案仅为未落地的设计文档 |
-| `.md` 文档配置 | **不支持**；`.md` 仅作"文档生成 / 读写工具"的内容，非配置 |
-| `AGENTS` / `SOUL` / `USER` / `user_profile.md` | 全仓不存在，也无加载逻辑 |
-
-**结论**：该 Agent 当前不读取任何 `.md` 作为配置。要支持，需新增 Markdown 解析加载层并接入 `config/runtime-config.ts` 的初始化与合并逻辑，必要时再打通 `factory.ts` 的 System Prompt 注入点。本报告仅分析现状，未做代码修改。
-
----
-
-# 续篇：可配置项全景、格式选型与实践优化方案
-
-> 分析日期：2026-08-20
-> 目标：梳理 `packages/modu-agent/src` 下全部可配置项，按 `.md` / `.yaml` / `.json` 三类格式归类，对比成熟 Agent 产品配置实践，给出本项目配置机制优化方案。
-
----
-
-## 一、当前 Agent 系统全部可配置项全景
-
-基于 `runtime-config.ts`（`DEFAULT_CONFIG`）、`factory.ts`、`subgraph/builder.ts`、`prompt-composer.ts`、`domain-adapters.ts`、`skills/`、`mcp/`、`tools/`、`memory/`、`reasoning/llm/router.ts` 等模块，当前所有可配置项可归为 8 大类（字段名均与 `DEFAULT_CONFIG` 实际定义逐一核对）：
-
-| 类别 | 具体可配置项（实际字段） | 当前载体 |
-|------|------------|---------|
-| 1. LLM 模型参数 | `llm.default_provider`、`llm.temperature`、`llm.max_tokens`、`llm.max_reasoning_iterations`、`llm.max_format_retries`、`llm.retry.max_attempts`、`llm.connection_pool.*`（4 项）、`llm.cost_tracking.enabled`、`llm.router.*`（enabled/default_route/routes/rules）、`llm.tool_call_pattern`；`llm.prompt_template`（**死配置**，从未被读取）。api_key/base_url/model **不在 `DEFAULT_CONFIG`**，经环境变量注入（`llm-adapter.ts` 的 `_PROVIDER_CONFIG` 映射：glm/deepseek/gpt/qwen 各自 `MODU_*_API_KEY/BASE_URL/MODEL` + 通用 `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_DEFAULT_MODEL`） | 硬编码 + 环境变量 |
-| 2. 记忆策略 | 被读取的仅 3 个：`memory.checkpointer_type`、`memory.store_type`、`memory.chroma_persist_path`（factory.ts）；`memory.default_strategy`（默认 `'cache'`）、`memory.context_window`（`'last_5_turns'`）、`memory.enable_compression`（**均为死配置**，全代码无消费者） | 硬编码 |
-| 3. 多 Agent 编排 / Plan-Execute | `orchestration.engine`（runner.ts 消费）、`orchestration.multi_agent.*`（enabled/max_subagents/consensus_strategy/consensus_quorum/subgraph_timeout_ms/consensus_failure_as_evolution_signal/use_llm_decompose/subagent_max_retries）、`orchestration.mode_router[]`（规则化路由分叉）、`plan_execute.*`（enabled/max_steps/max_replans/planner_temperature/continue_on_failure/compact_completed_steps/step_summary_max_chars） | 硬编码 |
-| 4. 工具治理 | `tools.retry.*`（retry.ts）、`tools.human_in_loop.*`（enabled/approval_timeout_seconds/auto_reject_on_timeout/sensitive_tools，graph.ts/nodes.ts）、`tools.max_result_chars.*`（tool-adapter.ts）、`tools.result_cache.*`（tool-result-cache.ts）、`tools.rate_limit.*`（rate-limiter.ts）；`tools.default_timeout_ms`（**死配置**，无消费者）。另有 `tools.register_defaults`（**不在 `DEFAULT_CONFIG`**，factory.ts 以代码默认值 `true` 读取，控制是否注册 4 个内置工具）。写操作防护 `ACTION_GUARDRAILS` 为 `tool-guardrails.ts` 硬编码注册表（支持运行时 `registerGuardrail`，受 `react_optimization.action_guardrails.enabled` 门控）。**不存在** gating/allowlist/capabilities 类配置 | 硬编码 |
-| 5. 推理/ReAct 优化 | `react_optimization` 下 **9 个具名开关**（各带子参数）：`complexity_assessment`、`cot_anchor`、`observation_distillation`、`adaptive_termination`、`prompt_composer`、`tool_capability_matrix`、`action_guardrails`、`few_shot`（max_examples/max_tokens_budget/min_quality_score/mmr_lambda）、`parallel_tools` | 硬编码 |
-| 6. 提示词/角色设定 | 通用系统提示 `_DEFAULT_ANTI_HALLUCINATION_PROMPT`（factory.ts:65 硬编码兜底）、子 Agent 模板 `_SYSTEM_PROMPT_TEMPLATES`（builder.ts:27，research/coding/review/default）、`DOMAIN_ADAPTERS`（**初始为空注册表**，由宿主经 `registerDomainAdapter` 运行时注册，非硬编码字典）；运行时注入通道：`configurable['system_prompt'/'domain'/'task_spec'/'runtime_context']`、`SkillPromptAggregator`（gated by `skills.enabled`）、`PromptComposer` 四层组装（gated by `react_optimization.prompt_composer.enabled`，默认关闭） | 硬编码字符串 + `configurable` 运行时注入 |
-| 7. 反馈/进化 | `feedback.*`（evolution_threshold/enable_evolution/min_sample_size/quality_monitor_mode/quality_monitor_llm_timeout/provider/temperature/max_tokens，由 evolution-orchestrator 消费）；evolution 模块（`ParameterTuneStrategy`）运行时调 `llm.temperature`/`llm.max_reasoning_iterations`；**无 `evolution.*` 配置段、无 `forced_name` 字段** | 硬编码 + 运行时调参 |
-| 8. 可观测性/事件总线/感知/MCP/Skills | `observability.tracing.*`/`metrics.*`/`logging.*`、`event_bus.*`（max_log_size/event_ttl_ms/log_file_path/log_max_file_size_mb/log_domains）、`perception.*`（含 security.llm_judge、deep_parsing、fusion 权重等）、`mcp.enabled/default_timeout/servers`、`skills.enabled/auto_discover_dirs/active`；`streaming.chunk_size`（**死配置**，agui-adapter 硬编码 30） | 硬编码 |
-
-**关键观察**：
-1. 第 1–5、7、8 类本质是**结构化参数**（标量、枚举、嵌套对象），绝大部分写死在 `DEFAULT_CONFIG`；唯一例外是 LLM 连接三元组（api_key/base_url/model），它们已经通过约 12 个环境变量外部化。
-2. 第 6 类（提示词/角色）是**自然语言文本**，兜底模板硬编码为字符串常量——但已具备三个运行时注入通道（`configurable`、`SkillPromptAggregator`、`PromptComposer`），其中 `PromptComposer` 的 `runtimeContext` 层（用户画像、环境信息）是未来 `USER.md` 类文档的天然挂载点。
-3. **存在"死配置"先例**：`llm.prompt_template`、`memory.default_strategy/context_window/enable_compression`、`tools.default_timeout_ms`、`streaming.chunk_size` 均为"已声明、从未被读取"的字段（`角色提示词配置功能优化方案.md` 已指出 prompt_template 问题）。外置化之前应先清理声明与消费脱节的字段，否则配置文件将承载无效键。
-4. "配置与代码耦合、无外部化"的痛点成立，但严重度需校准：真正完全硬编码的是**行为参数**（温度、编排、工具治理、feature flag）；连接类参数（密钥/端点/模型）已有环境变量机制，缺的是**统一清单与集中校验**，而非机制本身。
-
----
-
-## 二、三类格式的适用场景、优缺点与选型依据
-
-### 2.1 `.md`（Markdown）——适合"人类可读的自然语言指令"
-
-**适用项**：提示词模板、角色/人格设定（`SOUL.md`）、岗位 SOP/行为准则（`AGENTS.md`）、用户画像（`USER.md`）、决策逻辑说明、领域适配说明、说明文档、记忆笔记（`MEMORY.md`）。
-
-- 优点：① 人类直接编写与审阅，无需解析器；② 支持富文本（标题/列表/代码块），天然适合系统提示与 Few-shot；③ 版本管理友好（diff 直观）；④ 与"文件化上下文工程"范式对齐，生态共识强。
-- 缺点：① 无原生 schema 校验，结构松散易出错；② 不适合表达嵌套参数或布尔/数值开关；③ 解析需约定（frontmatter 提取元数据 + 正文作 prompt）。
-- 选型依据：**凡"写给 LLM 看、由人写给人审"的文本型配置 → `.md`**。
-
-### 2.2 `.yaml`——适合"带注释的结构化配置"
-
-**适用项**：模型参数、工具配置与超时、流程编排（多 Agent 路由策略）、环境变量/部署差异、权限/审批策略（如本项目对应的 `tools.human_in_loop`、`ACTION_GUARDRAILS` 规则）、记忆策略。
-
-- 优点：① 支持注释，人类可维护性强；② 支持锚点/引用、块折叠，适合长配置；③ 表达嵌套对象/数组自然；④ 比 JSON 更适合手写。
-- 缺点：① 缩进敏感，易因格式错误解析失败；② 无原生类型强校验（需额外 schema）；③ 不适合超大规模数据。
-- 选型依据：**凡"机器读取、人类维护、需注释说明、含层级结构"的参数型配置 → `.yaml`**。
-
-### 2.3 `.json`——适合"机器生成/交换的结构化数据"
-
-**适用项**：结构化数据、API 返回值、知识库索引（向量/条目）、插件/技能元数据（manifest）、运行时快照、CI/CD 分发的配置、跨进程配置。
-
-- 优点：① 语法严格、无歧义，解析快；② 标准库原生支持，语言无关；③ 适合程序读写与网络传输；④ 适合作为"派生/生成产物"。
-- 缺点：① 不支持注释（维护性差）；② 超长嵌套可读性差；③ 不擅长存放自然语言段落。
-- 选型依据：**凡"机器生成、程序交换、结构化索引/元数据、需严格校验" → `.json`**。
-
-> **一句话原则**：`.md` 管"怎么说"（语义/指令），`.yaml` 管"怎么配"（参数/策略），`.json` 管"是什么/索引"（数据/元数据）。
-
----
-
-## 三、成熟 Agent 产品配置管理实践对比
-
-### 3.1 Claude Code / Cursor / Codex（AGENTS.md 范式）
-- 采用**文件化上下文工程**：`CLAUDE.md` / `AGENTS.md` 作为项目级行为准则，纯 Markdown，会话启动时注入 System Prompt；支持按目录层级 cascade 合并。`.cursorrules`、`copilot-instructions.md` 同理。
-- 特点：**Markdown 只管"指令与人格"，模型参数走各自独立的 JSON/设置文件**。
-
-### 3.2 OpenClaw（技能生态 + 多通道）
-- 核心在执行与 LLM 交互：System Prompt = 角色设定 + Memory + Skills + Context 动态拼接；以 **Skills 模块化 + Markdown 说明**驱动行为；无中心化大型配置文件，配置分散在 Skill 与 Prompt 模板中。
-- 特点：强调**Prompt 工程而非参数治理**，配置轻、插件化。
-
-### 3.3 Hermes Agent（自我进化记忆，Nous Research）
-- 架构信念：Agent 是**持久化、随时间累积能力**的系统。干完活后自动把踩坑经验提炼为可复用 Skill，并以 **Markdown 自动沉淀记忆/经验**（`MEMORY.md` 类）；配置与记忆高度文件化、自演化。
-- 特点：**Markdown 既是配置也是学习产物**，强调越用越聪明。
-
-### 3.4 Trae-Agent（分层 YAML/JSON 治理，2026-06 解析文）
-- **三层治理**：基础层 `base.yaml`（全局默认：log_level、max_concurrent_tasks、llm.model_name、tools.*.enabled）、环境层 `prod.yaml`/`dev.yaml`（覆盖 api_url、密钥、超时）、运行时层 `runtime.json`（进程 PID、负载等临时态）。
-- **双格式单入口**：`config.load("config.yaml"|"config.json")` 按扩展名自动选解析器，统一映射为内存字典；JSON 用于机器分发（CI/CD、配置中心），YAML 用于人工维护（注释/锚点）；暴露 `/debug/config` 返回脱敏快照（含来源文件与行号）；类型校验（基础层定义 `timeout: int`，环境层写字符串报错而非静默转换）。
-- 特点：**参数型配置走 YAML 分层 + JSON 机器分发，Markdown 用于带说明的 prompt 模板**。
-
-### 3.5 综合对比表
-
-| 产品 | 指令/人格 | 参数/策略 | 数据/元数据 | 核心治理思想 |
-|------|----------|----------|------------|------------|
-| Claude/Cursor/Codex | `AGENTS.md`/`CLAUDE.md`(MD) | 各自设置(JSON) | — | 文件化上下文工程 |
-| OpenClaw | Skill+Prompt(MD) | 分散、轻量 | — | Prompt 工程驱动 |
-| Hermes | Memory/Skill(MD,自演化) | 轻量 | Skill 元数据 | 持久化自我进化 |
-| Trae-Agent | prompt 模板(MD) | `base/env.yaml` + `runtime.json` | — | 三层覆盖 + 类型校验 + 热重载就绪 |
-| **本项目(modu-agent)** | **硬编码字符串（有 `configurable`/`PromptComposer` 注入通道但无文件层）** | **硬编码 `DEFAULT_CONFIG`** | **运行时内存，无文件** | **单文件 JSON(`MODU_CONFIG_PATH`) + 约 20 个散落环境变量（LLM 密钥/端点/模型等，无统一治理）** |
-
-**共识结论**：行业普遍采用 **"Markdown 管指令与记忆、YAML 管参数与策略、JSON 管数据与机器分发"** 的三分法，并以"分层覆盖 + 源可追溯"保证治理质量。本项目的文件化配置仅落地了单 JSON 文件一项；环境变量数量不少但散落在各模块、无清单无校验，不构成体系；`.md`/`.yaml` 文档化配置层完全缺失，是最大的优化空间。
-
----
-
-## 四、本项目配置机制优化方案
-
-### 4.1 总体目标
-
-将当前"硬编码 `DEFAULT_CONFIG` + 单 JSON 文件 + 散落环境变量（约 20 个，无统一治理）"升级为 **"三分格式 + 分层覆盖 + 源可追溯"** 的配置体系，对齐行业实践，同时保持 `RuntimeConfig` 现有内存模型与 `configurable` 注入方式不变（延续 `角色提示词配置功能优化方案.md` 的控制反转原则）。前置动作：清理已声明的死配置字段（`llm.prompt_template`、`memory.default_strategy/context_window/enable_compression`、`tools.default_timeout_ms`、`streaming.chunk_size` 等），避免外置化时把无效键带入配置文件。
-
-### 4.2 配置分层与格式映射
-
-```
-配置来源（优先级从低到高，后者覆盖前者）：
-  L0  代码内置 DEFAULT_CONFIG（硬编码兜底）
-  L1  config.yaml           全局默认参数（模型/工具/记忆/权限/编排/可观测）
-  L2  config.<env>.yaml     环境层（dev/prod：api_url、密钥、超时、开关）
-  L3  config.runtime.json   运行时生成态（PID、负载、启动时间，不进版本库）
-  L4  AGENTS.md             行为准则/工作流 SOP（注入 System Prompt）
-  L5  SOUL.md               人格/语气/边界（注入 System Prompt）
-  L6  USER.md               用户画像（注入 runtimeContext 层）
-  L7  MEMORY.md             长期记忆/经验（按需加载）
-  L8  configurable['*']     宿主运行时注入（最高优先级，覆盖一切）
-```
-
-**格式分工**：
-- `.yaml`：`config.yaml` / `config.<env>.yaml` —— 承载第 1–5、7、8 类全部结构化参数（LLM、记忆、多 Agent、工具/权限、推理优化、反馈、可观测）。用 YAML 因需注释与人工维护。
-- `.json`：`config.runtime.json`（运行时态）、`knowledge-index.json`（知识库索引）、`plugins/*.manifest.json`（技能/插件元数据）——机器生成与交换。
-- `.md`：`AGENTS.md` / `SOUL.md` / `USER.md` / `MEMORY.md` / `DOMAIN/*.md`（领域适配说明）——纯文本指令与记忆，由 Markdown 加载器解析（frontmatter 提元数据 + 正文作 prompt）。
-
-### 4.3 需要修改/新增的模块
-
-1. **新增 `config/markdown-loader.ts`**
-   - glob 查找约定 `.md`（`AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md`/领域目录）；
-   - 解析 YAML frontmatter（如 `priority`、`inject_to: system_prompt|runtime_context`、`load: eager|lazy`）与正文；
-   - 输出结构 `{ role: string, content: string, meta }` 交给聚合器。
-
-2. **新增 `config/yaml-loader.ts` + 复用 `fromFile`**
-   - `fromYaml(path)` 替代/扩展 `fromFile`，按扩展名自动选 `yaml`/`json` 解析器（借鉴 Trae 单入口）；
-   - 支持 `base → env` 的 `_deepMerge` 与类型校验（基础层定义类型，覆盖层类型不符则报错）。
-
-3. **改造 `config/runtime-config.ts`**
-   - 新增 `loadLayered({ base, env, runtimeJson, docsDir })` 静态方法，按 L0–L8 顺序合并；
-   - `getConfig()` 增加发现逻辑：默认扫 `./config`（或 `MODU_CONFIG_DIR`），读 `config.yaml` + `config.${NODE_ENV}.yaml` + 约定 `.md`；保留 `MODU_CONFIG_PATH`（JSON/YAML）向后兼容。
-   - 增加 `sources: Record<string, string>` 溯源字段（类似 `/debug/config` 快照）。
-
-4. **打通 System Prompt 注入点 `graph/factory.ts`（`create_agent` 内 `effectiveSystemPrompt` 组装段，约 513–547 行）**
-   - 在现有 `PromptComposer` 四层（systemCore / domain / taskSpec / runtimeContext）基础上：
-     - `SOUL.md` + `AGENTS.md` 合并进 `systemCore`/domain 层；
-     - `USER.md`/`MEMORY.md` 注入 `runtimeContext` 层；
-   - 沿用 `SkillPromptAggregator` 的聚合模式，新增 `MarkdownPromptAggregator`；
-   - 注意：`PromptComposer` 当前由 `react_optimization.prompt_composer.enabled` 门控且**默认关闭**，`.md` 注入生效需同步开启该开关（或将其纳入 markdown-loader 的启用联动）。
-
-5. **子 Agent 模板 `graph/subgraph/builder.ts:27`**
-   - `_SYSTEM_PROMPT_TEMPLATES` 改为从 `config.agents.<role>.prompt` 或对应 `.md` 读取，去除硬编码。
-
-6. **领域适配 `reasoning/domain-adapters.ts`**
-   - `DOMAIN_ADAPTERS` 当前是**空注册表**（无内置领域，宿主经 `registerDomainAdapter` 运行时注入），优化点不是"去硬编码"，而是让注册表内容可从 `config/domains/<domain>.md` 批量加载（markdown-loader 解析 frontmatter 为 `DomainAdapter` 结构后调 `registerDomainAdapter`），注入 `PromptComposer` 的 domain 层。
-
-7. **工具治理策略 `tools/`（人审、护栏、缓存、限流）**
-   - 当前实际存在的硬编码项：`tools/tool-guardrails.ts` 的 `ACTION_GUARDRAILS` 规则注册表、`factory.ts` 的默认工具注册清单（`tools.register_defaults`）、各工具构造参数 → 外置到 `config.yaml` 的 `tools.human_in_loop` / `tools.action_guardrails` / `tools.register_defaults` 段，支持环境层覆盖（如 prod 收紧 `code_executor`、`sql_query`）；密钥类（`TAVILY_API_KEY` 等）保留环境变量注入，但纳入统一清单管理。
-   - 说明：原文所提 `gating.rules`/`allowlist`/`capabilities` 配置在代码中并不存在，系笔误，已按实际机制更正。
-
-8. **知识库索引与插件元数据**
-   - 新增 `knowledge-index.json`（检索索引）、`plugins/<name>/manifest.json`（技能元数据：name/version/capabilities/dependencies），由 `memory/` 与 `skills/loader.ts` 消费。
-
-9. **`config/index.ts`**：导出新增 loader 与类型；更新 `README`/文档说明格式与优先级。
-
-### 4.4 落地路径建议（分阶段）
-- **P0（低风险）**：先清理死配置字段（`llm.prompt_template`、`memory.default_strategy/context_window/enable_compression`、`tools.default_timeout_ms`、`streaming.chunk_size`），再新增 `yaml-loader` + 改造 `getConfig` 支持 `config.yaml` 分层，将 `DEFAULT_CONFIG` 抽为 `config.yaml` 默认值；保持 JSON 兼容。→ 解决"参数全硬编码"。
-- **P1（中风险）**：实现 `markdown-loader` + `MarkdownPromptAggregator`，接入 `factory.ts`；外置 `AGENTS.md`/`SOUL.md`/`USER.md`，子 Agent 模板与领域适配外置。→ 解决"提示词/角色硬编码"。
-
-#### 4.4.1 P0 实施记录（已落地）
-> 本小节记录 P0 的实际代码改动，供后续 P1/P2 复用与回溯。改动严守"不修改原有业务逻辑、不引入新缺陷"的约束，并通过系统化测试与原业务逻辑对比验证。
-
-**① 死配置字段清理**
-对 `src/config/runtime-config.ts` 的 `DEFAULT_CONFIG` 做了如下清理（仅删除"声明但从未被 `RuntimeConfig.get()` 消费"的字段，不改动任何读取逻辑）：
-
-| 字段 | 清理结论 | 依据 |
-| --- | --- | --- |
-| `llm.prompt_template` | **已删除** | 全代码无 `get('llm.prompt_template')` 读取，实际模板由 `graph/subgraph/builder.ts` 的 `_SYSTEM_PROMPT_TEMPLATES` 承载 |
-| `memory.context_window` | **已删除** | 该语义由 `config/schemas.ts` 的 `MemoryQuerySchema` 与 `orchestration/communication/protocol.ts` 的 `MessageContext` 作为独立入参消费，非从 `RuntimeConfig` 读取 |
-| `memory.enable_compression` | **已删除** | 同上 |
-| `tools.default_timeout_ms` | **已删除** | 全代码无 `get('tools.default_timeout_ms')` 读取，工具超时由工具包装层各自管理 |
-| `streaming.chunk_size` | **已删除** | 切片粒度由 `orchestration/communication/agui-adapter.ts` 局部参数承载，无 `get()` 读取 |
-
-> ⚠️ **与原始方案偏差（重要）**：原 4.4 将 `memory.default_strategy` 一并列入"死配置"，但经代码核查，**该字段实际被 `RuntimeConfig.fromEnv()` 消费**（`MODU_MEMORY_STRATEGY` 环境变量写入 `memory.default_strategy`；无环境变量时 `DEFAULT_CONFIG` 提供默认值 `'cache'`）。若删除会破坏"无环境变量默认 cache"的既有语义，故**保留 `memory.default_strategy`**，不在本次清理范围内。建议原文档第 145、156、228 行对该字段"死配置"的描述同步修正。
-
-**② 新增 `src/config/yaml-loader.ts`（零外部依赖）**
-- 内置一个**最小且安全的 YAML 子集解析器**（`parseYamlSubset`），仅支持本仓库 `config.yaml` 实际用到的语法：2 空格缩进的嵌套 map、块列表（`- item` 与 `- key: value` 列表项为 map，含跨行兄弟键与嵌套值）、标量（字符串/数字/布尔/null）、行内注释、单/双引号字符串。不支持多文档、锚点、流样式、多行文本块（`|`/`>`）；遇到无法识别结构**抛错**，由上层捕获降级。
-- `findConfigYaml()`：在包根查找 `config.yaml`/`config.yml`。
-- `loadConfigYaml(path?)`：读文件并解析；**文件缺失或解析失败时返回 `null`**（不抛异常），触发降级。
+## 3）YAML 分层配置（P0，✅ 已落地）
+
+`src/config/yaml-loader.ts`（零外部依赖，内置最小 YAML 子集解析器）：
+
+- `findConfigYaml()`：在包根查找 `config.yaml`/`config.yml`，不存在返回 `null`。
+- `parseYamlSubset(text)`：递归下降解析——支持 2 空格缩进嵌套 map、块列表（`- key: value` 列表项为 map 可继续嵌套）、裸/引号标量、数字、`true/false`、`null`、行内注释。不支持多文档/锚点/多行文本块（`|`/`>`），遇到无法识别结构抛错，由上层降级。
+- `loadConfigYamlValidated(base, filePath?)`：解析后对照 `base`（通常为 `DEFAULT_CONFIG` 深拷贝）做**类型安全校验**（`validateAgainstBase`）：
+  - 仅校验 override 中已存在于 base 的键；新增键放行（不做类型假设）。
+  - 标量类型必须一致（`typeof` 比较），不符则丢弃该键并告警（借鉴 Trae 的 int 强校验，对应原报告 4.5 风险②）。
+  - 返回 `{ cleaned, droppedKeys }`；文件缺失/解析失败返回 `null`。
 - `deepMergeConfig(base, override)`：对象递归合并、数组/标量覆盖，语义与 `RuntimeConfig._deepMerge` 一致。
 
-**③ 改造 `getConfig`（分层 + 兼容不变）**
-- `MODU_CONFIG_PATH` 显式指定时：仍走原 `fromFile`（JSON）路径，**零侵入**。
-- 未指定时：尝试 `loadConfigYaml()`；解析成功则将结果与内置 `DEFAULT_CONFIG` 深度合并（先 `deepCopyDict` 克隆，避免污染单例）后构造 `RuntimeConfig`；失败/缺失则降级到原 `RuntimeConfig.fromEnv()` —— 与现状行为**完全等价**。
-- 即：`DEFAULT_CONFIG` 仍作为内存默认值（满足"抽为 config.yaml 默认值"的语义，配置文件仅作为可选的覆盖层），JSON 与环境变量两条原有链路保持不变。
-
-**④ 测试覆盖（`tests/config/p0-config-optimization.test.ts`，共 18 例，全绿）**
-- 死字段清理后 `get(fallback)` 返回 fallback，且被保留的相关业务字段（`memory.default_strategy`、`llm.default_provider`、`feedback.*` 等）语义不变；
-- `parseYamlSubset` 对嵌套 map、块列表、列表项为 map（含跨行兄弟键/嵌套）、注释、引号字符串的解析；
-- `deepMergeConfig` 的递归合并与数组覆盖语义；
-- `loadConfigYaml` 对合法文件、文件缺失、损坏文件的降级；
-- `getConfig` 在无 `MODU_CONFIG_PATH` 且无 yaml 时等价于 `fromEnv`、JSON 路径仍兼容、`MODU_LLM_PROVIDER` 等环境变量仍覆盖默认值；
-- factory 实际读取字段的集成校验，确保清理未误伤业务消费点。
-
-**⑤ 回归结论**：`tests/config` 全绿（含原有 `runtime-config.test.ts` 22 例 + 新增 18 例）。完整套件 532 例通过；剩余 7 例 `tests/tools/sql-query.test.ts` 失败经 `git stash` 基线验证为**预先存在、与本次改动无关**（该测试仅依赖 `@/tools/sql-query.js`）。
-
-#### 4.4.2 P1 实施记录（已落地）
-> P1（中风险）目标：让 `AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md` 作为提示词/角色文档被加载注入，子 Agent 模板与领域适配外置。实现同样严守"不修改原有业务逻辑、不引入新缺陷"，所有新增注入默认关闭（gated）或在无文件时行为与现状完全等价。
-
-**① 新增 `src/config/markdown-loader.ts`（零外部依赖）**
-- 复用 P0 的 `yaml-loader.parseYamlSubset` 解析 YAML frontmatter（零重复实现）。
-- `findConventionalMarkdownDocs()`：在项目根扫描约定文档 `AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md`。
-- `parseMarkdownDoc(content, name, source)`：解析 `--- frontmatter ---` 与正文，输出 `MarkdownDoc { name, content, meta, injectTo, source }`。注入目标推断：`meta.inject_to ?? 按文档类型（AGENTS/SOUL→system_prompt，USER/MEMORY→runtime_context）`；空正文返回 `null`；frontmatter 非法时忽略其元信息，正文仍可用（不抛异常）。
-- `loadMarkdownDocs({ rootDir, onlyLoad })`：加载全部/按 load 类型过滤的约定文档；**目录/文件缺失、解析失败一律返回空数组**。
-- 领域适配：`docToDomainAdapter()` + `loadDomainAdaptersFromMarkdown({ rootDir })`，读取 `config/domains/<domain>.md`，frontmatter 提供 `domain_context/terminology/reasoning_patterns/output_requirements`（正文作为 domain_context 兜底），目录缺失返回空数组。
-
-**② 新增 `src/config/markdown-prompt-aggregator.ts`**
-- `MarkdownPromptAggregator`（静态、无副作用，沿用 `SkillPromptAggregator` 聚合模式）：
-  - `aggregateToSystemPrompt(base, docs)`：聚合 `inject_to=system_prompt` 文档；**无片段时返回 base 原样**（等价现状）。
-  - `collectRuntimeContext(docs)`：收集 `inject_to=runtime_context` 文档为字符串；无则返回空串。
-  - `aggregateFromDocs(base, docs)`：一次返回 `{ systemPrompt, runtimeContext }`。
-  - 按 `priority`（大者在前）+ 文档名稳定排序，保证确定性。
-
-**③ 接入 `src/graph/factory.ts`（gated，默认关闭零侵入）**
-- 在 Skill 聚合之后、`PromptComposer` 之前新增 Markdown 注入块，由 **`react_optimization.markdown_prompt.enabled`（默认 `false`）** 门控（已在 `DEFAULT_CONFIG.react_optimization` 新增该开关）。
-- 启用时：`inject_to=system_prompt` 文档并入 `effectiveSystemPrompt`；`runtime_context` 文档收集为 `markdownRuntimeContext`，供后续 `PromptComposer` 的 runtimeContext 层使用。
-- **优先级**：宿主显式传入的 `configurable['runtime_context']` 始终高于 Markdown 文档（`markdownRuntimeContext` 初值即 `configurable['runtime_context']`，关闭 md 时与改造前逐字等价）。
-- 无任何 `.md` 文件时行为与关闭完全一致；注入失败捕获降级到 base prompt。
-
-**④ 子 Agent 模板外置 `src/graph/subgraph/builder.ts`**
-- `_getSystemPrompt(taskType, customPrompt?, config?)`：保持 `customPrompt` 优先级不变；新增可选 `config` 参数，当未传 customPrompt 时读取 `agents.<task_type>.prompt` 覆盖默认模板；**配置缺失时回退内置硬编码模板，与改造前完全一致**。
-- `build_subagent_subgraph` 内部调用不传 config，行为不变；`makeSubagentNode` 的回退路径同样保持。即默认下子 Agent 提示词与现状完全相同，仅提供可选外置通道。
-
-**⑤ 领域适配外置 `src/reasoning/domain-adapters.ts`**
-- 新增 `registerDomainsFromMarkdown({ rootDir })`：调用 `loadDomainAdaptersFromMarkdown` 解析 `config/domains/<domain>.md` 并 `registerDomainAdapter`。
-- **由宿主显式调用，框架不自动加载**（避免副作用与默认行为偏移）；`config/domains` 目录不存在时为空操作，`DOMAIN_ADAPTERS` 保持空注册表（等价现状）。
-
-**⑥ 导出 `src/config/index.ts`**：导出 `loadMarkdownDocs` / `parseMarkdownDoc` / `parseFrontmatter` / `docToDomainAdapter` / `loadDomainAdaptersFromMarkdown` / `findConventionalMarkdownDocs` / `getPackageRoot` / `MarkdownDoc` / `MarkdownMeta` / `MarkdownInjectTarget` / `MarkdownPromptAggregator`。
-
-**⑦ 测试覆盖（`tests/config/p1-markdown-prompt.test.ts`，共 23 例，全绿）**
-- `parseMarkdownDoc`：无 frontmatter/有 frontmatter、注入目标推断、空正文返回 null；
-- `parseFrontmatter`：非法输入返回空对象（不抛异常）；
-- `loadMarkdownDocs`：无文件空数组、扫描约定文档并忽略非约定、`onlyLoad` 过滤；
-- `MarkdownPromptAggregator`：无文档返回 base、system/runtime 分类聚合、priority 排序；
-- `_getSystemPrompt`：customPrompt 优先、配置覆盖、无配置回退硬编码、未知类型回退 default、不传 config 兼容旧调用；
-- 领域加载：目录缺失空操作、从 `<domain>.md` 注册、frontmatter 优先于正文；
-- `getPackageRoot` 与"项目根当前无约定 .md 时零侵入"断言。
-
-**⑧ 回归结论**：`tests/config` 全绿（63 例）。完整套件 555 例通过；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0 基线已确认）。`factory.ts` 的 `PromptComposer` 调用改造（引入 `markdownRuntimeContext`）经回归验证：md 开关关闭或无语义变化时与改造前输出逐字一致。
-
-#### 4.4.3 P2 实施记录（已落地）
-> P2（增强）目标：对齐 Hermes/Trae 的"进化 + 可观测"能力——`MEMORY.md` 持久化、`knowledge-index.json`、插件 manifest、配置溯源快照 `/debug/config`。四项均为**宿主显式调用的纯增强模块**，不侵入任何既有运行时路径，默认行为与现状完全一致（文件缺失/解析失败一律降级，不抛异常）。
-
-**① `MEMORY.md` 持久化 `src/config/memory-md-persistence.ts`**
-- `serializeMemoryToMarkdown(meta, entries)`：把长期记忆条目序列化为 `MEMORY.md`（YAML frontmatter + `### <n>` 分节，人类可读、可 diff）。
-- `parseMemoryFromMarkdown(text, source)`：反向解析；**含分节时严格按分节解析并忽略标题行，无分节时整篇作为单条记忆**；解析失败返回空条目（不抛异常）。
-- `writeMemoryToMarkdownFile`（原子写：临时文件 + rename）/ `readMemoryFromMarkdownFile`（文件缺失返回空条目）。
-- **不接入 `InMemoryShortTermMemory` 等既有记忆实现**，仅由宿主在需要时显式调用以沉淀/回读经验。
-
-**② `knowledge-index.json` `src/config/knowledge-index.ts`**
-- `KnowledgeIndex` 类：`add/remove/get/all/size/search` 基础内存检索（大小写不敏感，匹配 id/title/content/tags），`saveToFile`/`loadFromFile`（JSON，原子写）。
-- 文件缺失/损坏加载返回空索引（不抛异常）。供 `memory/` 检索模块或宿主显式消费，不自动接入 Chroma 路径。
-
-**③ 插件 manifest `src/config/plugin-manifest.ts`**
-- `PluginManifest` 结构（name/version/capabilities/dependencies/entry/description + 扩展字段）。
-- `validateManifest` / `parseManifest` / `loadManifestFromFile`（读 `<pluginDir>/manifest.json`，文件缺失/损坏/校验失败返回 null）。
-- 供 `skills/loader.ts` 等消费方可选使用；**不改变 SkillLoader 现有扫描/激活逻辑**（默认路径不依赖本模块）。
-
-**④ 配置溯源快照 `/debug/config` `src/config/snapshot.ts`**
-- `maskSensitiveValues`：递归掩盖 `api_key/token/secret/password/credential/authorization/bearer` 等敏感键值，返回新对象不改动原配置。
-- `buildConfigSnapshot(runtimeConfig, { sources })`：返回 `{ generated_at, sources, config(脱敏) }`，对齐 Trae 的 `/debug/config`。
-- `buildDebugConfigHandler(runtimeConfig, { sources })`：返回 `(req, res)` 处理器（GET 返回 JSON，其他方法 405），**不启动服务器**，由宿主挂载到现有 HTTP 框架。
-- 溯源信息 `sources` 由调用方提供（如 `{ base: 'DEFAULT_CONFIG', file: 'config.yaml' }`），记录配置来源以支撑"到底哪个值生效"的调试。
-
-**⑤ 导出 `src/config/index.ts`**：导出上述 4 个模块全部类型与函数。
-
-**⑥ 测试覆盖（`tests/config/p2-enhancements.test.ts`，共 24 例，全绿）**
-- MEMORY.md：serialize 格式、parse round-trip、无分节单条、文件写/读、文件缺失降级、写入失败降级；
-- knowledge-index：基本操作、search 匹配、save/load 往返、缺失文件降级、空 id 保护；
-- plugin manifest：合法/非法校验、capabilities/dependencies 类型校验、parse 失败返回 null、文件加载（正常/缺失/损坏）；
-- snapshot：脱敏（含嵌套数组对象）、快照结构、GET handler、405 处理；
-- 回归：RuntimeConfig 基础行为不变、asDict 深拷贝未被快照污染。
-
-**⑦ 回归结论**：`tests/config` 全绿（87 例）。完整套件 **579 例通过**；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0/P1 基线一致）。P2 四项均为独立纯增强模块，未触碰任何既有业务代码路径。
-
-- **P2（增强）**：`MEMORY.md` 持久化、`knowledge-index.json`、插件 manifest、配置溯源快照端点 `/debug/config`。→ 对齐 Hermes/Trae 的进化与可观测能力。
-
-### 4.5 风险与注意
-- **Token 膨胀**：Markdown 常驻会增加 System Prompt 长度（Hermes/Trae 均提示）。建议 `MEMORY.md` 按需加载、`AGENTS.md` 分层级 cascade，并对注入内容做长度预算。
-- **类型安全**：YAML 覆盖需类型校验，避免环境层误写静默失效（借鉴 Trae 的 `int` 强校验）。
-- **优先级清晰**：明确 L0–L8 覆盖顺序并文档化，避免"到底哪个值生效"的调试黑洞（提供溯源快照）。
-
-#### 4.5.1 风险处置实施记录（已落地）
-> 针对上述三点风险的系统化处置，均以"不改既有业务逻辑、默认行为等价、类型不符回退默认"为原则落地。
-
-**① Token 膨胀（长度预算 + 按需加载 + 层级 cascade）**
-- `markdown-prompt-aggregator.ts` 新增 `MarkdownBudget`（`systemPromptMaxChars`/`runtimeContextMaxChars`/`truncateMarker`，默认 `DEFAULT_MARKDOWN_BUDGET` 8000/4000），`aggregateToSystemPrompt`/`collectRuntimeContext` 在拼接后按字符预算截断并追加 `[truncated]` 标记；`estimateTokens()` 与 `few-shot-selector` 同口径（4 字符=1 token）。
-- `DEFAULT_CONFIG.react_optimization.markdown_prompt` 新增 `system_prompt_max_chars`（默认 8000）/`runtime_context_max_chars`（默认 4000），`factory.ts` 注入时读取并传入预算。
-- **按需加载**：`markdown-loader.ts` 新增 `DEFAULT_LOAD` 映射（MEMORY 默认 `lazy`，其余 `eager`）；`factory.ts` 注入改为 `loadMarkdownDocs({ onlyLoad: 'eager' })`，`MEMORY.md` 不再常驻，由宿主按需显式加载。
-- **层级 cascade**：`MarkdownMeta` 新增 `cascade_level`（`global`/`project`/`user`，`CASCADE_LEVEL_ORDER`）与 `cascade` 开关。仅 frontmatter 显式声明时生效；`sortedDocs` 先按 cascade 级别排序（底层→上层），同级别内仍按 priority；`cascade: false` 的文档不参与注入。未声明时保持既有 priority 语义（向后兼容）。
-
-**② 类型安全（YAML 覆盖类型校验）**
-- `yaml-loader.ts` 新增 `validateAgainstBase` + `loadConfigYamlValidated(base, filePath?)`：对照 `DEFAULT_CONFIG` 递归校验 YAML 覆盖值的类型，**标量类型不符的字段丢弃并记录 `droppedKeys` 告警**（如 `temperature: abc` 会被丢弃、回退默认 `0.7`）；对象递归校验、数组放行、`null` 视为显式置空、base 中不存在的新键放行。解析失败/文件缺失返回 `null` 降级。
-- `getConfig` 改为调用 `loadConfigYamlValidated(DEFAULT_CONFIG)`，类型不符字段在加载期即被剔除并告警，杜绝"误写静默失效"。
-
-**③ 优先级清晰（溯源快照）**
-- `RuntimeConfig` 新增 `_sources` 溯源字段 + `getSources()`；`getConfig` 在 JSON/YAML/环境变量三条加载路径分别记录来源（`base`/`file`/`dropped`/`env.*`）。
-- `snapshot.ts` 的 `buildConfigSnapshot` 改为**自动读取 `runtimeConfig.getSources()`**（调用方显式传入的 sources 作为补充覆盖），使 `/debug/config` 溯源快照真正可用，不再返回空 `sources`。
-
-**④ 测试覆盖（`tests/config/p3-risk-safety.test.ts`，共 17 例，全绿）**
-- Token 膨胀：注入超预算截断+标记、未超预算不截断、runtimeContext 预算、estimateTokens、MEMORY 按需加载过滤、层级 cascade 排序、未声明保持 priority 排序、cascade:false 不注入、层级顺序常量。
-- 类型安全：类型不符丢弃并记录 droppedKeys、类型正确保留、新键放行、null 放行。
-- 溯源快照：getSources、buildConfigSnapshot 自动读取 sources、脱敏不污染原配置、dropped 字段记录。
-
-**⑤ 回归结论**：`tests/config` 全绿（104 例）。完整套件 **596 例通过**；剩余 7 例 `tests/tools/sql-query.test.ts` 仍为**预先存在失败、与本次改动无关**（P0 基线已确认）。`tsc --noEmit` 编译通过，0 错误。
-
-#### 4.5.2 首次安装自动生成默认模板（已落地）
-> 打包成安装包后，第一次运行/安装时由宿主调用一次，即可自动生成一套默认配置模板，开箱即用。
-
-- **新增 `src/config/init-defaults.ts`**：
-  - `DEFAULT_TEMPLATES`：内置 5 个模板（`AGENTS.md`/`SOUL.md`/`USER.md`/`MEMORY.md` + `config.yaml`），内容与仓库领域（编码助手）及 4.5 规范对齐；`config.yaml` 内置 `markdown_prompt.enabled: true`，使首次安装即可注入 Markdown 提示。
-  - `initDefaultConfigFiles({ rootDir?, templates?, logger? })`：**幂等**生成缺失模板；已存在文件跳过、绝不覆盖用户修改；单文件失败隔离（`skipped`）；原子写（临时文件 + rename）。
-  - `hasDefaultConfigFiles(rootDir?)`：判断是否已初始化（供宿主选择是否调用）。
-  - `getDefaultConfigRoot()`：模板写入目录（默认 `getPackageRoot`，可用 `rootDir` 覆盖）。
-- **导出**：`config/index.ts` 导出 `initDefaultConfigFiles` / `hasDefaultConfigFiles` / `getDefaultConfigRoot` / `DEFAULT_TEMPLATES` 及类型。
-- **使用方式**：宿主在安装完成/首次启动时调用一次即可：
-  ```ts
-  import { initDefaultConfigFiles } from '@pioneering/modu-agent/config'
-  const r = initDefaultConfigFiles() // 幂等，可安全重复调用
-  // r.created / r.existed / r.skipped 分别统计新建/已存在/失败
-  ```
-- **测试覆盖（`tests/config/p4-init-defaults.test.ts`，共 9 例，全绿）**：全量生成、幂等不覆盖已存在文件、重复调用幂等、自定义模板、单文件失败隔离、`hasDefaultConfigFiles`、`getDefaultConfigRoot`、MEMORY 默认 lazy、模板内容校验。`tests/config` 全绿（**113 例**），`tsc --noEmit` 编译通过。
+接入点即第 1 节的 `getConfig()` 路径，解析成功则与 `DEFAULT_CONFIG` 深度合并，失败降级 `fromEnv`。
 
 ---
 
-## 五、小结
+## 4）首次安装初始化模板（P4，✅ 已实现，❌ 未被自动调用）
 
-当前 `modu-agent` 的可配置项（8 大类）中，行为参数几乎全部硬编码于 `DEFAULT_CONFIG` 与字符串常量（连接类参数已由约 20 个散落环境变量承载但无统一治理，且存在若干"声明未消费"的死配置字段），文件化配置仅支持单 JSON 文件，`.md`/`.yaml` 文档化配置层完全缺失。对照 Claude/OpenClaw/Hermes/Trae 等成熟实践，行业已收敛为 **"Markdown 管指令与记忆、YAML 管参数与策略、JSON 管数据与元数据"** 的三分范式。本项目应沿 **"三分格式 + 分层覆盖（L0–L8）+ 源可追溯"** 路线改造，优先通过新增 `markdown-loader.ts` / `yaml-loader.ts` 并改造 `runtime-config.ts` 与 `factory.ts` 注入点来落地（复用已有的 `configurable` / `SkillPromptAggregator` / `PromptComposer` 注入通道），在保持 `configurable` 控制反转原则的前提下，实现配置与代码的彻底解耦。本续篇仅给出方案，未做代码修改。
+`src/config/init-defaults.ts`：
+
+- `DEFAULT_TEMPLATES`：内置 5 个模板——`AGENTS.md`、`SOUL.md`、`USER.md`、`MEMORY.md`、`config.yaml`（其中 `config.yaml` 含 `react_optimization.markdown_prompt.enabled: true` + 长度预算，使首次安装即可用 Markdown 注入）。
+- `initDefaultConfigFiles({ rootDir?, templates? })`：**幂等**——只写入不存在的文件，已存在则跳过（绝不覆盖用户修改）；单文件失败隔离（`skipped`）；原子写入（先写临时文件再 `rename`）。
+- `hasDefaultConfigFiles(rootDir?)`：判断是否已初始化。
+
+**与代码不符的更正**：原报告 P4 称「`init-defaults` 接到了 `getConfig()` 启动时自动调用」。实际代码中 `initDefaultConfigFiles` 仅在 `src/config/index.ts` 中被导出，**未在 `getConfig()` 或任何启动路径中自动调用**。它作为「供宿主显式调用一次」的能力存在（如打包安装脚本），不会在每次 `getConfig()` 时触发。包根当前的 `config.yaml` + 4 个 `.md` 文件内容与 `DEFAULT_TEMPLATES` 逐字一致，应为历史某次 `initDefaultConfigFiles()` 调用（或照模板手动创建）的产物。
+
+> ⚠️ **导入路径注意**：`package.json` 的 `exports` 仅定义了 `.`、`./core`、`./graph`、`./mcp`、`./skills` 子路径，**不含 `./config`**。`init-defaults.ts` 源码注释中示例的 `import { initDefaultConfigFiles } from '@pioneering/modu-agent/config'` 在当前 package.json 下**会导入失败**（`ERR_PACKAGE_PATH_NOT_EXPORTED`）。正确方式是从主入口导入：`import { initDefaultConfigFiles } from '@pioneering/modu-agent'`（`src/index.ts` 已 `export * from './config/index.js'`）。
+
+---
+
+## 5）已落地的基础配置子模块（✅ 真实存在）
+
+位于 `src/config/`，均由 `index.ts`（barrel）统一导出：
+
+| 文件 | 主要导出 | 说明 |
+|------|----------|------|
+| `runtime-config.ts` | `RuntimeConfig`、`getConfig`、`resetConfig`、`overrideConfig`、`DEFAULT_CONFIG` | 配置核心单例 |
+| `yaml-loader.ts` | `loadConfigYaml`、`loadConfigYamlValidated`、`deepMergeConfig`、`findConfigYaml`、`parseYamlSubset` | P0 YAML 分层加载 |
+| `markdown-loader.ts` | `loadMarkdownDocs`、`parseFrontmatter`、`parseMarkdownDoc`、`findConventionalMarkdownDocs`、`getPackageRoot`、`MarkdownDoc` | P1 Markdown 加载 |
+| `markdown-prompt-aggregator.ts` | `MarkdownPromptAggregator`、`DEFAULT_MARKDOWN_BUDGET`、`estimateTokens` | P1 注入聚合 + 长度预算 |
+| `memory-md-persistence.ts` | `serializeMemoryToMarkdown`、`parseMemoryFromMarkdown`、`writeMemoryToMarkdownFile`、`readMemoryFromMarkdownFile` | P2-6 记忆 Markdown 持久化（config 层，graph 未直接引用） |
+| `knowledge-index.ts` | `KnowledgeIndex` | P3-8 知识索引（config 层，graph 未直接引用） |
+| `plugin-manifest.ts` | `validateManifest`、`parseManifest`、`loadManifestFromFile` | P3-9 插件清单校验 |
+| `schemas.ts` | `PerceptionInputSchema`、`MemoryQuerySchema`、`ToolCallSchema`、`LLMCallSchema`、`FeedbackSignalSchema` 等多 schema + `isValidContextWindow` | 配置/数据校验 schema |
+| `snapshot.ts` | `buildConfigSnapshot`、`buildDebugConfigHandler`、`maskSensitiveValues` | `/debug/config` 溯源快照（含来源 + 敏感值脱敏） |
+| `init-defaults.ts` | `initDefaultConfigFiles`、`hasDefaultConfigFiles`、`DEFAULT_TEMPLATES` | P4 首次安装初始化 |
+
+> 注意：`factory.ts` 中引用的 `PromptComposer` 位于 `src/reasoning/prompt-composer.ts`（**不是** `config/` 模块）；测试 `tests/reasoning/prompt-composer.test.ts` 存在。
+
+---
+
+## 6）未落地项（原报告误标为「已实施」）
+
+以下能力在原报告中以「实施记录」形式描述，但**当前代码中对应的独立 config 子模块均不存在**（已用 code-explorer 在 `src/` 全量搜索验证，0 命中）。相关能力若以其他形式存在，已在备注中说明：
+
+| 原报告声称项 | 代码现状 | 备注 |
+|--------------|----------|------|
+| `config/llm-as-judge.ts` | ❌ 不存在 | LLM-as-Judge 逻辑分散在 `factory.ts` 的 `_build_judge_llm()`（行 204–245）+ `feedback/quality-monitor.ts`/`loop-controller.ts`/`evolution/evolution-orchestrator.ts`，通过 `feedback.*` 配置键（`quality_monitor_mode` 等）控制，非独立 config 子模块 |
+| `config/mcp-config.ts` | ❌ 不存在 | MCP 配置是 `runtime-config.ts` 的 `mcp: { enabled, default_timeout, servers }` 块（行 255–259），实现在 `src/mcp/`；factory 第 487 行按 `mcp.enabled` 接入 |
+| `config/early-stop.ts` | ❌ 不存在 | 搜索 `earlyStop/early-stop/early_stop` 在 `src/` 0 命中；终止判定由 `src/graph/termination-engine.ts`（`shouldTerminate()`）+ `react_optimization.adaptive_termination` 承载 |
+| `config/testing-config.ts` | ❌ 不存在 | `src/config/` 中 0 命中 |
+| `config/rag-config.ts` | ❌ 不存在 | 无独立 RAG 模块（`Retriever/VectorStore/retrieval` 等标识符 0 命中）；底层向量检索能力在 `memory/chroma.ts`（`ChromaLongTermMemory`）与 `skills/few-shot-selector.ts`（`DynamicFewShotSelector` MMR 检索），非标准 RAG |
+| `config/behavior-config.ts` | ❌ 不存在 | 搜索 `behavior/Behaviour` 在 `src/` 与 `dist/` 均 0 命中 |
+| `config/sandbox-config.ts` | ❌ 不存在 | 无独立沙箱配置模块（`sandbox` 标识符 0 命中）；沙箱**功能**实际存在：`tools/code-executor.ts` 的 `CodeExecutorTool`（源码白名单校验 + `child_process.execFile` 子进程隔离执行，注释自称"白名单沙箱"），经 `tools.human_in_loop.sensitive_tools` 接入审批 |
+| `config/factory-config.ts` | ❌ 不存在 | `factoryConfig/factory-config` 标识符 0 命中（仅存在 `graph/factory.ts` 图构建文件，无对应配置模块） |
+| `config/feedback-config.ts` | ❌ 不存在为独立模块 | `feedback` 是 `runtime-config.ts` 的配置块（行 228–237），非子模块文件 |
+| P3 多项独立模块（如 `config/rag`、`config/behavior`） | ❌ 未落地 | 见上 |
+
+**结论**：P0、P1、P4 及基础配置子模块（schemas/snapshot/knowledge-index/plugin-manifest/memory-md-persistence）确为代码事实；P2（guardrails/few-shot/parallel-tools/feedback-judge 等）部分能力以 `react_optimization.*` flag 或 `feedback.*` 块形式存在，但原报告所写的独立 config 子模块文件并未创建；P3 的多数「独立模块」尚未落地。
+
+---
+
+## 7）原报告风险登记表（4.5）的缓解现状
+
+| 风险 | 描述 | 代码现状 |
+|------|------|----------|
+| 风险① Token 膨胀 | AGENTS.md 等过大撑爆上下文 | ✅ `MarkdownPromptAggregator` 已有字符预算（`systemPromptMaxChars=8000`/`runtimeContextMaxChars=4000`）+ `[truncated]` 截断；lazy 文档（MEMORY）按需加载 |
+| 风险② 类型安全 | 环境层误写静默失效 | ✅ `loadConfigYamlValidated` 对照 `DEFAULT_CONFIG` 做标量类型校验，不符字段丢弃并告警（返回 `droppedKeys`） |
+| 风险③ 来源溯源 | 配置来自哪层不可见 | ✅ `RuntimeConfig` 构造时记录 `sources`（base/file/dropped），`snapshot.ts` 的 `buildConfigSnapshot` 提供 `/debug/config` 溯源 + 敏感值脱敏 |
+| 风险 层级 cascade | 多层级 AGENTS.md 覆盖顺序 | ✅ `CASCADE_LEVEL_ORDER = [global, project, user]` + priority + 文档名确定性排序 |
+
+---
+
+## 8）测试现状（✅ 已修正）
+
+- 测试框架：**vitest**（`package.json` 脚本 `"test": "vitest run"`，依赖 `vitest ^2.0.0`）。
+- 测试文件：共 **52 个** `*.test.ts`，位于 `tests/` 下按模块分目录（`config/`、`graph/`、`feedback/`、`mcp/`、`evolution/`、`reasoning/`、`tools/`、`skills/`、`perception/`、`orchestration/`、`observability/`、`memory/`、`core/`）。无 `__tests__/` 目录。
+- **更正**：原报告「596 例通过 + 7 例 sql-query 失败」的截图数字无法在当前代码状态中复现核实，且测试组织已为 vitest（非原报告暗示的 pytest 风格）。请以实际运行 `npm test`（即 `vitest run`）的结果为准；config 相关测试涵盖 `yaml-loader`、`markdown-loader`、`markdown-prompt-aggregator`、`runtime-config`、`init-defaults`、`schemas`、`snapshot` 等。
+
+---
+
+## 9）配置机制总览（现状）
+
+```text
+配置来源（优先级由高到低，getConfig 组合）：
+  override 参数（测试）> MODU_CONFIG_PATH(JSON) > config.yaml(YAML 分层) > 环境变量(fromEnv) > DEFAULT_CONFIG
+
+运行时注入（factory.ts，全部 gated by feature flag；本包环境因包根 config.yaml 而 markdown_prompt 实际开启）：
+  SkillPromptAggregator.aggregate            → 技能提示（既有）
+  [react_optimization.markdown_prompt.enabled]（DEFAULT_CONFIG=false，包根 config.yaml 覆盖为 true）
+    ├─ loadMarkdownDocs(eager)               → 扫描 AGENTS/SOUL/USER/MEMORY + domains
+    ├─ MarkdownPromptAggregator.aggregateFromDocs
+    │     ├─ inject_to=system_prompt  → 并入 system prompt（带长度预算截断）
+    │     └─ inject_to=runtime_context → markdownRuntimeContext（优先级低于宿主显式传入）
+  [react_optimization.prompt_composer.enabled]（默认 false，未在包根 config.yaml 开启）
+    └─ PromptComposer.compose(systemCore + domain + taskSpec + runtimeContext)
+
+首次安装（被动能力，需宿主显式调用 initDefaultConfigFiles）：
+  AGENTS.md / SOUL.md / USER.md / MEMORY.md / config.yaml（markdown_prompt.enabled: true）
+  注：包根当前这套文件与 DEFAULT_TEMPLATES 逐字一致，即模板已生成；且 config.yaml 使注入生效
+```
+
+---
+
+## 10）建议（面向后续迭代）
+
+1. **`.md` 配置的默认策略已"事实开启"，应显式化**：包根 `config.yaml` 已将 `markdown_prompt.enabled` 覆盖为 `true`，即本包环境 `create_agent()` 会真实注入 AGENTS/SOUL/USER。需注意两点：① npm 发布时包根 `config.yaml` + 4 个 `.md` 会随包分发（package.json 无 `files` 限制），**下游安装即被注入"pioneering 编码助手"人格**——对宿主是隐性副作用，应在文档中显式说明或提供关闭方式；② 宿主若自行调用 `initDefaultConfigFiles`，写入的是其 `rootDir`（默认包根），路径语义需与运行目录核对。
+2. **`package.json` exports 补 `./config` 子路径**（或修正 `init-defaults.ts` 注释与本文档示例）：当前 `@pioneering/modu-agent/config` 导入会失败，正确入口是主入口 `@pioneering/modu-agent`。
+3. **补齐「声明未写、消费已存在」的配置键**：`plan_execute.planner_max_tokens`（`graph/plan-execute/planner.ts:435`）、`plan_execute.step_retry.default_max_attempts` / `default_base_delay`（`graph/plan-execute/dispatcher.ts:622,626`）被消费但 `DEFAULT_CONFIG.plan_execute` 未声明（靠 `get` fallback 掩盖）。应在 `DEFAULT_CONFIG` 补声明，否则 YAML 校验（仅校验已存在键）无法保护这些键的类型安全。
+4. **把未落地规划项与代码对齐**：原报告 P2/P3 中大量「独立 config 子模块」尚未创建。若确实需要（如 `llm-as-judge`、`sandbox`、`rag`），应新建对应模块并接入 `factory.ts`，或将该报告相关章节改写为「规划/待办」而非「实施记录」。
+5. **快照可观测性已具备**：`/debug/config` 溯源 + 类型丢弃告警已可支撑「配置为何不生效」的排查，建议在部署后保留该能力。
+
+---
+
+## 11）短板治理实施记录（2026-08-21，已落地）
+
+> 针对架构评估中的三条真实短板（消费点分散、环境变量游离、文档失真），以「纯增强、不修改既有业务逻辑、默认行为等价」为原则落地两个新模块，并接入 `/debug/config` 溯源快照。
+
+### 11.1 环境变量统一治理 —— 新增 `src/config/env.ts`
+
+- **`ENV_VAR_REGISTRY`**：全量环境变量注册表（28 项），与源码 `process.env` 逐处核对（2026-08-21）。每项记录 `name`/`category`/`sensitive`/`consumers`/`inRuntimeConfig`/`configKey`/`description`。覆盖 LLM 四家 provider 专属变量（`MODU_{GLM|DEEPSEEK|QWEN|OPENAI}_{API_KEY|BASE_URL|MODEL}`）+ 通用 `LLM_API_KEY/BASE_URL/DEFAULT_MODEL` + `MODU_LLM_PROVIDER/TEMPERATURE/MEMORY_STRATEGY` + Chroma（`MODU_CHROMA_IN_MEMORY/PATH`）+ 工具根目录（`MODU_FILE_OPS_ROOT`/`MODU_DOC_WRITER_ROOT`）+ 检索/代理（`TAVILY_API_KEY`、`HTTP(S)_PROXY` 大小写 4 项）+ `MODU_CONFIG_PATH`。（`PATH` 属系统变量，排除不计。）
+- **`collectEnvSources({ maskSensitive })`**：仅列出**当前进程已设置**的环境变量，敏感值（api_key/token/secret 等）脱敏为 `***`；未设置的不出现。
+- **`readEnvVar` / `groupEnvVarsByCategory` / `auditEnvVars`**：读取、分组、审计（统计已注册/未注册/敏感已设置）。
+- **性质**：纯数据 + 纯函数，零副作用；**不替代**各模块现有 `process.env.X` 读取（避免改动业务逻辑），作为「清单/审计层」与既有读取并存。
+
+### 11.2 配置能力注册表 —— 新增 `src/config/capability-registry.ts`
+
+- **`CAPABILITY_REGISTRY`**：配置能力清单（已实现 13 项 + 规划未落地 5 项），每项记录 `id`/`name`/`configPrefix`/`enabledKey`/`configKeys`/`implementation`/`defaultEnabled`/`status`。解决「消费点分散（100+ 处）缺清单」的短板，提供权威的「配置键 → 能力 → 消费模块」映射。
+- **`UNDECLARED_CONSUMED_KEYS`**：显式登记「被消费但 `DEFAULT_CONFIG` 未声明」的 3 个键（`plan_execute.planner_max_tokens`、`plan_execute.step_retry.default_max_attempts`/`default_base_delay`），对应报告第 10 节建议 3。
+- **`listCapabilities` / `listEnabledKeys` / `capabilityStatus`**：按状态过滤、枚举 feature flag、查询当前启用状态。
+- **性质**：纯数据 + 纯函数，不接入 `factory.ts` 接线逻辑，与现有分散 `get()` 调用并存。
+
+### 11.3 接入溯源快照 —— 修改 `src/config/snapshot.ts`
+
+- `buildConfigSnapshot` 在原有 `getSources()` 基础上，叠加 `collectEnvSources()` 结果（环境变量来源，脱敏），使 `/debug/config` 能回答「哪些环境变量生效、哪些是密钥」——补齐此前环境变量无法审计的短板。
+- 合并顺序 `{ ...envSources, ...trackedSources, ...opts.sources }`：调用方显式 `sources` 仍为最高优先级，向后兼容；未设置的环境变量不注入，不影响既有快照结构。
+
+### 11.4 导出 —— 修改 `src/config/index.ts`
+
+- 新增导出 `env.ts` 与 `capability-registry.ts` 全部类型与函数。
+
+### 11.5 测试与回归
+
+- 新增 `tests/config/p5-env-capability.test.ts`（14 例，全绿）：注册表完整性/无重名、敏感标记、RuntimeConfig 映射、分组、读取/脱敏/审计、能力清单/开关枚举/状态查询、未声明键登记、planned 项空实现断言。
+- `tests/config` 全绿（8 文件 128 例）；`tsc -p tsconfig.build.json --noEmit` 0 错误。
+- 完整套件 **620 例通过，7 例失败**；失败全部来自 `tests/tools/sql-query.test.ts`（表名提取 16 例中 7 例），为**预先存在失败、与本次改动无关**（该测试仅依赖 `@/tools/sql-query.js`，不涉及 config/env/capability）。
+
+### 11.6 待办（仍未落地，需后续决策）
+
+- `package.json` `exports` 补 `./config` 子路径（第 10 节建议 2）。
+- `DEFAULT_CONFIG.plan_execute` 补声明 `planner_max_tokens` / `step_retry.*`（第 10 节建议 3，现已由 `UNDECLARED_CONSUMED_KEYS` 显式登记，但尚未写入 DEFAULT_CONFIG 以获得 YAML 类型保护）。
+- `.md` 配置「默认值二义性 + 发布隐性副作用」的显式化决策（第 10 节建议 1）。

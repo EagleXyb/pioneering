@@ -88,3 +88,23 @@ export {
   type InitDefaultsResult,
   type InitResultEntry,
 } from './init-defaults.js'
+// 环境变量统一治理（注册表 + 读取 + 脱敏 + 审计）
+export {
+  ENV_VAR_REGISTRY,
+  SENSITIVE_KEY_RE,
+  groupEnvVarsByCategory,
+  readEnvVar,
+  collectEnvSources,
+  auditEnvVars,
+  type EnvVarDescriptor,
+  type EnvVarCategory,
+} from './env.js'
+// 配置能力注册表（配置键 → 能力 → 消费点清单）
+export {
+  CAPABILITY_REGISTRY,
+  UNDECLARED_CONSUMED_KEYS,
+  listCapabilities,
+  listEnabledKeys,
+  capabilityStatus,
+  type CapabilityDescriptor,
+} from './capability-registry.js'

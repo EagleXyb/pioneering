@@ -14,6 +14,7 @@
 //   - 不修改 RuntimeConfig 内部状态。
 
 import type { RuntimeConfig } from './runtime-config.js'
+import { collectEnvSources } from './env.js'
 
 const SENSITIVE_KEY_RE = /(api[_-]?key|token|secret|password|credential|authorization|bearer)/i
 
@@ -73,9 +74,12 @@ export function buildConfigSnapshot(
   const trackedSources = typeof runtimeConfig.getSources === 'function'
     ? runtimeConfig.getSources()
     : {}
+  // 环境变量来源清单（脱敏），补足此前"游离于配置体系之外、无法审计"的短板。
+  // 仅列出当前进程已设置的环境变量；未设置的不出现，不影响既有 sources 结构。
+  const envSources = collectEnvSources({ maskSensitive: true })
   return {
     generated_at: new Date().toISOString(),
-    sources: { ...trackedSources, ...(opts.sources ?? {}) },
+    sources: { ...envSources, ...trackedSources, ...(opts.sources ?? {}) },
     config: maskSensitiveValues(dict),
   }
 }
