@@ -1,0 +1,28 @@
+data: {"threadId":"f7115b8b-9a2e-446f-9188-b289686eb54c","runId":"f7115b8b-9a2e-446f-9188-b289686eb54c","type":"RUN_STARTED"}
+
+data: {"title":"深度思考","type":"THINKING_START"}
+
+data: {"toolCallId":"call_00_rUhB7Mb9mYVVzMVoLVB45401","toolCallName":"calculator","parentMessageId":"4346af05-f90f-4bab-8f7e-c6570c07196e","type":"TOOL_CALL_START"}
+
+data: {"toolCallId":"call_00_rUhB7Mb9mYVVzMVoLVB45401","toolCallName":"calculator","parentMessageId":"4346af05-f90f-4bab-8f7e-c6570c07196e","type":"TOOL_CALL_START"}
+
+data: {"toolCallId":"call_00_rUhB7Mb9mYVVzMVoLVB45401","delta":"{\"expression\":\"13*17\"}","type":"TOOL_CALL_ARGS"}
+
+data: {"toolCallId":"call_00_rUhB7Mb9mYVVzMVoLVB45401","type":"TOOL_CALL_END"}
+
+data: {"messageId":"4346af05-f90f-4bab-8f7e-c6570c07196e","toolCallId":"call_00_rUhB7Mb9mYVVzMVoLVB45401","toolCallName":"calculator","content":"{\"tool\":\"calculator\",\"status\":\"success\",\"data\":{\"result\":221,\"expression\":\"13*17\"}}","status":"success","type":"TOOL_CALL_RESULT"}
+
+data: {"type":"THINKING_END"}
+
+data: {"messageId":"4346af05-f90f-4bab-8f7e-c6570c07196e","role":"assistant","type":"TEXT_MESSAGE_START"}
+
+data: {"messageId":"4346af05-f90f-4bab-8f7e-c6570c07196e","delta":"13 × 17 = **221**\n\n计算过程：13 × 17 = 13 × (10 + 7) = 130 + 91 = 221。","type":"TEXT_MESSAGE_CONTENT"}
+
+data: {"title":"深度思考","type":"THINKING_START"}
+
+data: {"type":"THINKING_END"}
+
+data: {"messageId":"4346af05-f90f-4bab-8f7e-c6570c07196e","type":"TEXT_MESSAGE_END"}
+
+data: {"threadId":"f7115b8b-9a2e-446f-9188-b289686eb54c","runId":"f7115b8b-9a2e-446f-9188-b289686eb54c","type":"RUN_FINISHED"}
+

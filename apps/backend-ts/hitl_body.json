@@ -1,0 +1,6 @@
+{
+    "message":  "请调用代码执行工具(code_executor)运行这段 Python：result = 13*17; print(result)，并直接告诉我结果。务必实际调用工具执行，不要只给代码。",
+    "agentMode":  "react_agent",
+    "stream":  true,
+    "sessionId":  "sess_e58711ec44044f5194cd0d75"
+}
