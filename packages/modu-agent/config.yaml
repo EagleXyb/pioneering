@@ -11,3 +11,15 @@ react_optimization:
 # llm:
 #   default_provider: deepseek
 #   temperature: 0.7
+
+# HITL（Human-in-the-Loop）灰度开关（阶段四）：一期仅在 agent 链路生效。
+# 关闭或删除本段即回退默认关闭，普通 /chat/completions 不受影响。
+tools:
+  human_in_loop:
+    enabled: true
+    approval_timeout_seconds: 300
+    auto_reject_on_timeout: true
+    sensitive_tools:
+      - code_executor
+      - sql_query
+      - file_ops_write

@@ -611,13 +611,13 @@ export function buildModuGraph(
       routeAfterAgent,
       agentRouteTargets,
     )
-    // human_review 后条件路由：通过 → tools，拒绝/错误 → response
+    // human_review 后条件路由：通过 → tools，拒绝/错误 → finalize_response
     graph.addConditionalEdges(
       'human_review',
       routeAfterHumanReview,
       {
         tools: 'tools',
-        response: 'finalize_response',
+        finalize_response: 'finalize_response',
       },
     )
   } else {

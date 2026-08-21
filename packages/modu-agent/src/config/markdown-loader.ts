@@ -19,7 +19,11 @@
 
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'node:url'
 import { parseYamlSubset } from './yaml-loader.js'
+
+// ESM 下无全局 __dirname（package.json 为 "type": "module"），按需以 import.meta.url 推导
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[config.markdown] ${msg}`, ...args),
