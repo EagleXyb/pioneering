@@ -9,6 +9,8 @@ import { randomUUID } from 'crypto'
 import {
   create_agent,
   stream_response,
+  resume_stream,
+  get_interrupt_state,
   AGUIStreamAdapter,
   AGUIEncoder,
   AGUIEventType,
@@ -40,6 +42,8 @@ export class StreamContext {
   // P4: Plan 终态元数据（供 persistAssistantMessage 写入 chat_messages.metadata）
   planPhase: 'done' | 'error' | null = null
   planError: string | null = null
+  // HITL: 本次 run 是否被 interrupt() 暂停（阶段零 D2——暂停的 run 不持久化空/半截消息）
+  paused = false
 
   finish(): void {
     this.latencyMs = Date.now() - this.startTime
@@ -168,6 +172,81 @@ export async function* streamAgentCompletion(
 }
 
 // ============================================================
+// streamAgentResume（HITL 阶段一 1.3）——恢复被 interrupt 暂停的 run
+// ============================================================
+
+export interface ResumeAgentOptions {
+  sessionId: string
+  userId: string
+  approved: boolean
+  feedback?: string
+  /** 改参批准：按 tool_call_id 覆盖原参数（v1.2 §4.3 建议3） */
+  modifiedArgs?: Record<string, Record<string, any>>
+  traceId?: string
+}
+
+/**
+ * 恢复被 interrupt() 暂停的 Agent run，产出与 streamAgentCompletion 一致的 AG-UI SSE dict。
+ *
+ * 包装 runner.resume_stream（内部 `new Command({ resume })` 按 thread_id=sessionId 续跑），
+ * 并经 AGUIStreamAdapter.transform_langgraph_events 转 AG-UI 事件。
+ * 复用共享 MemorySaver 单例（factory.build_checkpointer），保证能读取中断时的 checkpoint。
+ */
+export async function* streamAgentResume(
+  opts: ResumeAgentOptions,
+): AsyncGenerator<Record<string, string>> {
+  const { sessionId, userId, approved, feedback, modifiedArgs, traceId } = opts
+  const trace = traceId ?? randomUUID()
+  const graph = await create_agent()
+
+  const adapter = new AGUIStreamAdapter(trace)
+  logger.info(
+    'resume.start trace_id=%s session_id=%s approved=%s modified_args=%d',
+    trace, sessionId, approved, Object.keys(modifiedArgs ?? {}).length,
+  )
+
+  for await (const eventDict of adapter.transform_langgraph_events(
+    resume_stream(graph, sessionId, approved, feedback ?? '', trace, {
+      modifiedArgs,
+    }),
+  )) {
+    yield eventDict
+  }
+}
+
+// ============================================================
+// getPendingAgentState（HITL 阶段一 1.3）——查询 pending interrupt 状态
+// ============================================================
+
+/**
+ * 查询指定 session 的 HITL 暂停状态（前端进页/重连恢复用）。
+ * 包装 runner.get_interrupt_state。userId 由调用方校验归属后再传入。
+ */
+export async function getPendingAgentState(
+  sessionId: string,
+  userId: string,
+): Promise<Record<string, any> | null> {
+  const graph = await create_agent()
+  const state = await get_interrupt_state(graph, sessionId)
+  if (state === null) {
+    return null
+  }
+  // 仅返回归属当前用户的暂停项（IDOR 防护：归属校验在路由层已完成，此处再兜底一次）
+  if (state['user_id'] && state['user_id'] !== userId) {
+    return null
+  }
+  return {
+    session_id: state['session_id'] ?? sessionId,
+    next_nodes: state['next_nodes'] ?? [],
+    pending_tool_calls: state['pending_tool_calls'] ?? [],
+    tool_requires_approval: state['tool_requires_approval'] ?? false,
+    trace_id: state['trace_id'] ?? '',
+    user_id: state['user_id'] ?? '',
+    created_at: state['created_at'] ?? null,
+  }
+}
+
+// ============================================================
 // collectMetadataFromEvent（对应 Python _collect_metadata_from_event）
 // ============================================================
 
@@ -175,7 +254,7 @@ export async function* streamAgentCompletion(
  * 从 AG-UI 事件中提取元数据，填充 StreamContext。
  * 对应 Python: _collect_metadata_from_event
  */
-function collectMetadataFromEvent(
+export function collectMetadataFromEvent(
   eventDict: Record<string, string>,
   ctx: StreamContext,
 ): void {
@@ -259,6 +338,12 @@ function collectMetadataFromEvent(
   } else if (eventType === 'RUN_FINISHED') {
     // P4: Plan 终态阶段标记（供 persistAssistantMessage 写入 metadata.plan_phase）
     ctx.planPhase = 'done'
+  } else if (eventType === 'RUN_PAUSED') {
+    // HITL（阶段零 D3）：run 被 interrupt 暂停——标记 ctx，路由层据此跳过空消息持久化
+    ctx.paused = true
+  } else if (eventType === 'HITL_ABORTED') {
+    // HITL：超时/用户取消后收尾——同样视为非正常完成，不持久化空消息
+    ctx.paused = true
   } else if (eventType === 'RUN_ERROR') {
     ctx.hasError = true
     ctx.errorInfo = { code: data.code ?? '', message: data.message ?? '' }

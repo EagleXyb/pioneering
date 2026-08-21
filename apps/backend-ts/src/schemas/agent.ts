@@ -114,3 +114,25 @@ export const PlanSnapshotResponseSchema = z.object({
   steps: z.array(PlanStepSnapshotSchema),
 })
 
+// ============================================================
+// HITL（阶段一 1.4）：恢复/中止/查询 interrupt 的请求 schema
+// ============================================================
+
+// POST /agent/resume —— 恢复被 interrupt 暂停的 run（返回 SSE 流）
+export const AgentResumeRequestSchema = z.object({
+  sessionId: z.string(),
+  approved: z.boolean(),
+  feedback: z.string().nullable().optional(),
+  // 改参批准：按 tool_call_id 覆盖原参数（v1.2 §4.3 建议3）
+  modifiedArgs: z.record(z.record(z.unknown())).nullable().optional(),
+})
+export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>
+
+// POST /agent/abort —— 对中断执行拒绝/取消语义
+export const AgentAbortRequestSchema = z.object({
+  sessionId: z.string(),
+  reason: z.enum(['user_cancel', 'timeout', 'reject']).default('user_cancel'),
+})
+export type AgentAbortRequest = z.infer<typeof AgentAbortRequestSchema>
+
+

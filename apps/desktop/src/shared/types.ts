@@ -238,6 +238,8 @@ export interface Message extends ChatMessage {
   images?: AttachedImage[]
   /** P3：通用文件附件（非图片文件；图片仍走 images 通道） */
   attachments?: Attachment[]
+  /** HITL：该条 assistant 消息是否处于暂停待答复状态（interrupt 的 run 不落库空消息） */
+  paused?: boolean
 }
 
 /** 用户消息的附件图片（与渲染端 ImageAttachment 结构兼容） */
@@ -319,4 +321,53 @@ export function normalizePlatform(p: string): Platform {
   if (p === 'win32') return 'windows'
   if (p === 'linux') return 'linux'
   return 'unknown'
+}
+
+// ---- HITL（Human-in-the-Loop）----
+// 阶段零 D3 收敛的最小 AG-UI 事件集合对应类型。一期仅使用 kind='tool_confirm'
+// （工具审批）；'clarifying'/'choice' 为澄清追问/多选确认预留（图1/图2）。
+export interface UserQuestionRequestPayload {
+  kind: 'tool_confirm' | 'clarifying' | 'choice'
+  session_id: string
+  run_id?: string
+  message?: string
+  /** kind='tool_confirm' 时携带待审批的工具调用列表 */
+  tool_calls?: Array<{
+    id: string
+    name: string
+    args: Record<string, unknown>
+  }>
+  /** kind='clarifying' 时携带澄清问题文本 */
+  question?: string
+  /** kind='choice' 时携带多选选项 */
+  options?: Array<{ id: string; label: string }>
+}
+
+/** POST /agent/resume 请求体（对应 Command(resume) 载荷：approved/feedback/modified_args） */
+export interface ResumeRequest {
+  sessionId: string
+  approved: boolean
+  feedback?: string | null
+  /** 改参批准：按 tool_call_id 覆盖原参数 */
+  modifiedArgs?: Record<string, Record<string, unknown>> | null
+}
+
+/** POST /agent/abort 请求体 */
+export interface AbortRequest {
+  sessionId: string
+  reason?: 'user_cancel' | 'timeout' | 'reject'
+}
+
+/** GET /agent/state/:threadId 响应（前端进页/重连恢复待答复项） */
+export interface HitlStateResponse {
+  session_id: string
+  pending: boolean
+  /** 超时自动拒绝后为 true，前端据此收尾 */
+  expired?: boolean
+  next_nodes?: string[]
+  pending_tool_calls?: Array<Record<string, unknown>>
+  tool_requires_approval?: boolean
+  trace_id?: string
+  user_id?: string
+  created_at?: string | number | null
 }

@@ -35,12 +35,38 @@ export const AGUIEventType = {
   STATE_DELTA: 'STATE_DELTA',
   MESSAGES_SNAPSHOT: 'MESSAGES_SNAPSHOT',
   ARTIFACT_CREATED: 'ARTIFACT_CREATED',
+  // ===== HITL（Human-in-the-Loop）事件（阶段零 D3 收敛的最小集合）=====
+  USER_QUESTION_REQUEST: 'USER_QUESTION_REQUEST',
+  RUN_PAUSED: 'RUN_PAUSED',
+  HITL_ABORTED: 'HITL_ABORTED',
 } as const
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType]
 
 // ============================================================
 // P9.3.1: AGUIEvent payload 强类型映射（按事件类型区分 payload 结构）
 // ============================================================
+
+/**
+ * HITL 用户提问事件 payload（阶段零 D3 收敛）。
+ * 一期仅使用 kind='tool_confirm'（工具审批）；'clarifying'/'choice'
+ * 为后续澄清追问/多选确认预留（图1/图2，当前后端仅支持工具审批一种）。
+ */
+export interface UserQuestionRequestPayload {
+  kind: 'tool_confirm' | 'clarifying' | 'choice'
+  session_id: string
+  run_id?: string
+  message?: string
+  /** kind='tool_confirm' 时携带待审批的工具调用列表 */
+  tool_calls?: Array<{
+    id: string
+    name: string
+    args: Record<string, any>
+  }>
+  /** kind='clarifying' 时携带澄清问题文本 */
+  question?: string
+  /** kind='choice' 时携带多选选项 */
+  options?: Array<{ id: string; label: string }>
+}
 
 /** AG-UI 事件 → payload 数据结构映射表 */
 export interface AGUIEventPayloadMap {
@@ -82,6 +108,10 @@ export interface AGUIEventPayloadMap {
     summary?: string
     title?: string
   }
+  // ===== HITL 事件 payload =====
+  USER_QUESTION_REQUEST: UserQuestionRequestPayload
+  RUN_PAUSED: { threadId: string; runId: string }
+  HITL_ABORTED: { threadId: string; runId: string; reason: string }
 }
 
 /** 按事件类型提取对应 payload 类型的辅助类型 */
@@ -1023,6 +1053,10 @@ export class AGUIStreamAdapter {
     const sm = new AGUIStateMachine(this._trace_id, this._message_id, 'dict')
     let final_response = ''
     let eventIdx = 0
+    // HITL 中断探测（阶段零 D3）：LangGraph interrupt() 时 values 状态携带 __interrupt__，
+    // 流会正常结束而非抛错——因此须在流结束后判定"本次 run 是否被 interrupt 暂停"。
+    let interrupted = false
+    let interruptValue: Record<string, any> | null = null
 
     console.info('[agui-adapter] transform.start trace_id=%s message_id=%s', this._trace_id, this._message_id)
     yield sm.emit_run_started() as Record<string, string>
@@ -1064,6 +1098,18 @@ export class AGUIStreamAdapter {
       if (event_type === 'values') {
         const data = event.data ?? {}
         if (typeof data === 'object' && data !== null) {
+          // HITL 中断探测：LangGraph 中断时 values 状态携带 __interrupt__ 数组，
+          // 其中每个元素为 Interrupt 对象（value 即 interrupt() 传入的载荷）。
+          const interrupts = data['__interrupt__']
+          if (Array.isArray(interrupts) && interrupts.length > 0) {
+            interrupted = true
+            const first = interrupts[0]
+            interruptValue = (first?.value ?? first) as Record<string, any> | null
+            console.info(
+              '[agui-adapter] transform.interrupt_detected session=%s tool_calls=%d',
+              this._trace_id, Array.isArray(interruptValue?.tool_calls) ? interruptValue!.tool_calls.length : 0,
+            )
+          }
           const resp = data.response ?? ''
           if (resp && !final_response && !sm.text_message_started) {
             final_response = resp
@@ -1079,6 +1125,25 @@ export class AGUIStreamAdapter {
 
     if (sm.has_error) {
       console.info('[agui-adapter] transform.has_error, returning early')
+      this._sync_state_machine(sm)
+      return
+    }
+
+    // ===== HITL 中断分支（阶段零 D3）=====
+    // 本次 run 被 interrupt() 暂停：发出 USER_QUESTION_REQUEST（携带待审批项）→ RUN_PAUSED，
+    // 并跳过全部"完成"语义（RUN_FINISHED / flush_message_buffer / emit_text_end），
+    // 前端据此进入 paused 状态等待用户答复，而不是结束本轮。
+    if (interrupted) {
+      console.info('[agui-adapter] transform.interrupt_branch, emitting USER_QUESTION_REQUEST + RUN_PAUSED')
+      const pauseEvents = AGUIStreamAdapter._process_interrupt_event(
+        interruptValue,
+        this._trace_id,
+        this._message_id,
+      )
+      if (pauseEvents) {
+        yield pauseEvents.userQuestionEvent
+        yield pauseEvents.runPausedEvent
+      }
       this._sync_state_machine(sm)
       return
     }
@@ -1393,6 +1458,48 @@ export class AGUIStreamAdapter {
     }
 
     return []
+  }
+
+  /**
+   * HITL 中断事件处理（阶段零 D3）。
+   *
+   * 从 interrupt() 的载荷（interruptValue）构建最小事件对：
+   *   USER_QUESTION_REQUEST（携带待审批工具调用）→ RUN_PAUSED。
+   * 与主循环解耦：主循环在流结束后调用本函数，命中则跳过"完成"语义。
+   *
+   * @param interruptValue interrupt() 传入的载荷（含 tool_calls / session_id / message）
+   * @param sessionId 会话标识（LangGraph thread_id）
+   * @param runId 本次运行标识（AGUI message_id）
+   * @returns 两个 AG-UI 事件 dict；无有效载荷时返回 null
+   */
+  static _process_interrupt_event(
+    interruptValue: Record<string, any> | null,
+    sessionId: string,
+    runId: string,
+  ): { userQuestionEvent: Record<string, string>; runPausedEvent: Record<string, string> } | null {
+    const toolCalls = Array.isArray(interruptValue?.tool_calls)
+      ? (interruptValue as Record<string, any>).tool_calls
+      : []
+
+    const payload: UserQuestionRequestPayload = {
+      kind: 'tool_confirm',
+      session_id: String(interruptValue?.session_id ?? sessionId),
+      run_id: runId,
+      message: String(interruptValue?.message ?? '工具调用需要人工审批后才能执行'),
+      tool_calls: toolCalls.map((tc: Record<string, any>) => ({
+        id: String(tc['id'] ?? tc['tool_call_id'] ?? ''),
+        name: String(tc['name'] ?? tc['tool_name'] ?? 'unknown'),
+        args: (tc['args'] ?? tc['arguments'] ?? {}) as Record<string, any>,
+      })),
+    }
+
+    return {
+      userQuestionEvent: AGUIEncoder.toEventDict(AGUIEventType.USER_QUESTION_REQUEST, payload),
+      runPausedEvent: AGUIEncoder.toEventDict(AGUIEventType.RUN_PAUSED, {
+        threadId: sessionId,
+        runId,
+      }),
+    }
   }
 
   async *transform_langgraph(

@@ -1036,6 +1036,7 @@ export async function resume_sync(
  * @param approved 审批结果
  * @param feedback 审批反馈备注
  * @param traceId 链路追踪 ID
+ * @param options 可选：modifiedArgs（改参批准，按 tool_call_id 覆盖原参数）/ timeout（超时标记）
  * @yields LangGraph stream 事件字典
  */
 export async function* resume_stream(
@@ -1044,13 +1045,25 @@ export async function* resume_stream(
   approved: boolean,
   feedback: string = '',
   traceId?: string | null,
+  options?: { modifiedArgs?: Record<string, Record<string, any>>; timeout?: boolean },
 ): AsyncGenerator<Record<string, any>> {
   if (!traceId) {
     traceId = randomUUID()
   }
 
   const lgConfig = { configurable: { thread_id: sessionId } }
-  const resumePayload = { approved: Boolean(approved), feedback: String(feedback || '') }
+  const resumePayload: Record<string, any> = {
+    approved: Boolean(approved),
+    feedback: String(feedback || ''),
+  }
+  // v1.2 §4.3 建议3：改参批准（modified_args），与 resume_sync 对齐
+  if (options?.modifiedArgs && Object.keys(options.modifiedArgs).length > 0) {
+    resumePayload['modified_args'] = options.modifiedArgs
+  }
+  // P9.4.3: 超时标记
+  if (options?.timeout === true) {
+    resumePayload['timeout'] = true
+  }
 
   const streamStart = performance.now()
   try {

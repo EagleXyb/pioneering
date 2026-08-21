@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { HitlHost } from '@/components/hitl/HitlHost'
 import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
@@ -111,6 +112,8 @@ function App() {
     <TooltipProvider delayDuration={200}>
       {/* 全局自定义确认弹窗（替换系统 window.confirm）；通过 confirmDialogAtom 触发 */}
       <ConfirmDialog />
+      {/* HITL 弹窗容器：置于 Router 之外，设置/聊天页切换不卸载，暂停项不丢失 */}
+      <HitlHost />
       <HashRouter>
         <Routes>
           <Route element={<RootLayout />}>

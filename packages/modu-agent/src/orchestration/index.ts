@@ -32,6 +32,7 @@ export {
   AGUIStateMachine,
   AGUIEventType,
   AGUIEncoder,
+  type UserQuestionRequestPayload,
 } from './communication/agui-adapter.js'
 export { SSEEncoder, StreamPublisher } from './communication/streaming.js'
 export {

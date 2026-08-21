@@ -14,6 +14,9 @@
 // ============================================================
 
 import apiClient from './client'
+import type { UserQuestionRequestPayload } from '@shared/types'
+
+export type { UserQuestionRequestPayload }
 
 export interface AguiStreamCallbacks {
   /** 正文增量 */
@@ -64,6 +67,13 @@ export interface AguiStreamCallbacks {
   }) => void
   /** 错误 */
   onError: (error: string) => void
+  // ===== HITL（Human-in-the-Loop）事件（阶段零 D3 收敛的最小集合）=====
+  /** USER_QUESTION_REQUEST：携带待答复的暂停项（工具审批/澄清/多选） */
+  onHumanInputRequest?: (p: UserQuestionRequestPayload) => void
+  /** RUN_PAUSED：run 被 interrupt 暂停。不触发 onDone 完成语义，等待用户答复 */
+  onRunPaused?: (p?: { threadId: string; runId: string }) => void
+  /** HITL_ABORTED：超时/用户取消后收尾 */
+  onHitlAborted?: (p?: { threadId: string; runId: string; reason: string }) => void
 }
 
 /** 尝试把工具参数 JSON 字符串解析为对象（流式分片可能未完整，解析失败返回 undefined） */
@@ -290,6 +300,39 @@ export function streamAgui(
                   })
                 }
                 break
+
+              case 'USER_QUESTION_REQUEST': {
+                // HITL：携带待答复的暂停项（kind/tool_calls/question/options）
+                cb.onHumanInputRequest?.({
+                  kind: (event as Record<string, unknown>).kind as UserQuestionRequestPayload['kind'] ?? 'tool_confirm',
+                  session_id: (event as Record<string, unknown>).session_id as string ?? '',
+                  run_id: (event as Record<string, unknown>).run_id as string | undefined,
+                  message: event.message,
+                  tool_calls: (event as Record<string, unknown>).tool_calls as UserQuestionRequestPayload['tool_calls'],
+                  question: (event as Record<string, unknown>).question as string | undefined,
+                  options: (event as Record<string, unknown>).options as UserQuestionRequestPayload['options'],
+                })
+                break
+              }
+
+              case 'RUN_PAUSED': {
+                // HITL：run 被 interrupt 暂停——不触发 onDone 完成语义，等待用户答复
+                cb.onRunPaused?.({
+                  threadId: (event as Record<string, unknown>).threadId as string ?? capturedSessionId,
+                  runId: (event as Record<string, unknown>).runId as string ?? '',
+                })
+                break
+              }
+
+              case 'HITL_ABORTED': {
+                // HITL：超时/用户取消后收尾
+                cb.onHitlAborted?.({
+                  threadId: (event as Record<string, unknown>).threadId as string ?? capturedSessionId,
+                  runId: (event as Record<string, unknown>).runId as string ?? '',
+                  reason: (event as Record<string, unknown>).reason as string ?? 'user_cancel',
+                })
+                break
+              }
 
               case 'RUN_ERROR':
                 cb.onError(event.message || 'Unknown error')

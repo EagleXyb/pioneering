@@ -51,6 +51,8 @@ export function ChatArea() {
   const loadMoreMessages = useChatStore((s) => s.loadMoreMessages)
   const messagesHasMore = useChatStore((s) => s.messagesHasMore)
   const messagesLoading = useChatStore((s) => s.messagesLoading)
+  // 阶段三 3.4：HITL 暂停态输入区切精简态
+  const isHitlPaused = useChatStore((s) => s.isHitlPaused)
 
   // T09：dev-only 压测开关
   const devStress = useFeatureFlag('devStressMessages')
@@ -167,6 +169,7 @@ export function ChatArea() {
               agentMode={agentMode}
               onToggleAgent={() => setAgentMode(!agentMode)}
               isWelcome={true}
+              mode={isHitlPaused ? 'hitl' : 'normal'}
             />
           </div>
 
@@ -228,6 +231,7 @@ export function ChatArea() {
         agentMode={agentMode}
         onToggleAgent={() => setAgentMode(!agentMode)}
         isWelcome={false}
+        mode={isHitlPaused ? 'hitl' : 'normal'}
       />
 
       {/* P1：图片放大预览 Lightbox（Portal 挂载，关闭时不渲染任何 DOM） */}

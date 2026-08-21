@@ -12,9 +12,12 @@ import {
   CreateAgentSessionRequestSchema,
   AgentChatRequestSchema,
   AgentFeedbackRequestSchema,
+  AgentResumeRequestSchema,
+  AgentAbortRequestSchema,
 } from '../schemas/agent.js'
 import { StopGenerationRequestSchema } from '../schemas/chat.js'
-import { StreamContext, streamAgentCompletion, mergePlanSteps } from '../core/agent-bridge.js'
+import { StreamContext, streamAgentCompletion, streamAgentResume, getPendingAgentState, mergePlanSteps, collectMetadataFromEvent } from '../core/agent-bridge.js'
+import { checkInterruptTimeout, get_runner, resume_sync } from '@pioneering/modu-agent'
 
 // ===== Agent 流式运行注册表（供 /agent/completions/stop 中止生成）=====
 // 对齐 chat.ts 的 runningRuns：注册当前用户的运行中生成任务，
@@ -410,7 +413,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
           // 5. 持久化 assistant 消息（对应 Python: 流结束后持久化）
           // 流前异常时不持久化（对齐 Python: event_generator 抛错时持久化代码不执行）
-          if (!streamError) {
+          // HITL（阶段零 D2）：被 interrupt 暂停的 run 不持久化空/半截 assistant 消息，
+          // 待 resume 后由 /agent/resume 落库为完整终态消息。
+          if (!streamError && !ctx.paused) {
             try {
               const { planStepsCount } = await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
               if (planStepsCount > 0) {
@@ -423,6 +428,11 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               // 持久化失败不影响已发送的 SSE 流
               fastify.log.error({ err: e, sessionId }, 'Failed to persist agent assistant message')
             }
+          } else if (ctx.paused) {
+            fastify.log.info(
+              { sessionId },
+              '[agent.completions] skip_persist.run_paused',
+            )
           }
 
           reply.raw.end()
@@ -472,6 +482,178 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
         return { message: 'stopped', aborted }
+      })
+
+      // ========== HITL（Human-in-the-Loop）=====
+      // 阶段一 1.4：resume / state / abort 三个端点（均带 authGuard + 会话归属校验）
+
+      // POST /agent/resume —— 恢复被 interrupt 暂停的 run，返回 SSE 流。
+      // body: { sessionId, approved, feedback?, modifiedArgs? }（对应 Command(resume) 载荷）
+      app.post('/resume', buildSchema({
+        body: AgentResumeRequestSchema,
+        tags: ['agent'],
+        summary: '恢复被中断的 Agent 运行（HITL）',
+        description: '对 interrupt 暂停的 run 提交审批结果（approved/feedback/modified_args），返回 AG-UI SSE 流',
+        security: [{ BearerAuth: [] }],
+      }), async (req, reply) => {
+        const dto = AgentResumeRequestSchema.parse(req.body)
+        const userId = req.user.id
+
+        // 1. 会话归属校验（防 IDOR，复用 verifySessionOwner）
+        await verifySessionOwner(fastify.prisma, dto.sessionId, userId)
+
+        // 2. 确认确实处于 interrupt 暂停状态（不在暂停态则拒绝，避免误 resume）
+        const pending = await getPendingAgentState(dto.sessionId, userId)
+        if (pending === null) {
+          throw new NotFoundError('会话不存在待审批的暂停项')
+        }
+
+        // 3. SSE 输出（与 /agent/completions 同款 hijack）
+        const reqOrigin = req.headers.origin
+        const corsHeaders: Record<string, string> = {}
+        if (reqOrigin && isOriginAllowed(reqOrigin)) {
+          corsHeaders['Access-Control-Allow-Origin'] = reqOrigin
+          corsHeaders['Access-Control-Allow-Credentials'] = 'true'
+        }
+        reply.hijack()
+        reply.raw.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          ...corsHeaders,
+        })
+
+        let sseCount = 0
+        let streamError = false
+        const ctx = new StreamContext()
+        try {
+          for await (const eventDict of streamAgentResume({
+            sessionId: dto.sessionId,
+            userId,
+            approved: dto.approved,
+            feedback: dto.feedback ?? '',
+            modifiedArgs: dto.modifiedArgs ?? undefined,
+          })) {
+            sseCount++
+            reply.raw.write(`data: ${eventDict.data}\n\n`)
+            // 复用 collectMetadataFromEvent 收集元数据（RUN_PAUSED 会再次置 ctx.paused）
+            collectMetadataFromEvent(eventDict, ctx)
+          }
+        } catch (e: any) {
+          streamError = true
+          fastify.log.error(
+            { err: e, sessionId: dto.sessionId },
+            '[agent.resume] stream.pre_stream_error',
+          )
+          reply.raw.write(
+            `data: ${JSON.stringify({ type: 'RUN_ERROR', code: 'INTERNAL', message: String(e) })}\n\n`,
+          )
+        }
+
+        fastify.log.info(
+          { sessionId: dto.sessionId, approved: dto.approved, sseCount, streamError, paused: ctx.paused },
+          '[agent.resume] stream.end',
+        )
+
+        // resume 正常完成（未再次暂停、无错误）→ 落库完整终态 assistant 消息（阶段零 D2）
+        if (!streamError && !ctx.paused) {
+          try {
+            await persistAssistantMessage(fastify.prisma, {
+              sessionId: dto.sessionId,
+              userId,
+              ctx,
+            })
+          } catch (e: any) {
+            fastify.log.error({ err: e, sessionId: dto.sessionId }, 'Failed to persist resume assistant message')
+          }
+        } else if (ctx.paused) {
+          // 再次被 interrupt 暂停（串行多轮审批）→ 不持久化，前端继续等待下一轮答复
+          fastify.log.info(
+            { sessionId: dto.sessionId },
+            '[agent.resume] skip_persist.re_paused',
+          )
+        }
+
+        reply.raw.end()
+      })
+
+      // GET /agent/state/:threadId —— 查询 pending interrupt 状态（前端进页/重连恢复）
+      app.get('/state/:threadId', buildSchema({
+        params: z.object({ threadId: z.string() }),
+        tags: ['agent'],
+        summary: '查询会话的待答复 HITL 状态',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const { threadId } = req.params as { threadId: string }
+        // 会话归属校验（防 IDOR）
+        await verifySessionOwner(fastify.prisma, threadId, req.user.id)
+
+        // 超时治理：查询前先检查是否超时（超时则自动拒绝并返回已过期）
+        try {
+          const timeoutStatus = await checkInterruptTimeout(
+            await get_runner(),
+            threadId,
+          )
+          if (timeoutStatus === 'expired') {
+            return {
+              session_id: threadId,
+              pending: false,
+              expired: true,
+            }
+          }
+        } catch (e: any) {
+          fastify.log.debug({ err: e, threadId }, '[agent.state] timeout check skipped')
+        }
+
+        const state = await getPendingAgentState(threadId, req.user.id)
+        if (state === null) {
+          return { session_id: threadId, pending: false }
+        }
+        return { ...state, pending: true }
+      })
+
+      // POST /agent/abort —— 对中断执行拒绝/取消语义（超时/用户取消后收尾）
+      app.post('/abort', buildSchema({
+        body: AgentAbortRequestSchema,
+        tags: ['agent'],
+        summary: '中止/拒绝 HITL 待答复项',
+        security: [{ BearerAuth: [] }],
+      }), async (req, reply) => {
+        const dto = AgentAbortRequestSchema.parse(req.body)
+        const userId = req.user.id
+
+        // 会话归属校验（防 IDOR）
+        await verifySessionOwner(fastify.prisma, dto.sessionId, userId)
+
+        // 确认存在待答复项
+        const pending = await getPendingAgentState(dto.sessionId, userId)
+        if (pending === null) {
+          return { message: 'no_pending_interrupt', aborted: false }
+        }
+
+        // 复用 resume_sync(approved=false) 触发拒绝路径（时间语义与超时自动拒绝一致）
+        const graph = await get_runner()
+        const result = await resume_sync(
+          graph,
+          dto.sessionId,
+          false,
+          `user ${dto.reason}`,
+          `hitl-abort-${dto.sessionId}-${Date.now()}`,
+        )
+        if (result && result['status'] === 'error') {
+          fastify.log.error(
+            { sessionId: dto.sessionId, reason: dto.reason, errorCode: result['error_code'] ?? '' },
+            '[agent.abort] resume_sync returned error',
+          )
+          return { message: 'abort_failed', aborted: false, error: result['error_code'] ?? '' }
+        }
+
+        fastify.log.info(
+          { sessionId: dto.sessionId, reason: dto.reason },
+          '[agent.abort] interrupted run rejected',
+        )
+        return { message: 'aborted', aborted: true }
       })
 
       // ========== Plan 步骤时间轴恢复 ==========

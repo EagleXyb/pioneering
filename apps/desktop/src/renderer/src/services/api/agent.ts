@@ -11,7 +11,10 @@ import type {
   CreateAgentSessionRequest,
   UpdateSessionRequest,
   AgentToolExecution,
-  SendMessageRequest
+  SendMessageRequest,
+  ResumeRequest,
+  AbortRequest,
+  HitlStateResponse
 } from '@shared/types'
 
 export const agentService = {
@@ -87,5 +90,32 @@ export const agentService = {
   // 统一为 camelCase，与项目整体约定及 chat 服务保持一致。
   async stopGeneration(sessionId: string): Promise<void> {
     await apiClient.post('/agent/completions/stop', { sessionId })
+  },
+
+  // ========== HITL（Human-in-the-Loop）=====
+  // 阶段二 2.2：resume / abort / state 三个服务方法，与 chat.ts 的
+  // sendMessageStream / stopGeneration 同款写法。
+
+  /**
+   * 恢复被 interrupt 暂停的 Agent run（HITL）。
+   * 复用 streamAgui 指向 /agent/resume，返回与初次生成一致的 AG-UI SSE 流。
+   */
+  resumeStream(request: ResumeRequest, cb: AguiStreamCallbacks): AbortController {
+    return streamAgui('/agent/resume', request, cb)
+  },
+
+  /** 中止/拒绝 HITL 待答复项（超时/用户取消后收尾） */
+  async abortHitl(threadId: string, reason: AbortRequest['reason'] = 'user_cancel'): Promise<{ message: string; aborted: boolean }> {
+    const res = await apiClient.post<{ message: string; aborted: boolean }>('/agent/abort', {
+      sessionId: threadId,
+      reason
+    })
+    return res.data
+  },
+
+  /** 查询会话的待答复 HITL 状态（前端进页/重连恢复用） */
+  async getHitlState(threadId: string): Promise<HitlStateResponse> {
+    const res = await apiClient.get<HitlStateResponse>(`/agent/state/${encodeURIComponent(threadId)}`)
+    return res.data
   }
 }

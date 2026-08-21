@@ -115,6 +115,11 @@ export interface InputAreaProps {
   onToggleAgent?: () => void
   /** 欢迎页态：输入卡片使用增强阴影引导关注 */
   isWelcome?: boolean
+  /**
+   * HITL 精简态（阶段三 3.4）：命中时省略 ModelSelect、Agent badge、`/` 命令、技能，
+   * `+` 仅附件、仅 `↑` 发送，并禁用草稿持久化。
+   */
+  mode?: 'normal' | 'hitl'
 }
 
 const CHAR_LIMIT = 10000
@@ -234,7 +239,8 @@ export function InputArea({
   disabled = false,
   agentMode = false,
   onToggleAgent,
-  isWelcome = false
+  isWelcome = false,
+  mode = 'normal'
 }: InputAreaProps) {
   const editorRef = useRef<FileAwareEditorHandle>(null)
   const [text, setText] = useState('')
@@ -243,6 +249,9 @@ export function InputArea({
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [focused, setFocused] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+
+  // ---- HITL 精简态（阶段三 3.4）----
+  const hitlMode = mode === 'hitl'
 
   // ---- 弹出层状态 ----
   const [slashOpen, setSlashOpen] = useState(false)
@@ -282,6 +291,8 @@ export function InputArea({
 
   // ---- 触发查询重算（光标或文本变化）----
   const computeTriggers = useCallback(() => {
+    // HITL 精简态：省略 `/` 命令与 `@` 文件引用弹层
+    if (hitlMode) return
     const ed = editorRef.current
     if (!ed) return
     const { end } = ed.getSelectionOffsets()
@@ -305,7 +316,7 @@ export function InputArea({
       setMentionOpen(false)
       setMentionTrigger(null)
     }
-  }, [text])
+  }, [text, hitlMode])
 
   // ---- 图片附件 ----
   const addImages = useCallback(async (files: File[]) => {
@@ -514,11 +525,11 @@ export function InputArea({
     [slashOpen, slashCommands, slashActiveIndex, mentionOpen, mentionFiles, mentionActiveIndex, applySlash, applyMention, handleSend]
   )
 
-  // ---- 草稿持久化 ----
+  // ---- 草稿持久化（HITL 精简态禁用）----
   const draftKey = useMemo(() => getSessionInputDraftKey(sessionId ?? 'home'), [sessionId])
   const { clearDraft, scheduleSave } = useInputDraftPersistence({
     draftKey,
-    enabled: !isStreaming,
+    enabled: !isStreaming && !hitlMode,
     isFocused: () => focused,
     skipWhenStreaming: true,
     getValue: () => ({
@@ -653,26 +664,31 @@ export function InputArea({
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
-                  <DropdownMenuItem onSelect={() => handleAttachFile()}>
+                      <DropdownMenuItem onSelect={() => handleAttachFile()}>
                     <Paperclip />
                     <span>附件</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleToggleAgent}>
-                    <Zap className={cn('size-4', agentMode && 'text-primary')} />
-                    <span>模式{agentMode ? ' · Agent' : ''}</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => editorRef.current?.insertText('/agent ')}>
-                    <Terminal />
-                    <span>技能</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => { /* 连接设置暂未实现 */ }}>
-                    <HelpCircle className="size-4" />
-                    <span>连接</span>
-                  </DropdownMenuItem>
+                  {/* HITL 精简态（阶段三 3.4）：`+` 仅附件，省略 模式/技能/连接 */}
+                  {!hitlMode && (
+                    <>
+                      <DropdownMenuItem onSelect={handleToggleAgent}>
+                        <Zap className={cn('size-4', agentMode && 'text-primary')} />
+                        <span>模式{agentMode ? ' · Agent' : ''}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => editorRef.current?.insertText('/agent ')}>
+                        <Terminal />
+                        <span>技能</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { /* 连接设置暂未实现 */ }}>
+                        <HelpCircle className="size-4" />
+                        <span>连接</span>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {agentMode && (
+              {agentMode && !hitlMode && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="pro-input-agent-badge">
@@ -694,23 +710,26 @@ export function InputArea({
             </div>
 
             <div className="pro-input-toolbar-right">
-              <ModelSelect value={model} onChange={setModel} disabled={isStreaming} />
+              {/* HITL 精简态（阶段三 3.4）：省略 ModelSelect 与麦克风，仅 ↑ 发送 */}
+              {!hitlMode && <ModelSelect value={model} onChange={setModel} disabled={isStreaming} />}
 
               {/* 麦克风：与 web pro 端一致，暂未开放 */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <button
-                      type="button"
-                      className="pro-input-toolbar-btn"
-                      disabled
-                    >
-                      <Mic className="size-[18px]" />
-                    </button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>语音输入即将上线</TooltipContent>
-              </Tooltip>
+              {!hitlMode && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <button
+                        type="button"
+                        className="pro-input-toolbar-btn"
+                        disabled
+                      >
+                        <Mic className="size-[18px]" />
+                      </button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>语音输入即将上线</TooltipContent>
+                </Tooltip>
+              )}
 
               {isStreaming ? (
                 <Tooltip>

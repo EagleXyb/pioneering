@@ -9,6 +9,7 @@
 
 import type { Attachment, ToolCall, TraceNode, TraceNodeStatus } from '@shared/types'
 import type { AguiStreamCallbacks } from './api/agui'
+import type { UserQuestionRequestPayload } from '@shared/types'
 
 export interface StreamFinalMeta {
   messageId?: string
@@ -51,6 +52,23 @@ export interface StreamHandlerOptions {
     traceRootOrder: string[]
     attachments: Attachment[]
   }) => void
+  // ===== HITL（阶段二 2.3）=====
+  /** RUN_PAUSED：run 被 interrupt 暂停。不触发 onDone 完成语义；消息标记 paused、暴露待答项 */
+  onRunPaused?: (p: { threadId: string; runId: string }) => void
+  /** USER_QUESTION_REQUEST：把暂停项入队（由 hitlStore 弹 UI） */
+  onHumanInputRequest?: (p: UserQuestionRequestPayload) => void
+  /** HITL_ABORTED：超时/用户取消后收尾 */
+  onHitlAborted?: (p: { threadId: string; runId: string; reason: string }) => void
+  /**
+   * resume 续写容器（阶段二 2.3）：第二次 SSE（/agent/resume）依旧写入同一 assistantMsgId 时，
+   * 用既有消息的 trace 树/工具调用状态初始化本 handler，续写而非重开新节点。
+   */
+  initialState?: {
+    traceNodes?: Record<string, TraceNode>
+    traceRootOrder?: string[]
+    toolCalls?: ToolCall[]
+    attachments?: Attachment[]
+  }
 }
 
 // ---- 常量：节点 id 生成 ----
@@ -78,31 +96,60 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
   let accumulatedThinking = ''
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let finished = false
+  // HITL（阶段二 2.3）：run 被 interrupt 暂停。暂停后停止 idle 计时
+  // （等待用户答复期间不计 idle 失败；真正的超时由服务端 check_interrupt_timeout 治理）。
+  let paused = false
 
   // M1: Trace 树状态
-  const { assistantMsgId } = options
+  const { assistantMsgId, mySeq, getCurrentSeq, getCurrentStreamingId, idleTimeoutMs = 0 } = options
+  const thinkingNodeId = makeThinkingNodeId(assistantMsgId)
+  const textNodeId = makeTextNodeId(assistantMsgId)
   const traceNodes = new Map<string, TraceNode>()
   const traceRootOrder: string[] = []
   // text 节点延迟创建（第一条 content 到达时才加入，避免空回答也显示"最终回答"节点）
   let textNodeCreated = false
   let thinkingNodeCreated = false
 
+  // HITL resume 续写（阶段二 2.3）：从既有消息的 trace 树初始化，续写而非重开新节点。
+  // 种子内容同时写入 accumulated*，使 flushPending 能重建完整正文（含暂停前的半截内容）。
+  const initNodes = options.initialState?.traceNodes
+  if (initNodes) {
+    for (const [id, n] of Object.entries(initNodes)) {
+      traceNodes.set(id, { ...n, children: [...(n.children ?? [])] })
+    }
+  }
+  const initRoots = options.initialState?.traceRootOrder
+  if (initRoots) traceRootOrder.push(...initRoots)
+  if (initNodes && initNodes[textNodeId]) textNodeCreated = true
+  if (initNodes && initNodes[thinkingNodeId]) thinkingNodeCreated = true
+  const initTextContent = initNodes?.[textNodeId]?.content ?? ''
+  const initThinkingContent = initNodes?.[thinkingNodeId]?.content ?? ''
+  accumulatedContent = initTextContent
+  accumulatedThinking = initThinkingContent
   // Artifact 附件（doc_writer 产物）
   const liveAttachments: Attachment[] = []
   // Plan-step 节点计数（用于生成唯一 id）
   let planStepCounter = 0
 
-  const thinkingNodeId = makeThinkingNodeId(assistantMsgId)
-  const textNodeId = makeTextNodeId(assistantMsgId)
-
-  const { mySeq, getCurrentSeq, getCurrentStreamingId, idleTimeoutMs = 30000 } = options
+  const initToolCalls = options.initialState?.toolCalls
+  if (initToolCalls) {
+    for (const tc of initToolCalls) {
+      const idx = liveToolCalls.length
+      toolIndexById.set(tc.id, idx)
+      liveToolCalls.push({ ...tc })
+    }
+  }
+  const initAttachments = options.initialState?.attachments
+  if (initAttachments) {
+    liveAttachments.push(...initAttachments)
+  }
 
   function isStale(): boolean {
     return finished || mySeq !== getCurrentSeq() || getCurrentStreamingId() !== assistantMsgId
   }
 
   function resetIdleTimer() {
-    if (idleTimeoutMs <= 0) return
+    if (idleTimeoutMs <= 0 || paused) return
     if (idleTimer !== null) clearTimeout(idleTimer)
     idleTimer = setTimeout(() => {
       if (isStale()) return
@@ -536,6 +583,35 @@ export function createStreamHandler(options: StreamHandlerOptions): AguiStreamCa
         }
       }
       scheduleFlush()
+    },
+
+    onHumanInputRequest: (p) => {
+      if (isStale()) return
+      // HITL：把暂停项入队（由 hitlStore 弹 UI）
+      options.onHumanInputRequest?.(p)
+    },
+
+    onRunPaused: (p) => {
+      if (isStale()) return
+      // HITL：run 被 interrupt 暂停——不触发 onDone 完成语义。
+      // 冲刷已累积内容但保持 trace 节点 running（resume 继续写入同消息时不重开节点），
+      // 并停止 idle 计时：等待用户答复期间不计 idle 失败，真正的超时由服务端治理。
+      paused = true
+      clearIdleTimer()
+      cancelFlush()
+      flushPending()
+      options.onRunPaused?.(p ?? { threadId: '', runId: '' })
+    },
+
+    onHitlAborted: (p) => {
+      if (isStale()) return
+      // HITL：超时/用户取消后收尾——结束本 handler，由 chatStore 完成消息终态。
+      finished = true
+      paused = false
+      clearIdleTimer()
+      cancelFlush()
+      flushPending()
+      options.onHitlAborted?.(p ?? { threadId: '', runId: '', reason: 'user_cancel' })
     },
 
     onDone: handleDone,

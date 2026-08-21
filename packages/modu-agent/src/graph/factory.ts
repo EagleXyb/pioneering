@@ -55,6 +55,13 @@ const logger = {
 }
 
 /**
+ * 模块级共享内存检查点（惰性单例）。
+ * HITL 跨请求 resume 依赖同一份 checkpoint 数据，故 MemorySaver 复用单例。
+ * 仅在 build_checkpointer 首次以 'memory' 类型构建时创建。
+ */
+let _sharedMemoryCheckpointer: any = null
+
+/**
  * 默认防幻觉系统提示词（P0-优化 + P0-强化）。
  *
  * 当宿主应用未传入 system_prompt 时使用，约束 LLM：
@@ -143,10 +150,16 @@ export async function build_checkpointer(
     }
   }
 
-  // 默认：内存检查点
+  // 默认：内存检查点（模块级单例）
+  // HITL 依赖：interrupt 状态保存在 checkpointer 中，跨请求 resume 需要复用
+  // 同一个 MemorySaver 实例——若每次 create_agent() 新建，中断状态会随实例销毁丢失。
+  // 改为惰性单例后，所有图实例共享同一份 checkpoint 数据（与 get_runner 缓存语义一致）。
   const { MemorySaver } = await import('@langchain/langgraph')
-  logger.info('Built MemorySaver checkpointer')
-  return new MemorySaver()
+  if (_sharedMemoryCheckpointer === null) {
+    _sharedMemoryCheckpointer = new MemorySaver()
+    logger.info('Built shared MemorySaver checkpointer (singleton)')
+  }
+  return _sharedMemoryCheckpointer
 }
 
 /**
