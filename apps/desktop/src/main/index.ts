@@ -7,6 +7,12 @@ import { buildAppMenu } from './menu'
 import { IpcChannel } from '../shared/ipc-channels'
 import appIcon from '../../resources/icon.png?asset'
 
+// macOS 顶部全局菜单的 App 菜单标题由运行时的进程/Bundle 显示名决定。
+// 开发期直接运行 Electron 二进制，默认显示为 "Electron"；
+// 此处显式设置 app.name，使菜单栏在开发期也显示为 "Pioneering"。
+// 注：必须在 app.whenReady() 之前设置才生效。
+app.name = 'Pioneering'
+
 // 文档生成产物根目录：打包态下由 desktop 主进程注入为 userData/Documents，
 // 使生成的文档落在 Electron 的 userData 内（UI 的「在 Finder 中显示」白名单天然命中）。
 // 仅当 desktop 负责拉起 backend 子进程时生效；backend 独立启动时由自身 env 配置兜底。
@@ -119,6 +125,11 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // macOS 应用菜单（顶部全局栏第一个菜单）标题由 app.getName() 决定，
+  // 在 ready 之前已设置过一次 app.name，这里再次确保（防止被某些初始化覆盖），
+  // 并输出到 stderr 便于确认运行时实际生效的名称。
+  app.setName('Pioneering')
+
   // H4: 必须在任何加载/请求前安装 CSP
   installContentSecurityPolicy()
 

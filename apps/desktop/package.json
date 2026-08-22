@@ -77,7 +77,7 @@
   },
   "build": {
     "appId": "com.pioneering.desktop",
-    "productName": "Pioneering Desktop",
+    "productName": "Pioneering",
     "directories": {
       "output": "release/${version}"
     },
