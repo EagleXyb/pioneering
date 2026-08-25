@@ -9,6 +9,7 @@ import type {
   ChatSession,
   ChatMessage,
   Message,
+  SendMessageRequest,
   ThinkingBlock,
   ToolCall,
   ContentBlock,
@@ -19,6 +20,7 @@ import type {
 } from '@shared/types'
 import { chatService } from '../services/api/chat'
 import { agentService } from '../services/api/agent'
+import { getAgentTransport } from '../services/transport'
 import type { ImageAttachment } from '../lib/input/image-attachments'
 import { buildSendText } from '../lib/input/select-file-editor'
 import {
@@ -33,6 +35,23 @@ import { useHitlStore, type HitlItem } from './hitlStore'
 const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
 export const DEFAULT_SESSION_TITLE = '新对话'
+
+/** 本地模式（IPC）携带的最大历史轮数（角色对，user+assistant 混计） */
+const IPC_HISTORY_MAX_MESSAGES = 20
+
+/**
+ * 云边双模阶段 1：本地模式多轮上下文。
+ * 主进程内嵌 modu-agent 无 Prisma 会话状态，把当前会话已有消息
+ * 压缩为 role/content 对随请求携带；云端端点忽略该字段。
+ */
+function buildIpcHistory(messages: Message[] | undefined): Array<{ role: string; content: string }> | undefined {
+  if (!messages || messages.length === 0) return undefined
+  const history = messages
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && !!m.content?.trim())
+    .slice(-IPC_HISTORY_MAX_MESSAGES)
+    .map((m) => ({ role: m.role, content: m.content }))
+  return history.length > 0 ? history : undefined
+}
 
 export interface ChatState {
   sessions: ChatSession[]
@@ -708,15 +727,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     })
 
-    const controller = service.sendMessageStream(
-      {
-        sessionId: _sessionId,
-        message: buildSendText(content),
-        stream: true,
-        model: model && model !== '配置模型' ? model : undefined
-      },
-      streamHandler
-    )
+    // 云边双模阶段 0/1：Agent 流式走 Transport 抽象（http=云端 SSE / ipc=主进程推送）；
+    // 普通聊天仍走 chatService——本地模式只覆盖 Agent 通道。
+    const streamRequest: SendMessageRequest = {
+      sessionId: _sessionId,
+      message: buildSendText(content),
+      stream: true,
+      model: model && model !== '配置模型' ? model : undefined
+    }
+    let controller: AbortController
+    if (useAgent) {
+      const transport = getAgentTransport()
+      if (transport.kind === 'ipc') {
+        // 本地模式：主进程无会话状态，携带多轮上下文
+        streamRequest.history = buildIpcHistory(get().messages[_sessionId])
+      }
+      controller = transport.sendMessage(streamRequest, streamHandler)
+    } else {
+      controller = chatService.sendMessageStream(streamRequest, streamHandler)
+    }
 
     set({ abortController: controller })
   },
@@ -740,8 +769,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const targetSession = currentSessionId ? sessions.find((s) => s.id === currentSessionId) : undefined
     const useAgent = isAgentSession(targetSession) || globalAgentMode
     if (currentSessionId) {
-      const stopper = useAgent ? agentService : chatService
-      void stopper.stopGeneration?.(currentSessionId).catch(() => {})
+      if (useAgent) {
+        // 云边双模阶段 1：Agent 停止生成经 Transport 分流（http=云端端点 / ipc=主进程 stopRun）
+        void getAgentTransport().stop(currentSessionId).catch(() => {})
+      } else {
+        void chatService.stopGeneration?.(currentSessionId).catch(() => {})
+      }
     }
 
     const sid = currentSessionId
@@ -909,7 +942,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     })
 
-    const controller = agentService.resumeStream(
+    // 云边双模阶段 0：HITL resume 走 Transport 抽象（当前恒为 HttpTransport，行为不变）
+    const controller = getAgentTransport().resume(
       { sessionId: _sessionId, approved, feedback, modifiedArgs },
       streamHandler
     )
@@ -922,8 +956,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!currentSessionId) return
     get().abortController?.abort()
     // 通知后端中止（best-effort；后端未就绪由 catch 忽略）
+    // 云边双模阶段 0：HITL abort 走 Transport 抽象（当前恒为 HttpTransport，行为不变）
     try {
-      await agentService.abortHitl(currentSessionId, 'user_cancel')
+      await getAgentTransport().abort(currentSessionId, 'user_cancel')
     } catch {
       // 忽略：本地收尾即可
     }

@@ -109,6 +109,22 @@ const mockApi: PioneeringApi = {
 
   health: {
     ping: () => Promise.resolve('pong')
+  },
+
+  // 浏览器模式无本地 Agent 运行时（主进程 IPC 不存在）：
+  // 提供安全桩——ipc 模式下调用会得到明确错误而非崩溃
+  agent: {
+    send: (_runId: string, _request: unknown) =>
+      Promise.resolve({ ok: false, error: '本地 Agent 运行时仅在 Electron 桌面端可用' }),
+    resume: (_runId: string, _request: unknown) =>
+      Promise.resolve({ ok: false, error: '本地 Agent 运行时仅在 Electron 桌面端可用' }),
+    abort: (_sessionId: string, _reason?: string) =>
+      Promise.resolve({ message: 'unsupported in browser', aborted: false }),
+    state: (threadId: string) =>
+      Promise.resolve({ session_id: threadId, pending: false }),
+    stop: (_sessionId: string) =>
+      Promise.resolve({ message: 'unsupported in browser', aborted: false }),
+    onEvent: (_callback: (envelope: never) => void) => noop
   }
 }
 

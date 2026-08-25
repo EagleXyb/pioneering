@@ -16,7 +16,7 @@ import {
   type OpenDialogOptions
 } from 'electron'
 import { readFile, writeFile, stat } from 'fs/promises'
-import { realpathSync } from 'fs'
+import { realpathSync, readFileSync } from 'fs'
 import os from 'node:os'
 import path from 'path'
 import Store from 'electron-store'
@@ -27,8 +27,22 @@ import type {
   FileReadResult,
   FileWriteRequest,
   NotificationOptions,
-  UserDataPath
+  UserDataPath,
+  AgentRunRequestPayload
 } from '../shared/ipc-channels'
+import {
+  ensureAgentEnv,
+  validateSendRequest,
+  validateResumeRequest,
+  startSend,
+  startResume,
+  stopRun,
+  abortPending,
+  getHitlState,
+  abortRunsForSender,
+  type AgentEventSender
+} from './agent-runtime'
+import type { AbortRequest, HitlStateResponse } from '../shared/types'
 
 // 使用 electron-store 持久化到磁盘，应用重启后 Token/配置不丢失。
 // 注意：electron-store 内部在读写时自动做 JSON 序列化/反序列化，
@@ -483,6 +497,107 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannel.PING, (event) => {
     if (!isTrustedSender(event)) return ''
     return 'pong'
+  })
+
+  // ---- Agent 本地运行时（云边双模阶段 1）----
+  // 语义逐条对齐 backend-ts routes/agent.ts 的 REST 端点；
+  // 流式事件不走 invoke 返回值，而由主进程经 AGENT_EVENT 主动推送。
+
+  // 首次使用前加载 Agent 运行环境变量（LLM key 等）。
+  // 候选路径：desktop 自身 .env 优先，开发态回退到 backend-ts 的 .env。
+  function ensureAgentRuntimeEnv(): void {
+    const appPath = app.getAppPath()
+    ensureAgentEnv(
+      [path.join(appPath, '.env'), path.resolve(appPath, '../backend-ts/.env')],
+      (p) => readFileSync(p, 'utf-8'),
+    )
+  }
+
+  // AGENT_SEND：启动一次 Agent 流式执行（对齐 POST /agent/completions stream 分支）
+  ipcMain.handle(
+    IpcChannel.AGENT_SEND,
+    (event, payload: AgentRunRequestPayload<unknown>): { ok: boolean; error?: string } => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Forbidden: untrusted sender' }
+      if (!payload || typeof payload !== 'object' || typeof payload.runId !== 'string') {
+        return { ok: false, error: 'Invalid payload' }
+      }
+      const request = validateSendRequest(payload.request)
+      if (!request) {
+        return { ok: false, error: 'Invalid request' }
+      }
+      ensureAgentRuntimeEnv()
+      return startSend(event.sender as AgentEventSender, payload.runId, request)
+    },
+  )
+
+  // AGENT_RESUME：恢复被 interrupt 暂停的 run（对齐 POST /agent/resume）
+  ipcMain.handle(
+    IpcChannel.AGENT_RESUME,
+    (event, payload: AgentRunRequestPayload<unknown>): { ok: boolean; error?: string } => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Forbidden: untrusted sender' }
+      if (!payload || typeof payload !== 'object' || typeof payload.runId !== 'string') {
+        return { ok: false, error: 'Invalid payload' }
+      }
+      const request = validateResumeRequest(payload.request)
+      if (!request) {
+        return { ok: false, error: 'Invalid request' }
+      }
+      ensureAgentRuntimeEnv()
+      return startResume(event.sender as AgentEventSender, payload.runId, request)
+    },
+  )
+
+  // AGENT_ABORT：中止/拒绝 HITL 待答复项（对齐 POST /agent/abort）
+  ipcMain.handle(
+    IpcChannel.AGENT_ABORT,
+    (
+      event,
+      payload: { sessionId: string; reason?: AbortRequest['reason'] },
+    ): Promise<{ message: string; aborted: boolean; error?: string }> => {
+      if (!isTrustedSender(event)) {
+        return Promise.resolve({ message: 'Forbidden: untrusted sender', aborted: false })
+      }
+      if (!payload || typeof payload.sessionId !== 'string' || !payload.sessionId) {
+        return Promise.resolve({ message: 'Invalid payload', aborted: false })
+      }
+      const reason = payload.reason ?? 'user_cancel'
+      return abortPending(payload.sessionId, reason)
+    },
+  )
+
+  // AGENT_STATE：查询待答复 HITL 状态（对齐 GET /agent/state/:threadId）
+  ipcMain.handle(
+    IpcChannel.AGENT_STATE,
+    (event, threadId: string): Promise<HitlStateResponse> => {
+      if (!isTrustedSender(event)) {
+        return Promise.resolve({ session_id: String(threadId ?? ''), pending: false })
+      }
+      if (typeof threadId !== 'string' || !threadId) {
+        return Promise.resolve({ session_id: '', pending: false })
+      }
+      return getHitlState(threadId)
+    },
+  )
+
+  // AGENT_STOP：停止该会话进行中的本地流（对齐 POST /agent/completions/stop）
+  ipcMain.handle(
+    IpcChannel.AGENT_STOP,
+    (event, sessionId: string): { message: string; aborted: boolean } => {
+      if (!isTrustedSender(event)) return { message: 'Forbidden: untrusted sender', aborted: false }
+      if (typeof sessionId !== 'string' || !sessionId) {
+        return { message: 'Invalid payload', aborted: false }
+      }
+      return stopRun(sessionId)
+    },
+  )
+
+  // 渲染端销毁（刷新/关闭）时中止其在途的本地 run，避免僵尸 LLM 调用。
+  // 复用下方既有的 browser-window-created 钩子注册时机之外单独监听，
+  // 保证与拖拽状态清理互不影响。
+  app.on('browser-window-created', (_event, win) => {
+    win.webContents.once('destroyed', () => {
+      abortRunsForSender(win.webContents as unknown as AgentEventSender)
+    })
   })
 
   // ---- 窗口拖拽 ----

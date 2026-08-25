@@ -56,6 +56,16 @@ export enum IpcChannel {
   STORE_SET = 'store:set',
   STORE_DELETE = 'store:delete',
 
+  // ---- Agent 本地运行时（云边双模阶段 1）----
+  // 渲染端 → 主进程：启动/恢复/中止/查询（语义对齐 backend-ts /agent/* REST 端点）
+  AGENT_SEND = 'agent:send',
+  AGENT_RESUME = 'agent:resume',
+  AGENT_ABORT = 'agent:abort',
+  AGENT_STATE = 'agent:state',
+  AGENT_STOP = 'agent:stop',
+  // 主进程 → 渲染端：AG-UI 事件推送（AgentEventEnvelope 载荷）
+  AGENT_EVENT = 'agent:event',
+
   // 健康检查
   PING = 'ping'
 }
@@ -111,3 +121,20 @@ export type UserDataPath = 'home' | 'appData' | 'userData' | 'desktop' | 'docume
 export interface StoreValue {
   [key: string]: unknown
 }
+
+// ---- Agent 本地运行时（云边双模阶段 1）----
+
+/** AGENT_SEND / AGENT_RESUME 的 invoke 载荷 */
+export interface AgentRunRequestPayload<TRequest> {
+  /** 渲染端生成的本次运行标识（事件经 AGENT_EVENT 按 runId 路由回投） */
+  runId: string
+  request: TRequest
+}
+
+/** AGENT_EVENT 推送载荷：runId 路由 + 单调递增 seq + AG-UI 事件对象 */
+export interface AgentEventEnvelope {
+  runId: string
+  seq: number
+  event: Record<string, unknown>
+}
+

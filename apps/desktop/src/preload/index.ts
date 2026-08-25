@@ -4,8 +4,10 @@ import type {
   FileDialogOptions,
   FileWriteRequest,
   NotificationOptions,
-  UserDataPath
+  UserDataPath,
+  AgentEventEnvelope
 } from '../shared/ipc-channels'
+import type { SendMessageRequest, ResumeRequest, AbortRequest, HitlStateResponse } from '../shared/types'
 
 const windowApi = {
   minimize: () => ipcRenderer.invoke(IpcChannel.WINDOW_MINIMIZE),
@@ -89,6 +91,39 @@ const healthApi = {
   ping: () => ipcRenderer.invoke(IpcChannel.PING)
 }
 
+// ---- Agent 本地运行时（云边双模阶段 1）----
+// 流式事件不走 invoke 返回值：主进程经 AGENT_EVENT 主动推送，
+// 渲染端通过 onEvent 按 runId 过滤消费。
+const agentApi = {
+  /** 启动一次 Agent 流式执行（对齐 POST /agent/completions） */
+  send: (runId: string, request: SendMessageRequest): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IpcChannel.AGENT_SEND, { runId, request }),
+  /** 恢复被 interrupt 暂停的 run（对齐 POST /agent/resume） */
+  resume: (runId: string, request: ResumeRequest): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IpcChannel.AGENT_RESUME, { runId, request }),
+  /** 中止/拒绝 HITL 待答复项（对齐 POST /agent/abort） */
+  abort: (
+    sessionId: string,
+    reason?: AbortRequest['reason']
+  ): Promise<{ message: string; aborted: boolean; error?: string }> =>
+    ipcRenderer.invoke(IpcChannel.AGENT_ABORT, { sessionId, reason }),
+  /** 查询待答复 HITL 状态（对齐 GET /agent/state/:threadId） */
+  state: (threadId: string): Promise<HitlStateResponse> =>
+    ipcRenderer.invoke(IpcChannel.AGENT_STATE, threadId),
+  /** 停止该会话进行中的本地流（对齐 POST /agent/completions/stop） */
+  stop: (sessionId: string): Promise<{ message: string; aborted: boolean }> =>
+    ipcRenderer.invoke(IpcChannel.AGENT_STOP, sessionId),
+  /** 订阅 AG-UI 事件流（按 runId 过滤由调用方负责）；返回取消订阅函数 */
+  onEvent: (callback: (envelope: AgentEventEnvelope) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, envelope: AgentEventEnvelope) =>
+      callback(envelope)
+    ipcRenderer.on(IpcChannel.AGENT_EVENT, handler)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.AGENT_EVENT, handler)
+    }
+  }
+}
+
 const api = {
   window: windowApi,
   app: appApi,
@@ -97,7 +132,8 @@ const api = {
   clipboard: clipboardApi,
   shell: shellApi,
   store: storeApi,
-  health: healthApi
+  health: healthApi,
+  agent: agentApi
 }
 
 // H5: 不再暴露整包 @electron-toolkit/preload 的 electronAPI（内含 ipcRenderer，

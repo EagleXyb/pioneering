@@ -7,7 +7,7 @@
 
 import { create } from 'zustand'
 import type { UserQuestionRequestPayload } from '@shared/types'
-import { agentService } from '../services/api/agent'
+import { getAgentTransport } from '../services/transport'
 import { useChatStore } from './chatStore'
 
 /**
@@ -115,7 +115,8 @@ export const useHitlStore = create<HitlState>((set, get) => ({
 
   recover: async (threadId) => {
     try {
-      const st = await agentService.getHitlState(threadId)
+      // 云边双模阶段 0：HITL 状态查询走 Transport 抽象（当前恒为 HttpTransport，行为不变）
+      const st = await getAgentTransport().getState(threadId)
       if (!st || !st.pending) return
       // 后端结构化数据字段可能与前端枚举不完全一致，做一次防御性归一
       const toolCalls = (st.pending_tool_calls ?? []).map((tc) => ({

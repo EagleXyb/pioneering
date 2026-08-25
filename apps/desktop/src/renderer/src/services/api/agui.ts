@@ -94,6 +94,235 @@ function normalizeToolStatus(s?: string): 'completed' | 'error' | undefined {
   return undefined
 }
 
+/** AG-UI 事件对象的最小结构（SSE 解析与 IPC 推送共用） */
+interface AguiEventObject {
+  type?: string
+  threadId?: string
+  messageId?: string
+  runId?: string
+  delta?: string
+  toolCallName?: string
+  toolCallId?: string
+  toolCallStatus?: string
+  errorMessage?: string
+  content?: string
+  model?: string
+  tokenCount?: number
+  message?: string
+  // ARTIFACT_CREATED
+  artifactId?: string
+  name?: string
+  path?: string
+  absolutePath?: string
+  size?: number
+  format?: string
+  // STATE_DELTA
+  phase?: string
+  plan?: unknown[]
+  step_update?: Record<string, unknown>
+}
+
+/** 终态事件：此后当前 run 不会再有后续事件（IPC 订阅据此自动退订） */
+const TERMINAL_AGUI_EVENTS = new Set([
+  'RUN_FINISHED',
+  'RUN_ERROR',
+  'RUN_PAUSED',
+  'HITL_ABORTED'
+])
+
+/**
+ * AG-UI 事件分发器（云边双模阶段 1 抽取）。
+ *
+ * 把「单个 AG-UI 事件对象 → AguiStreamCallbacks 回调」的映射从 SSE
+ * 解析循环中剥离：HttpTransport（SSE 文本流逐行 JSON.parse 后调用）
+ * 与 IpcTransport（主进程推送的事件对象直接调用）共用同一份分发
+ * 逻辑，保证云边事件语义完全同源。
+ *
+ * @returns dispatch(event) —— 分发单个事件；返回 true 表示该事件为
+ *          终态（RUN_FINISHED / RUN_ERROR / RUN_PAUSED / HITL_ABORTED）
+ */
+export function createAguiEventDispatcher(cb: AguiStreamCallbacks): {
+  dispatch: (event: AguiEventObject) => boolean
+} {
+  let capturedMessageId = ''
+  let capturedSessionId = ''
+
+  // 工具调用按 id 追踪，便于在 RESULT 事件中回填
+  const toolCalls = new Map<string, { id: string; name: string }>()
+  // 工具参数 JSON 字符串缓冲（TOOL_CALL_ARGS 可能分片到达）
+  const toolArgsBuffer = new Map<string, string>()
+
+  const dispatch = (event: AguiEventObject): boolean => {
+    switch (event.type) {
+      case 'RUN_STARTED':
+        capturedSessionId = event.threadId || ''
+        break
+
+      case 'THINKING_START':
+        // 通知上层新一轮思考会话开始（用于在已有多段叙述时插入轮次分隔）
+        cb.onThinkingStart?.()
+        break
+
+      case 'THINKING_TEXT_MESSAGE_START':
+        // 准备阶段，真正的增量在 THINKING_TEXT_MESSAGE_CONTENT
+        break
+
+      case 'THINKING_TEXT_MESSAGE_CONTENT':
+        // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
+        // 否则按 delta 全部丢弃，造成思考过程整段丢失。
+        {
+          const thinking = event.delta ?? event.content
+          if (thinking) cb.onThinking?.(thinking)
+        }
+        break
+
+      case 'THINKING_TEXT_MESSAGE_END':
+      case 'THINKING_END':
+        break
+
+      case 'TEXT_MESSAGE_START':
+        capturedMessageId = event.messageId || ''
+        break
+
+      case 'TEXT_MESSAGE_CONTENT':
+        // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
+        // 否则按 delta 全部丢弃，造成正文整段丢失。
+        {
+          const text = event.delta ?? event.content
+          if (text) cb.onChunk(text)
+        }
+        break
+
+      case 'TEXT_MESSAGE_END':
+        break
+
+      case 'TOOL_CALL_START':
+        if (event.toolCallId) {
+          const tool = { id: event.toolCallId, name: event.toolCallName || 'tool' }
+          toolCalls.set(tool.id, tool)
+          // 初始化参数缓冲，等待 TOOL_CALL_ARGS 补全
+          toolArgsBuffer.set(tool.id, '')
+          cb.onToolCallStart?.(tool)
+        }
+        break
+
+      // P3: 工具参数增量事件（AG-UI 标准），累积并解析后回填
+      case 'TOOL_CALL_ARGS':
+        if (event.toolCallId) {
+          const prev = toolArgsBuffer.get(event.toolCallId) || ''
+          const next = prev + (event.delta ?? '')
+          toolArgsBuffer.set(event.toolCallId, next)
+          const parsed = tryParseToolArgs(next)
+          if (parsed) cb.onToolCallArgs?.({ id: event.toolCallId, arguments: parsed })
+        }
+        break
+
+      // P4: 解析工具执行状态与错误信息，区分成功/失败
+      case 'TOOL_CALL_RESULT':
+        if (event.toolCallId) {
+          const known = toolCalls.get(event.toolCallId)
+          // 兜底：若此前未收到 TOOL_CALL_ARGS，这里用缓冲再做一次解析
+          let args: Record<string, unknown> | undefined
+          const buf = toolArgsBuffer.get(event.toolCallId)
+          if (buf) {
+            const parsed = tryParseToolArgs(buf)
+            if (parsed) args = parsed
+          }
+          cb.onToolCallResult?.({
+            id: event.toolCallId,
+            name: event.toolCallName || known?.name || 'tool',
+            result: event.content || '',
+            status: normalizeToolStatus(event.toolCallStatus),
+            errorMessage: event.errorMessage,
+            arguments: args
+          })
+        }
+        break
+
+      case 'RUN_FINISHED':
+        cb.onDone({
+          messageId: capturedMessageId,
+          sessionId: capturedSessionId,
+          model: event.model,
+          tokenCount: event.tokenCount
+        })
+        break
+
+      case 'ARTIFACT_CREATED':
+        if (event.artifactId && event.name) {
+          cb.onArtifactCreated?.({
+            artifactId: event.artifactId,
+            name: event.name,
+            path: event.path || '',
+            absolutePath: event.absolutePath,
+            size: event.size ?? 0,
+            format: event.format || 'md',
+            type: 'document',
+            operation: (event as Record<string, unknown>).operation as string || 'create',
+            summary: (event as Record<string, unknown>).summary as string | undefined,
+            title: (event as Record<string, unknown>).title as string | undefined,
+          })
+        }
+        break
+
+      case 'STATE_DELTA':
+        // P1-9: Plan-and-Execute 步骤事件，由 stream-handler 转为 plan-step TraceNode
+        if (event.phase === 'plan' && Array.isArray(event.plan)) {
+          cb.onStateDelta?.({
+            phase: 'plan',
+            plan: event.plan as Array<Record<string, unknown>>,
+          })
+        } else if (event.step_update) {
+          cb.onStateDelta?.({
+            phase: event.phase || 'execute',
+            stepUpdate: event.step_update,
+          })
+        }
+        break
+
+      case 'USER_QUESTION_REQUEST': {
+        // HITL：携带待答复的暂停项（kind/tool_calls/question/options）
+        cb.onHumanInputRequest?.({
+          kind: (event as Record<string, unknown>).kind as UserQuestionRequestPayload['kind'] ?? 'tool_confirm',
+          session_id: (event as Record<string, unknown>).session_id as string ?? '',
+          run_id: (event as Record<string, unknown>).run_id as string | undefined,
+          message: event.message,
+          tool_calls: (event as Record<string, unknown>).tool_calls as UserQuestionRequestPayload['tool_calls'],
+          question: (event as Record<string, unknown>).question as string | undefined,
+          options: (event as Record<string, unknown>).options as UserQuestionRequestPayload['options'],
+        })
+        break
+      }
+
+      case 'RUN_PAUSED': {
+        // HITL：run 被 interrupt 暂停——不触发 onDone 完成语义，等待用户答复
+        cb.onRunPaused?.({
+          threadId: (event as Record<string, unknown>).threadId as string ?? capturedSessionId,
+          runId: (event as Record<string, unknown>).runId as string ?? '',
+        })
+        break
+      }
+
+      case 'HITL_ABORTED': {
+        // HITL：超时/用户取消后收尾
+        cb.onHitlAborted?.({
+          threadId: (event as Record<string, unknown>).threadId as string ?? capturedSessionId,
+          runId: (event as Record<string, unknown>).runId as string ?? '',
+          reason: (event as Record<string, unknown>).reason as string ?? 'user_cancel',
+        })
+        break
+      }
+
+      case 'RUN_ERROR':
+        cb.onError(event.message || 'Unknown error')
+        break
+    }
+    return TERMINAL_AGUI_EVENTS.has(event.type ?? '')
+  }
+
+  return { dispatch }
+}
+
 /**
  * 向后端发起 AG-UI 流式请求并解析 SSE。
  * 返回的 AbortController 由调用方持有，用于停止生成。
@@ -105,13 +334,7 @@ export function streamAgui(
 ): AbortController {
   const controller = new AbortController()
 
-  let capturedMessageId = ''
-  let capturedSessionId = ''
-
-  // 工具调用按 id 追踪，便于在 RESULT 事件中回填
-  const toolCalls = new Map<string, { id: string; name: string }>()
-  // 工具参数 JSON 字符串缓冲（TOOL_CALL_ARGS 可能分片到达）
-  const toolArgsBuffer = new Map<string, string>()
+  const { dispatch } = createAguiEventDispatcher(cb)
 
   apiClient
     .stream(url, body, { signal: controller.signal })
@@ -147,197 +370,7 @@ export function streamAgui(
           if (jsonStr === '[DONE]') continue
 
           try {
-            const event = JSON.parse(jsonStr) as {
-              type?: string
-              threadId?: string
-              messageId?: string
-              runId?: string
-              delta?: string
-              toolCallName?: string
-              toolCallId?: string
-              toolCallStatus?: string
-              errorMessage?: string
-              content?: string
-              model?: string
-              tokenCount?: number
-              message?: string
-              // ARTIFACT_CREATED
-              artifactId?: string
-              name?: string
-              path?: string
-              absolutePath?: string
-              size?: number
-              format?: string
-              // STATE_DELTA
-              phase?: string
-              plan?: unknown[]
-              step_update?: Record<string, unknown>
-            }
-
-            switch (event.type) {
-              case 'RUN_STARTED':
-                capturedSessionId = event.threadId || ''
-                break
-
-              case 'THINKING_START':
-                // 通知上层新一轮思考会话开始（用于在已有多段叙述时插入轮次分隔）
-                cb.onThinkingStart?.()
-                break
-
-              case 'THINKING_TEXT_MESSAGE_START':
-                // 准备阶段，真正的增量在 THINKING_TEXT_MESSAGE_CONTENT
-                break
-
-              case 'THINKING_TEXT_MESSAGE_CONTENT':
-                // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
-                // 否则按 delta 全部丢弃，造成思考过程整段丢失。
-                {
-                  const thinking = event.delta ?? event.content
-                  if (thinking) cb.onThinking?.(thinking)
-                }
-                break
-
-              case 'THINKING_TEXT_MESSAGE_END':
-              case 'THINKING_END':
-                break
-
-              case 'TEXT_MESSAGE_START':
-                capturedMessageId = event.messageId || ''
-                break
-
-              case 'TEXT_MESSAGE_CONTENT':
-                // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
-                // 否则按 delta 全部丢弃，造成正文整段丢失。
-                {
-                  const text = event.delta ?? event.content
-                  if (text) cb.onChunk(text)
-                }
-                break
-
-              case 'TEXT_MESSAGE_END':
-                break
-
-              case 'TOOL_CALL_START':
-                if (event.toolCallId) {
-                  const tool = { id: event.toolCallId, name: event.toolCallName || 'tool' }
-                  toolCalls.set(tool.id, tool)
-                  // 初始化参数缓冲，等待 TOOL_CALL_ARGS 补全
-                  toolArgsBuffer.set(tool.id, '')
-                  cb.onToolCallStart?.(tool)
-                }
-                break
-
-              // P3: 工具参数增量事件（AG-UI 标准），累积并解析后回填
-              case 'TOOL_CALL_ARGS':
-                if (event.toolCallId) {
-                  const prev = toolArgsBuffer.get(event.toolCallId) || ''
-                  const next = prev + (event.delta ?? '')
-                  toolArgsBuffer.set(event.toolCallId, next)
-                  const parsed = tryParseToolArgs(next)
-                  if (parsed) cb.onToolCallArgs?.({ id: event.toolCallId, arguments: parsed })
-                }
-                break
-
-              // P4: 解析工具执行状态与错误信息，区分成功/失败
-              case 'TOOL_CALL_RESULT':
-                if (event.toolCallId) {
-                  const known = toolCalls.get(event.toolCallId)
-                  // 兜底：若此前未收到 TOOL_CALL_ARGS，这里用缓冲再做一次解析
-                  let args: Record<string, unknown> | undefined
-                  const buf = toolArgsBuffer.get(event.toolCallId)
-                  if (buf) {
-                    const parsed = tryParseToolArgs(buf)
-                    if (parsed) args = parsed
-                  }
-                  cb.onToolCallResult?.({
-                    id: event.toolCallId,
-                    name: event.toolCallName || known?.name || 'tool',
-                    result: event.content || '',
-                    status: normalizeToolStatus(event.toolCallStatus),
-                    errorMessage: event.errorMessage,
-                    arguments: args
-                  })
-                }
-                break
-
-              case 'RUN_FINISHED':
-                cb.onDone({
-                  messageId: capturedMessageId,
-                  sessionId: capturedSessionId,
-                  model: event.model,
-                  tokenCount: event.tokenCount
-                })
-                break
-
-              case 'ARTIFACT_CREATED':
-                if (event.artifactId && event.name) {
-                  cb.onArtifactCreated?.({
-                    artifactId: event.artifactId,
-                    name: event.name,
-                    path: event.path || '',
-                    absolutePath: event.absolutePath,
-                    size: event.size ?? 0,
-                    format: event.format || 'md',
-                    type: 'document',
-                    operation: (event as Record<string, unknown>).operation as string || 'create',
-                    summary: (event as Record<string, unknown>).summary as string | undefined,
-                    title: (event as Record<string, unknown>).title as string | undefined,
-                  })
-                }
-                break
-
-              case 'STATE_DELTA':
-                // P1-9: Plan-and-Execute 步骤事件，由 stream-handler 转为 plan-step TraceNode
-                if (event.phase === 'plan' && Array.isArray(event.plan)) {
-                  cb.onStateDelta?.({
-                    phase: 'plan',
-                    plan: event.plan as Array<Record<string, unknown>>,
-                  })
-                } else if (event.step_update) {
-                  cb.onStateDelta?.({
-                    phase: event.phase || 'execute',
-                    stepUpdate: event.step_update,
-                  })
-                }
-                break
-
-              case 'USER_QUESTION_REQUEST': {
-                // HITL：携带待答复的暂停项（kind/tool_calls/question/options）
-                cb.onHumanInputRequest?.({
-                  kind: (event as Record<string, unknown>).kind as UserQuestionRequestPayload['kind'] ?? 'tool_confirm',
-                  session_id: (event as Record<string, unknown>).session_id as string ?? '',
-                  run_id: (event as Record<string, unknown>).run_id as string | undefined,
-                  message: event.message,
-                  tool_calls: (event as Record<string, unknown>).tool_calls as UserQuestionRequestPayload['tool_calls'],
-                  question: (event as Record<string, unknown>).question as string | undefined,
-                  options: (event as Record<string, unknown>).options as UserQuestionRequestPayload['options'],
-                })
-                break
-              }
-
-              case 'RUN_PAUSED': {
-                // HITL：run 被 interrupt 暂停——不触发 onDone 完成语义，等待用户答复
-                cb.onRunPaused?.({
-                  threadId: (event as Record<string, unknown>).threadId as string ?? capturedSessionId,
-                  runId: (event as Record<string, unknown>).runId as string ?? '',
-                })
-                break
-              }
-
-              case 'HITL_ABORTED': {
-                // HITL：超时/用户取消后收尾
-                cb.onHitlAborted?.({
-                  threadId: (event as Record<string, unknown>).threadId as string ?? capturedSessionId,
-                  runId: (event as Record<string, unknown>).runId as string ?? '',
-                  reason: (event as Record<string, unknown>).reason as string ?? 'user_cancel',
-                })
-                break
-              }
-
-              case 'RUN_ERROR':
-                cb.onError(event.message || 'Unknown error')
-                break
-            }
+            dispatch(JSON.parse(jsonStr) as AguiEventObject)
           } catch {
             // M3: 解析失败不再静默吞掉。至少告警并打印原始行，
             // 便于发现后端契约变更（如字段名/格式调整）导致的数据丢失。

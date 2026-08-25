@@ -1,0 +1,119 @@
+<svg viewBox="0 0 720 536" width="720" height="536" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="现状 HTTP 分离架构与目标 IPC 内嵌架构对比图">
+  <style>
+    :root {
+      --surface: #F7F7F8;
+      --surface-muted: #EFEFF2;
+      --text: #171717;
+      --text-muted: #52525B;
+      --border: rgba(23, 23, 23, 0.12);
+      --brand: #4B3FE3;
+      --brand-soft: #F2F7FF;
+      --brand-text: #1A1759;
+      --font-sans: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .pt { fill: var(--text); font: 500 16px/24px var(--font-sans); }
+    .th { fill: var(--text); font: 500 14px/20px var(--font-sans); }
+    .ts { fill: var(--text-muted); font: 400 12px/18px var(--font-sans); }
+    g.c-neutral > rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.2; }
+    g.c-brand > rect { fill: var(--brand-soft); stroke: var(--brand); stroke-width: 1.5; }
+    .c-brand > .th { fill: var(--brand-text); }
+    .c-brand > .ts { fill: var(--brand); }
+    g.c-ext > rect { fill: var(--surface-muted); stroke: var(--text-muted); stroke-width: 1.1; stroke-dasharray: 5 4; }
+    .c-ext > .th { fill: var(--text-muted); }
+    .c-ext > .ts { fill: var(--text-muted); }
+    .arr { stroke: var(--text-muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .arrb { stroke: var(--brand); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .capsule { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+    .legend-b { fill: var(--brand-soft); stroke: var(--brand); stroke-width: 1.2; }
+    .legend-s { fill: var(--surface); stroke: var(--border); stroke-width: 1.2; }
+    .legend-e { fill: var(--surface-muted); stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+  </style>
+  <defs>
+    <marker id="mN" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1 1 L7 4 L1 7 Z" fill="#52525B"/>
+    </marker>
+    <marker id="mB" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1 1 L7 4 L1 7 Z" fill="#4B3FE3"/>
+    </marker>
+  </defs>
+
+  <text class="pt" x="40" y="52">现状 · HTTP 分离架构</text>
+
+  <g class="c-neutral">
+    <rect x="40" y="78" width="150" height="76" rx="8"/>
+    <text class="th" x="115" y="106" text-anchor="middle">渲染进程</text>
+    <text class="ts" x="115" y="128" text-anchor="middle">React · stores</text>
+    <text class="ts" x="115" y="146" text-anchor="middle">SSE 流式解析</text>
+  </g>
+  <g class="c-neutral">
+    <rect x="280" y="78" width="176" height="76" rx="8"/>
+    <text class="th" x="368" y="106" text-anchor="middle">backend-ts</text>
+    <text class="ts" x="368" y="128" text-anchor="middle">Fastify · auth/chat</text>
+    <text class="ts" x="368" y="146" text-anchor="middle">agent-bridge · Prisma</text>
+  </g>
+  <g class="c-neutral">
+    <rect x="536" y="78" width="144" height="76" rx="8"/>
+    <text class="th" x="608" y="106" text-anchor="middle">modu-agent</text>
+    <text class="ts" x="608" y="128" text-anchor="middle">LangGraph 图</text>
+    <text class="ts" x="608" y="146" text-anchor="middle">runner · HITL</text>
+  </g>
+
+  <rect class="capsule" x="204" y="90" width="62" height="20" rx="10"/>
+  <text class="ts" x="235" y="104" text-anchor="middle">HTTP/SSE</text>
+  <path class="arr" d="M190,116 L276,116" marker-end="url(#mN)"/>
+
+  <rect class="capsule" x="460" y="90" width="72" height="20" rx="10"/>
+  <text class="ts" x="496" y="104" text-anchor="middle">进程内调用</text>
+  <path class="arr" d="M456,116 L532,116" marker-end="url(#mN)"/>
+
+  <g class="c-ext">
+    <rect x="536" y="192" width="144" height="56" rx="8"/>
+    <text class="th" x="608" y="216" text-anchor="middle">外部服务</text>
+    <text class="ts" x="608" y="236" text-anchor="middle">LLM · MCP · 搜索</text>
+  </g>
+  <path class="arr" d="M608,154 L608,188" marker-end="url(#mN)"/>
+  <rect class="capsule" x="618" y="164" width="52" height="18" rx="9"/>
+  <text class="ts" x="644" y="177" text-anchor="middle">HTTPS</text>
+
+  <text class="pt" x="40" y="304">目标 · Agent 内嵌主进程，IPC 通信</text>
+  <text class="ts" x="48" y="322">Electron 应用（单安装包）</text>
+  <rect x="32" y="328" width="482" height="124" rx="12" fill="none" stroke="#52525B" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <g class="c-neutral">
+    <rect x="48" y="344" width="160" height="92" rx="8"/>
+    <text class="th" x="128" y="374" text-anchor="middle">渲染进程</text>
+    <text class="ts" x="128" y="396" text-anchor="middle">React · stores</text>
+    <text class="ts" x="128" y="416" text-anchor="middle">IpcTransport 适配</text>
+  </g>
+  <g class="c-brand">
+    <rect x="280" y="344" width="194" height="92" rx="8"/>
+    <text class="th" x="377" y="374" text-anchor="middle">Electron 主进程</text>
+    <text class="ts" x="377" y="396" text-anchor="middle">modu-agent 直跑 · HITL</text>
+    <text class="ts" x="377" y="416" text-anchor="middle">IPC handlers · 持久化</text>
+  </g>
+
+  <rect class="capsule" x="214" y="348" width="60" height="18" rx="9"/>
+  <text class="ts" x="244" y="361" text-anchor="middle">invoke</text>
+  <path class="arrb" d="M208,372 L276,372" marker-end="url(#mB)"/>
+
+  <rect class="capsule" x="212" y="424" width="64" height="18" rx="9"/>
+  <text class="ts" x="244" y="437" text-anchor="middle">AGUI 事件</text>
+  <path class="arrb" d="M280,412 L212,412" marker-end="url(#mB)"/>
+
+  <g class="c-ext">
+    <rect x="576" y="352" width="104" height="76" rx="8"/>
+    <text class="th" x="628" y="380" text-anchor="middle">外部服务</text>
+    <text class="ts" x="628" y="402" text-anchor="middle">LLM · MCP</text>
+    <text class="ts" x="628" y="420" text-anchor="middle">搜索</text>
+  </g>
+  <path class="arr" d="M474,390 L572,390" marker-end="url(#mN)"/>
+  <rect class="capsule" x="518" y="366" width="54" height="18" rx="9"/>
+  <text class="ts" x="545" y="379" text-anchor="middle">HTTPS</text>
+
+  <rect class="legend-b" x="40" y="480" width="14" height="14" rx="3"/>
+  <text class="ts" x="60" y="492">迁移核心（主进程内嵌）</text>
+  <rect class="legend-s" x="240" y="480" width="14" height="14" rx="3"/>
+  <text class="ts" x="260" y="492">保留 / 迁移组件</text>
+  <rect class="legend-e" x="420" y="480" width="14" height="14" rx="3"/>
+  <text class="ts" x="440" y="492">外部服务（HTTPS）</text>
+</svg>

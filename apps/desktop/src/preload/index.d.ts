@@ -3,7 +3,18 @@
 //
 // 此文件为全局类型声明（无顶层 import/export），所有 interface 均为全局 ambient 类型，
 // 供渲染进程（含浏览器模式 mock）直接引用，无需 import。
-import type { FileDialogOptions, FileWriteRequest, UserDataPath } from '../shared/ipc-channels'
+import type {
+  FileDialogOptions,
+  FileWriteRequest,
+  UserDataPath,
+  AgentEventEnvelope
+} from '../shared/ipc-channels'
+import type {
+  SendMessageRequest,
+  ResumeRequest,
+  AbortRequest,
+  HitlStateResponse
+} from '../shared/types'
 
 declare global {
   interface MinimalElectronAPI {
@@ -70,6 +81,19 @@ declare global {
     ping: () => Promise<string>
   }
 
+  /** Agent 本地运行时（云边双模阶段 1）：与 preload agentApi 一一对应 */
+  interface AgentApi {
+    send: (runId: string, request: SendMessageRequest) => Promise<{ ok: boolean; error?: string }>
+    resume: (runId: string, request: ResumeRequest) => Promise<{ ok: boolean; error?: string }>
+    abort: (
+      sessionId: string,
+      reason?: AbortRequest['reason']
+    ) => Promise<{ message: string; aborted: boolean; error?: string }>
+    state: (threadId: string) => Promise<HitlStateResponse>
+    stop: (sessionId: string) => Promise<{ message: string; aborted: boolean }>
+    onEvent: (callback: (envelope: AgentEventEnvelope) => void) => () => void
+  }
+
   interface PioneeringApi {
     window: WindowApi
     app: AppApi
@@ -79,6 +103,7 @@ declare global {
     shell: ShellApi
     store: StoreApi
     health: HealthApi
+    agent: AgentApi
   }
 
   interface Window {

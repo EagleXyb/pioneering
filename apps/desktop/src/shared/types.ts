@@ -45,6 +45,14 @@ export interface ChatSession {
   workspaceId?: string
   /** 会话分享链接（后端能力就绪后下发） */
   shareUrl?: string
+  /**
+   * 云边双模（阶段 0 预留）：会话归属的运行时。
+   * 'local' = 本地 Electron 主进程内嵌 agent；'cloud' = 云端 backend-ts。
+   * 未定义时默认 'cloud'（存量会话与当前 HTTP 模式）。
+   * 注意：仅前端类型层预留，schema.prisma 的表结构由 Python 侧 init_db() 维护，
+   * 落库需与后端协同后再加列。
+   */
+  runtime?: 'local' | 'cloud'
 }
 
 export interface CreateSessionRequest {
@@ -100,6 +108,12 @@ export interface SendMessageRequest {
   sessionId?: string
   message: string
   model?: string
+  /**
+   * 本地模式（云边双模阶段 1）携带的多轮上下文：
+   * 主进程内嵌 modu-agent 无 Prisma 会话状态，由渲染端把
+   * 已有消息压缩为 role/content 对传入。云端端点忽略该字段。
+   */
+  history?: Array<{ role: string; content: string }>
   systemPrompt?: string
   temperature?: number
   maxTokens?: number
