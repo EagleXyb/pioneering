@@ -113,7 +113,15 @@ export function build_chat_model(
 
   return new ChatOpenAI({
     apiKey,
-    configuration: { baseURL: baseUrl },
+    configuration: {
+      baseURL: baseUrl,
+      // P0 修复：覆盖 openai SDK 默认的 node-fetch。
+      // node-fetch 对 chunked 且无 content-length 的 SSE 响应，在服务端
+      // 发完 [DONE] 正常关闭连接时会误报 "Premature close"（ERR_STREAM_PREMATURE_CLOSE，
+      // 见 node-fetch fixResponseChunkedTransferBadEnding）。改用 Node 22 内置
+      // undici fetch（能正确处理该场景），规避 DeepSeek 流式调用失败。
+      fetch: globalThis.fetch as typeof fetch,
+    },
     model: effectiveModel,
     temperature: effectiveTemp,
     maxTokens: effectiveMaxTokens,

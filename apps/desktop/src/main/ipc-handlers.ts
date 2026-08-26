@@ -589,6 +589,7 @@ export function registerIpcHandlers(): void {
         return Promise.resolve({ message: 'Invalid payload', aborted: false })
       }
       const reason = payload.reason ?? 'user_cancel'
+      ensureAgentRuntimeEnv()
       return abortPending(payload.sessionId, reason)
     },
   )
@@ -603,6 +604,7 @@ export function registerIpcHandlers(): void {
       if (typeof threadId !== 'string' || !threadId) {
         return Promise.resolve({ session_id: '', pending: false })
       }
+      ensureAgentRuntimeEnv()
       return getHitlState(threadId)
     },
   )

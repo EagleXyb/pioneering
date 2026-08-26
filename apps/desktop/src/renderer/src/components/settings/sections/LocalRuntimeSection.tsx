@@ -7,9 +7,15 @@
 //   preload 不可用（纯浏览器 dev）时展示降级提示。
 
 import { useCallback, useEffect, useState } from 'react'
-import { HardDrive, Lock, ShieldCheck, RefreshCw } from 'lucide-react'
+import { HardDrive, Lock, ShieldCheck, RefreshCw, Cloud, Cpu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import {
+  getAgentTransportMode,
+  setAgentTransportMode,
+  type AgentTransportMode
+} from '@/services/transport'
+import { isLocalChatAvailable } from '@/services/localChat'
 import type {
   SecureKeyDescriptor,
   SecureKeyInfo,
@@ -30,6 +36,16 @@ export function LocalRuntimeSection() {
   const [loading, setLoading] = useState(true)
   const [unavailable, setUnavailable] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  // 云边双模阶段 2：全局运行模式（云端 http / 本地 ipc），切换持久化到 localStorage
+  const [mode, setMode] = useState<AgentTransportMode>(() => getAgentTransportMode())
+  const localAvailable = isLocalChatAvailable()
+
+  const handleModeChange = (next: AgentTransportMode) => {
+    if (next === mode) return
+    setAgentTransportMode(next)
+    setMode(next)
+  }
 
   const isAvailable =
     typeof window !== 'undefined' && !!window.api?.secureKeys
@@ -114,6 +130,56 @@ export function LocalRuntimeSection() {
   return (
     <div className="space-y-5">
       <SectionHeader />
+
+      {/* 运行模式切换：云端 / 本地 */}
+      <div className="space-y-2">
+        <p className="text-sm font-medium">运行模式</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => handleModeChange('http')}
+            aria-pressed={mode === 'http'}
+            className={cn(
+              'flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors',
+              mode === 'http'
+                ? 'border-primary bg-primary/5'
+                : 'border-input hover:bg-muted/40'
+            )}
+          >
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <Cloud className="size-4" />
+              云端
+            </span>
+            <span className="text-xs text-muted-foreground">
+              会话走 HTTP 请求后端 Agent 服务
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeChange('ipc')}
+            aria-pressed={mode === 'ipc'}
+            disabled={!localAvailable}
+            className={cn(
+              'flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors',
+              mode === 'ipc'
+                ? 'border-primary bg-primary/5'
+                : 'border-input hover:bg-muted/40',
+              !localAvailable && 'opacity-60 cursor-not-allowed'
+            )}
+          >
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <Cpu className="size-4" />
+              本地
+            </span>
+            <span className="text-xs text-muted-foreground">
+              会话走 IPC 主进程内嵌 Agent，断网可用
+            </span>
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          切换后对<strong>新创建</strong>的会话生效；现有会话保持原归属。
+        </p>
+      </div>
 
       <p className="text-sm text-muted-foreground leading-relaxed">
         本地运行时的 LLM 与搜索密钥经系统密钥库（Windows DPAPI / macOS
