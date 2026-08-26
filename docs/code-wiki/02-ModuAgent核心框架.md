@@ -1,377 +1,332 @@
 # ModuAgent 核心框架
 
-ModuAgent 是 Pioneering 项目的核心 AI Agent 框架，位于 [apps/backend/ModuAgent](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent)。
+> **修订说明（2026-08-26，依据 `packages/modu-agent` 全量代码核对）**：
+>
+> 1. **模块位置整体迁移**：ModuAgent 已从旧 Python 版（`apps/backend/ModuAgent`）重写为 TypeScript 包 **`@pioneering/modu-agent` v0.1.0**，位于 [packages/modu-agent](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent)。ESM 包（`"type": "module"`），入口 `dist/index.js`，二级导出 `./core`、`./graph`、`./mcp`、`./skills`（依据：[package.json](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/package.json#L1-L13)）。旧 Python 版描述已全部移除。
+> 2. **依赖关系**：硬依赖仅 5 项——`@langchain/core ^0.3`、`@langchain/langgraph ^0.2`、`@langchain/openai ^0.3`、`@modelcontextprotocol/sdk ^1.0`、`zod ^3.23`；OTel / better-sqlite3 / chromadb / prom-client 为可选依赖，缺失时自动降级（依据：[package.json](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/package.json#L18-L38)）。构建 `tsc -p tsconfig.build.json`，测试 `vitest run`（依据：[package.json](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/package.json#L14-L17)）。
+> 3. **高级能力状态更新**：原文档"Plan-and-Execute ❌ / Skills 高级特性 ❌ / MCP 完全不具备"的结论全部过时——三者均已在 TS 版实现（分别见 P4 / P1 / MCP 集成章节），默认以配置开关关闭。
+> 4. **新增章节**：配置层（config/）、图适配器层（graph/adapters/）、HITL 审批链路、已知限制与未实现项。
 
 ## 目录结构
 
 ```
-ModuAgent/
-├── components/              # 组件实现
-│   ├── action/             # 行动层（工具、执行器）
-│   ├── memory/             # 记忆层（缓存、向量存储）
-│   ├── perception/         # 感知层（文本/图像/音频/安全/融合）
-│   └── reasoning/          # 推理层（LLM适配、符号推理）
-├── config/                 # 配置管理
-├── core/                   # 核心抽象
-│   ├── interfaces/         # 组件接口协议
-│   └── registry.py         # 组件注册中心
-├── evolution/              # 进化机制
-│   ├── registry/           # 版本存储、回滚
-│   └── strategy/           # 进化策略（组件替换、参数调优）
-├── feedback/               # 反馈闭环
-│   └── metrics/            # 评估指标
-├── modu_graph/             # LangGraph 编排层
-│   ├── adapters/           # LLM/工具/存储/事件适配
-│   └── subgraph/           # 多Agent子图
-├── observability/          # 可观测性（日志/指标/追踪）
-├── orchestration/          # 多Agent协作
-│   ├── communication/      # 消息总线、协议、流式
-│   └── patterns/           # 协作模式（共识、委派）
-├── examples/               # 示例代码
-└── tests/                  # 测试套件
+packages/modu-agent/
+├── src/
+│   ├── config/              # 配置管理（RuntimeConfig 热更新 + schemas 校验
+│   │                        #   + Markdown 提示注入 + 环境变量治理 + 首装默认模板）
+│   ├── core/                # 核心抽象
+│   │   ├── interfaces/      # 组件接口协议（action/llm/memory/perception/reasoning/feedback/skill）
+│   │   ├── registry.ts      # 组件注册中心（11 类组件）
+│   │   └── index.ts
+│   ├── evolution/           # 进化机制（编排器/组件替换/参数调优/回滚/版本化存储）
+│   ├── feedback/            # 反馈闭环（loop-controller/quality-monitor/evolution-signal
+│   │   └── metrics/         #   + accuracy/efficiency 指标）
+│   ├── graph/               # LangGraph 编排层
+│   │   ├── adapters/        # LLM/工具/存储/事件/MCP 适配器 + 重试/限流/缓存/蒸馏
+│   │   ├── plan-execute/    # Plan-and-Execute 模式（planner/dispatcher）
+│   │   └── subgraph/        # 多 Agent 子图（supervisor/builder）
+│   ├── mcp/                 # MCP 集成（client/discovery/lifecycle/transport/errors）
+│   ├── memory/              # 记忆层（短期/观察/Chroma 长期）
+│   ├── observability/       # 可观测性（OTel tracing/Prometheus 指标/结构化日志）
+│   ├── orchestration/       # 多 Agent 协作
+│   │   ├── communication/   # 消息总线（EventBus/AG-UI/流式）
+│   │   └── patterns/        # 协作模式（consensus/delegation）
+│   │   └── sensor-manager.ts
+│   ├── perception/          # 感知层（pipeline/fusion/text/vision/audio/security）
+│   ├── reasoning/           # 推理层（LLM 适配/router/复杂度评估/prompt 组装）
+│   ├── skills/              # Skills 子系统（loader/adapter/few-shot/prompt 聚合）
+│   ├── tools/               # 内置工具（8 个）+ 注册表 + 护栏 + 同步执行器
+│   └── index.ts             # 顶层统一导出（14 个模块 barrel）
+├── tests/                   # 测试套件（约 40 个文件，含 HITL e2e / react-news e2e）
+├── AGENTS.md / SOUL.md / USER.md / MEMORY.md   # Markdown 提示注入模板（frontmatter 元数据驱动）
+├── config.yaml              # 默认配置模板（首装自动生成）
+└── package.json / tsconfig.json / vitest.config.ts
 ```
+
+（依据：目录实测；[src/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/index.ts#L4-L20) 的模块层次注释；Markdown 模板 frontmatter 见 [AGENTS.md](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/AGENTS.md#L1-L12)）
 
 ## 核心接口 (core/interfaces/)
 
-所有组件必须实现对应的抽象基类（ABC），确保可插拔性。
-
-### 感知接口
-
-[perception.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces/perception.py)
-
-```python
-class BasePerception(ABC):
-    @abstractmethod
-    def perceive(
-        self,
-        input_type: str,           # 输入类型：text/image/audio
-        raw_content: bytes,        # 原始内容
-        language: Optional[str],   # 语言提示
-        sensitivity_level: int,    # 敏感度级别
-    ) -> Dict[str, Any]:
-        """处理输入，返回感知结果"""
-        pass
-
-class BaseSensor(ABC):
-    @abstractmethod
-    def sensor_type(self) -> str: ...
-    
-    @abstractmethod
-    def capture(self, context: Dict[str, Any]) -> bytes:
-        """从环境捕获数据"""
-        pass
-```
-
-### 推理接口
-
-[reasoning.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces/reasoning.py)
-
-```python
-class BaseReasoningEngine(ABC):
-    @abstractmethod
-    def reason(
-        self,
-        prompt: str,
-        context: Dict[str, Any],
-        **kwargs,
-    ) -> Tuple[str, Dict[str, int], List[Dict[str, Any]]]:
-        """
-        执行推理
-        返回: (content, usage, tool_calls)
-          - content: 响应文本
-          - usage: token用量 {prompt_tokens, completion_tokens, total_tokens}
-          - tool_calls: 工具调用列表 [{"tool", "parameters"}, ...]
-        """
-        pass
-
-    @abstractmethod
-    def stream(self, prompt: str, context: Dict[str, Any]) -> Generator[str, None, None]:
-        """流式输出"""
-        pass
-
-class BaseReasoningStrategy(ABC):
-    @abstractmethod
-    def name(self) -> str: ...
-    
-    @abstractmethod
-    def select_engine(self, context: Dict[str, Any]) -> BaseReasoningEngine:
-        """根据上下文选择推理引擎"""
-        pass
-    
-    @abstractmethod
-    def should_fallback(self, error: Optional[Exception]) -> bool:
-        """判断是否需要降级"""
-        pass
-```
+所有组件必须实现对应的抽象基类（TS `abstract class`），确保可插拔性。Python ABC 已替换为 TypeScript 抽象类，方法命名由 snake_case 改为 camelCase（如 `parameters_schema()` → `parametersSchema()`）。
 
 ### 行动接口
 
-[action.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces/action.py)
+[BaseTool](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts#L25-L137)（含 HITL 钩子与工具元数据，**较旧版新增 4 个元方法**）：
 
-```python
-class BaseActionExecutor(ABC):
-    @abstractmethod
-    def execute(
-        self,
-        action_name: str,
-        params: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """执行动作"""
-        pass
+```typescript
+export abstract class BaseTool {
+  abstract name(): string
+  abstract description(): string
+  abstract parametersSchema(): Record<string, any>   // JSON Schema 参数定义
+  abstract invoke(params, context): Promise<Record<string, any>> | Record<string, any>
 
-    @abstractmethod
-    def list_actions(self) -> List[str]: ...
+  // === HITL（P3-12.3.2）===
+  requiresApproval(): boolean { return false }        // 静态敏感判定
+  requiresApprovalFor(params, context): boolean       // 动态参数级判定（如 file_ops 写操作）
+  onApprovalRejected(params): Record<string, any>     // 审批拒绝降级响应
 
-class BaseTool(ABC):
-    @abstractmethod
-    def name(self) -> str: ...
-    
-    @abstractmethod
-    def description(self) -> str: ...
-    
-    @abstractmethod
-    def parameters_schema(self) -> Dict:
-        """JSON Schema 格式的参数定义"""
-        pass
-    
-    @abstractmethod
-    def invoke(self, params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """执行工具"""
-        pass
-    
-    # HITL 支持
-    def requires_approval(self) -> bool:
-        """是否需要人工审批（敏感工具覆写）"""
-        return False
-    
-    def on_approval_rejected(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """审批拒绝时的降级响应"""
-        return {"status": "error", "error_code": "TOOL_APPROVAL_REJECTED", ...}
+  // === P4 Plan-and-Execute 工具元数据 ===
+  providesRealtimeData(): boolean { return false }    // Planner 据此推断 step.requires_tool
+
+  // === 工具元数据 ===
+  version(): string { return '1.0.0' }                // semver，schema 升级兼容检测
+  followUpTools(): string[] { return [] }             // 推荐后续工具，注入工具描述供 LLM 参考
+}
 ```
 
-### 记忆接口
+[BaseActionExecutor](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts#L8-L16)：`execute(actionName, params, context)` / `listActions()`。
 
-[memory.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces/memory.py)
+（依据：[action.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts#L25-L137)；旧版无 `requiresApprovalFor`/`providesRealtimeData`/`version`/`followUpTools`）
 
-```python
-class BaseMemory(ABC):
-    @abstractmethod
-    def query(
-        self,
-        user_id: str,
-        context_window: str,
-        required_fields: List[str],
-    ) -> Dict[str, Any]:
-        """查询记忆"""
-        pass
+### Skill 接口（P1 新增）
 
-    @abstractmethod
-    def update(
-        self,
-        user_id: str,
-        new_data: Dict[str, Any],
-        metadata: Dict[str, Any],
-    ) -> bool:
-        """更新记忆"""
-        pass
+[BaseSkill](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/skill.ts#L14-L73) 是一等公民抽象——Skill 在运行时对图完全透明，降解为「N 个 BaseTool + 一段 system prompt 片段」：
 
-class BaseStorageAdapter(ABC):
-    @abstractmethod
-    def adapter_type(self) -> str: ...
-    
-    @abstractmethod
-    def load(self, key: str) -> Optional[Dict[str, Any]]: ...
-    
-    @abstractmethod
-    def save(self, key: str, data: Dict[str, Any]) -> bool: ...
+```typescript
+export abstract class BaseSkill {
+  abstract name(): string
+  abstract description(): string        // 面向 LLM，注入 system prompt
+  abstract version(): string
+  tags(): string[]                       // 分类标签
+  examples(): Array<Record<string, string>>  // few-shot 示例（few-shot-selector 消费）
+  preconditions(): Record<string, any>   // 前置条件声明
+  requiredScopes(): string[]             // 细粒度权限 scope
+  tools(): BaseTool[]                    // 内含原子工具集合（可为空，纯提示型）
+  systemPromptFragment(): string | null  // 专属指令片段
+  isAvailable(): boolean                 // 健康检查，false 触发降级跳过
+  setup(): void                          // 注册时初始化
+  teardown(): void                       // 卸载清理
+}
 ```
 
-### 反馈接口
+（依据：[skill.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/skill.ts#L14-L73)；旧版文档无此接口）
 
-[feedback.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces/feedback.py)
+### 其他接口
 
-```python
-class BaseFeedbackLoop(ABC):
-    @abstractmethod
-    def evaluate(self, output: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """评估输出质量"""
-        pass
+[core/interfaces/](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces) 下还定义了 `perception.ts`（BasePerception/BaseSensor）、`reasoning.ts`（BaseReasoningEngine/BaseReasoningStrategy）、`memory.ts`（BaseMemory/BaseStorageAdapter）、`feedback.ts`（BaseFeedbackLoop/BaseEvolutionSignal）、`llm.ts`（**新增 ModuLLM 统一 LLM 接口与 LLMRouter 路由接口**，供统一 LLM 双轨抽象收敛）。接口契约与旧 Python 版语义等价，命名 camelCase 化。
 
-    @abstractmethod
-    def should_evolve(self, metrics: Dict[str, float], threshold: float) -> bool:
-        """判断是否触发进化"""
-        pass
+（依据：[core/interfaces 目录](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces)；ModuLLM/LLMRouter 见 [factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L26) 导入）
 
-class BaseEvolutionSignal(ABC):
-    @abstractmethod
-    def signal_type(self) -> str: ...
-    
-    @abstractmethod
-    def generate(
-        self,
-        source: str,
-        metrics: Dict[str, float],
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """生成进化信号"""
-        pass
-```
+## 组件注册中心 (core/registry.ts)
 
-## 组件注册中心 (core/registry.py)
-
-[ComponentRegistry](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/registry.py#L16-L197) 是全局组件管理单例，负责所有组件的注册、查找和替换。
+[ComponentRegistry](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L43-L309) 管理全局组件，**由旧版 10 类扩展为 11 类**（新增 `skill`）。
 
 ### 关键方法
 
 | 方法 | 说明 |
 |------|------|
-| `register_reasoning_engine(name, engine)` | 注册推理引擎 |
-| `set_active_reasoning_engine(name)` | 切换活跃推理引擎（P2-8） |
-| `get_active_reasoning_engine()` | 获取当前活跃引擎 |
-| `register_tool(tool)` | 注册工具（以 tool.name() 为 key） |
-| `list_tools()` | 列出所有工具及其 schema |
-| `register_perception(name, perception)` | 注册感知器 |
-| `register_memory(name, memory)` | 注册记忆组件 |
-| `swap_component(category, name, component)` | 运行时替换组件（进化用） |
-| `list_all()` | 列出所有已注册组件 |
+| `registerReasoningEngine(name, engine)` | 注册推理引擎（首个注册自动成为活跃引擎） |
+| `setActiveReasoningEngine(name)` / `getActiveReasoningEngine()` | 显式追踪活跃推理引擎（P2-8，避免多引擎时依赖 Map 插入顺序） |
+| `registerTool(tool)` / `getTool(name)` / `listTools()` | 工具注册/查找/清单（含 name/description/parameters_schema） |
+| `registerPerception(name, p)` / `getPerception(name)` | 感知器注册（pipeline 按 routing 查找） |
+| `registerMemory` / `registerStorageAdapter` / `registerSensor` / `registerFeedbackLoop` / `registerEvolutionSignal` | 其余组件注册 |
+| `registerSkill(skill)` | **P1 新增**：注册 Skill 时自动将内含工具经 `SkillToolWrapper` 包装后注册进 `_tools`（执行隔离）；`isAvailable()=false` 跳过；工具名冲突跳过该工具 |
+| `unregisterSkill(name)` / `listSkills()` | Skill 卸载/清单（含 version/tags/tool_count） |
+| `swapComponent(category, name, component)` | 运行时热替换（进化用），支持全部 11 类 |
+| `listAll()` | 列出所有已注册组件 |
+
+（依据：[registry.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L43-L57)（11 类字段）、[L59-L95](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L59-L95)（P2-8 活跃引擎）、[L206-L236](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L206-L236)（registerSkill 自动注册工具）、[L270-L292](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L270-L292)（swapComponent））
 
 ### 全局单例函数
 
-```python
-# 获取全局注册表
-registry = get_registry()
-
-# 测试用：临时替换注册表
-with override_registry(test_registry):
-    # 测试代码
-    pass
-
-# 重置注册表（测试清理）
-reset_registry()
+```typescript
+const registry = getRegistry()                    // 全局单例
+getRegistry(overrideRegistryInstance)             // P2-1: 测试隔离用 override 参数
+const { restore } = overrideRegistry(myRegistry)  // 测试用临时替换（手动 restore）
+resetRegistry()                                   // 测试清理
+setSkillToolWrapperFactory(factory)               // SkillToolWrapper 工厂注入（避免 ESM 循环依赖）
 ```
 
-## 编排层 (modu_graph/)
+（依据：[registry.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L323-L353)、[L22-L30](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts#L22-L30)；旧版 `with override_registry(...)` 上下文管理器语法已替换）
 
-### 图状态 (state.py)
+## 配置层（config/，新增章节）
 
-[ModuAgentState](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/state.py#L47-L155) 是 TypedDict，定义了 LangGraph 图中流转的完整状态。
+### RuntimeConfig
 
-**核心字段：**
+[runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L19-L259) 定义 `DEFAULT_CONFIG`，覆盖 llm / memory / orchestration / plan_execute / tools / skills / streaming / event_bus / perception / feedback / observability / mcp / react_optimization 共 13 个配置域，支持热更新与变更回调（变更回调联动 runner 的 debounce 缓存失效，见编排层）。
+
+**配置优先级**：`DEFAULT_CONFIG` → `config.yaml`（[yaml-loader.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/yaml-loader.ts)，带 schema 校验，类型不符自动丢弃回退默认）→ 环境变量（`MODU_LLM_PROVIDER` / `MODU_LLM_TEMPERATURE` / `MODU_MEMORY_STRATEGY` / `MODU_CONFIG_PATH` 等进入 RuntimeConfig）→ 运行时 `configurable` 覆盖（create_agent 参数）。
+
+（依据：[runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L19-L259)；环境变量注册表见 [env.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/env.ts#L53-L59)——纯审计清单层，集中登记约 34 处 `process.env` 读取并支持脱敏快照）
+
+### Markdown 文档提示注入（P1）
+
+[markdown-loader.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/markdown-loader.ts) 扫描项目根目录 `AGENTS.md` / `SOUL.md` / `USER.md` / `MEMORY.md`，按 frontmatter 元数据路由：
+
+| 文档 | inject_to | load | cascade_level | 注入目标 |
+|------|-----------|------|---------------|----------|
+| AGENTS.md | system_prompt | eager | global | system prompt |
+| SOUL.md | system_prompt | eager | project | system prompt |
+| USER.md | runtime_context | eager | user | runtime context |
+| MEMORY.md | runtime_context | lazy | user | runtime context（按需加载） |
+
+[markdown-prompt-aggregator.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/markdown-prompt-aggregator.ts) 按 priority/文档名排序聚合，并按字符预算截断（`system_prompt_max_chars=8000` / `runtime_context_max_chars=4000`，可配置）。开关：`react_optimization.markdown_prompt.enabled`，**代码默认 false，但随包分发的 [config.yaml](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/config.yaml#L3-L8) 模板显式开启**。
+
+（依据：[factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L544-L577)（注入逻辑）；模板 frontmatter 见 [MEMORY.md](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/MEMORY.md#L1-L8)）
+
+### 其他配置模块
+
+| 模块 | 职责 |
+|------|------|
+| schemas.ts | 配置数据校验 schema |
+| init-defaults.ts | 首次安装自动生成默认模板（AGENTS/SOUL/USER/MEMORY.md + config.yaml） |
+| capability-registry.ts | 配置键→能力→消费模块映射，审计配置消费面 |
+| snapshot.ts | `/debug/config` 溯源快照（含环境变量脱敏清单） |
+| memory-md-persistence.ts | MEMORY.md 长期记忆持久化（写入经验沉淀、读取还原） |
+| plugin-manifest.ts / knowledge-index.ts | 插件清单 / 知识索引 |
+
+（依据：[config/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/index.ts#L3-L110) 导出分组）
+
+## 编排层 (graph/)
+
+### 图状态 (state.ts)
+
+[ModuAgentState](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L49-L158) 由旧版 TypedDict 改为 `Annotation.Root` 状态注解（带 reducer），**字段由 30+ 扩展至 40+**，并按模式分层（[L490-L578](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L490-L578)）：`CoreState` + `HITLModeState` + `MultiAgentModeState` + `PlanExecuteModeState` + `FeedbackModeState`。
+
+**核心字段（含新增）：**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `messages` | `Annotated[List[BaseMessage], add_messages]` | 消息历史（自动追加） |
-| `user_id` / `session_id` / `trace_id` | `str` | 会话标识 |
-| `input_data` | `Dict` | 原始输入 |
-| `perception_result` | `Dict` | 感知融合结果 |
-| `cleaned_text` | `str` | 清洗后文本 |
-| `sensitivity_level` | `int` | 敏感度 (0-5) |
-| `knowledge` | `List[Dict]` | 长期记忆检索结果 |
-| `tool_results` | `List[Dict]` | 工具执行结果 |
-| `response` | `str` | 最终响应 |
-| `usage` | `Dict[str, int]` | Token 用量 |
-| `evaluation` | `Dict` | 反馈评估结果 |
-| `config_overrides` | `Dict` | 进化产生的配置覆盖 |
-| `pending_tool_calls` | `List[Dict]` | HITL 待审批工具 |
-| `subtasks` / `subtask_results` | `List/Dict` | 多Agent子任务 |
+| `messages` | reducer: `messagesStateReducer` | 消息历史（自动追加） |
+| `perception_result` / `cleaned_text` / `sensitivity_level` 等 | 感知结果组 | 融合结果、清洗文本、敏感度 (0-5)、注入/PII 标记 |
+| `knowledge` / `tool_results` / `response` / `usage` | 记忆/工具/响应 | 与旧版语义一致（tool_results 为追加 reducer） |
+| `config_overrides` | Dict | 进化产生的 per-session 配置覆盖（P0-2） |
+| `pending_tool_calls` / `approval_status` 等 | HITL 字段组 | 人工审批（P3-12.3.2） |
+| `subtasks` / `subtask_results` / `blackboard` | 多 Agent 字段组 | **blackboard 为新增**：子 Agent 共享黑板（浅合并 reducer） |
+| `plan` / `current_step_index` / `step_results` / `replan_count` / `plan_delta` 等 | **Plan-and-Execute 字段组（P4 新增）** | 计划/进度/步骤结果/重规划计数/SSE 增量 |
+| `complexity_assessment` / `reasoning_round_count` / `observation_history` / `termination_advice` | **P0 优化字段组（新增）** | 复杂度分层/Thought 轮数/蒸馏历史/终止建议 |
+| `observation_memory` | P1-2 新增 | Observation 三级记忆（整体替换 reducer） |
+| `artifacts` | 新增 | 产物追踪（doc_writer 等生成的文件，供前端附件卡片） |
+| `task_type` / `doc_writer_succeeded` / `doc_writer_fail_count` 等 | 新增 | 文档生成任务类型识别与强制闭环计数 |
 
-**辅助函数：**
-- `make_initial_state()`: 构建初始状态
-- `merge_subtask_results()`: 子任务结果合并 reducer
+**关键 reducer 语义**：`step_results` 空数组=清空（planner 重规划）、非空=追加（[L286-L297](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L286-L297)）；`doc_writer_succeeded` / `doc_final_answer_enforced` 使用 `||` 合并（一旦 true 永不重置，[L351-L364](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L351-L364)）；`mergeSubtaskResults` 右值优先（[L17-L24](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L17-L24)）。
 
-### 图节点 (nodes.py)
+**版本迁移机制（新增）**：`STATE_SCHEMA_VERSION = 1` 常量 + `migrate_state()` 按 checkpoint 中版本号迁移历史状态（v0→v1 移除僵尸 `history` 字段、补齐版本号）。
 
-| 节点函数 | 创建方式 | 说明 |
-|----------|----------|------|
-| `perception_node` | 内置 | 异步感知管线（并行感知器） |
-| `memory_query_node` | `make_memory_query_node(store)` | 长期记忆检索 |
-| `make_agent_node(llm)` | 工厂 | LLM 推理 + Function Calling |
-| `tools` | LangGraph ToolNode | 工具执行 |
-| `tool_processor` | `make_tool_result_processor()` | 工具结果后处理 |
-| `response_node` | 内置 | 生成最终响应 |
-| `feedback_node` | `make_feedback_node(orchestrator)` | 质量评估与进化信号 |
-| `memory_update_node` | `make_memory_update_node(store)` | 写入长期记忆 |
-| `human_review_node` | `make_human_review_node()` | HITL 人工审批（P3-12.3.2） |
-| `supervisor_node` | `make_supervisor_node()` | 多Agent任务拆分（P3-12.3.1） |
-| `subagent_node` | `make_subagent_node(llm)` | 子Agent执行 |
-| `consensus_node` | `make_consensus_node(judge_llm)` | 多Agent结果共识 |
+（依据：[state.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L49-L158)、[L172-L175](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L172-L175)、[L389-L407](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L389-L407)；旧版文档无 plan/artifacts/P0 优化字段与版本迁移）
 
-**路由函数：**
-- `route_after_perception`: 感知后路由（熔断→response / 正常→memory_query）
-- `route_after_agent`: Agent后路由（有tool_calls→tools / 无→response）
-- `route_after_human_review`: 审批后路由（通过→tools / 拒绝→response）
-- `route_after_memory_query`: 记忆后路由（单Agent→agent / 多Agent→supervisor）
-- `route_from_supervisor`: Supervisor分发（Send到subagent_run）
+### 图节点 (nodes.ts)
 
-### 工厂类 (factory.py)
+| 节点 | 创建方式 | 说明 |
+|------|----------|------|
+| `perception` | `perceptionNode` / `perceptionNodeSync` / `makePerceptionNode` | 异步/同步感知管线 |
+| `memory_query` | `memoryQueryNode` / `makeMemoryQueryNode(store)` | 长期记忆检索 |
+| `agent` | `makeAgentNode(llm)` | LLM 推理 + Function Calling |
+| `tools` | LangGraph ToolNode（无工具时 `_noopToolsNode`） | 工具执行 |
+| `tool_processor` | `makeToolResultProcessor()` | 工具结果后处理（蒸馏/artifacts/事件发布） |
+| `doc_gen_enforce` | `docGenEnforceNode`（内置） | **新增**：文档生成任务强制调用 doc_writer 回环节点 |
+| `doc_final_answer` | `docFinalAnswerNode`（内置） | **新增**：doc_writer 成功后注入最终回复提醒 |
+| `finalize_response` | `responseNode`（内置） | 生成最终响应 |
+| `feedback` | `makeFeedbackNode(orchestrator)` | 质量评估与进化信号 |
+| `memory_update` | `memoryUpdateNode` / `makeMemoryUpdateNode(store)` | 写入长期记忆 |
+| `human_review` | `makeHumanReviewNode()` | HITL 人工审批（interrupt） |
+| `supervisor` / `subagent_run` / `consensus` | `makeSubagentNode(llm)` / `makeConsensusNode(judgeLlm)` 等 | 多 Agent 协作 |
+| `planner` / `step_dispatch` / `step_finalize` | plan-execute 模块 | **P4 新增**：Plan-and-Execute |
 
-[create_agent()](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/factory.py#L154-L287) 是配置化创建 Agent 图的主入口。
+**路由函数**：`routeAfterPerception`（L458，熔断→response / 正常→memory_query）、`routeAfterAgent`（L501，有 tool_calls→tools / 无→response，含任务类型强制约束）、`routeAfterHumanReview`（L2039）、`routeAfterMemoryQuery`（L2067，支持 mode_router 配置化分叉）。**模式路由已配置化**：`orchestration.mode_router` 规则表按顺序匹配决定 supervisor/planner/默认 ReAct（[runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L88-L95)）。
 
-```python
-from modu_graph.factory import create_agent
+（依据：[nodes.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts#L210-L2409) 导出清单；节点注册见 [graph.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts#L472-L510)；旧版无 doc_gen_enforce/doc_final_answer/planner 系列节点）
 
-# 默认配置
-graph = create_agent()
+### 图构建与拓扑 (graph.ts)
 
-# 运行时覆盖配置
-graph = create_agent(config={
-    "configurable": {
-        "llm_provider": "deepseek",
-        "temperature": 0.5,
-        "tools": ["calculator", "search"],
-        "checkpointer_type": "memory",
-        "store_type": "chroma",
-        "system_prompt": "你是一个助手..."
-    }
+[buildModuGraph()](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts#L347) 构建 StateGraph，按配置开关插入模式节点：
+
+```
+START → perception → (memory_query) → [ReAct] agent ⇄ tools → tool_processor
+                                          ↕ doc_gen_enforce / doc_final_answer（业务定制回环）
+                              [HITL] human_review（敏感工具调用前 interrupt）
+                              [多Agent] supervisor → subagent_run → consensus
+                              [Plan]   planner → step_dispatch ⇄ step_finalize
+                              → finalize_response → (feedback) → memory_update → END
+```
+
+[ModuGraph](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) 是 CompiledStateGraph 的 ES 包装类：透明委托底层方法（Proxy）、显式持有 `orchestrator` 引用（替代 monkey-patch）、提供 `.compiled` 访问。
+
+（依据：节点注册与边连接 [graph.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts#L472-L647)；`_noopToolsNode` [L730](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts#L730)）
+
+### 工厂 (factory.ts)
+
+[create_agent()](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L434-L701) 为 **async** 主入口（Node.js 中 MCP 工具发现是异步的），按序完成：Skills 加载（gated）→ LLM 构建 → 默认工具注册 → MCP 工具发现注册（gated）→ 工具绑定 + LLM 重试包装 → checkpointer/store 构建 → system prompt 组装（默认防幻觉 prompt → Skill 聚合 → Markdown 注入 → PromptComposer 四层组装）→ 进化编排器/复杂度评估器/蒸馏器构建 → 图编译 → ModuGraph 包装。
+
+```typescript
+const graph = await create_agent()   // 注意：async
+
+const graph = await create_agent({
+  configurable: {
+    llm_provider: 'deepseek', temperature: 0.5,
+    tools: ['calculator', 'search_engine'],
+    checkpointer_type: 'memory', store_type: 'chroma',
+    system_prompt: '你是一个助手...',
+    plan_execute_enabled: true,      // P4: per-request 启用 Plan-Execute
+  },
 })
 ```
 
-**组件构建函数：**
-- `build_checkpointer(type)`: 构建检查点（memory/sqlite/none）
-- `build_store(type)`: 构建长期存储（chroma/in_memory/none）
-- `build_chat_model(provider, config, ...)`: 构建LLM
-- `build_langchain_tools(tool_names, config)`: 构建LangChain工具列表
+**组件构建函数与关键机制：**
 
-### 运行器 (runner.py)
+| 函数/机制 | 说明 |
+|-----------|------|
+| `build_checkpointer(type)` | memory/sqlite/none；**MemorySaver 为模块级惰性单例**（HITL 跨请求 resume 依赖共享 checkpoint，[L153-L162](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L153-L162)）；sqlite 路径当前硬编码 `checkpoints.db`，依赖缺失时回退 MemorySaver |
+| `build_store(type)` | chroma/in_memory/none；chroma 支持 `memory.chroma_persist_path` 持久化，初始化失败回退内存（[L176-L196](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L176-L196)） |
+| `_build_judge_llm()` | LLM-as-Judge 评估器（quality_monitor_mode=llm/hybrid 时构造，包装为 ModuLLM） |
+| `_build_llm_router()` | LLMRouter（enabled 时 RuleBasedLLMRouter 按路由表构造，否则 Passthrough） |
+| `_discover_and_register_mcp_tools()` | 从已连接 MCP Server 发现工具并幂等注册到 registry（[L359-L396](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L359-L396)） |
+| 默认工具注册 | `tools.register_defaults=true` 时幂等注册无风险 4 件套：`datetime` / `search_engine` / `calculator` / `doc_writer`（[L479-L496](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L479-L496)）；code_executor/sql_query/file_ops/http_request 需宿主显式注册 |
+| 默认 system prompt | 防幻觉底线约束（含语言一致性、禁止编造实时数据、工具预算、文档生成交付模板等约 28 条规则，[L75-L114](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L75-L114)）；宿主传入的 system_prompt 优先 |
 
-[runner.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/runner.py) 提供流式/非流式执行入口。
+（依据：[factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L434-L701)；旧版 `build_chat_model`/`build_langchain_tools` 已移至 adapters/llm-adapter.ts 与 adapters/tool-adapter.ts）
 
-| 函数 | 说明 |
-|------|------|
-| `stream_response(graph, user_id, session_id, input_data)` | 异步流式输出（token级） |
-| `run_sync(graph, user_id, session_id, input_data)` | 非流式，返回完整结果 |
-| `get_runner(engine)` | 获取缓存的编译图（配置变更自动重建） |
-| `resume_sync(graph, session_id, approved, feedback)` | 恢复HITL中断的执行 |
-| `resume_stream(...)` | 恢复执行（流式） |
-| `get_interrupt_state(graph, session_id)` | 查询当前是否在HITL暂停状态 |
+### 运行器 (runner.ts)
 
-**Runner 缓存机制（P1-12.2.6）：**
-- 编译图实例缓存，避免每次请求重建
-- 配置哈希检测，变更时自动失效
-- 配置变更回调主动传导（llm.*/tools.*/memory.*变更即时失效）
+| 函数 | 行号 | 说明 |
+|------|------|------|
+| `run_sync(...)` | L513 | 非流式执行，返回完整结果 |
+| `process_request_compat(...)` | L876 | 兼容旧请求协议的执行入口 |
+| `resume_sync(...)` | L932 | HITL 恢复（`Command({resume})`，处理最终状态与错误） |
+| `get_interrupt_state(...)` | L1105 | 查询当前是否处于 HITL 暂停状态 |
+| `checkInterruptTimeout(...)` | L1171 | HITL 审批超时检查（超时自动 `resume_sync(approved=false)`） |
+| `sweepExpiredInterrupts(...)` | L1263 | 批量清扫过期中断 |
+| `get_runner(engine)` | L679 | 获取缓存的编译图 |
+| `reset_runner_cache()` | L861 | 主动失效图缓存（配置热更新传导） |
 
-### 图构建 (graph.py)
+**Runner 缓存机制（P1-12.2.6）**：编译图实例按 config hash 缓存；配置变更回调经 **100ms debounce** 合并后主动失效（`llm.*` 等参数级变更可经 config_overrides 软失效，下次 get_runner 的 hash 检测兜底重建）——旧版"每次请求重建图"的问题已修复。
 
-[build_modu_graph()](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/graph.py#L89-L318) 负责构建 StateGraph 拓扑。
+（依据：[runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts#L67-L123)（缓存与 debounce 设计注释）、[L679](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts#L679)、[L749-L822](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts#L749-L822)；旧版 `stream_response` 已由 LangGraphEventBridge 流式事件桥接替代，见下）
 
-[ModuGraph](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/graph.py#L53-L86) 是 CompiledStateGraph 的包装类：
-- 透明委托底层编译图的所有方法（`__getattr__`）
-- 显式持有 `orchestrator` 引用（替代monkey-patch）
-- 提供 `.compiled` 属性访问底层实例
+### 适配器层 (graph/adapters/，新增章节)
 
-## 感知层 (components/perception/)
+| 适配器 | 职责 |
+|--------|------|
+| [event-bridge.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/event-bridge.ts#L35-L57) | LangGraphEventBridge：消费 LangGraph stream，将图事件映射为 EventBus 事件（perception/memory_query/agent/tools/planner/step_finalize → EventDomain/EventAction）并透传原始事件；替代旧版 `stream_response` |
+| [llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/llm-adapter.ts#L53-L122) | `build_chat_model()`：构建 LangChain ChatOpenAI，复用 LLM 环境变量（provider→env 映射），支持 streaming/function calling |
+| [modu-llm-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/modu-llm-adapter.ts#L108-L118) | `wrap_chat_model_as_modu()`：将 ChatOpenAI 包装为统一 ModuLLM 接口（支持 bindTools/withRetry），消除 areason/ainvoke 双轨抽象 |
+| [tool-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-adapter.ts#L209-L220) | `wrap_modu_tool()` / `build_langchain_tools()`：BaseTool→StructuredTool 包装，集成重试/限流/缓存/结果截断 |
+| [tool-orchestrator.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-orchestrator.ts#L61-L79) | 多工具编排（依赖检测、输出→输入占位符引用） |
+| [mcp-tool-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts#L31-L112) | MCP 远程工具→BaseTool 适配（返回标准化 {status/data/error_code} 结构） |
+| [store-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/store-adapter.ts#L38-L67) | ChromaStore/InMemoryStoreAdapter：长期记忆包装为 LangGraph BaseStore |
+| [observation-distiller.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/observation-distiller.ts#L158-L220) | ObservationDistiller：工具结果三层蒸馏控 Token（默认启用，异常降级返回原始内容） |
+| [retry.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/retry.ts#L76-L140) | `with_tool_retry` / `apply_llm_retry`：指数退避，仅重试瞬时网络/超时故障 |
+| [rate-limiter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/rate-limiter.ts#L33-L141) | ToolRateLimiter：按工具名 token bucket（全局单例） |
+| [tool-result-cache.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/tool-result-cache.ts#L39-L145) | LRU+TTL 工具结果缓存（全局单例，仅对显式配置的工具启用） |
+
+（依据：各文件行号如上；旧版文档仅提及 llm/tool/store/event 四类，retry 单独成节，其余为 TS 版新增）
+
+### 终止引擎 (termination-engine.ts，新增)
+
+[termination-engine.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/termination-engine.ts) 实现推理终止判定（置信度/信息增益历史 + 终止建议，advisory 模式采集 P0-4），配合 `routeAfterAgent` 的 reasoning_budget 终止与 recursionLimit 控制。
+
+## 感知层 (perception/)
 
 ### 管线处理
 
-[pipeline.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/perception/pipeline.py) 提供统一感知管线：
+[pipeline.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/pipeline.ts) 提供同步/异步两版管线：
 
-1. **输入路由**：根据 `input_type` 从配置获取感知器链
-2. **串行/并行执行**：`run_perception_pipeline`（串行） / `run_perception_pipeline_async`（并行，P2-12.2.4）
-3. **结果融合**：多路感知结果通过 PerceptionFusion 融合
+1. **输入路由**：按 `input_type` 从 `perception.routing` 解析感知器链，逐个调用 `registry.getPerception(...)`，前序输出文本传递给后续处理器
+2. **执行模式**：`run_perception_pipeline`（串行，L25-L114）/ `run_perception_pipeline_async`（首个感知器串行建立文本基线，其余 `Promise.all` 并行，L135-L200）
+3. **结果融合**：PerceptionFusion 融合多路结果
 
-```python
-# 感知管线配置（默认）
+```yaml
+# 感知管线配置（默认值，runtime-config.ts L188-L200）
 perception:
   routing:
     text: { pipeline: ["text_preprocessor", "llm_parser"] }
@@ -382,71 +337,97 @@ perception:
     weights: { text: 0.5, image: 0.3, audio: 0.2 }
 ```
 
-### 内置感知器
+（依据：[runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L188-L200)）
 
-| 感知器 | 路径 | 功能 |
-|--------|------|------|
-| TextPreprocessor | text/rule_based.py | 文本清洗、长度截断、基础检测 |
-| LLMParser | text/llm_parser.py | LLM深度解析（意图、情感、NER） |
-| ImageProcessor | vision/image_processor.py | 图像理解 |
-| Camera | vision/camera.py | 摄像头捕获 |
-| ASRProcessor | audio/asr_processor.py | 语音识别 |
-| Guard | security/guard.py | 安全检测（注入/PII/敏感词） |
+### 内置感知器与实现状态
 
-### 融合策略 (fusion.py)
+| 感知器 | 路径 | 功能 | 实现状态 |
+|--------|------|------|----------|
+| TextPreprocessor | text/rule-based.ts | 文本清洗、截断、语种检测、敏感词 0-5 分级（L19-L58）、安全检测 | ✅ 完整（语种检测为 TODO 桩，L644） |
+| LLMParser | text/llm-parser.ts | LLM 深度解析（意图/实体/情感/质量） | ✅ LLM 路径完整；本地 NER/情感为 TODO（无 spaCy/SnowNLP 等价库，L145/L272/L287，仅由 LLM 填充） |
+| SecurityGuard | security/guard.ts | Prompt Injection/PII/API Key 检测 + LLM 二次校验（llm_judge 配置）+ 失败回退关键词 | ✅ 完整（L96-L175） |
+| 安全审计 | security/audit.ts | deny/allow/audit 审计事件发布到 EventDomain.SECURITY，失败不影响主流程 | ✅ 完整（L22-L124） |
+| ImageProcessor | vision/image-processor.ts | 图像理解/OCR | ⚠️ **TODO 桩**（无 pytesseract/easyocr 等价库，L78/L88/L203） |
+| Camera/麦克风 | vision/camera.py→camera.ts | 摄像头/麦克风传感器 | ⚠️ **TODO 桩**（无 OpenCV/PyAudio 等价库，传感器始终不可用，L67/L99/L212/L244） |
+| ASRProcessor | audio/asr-processor.ts | 语音识别 | ⚠️ **TODO 桩**（接口等价保留，返回低置信度空结果，L16/L76/L235/L246/L266） |
 
-PerceptionFusion 支持三种融合策略：
-- `weighted_average`: 加权平均置信度
-- `max_confidence`: 取最高置信度结果
-- `voting`: 投票机制
+### 融合策略 (fusion.ts)
 
-## 推理层 (components/reasoning/)
+[fusion.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/fusion.ts#L30-L143) 支持三种策略：`weighted_average`（按模态权重合并 confidence/quality/security/sensitivity 并计算融合 security_score）、`max_confidence`、`voting`。
+
+（依据：fusion.ts L30-L65 分发、L67-L143 加权平均实现）
+
+## 推理层 (reasoning/)
 
 ### LLM 适配器
 
-所有LLM适配器继承自 [base_llm.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/reasoning/llm/base_llm.py) 的 BaseLLMReasoner。
+所有 LLM 适配器继承 [BaseLLMReasoner](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/llm/base-llm.ts#L56-L89)（统一 `/chat/completions` 请求、连接池、usage 统计，`invoke` 实现 L168-L220）：
 
 | 适配器 | 文件 | 提供商 |
 |--------|------|--------|
-| DeepSeek | deepseek.py | DeepSeek API |
-| GPT | gpt.py | OpenAI GPT |
-| Qwen | qwen.py | 通义千问 |
-| GLM | glm.py | 智谱GLM |
+| GPTReasoner | llm/gpt.ts | OpenAI（L1-L35，按优先级解析 API key/base URL/model） |
+| DeepSeekReasoner | llm/deepseek.ts | DeepSeek |
+| GLMReasoner | llm/glm.ts | 智谱 GLM |
+| QwenReasoner | llm/qwen.ts | 通义千问 |
+| LLMRouter | llm/router.ts | PassthroughLLMRouter / RuleBasedLLMRouter（按 rules 顺序匹配路由表） |
+| CostTracker | llm/cost-tracker.ts | 成本核算（cost_tracking.enabled 默认 true，发布 COST 事件） |
 
-LLM统一通过 modu_graph/adapters/llm_adapter.py 的 build_chat_model() 构建。
+主流程 LLM 统一通过 graph/adapters/llm-adapter.ts 的 `build_chat_model()` 构建（LangChain ChatOpenAI），自研 BaseLLMReasoner 路径与 LangChain 路径并存，经 `wrap_chat_model_as_modu` 统一为 ModuLLM 接口。
 
-### 重试机制 (adapters/retry.py)
-
-apply_llm_retry() 为LLM调用添加指数退避重试：
-- 仅重试瞬时网络异常（不重试4xx/格式错误）
-- 配置：`llm.retry.max_attempts`（默认2次）
-
-## 行动层 (components/action/)
-
-### 内置工具
-
-| 工具 | 文件 | 功能 | 需审批 |
-|------|------|------|--------|
-| CalculatorTool | tools/calculator.py | 数学计算 | 否 |
-| CodeExecutor | tools/code_executor.py | 代码执行 | 是 |
-| DatetimeTool | tools/datetime_tool.py | 日期时间查询 | 否 |
-| FileOpsTool | tools/file_ops.py | 文件读写操作 | 是（写操作） |
-| HttpRequestTool | tools/http_request.py | HTTP请求 | 否 |
-| SearchTool | tools/search.py | 网络搜索 | 否 |
-| SqlQueryTool | tools/sql_query.py | SQL查询 | 是 |
-
-### 执行器
-
-- SyncActionExecutor (executors/synchronous.py): 同步执行器
-
-## 记忆层 (components/memory/)
+### 其他推理组件
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
-| InMemoryShortTermMemory | cache/short_term_memory.py | 内存短期缓存 |
-| ChromaLongTermMemory | vector/chroma.py | ChromaDB向量存储 |
+| ComplexityAssessor | complexity-assessor.ts | P0-1 复杂度分层评估（LLM 失败自动回退规则化评估） |
+| PromptComposer | prompt-composer.ts | P1-4 四层 Prompt 解耦（systemCore + domain + taskSpec + runtimeContext） |
+| CoTAnchors | cot-anchors.ts | P0-2 CoT 锚点 + 反思后缀 |
+| DomainAdapters | domain-adapters.ts | 领域适配 |
+| RuleEngine | symbolic/rule-engine.ts | 符号规则推理 |
 
-**注意**：LangGraph重构后，短期记忆主要由 Checkpointer 管理（MemorySaver/SqliteSaver），长期记忆由 BaseStore 包装（ChromaStore/InMemoryStoreAdapter）。
+（依据：[reasoning/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/reasoning/index.ts#L1-L32) 导出清单）
+
+### 重试机制 (graph/adapters/retry.ts)
+
+`apply_llm_retry()` 为 LLM 调用添加指数退避重试：仅重试瞬时网络异常（不重试 4xx/格式错误）；配置 `llm.retry.max_attempts`（默认 2）。工厂中「先 bindTools 再 apply_retry」以规避 RunnableRetry 不支持 bind_tools（[factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L511-L515)）。
+
+## 行动层 (tools/)
+
+### 内置工具（8 个，较旧版新增 doc_writer）
+
+| 工具 | 文件 | 功能 | 默认注册 | 审批 |
+|------|------|------|----------|------|
+| CalculatorTool | calculator.ts | 数学计算 | ✅ | 否 |
+| DateTimeTool | datetime-tool.ts | 日期时间查询（strftime 格式化） | ✅ | 否 |
+| SearchTool | search.ts | 网络搜索（Tavily API） | ✅ | 否 |
+| DocWriterTool | doc-writer.ts（**新增**） | 文档生成（auto_name 生成 {title}_{YYYY-MM-DD}.md，写入 artifacts 追踪） | ✅ | 否 |
+| CodeExecutorTool | code-executor.ts | 代码执行 | ❌ 需宿主注册 | 是 |
+| FileOpsTool | file-ops.ts | 文件读写 | ❌ 需宿主注册 | 是（写操作，`requiresApprovalFor` 参数级判定） |
+| HttpRequestTool | http-request.ts | HTTP 请求 | ❌ 需宿主注册 | 否 |
+| SqlQueryTool | sql-query.ts | SQL 查询（强制参数化占位符，仅 SELECT） | ❌ 需宿主注册 | 是 |
+
+默认注册受 `tools.register_defaults`（默认 true）控制，注册幂等（[factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L479-L496)）。
+
+**审批判定链**：`requiresApprovalFor(params, context)`（参数级动态判定，回退 `requiresApproval()` 静态判定）∪ `tools.human_in_loop.sensitive_tools` 配置列表（默认 `["code_executor", "sql_query", "file_ops_write"]`）。
+
+### 执行器与护栏
+
+- SyncActionExecutor（synchronous-executor.ts L29）：同步执行器
+- tool-guardrails.ts：工具安全护栏规则
+- tool-registry.ts：工具能力矩阵
+
+（依据：各工具类导出位置见 tools/ 目录 grep 结果；审批钩子见 [action.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts#L34-L73)；sensitive_tools 默认值见 [runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L116-L121)）
+
+## 记忆层 (memory/)
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| InMemoryShortTermMemory | short-term-memory.ts | 内存短期缓存 |
+| ChromaLongTermMemory | chroma.ts | ChromaDB 向量存储（`MODU_CHROMA_IN_MEMORY`/`MODU_CHROMA_PATH` 环境变量；持久化路径 `memory.chroma_persist_path`，默认 null=内存模式） |
+| ObservationMemory | observation-memory.ts | P1-2 Observation 三级记忆（serialize 整体替换写入 state） |
+
+**注意**：短期会话记忆由 LangGraph Checkpointer 管理（MemorySaver 惰性单例 / SqliteSaver 可选），长期记忆由 BaseStore 包装（ChromaStore / InMemoryStoreAdapter），经 store-adapter 接入图节点。
+
+（依据：[memory/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/memory/index.ts#L1-L13)；chroma_persist_path 消费见 [factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L186-L191)；旧版"cache/short_term_memory.py、vector/chroma.py"路径已废弃）
 
 ## 反馈进化闭环
 
@@ -456,20 +437,20 @@ apply_llm_retry() 为LLM调用添加指数退避重试：
 response生成
     │
     ▼
-feedback_node（图中节点）
+feedback_node（图中节点，feedback.enable_evolution=true 时启用）
     │
     ├─→ FeedbackLoop.evaluate()
     │       ├─→ QualityMonitor.evaluate()
-    │       │    ├─ rule模式：规则评估
-    │       │    ├─ llm模式：LLM-as-Judge
-    │       │    └─ hybrid模式：规则+LLM
-    │       └─→ EvolutionSignalCollector.collect()
+    │       │    ├─ rule模式：规则评估（默认）
+    │       │    ├─ llm模式：LLM-as-Judge（独立 judge LLM，temperature=0）
+    │       │    └─ hybrid模式：规则初筛 + LLM复核
+    │       └─→ EvolutionSignal 收集
     │
-    └─→ should_evolve?
+    └─→ should_evolve? (evolution_threshold=0.6, min_sample_size=10)
             ├─ Yes → EvolutionOrchestrator
-            │       ├─→ ParameterTuneStrategy.analyze_and_adjust()
-            │       │       生成 config_overrides，写入State
-            │       └─→ 下次请求时应用新参数
+            │       ├─→ ParameterTuneStrategy → config_overrides 写入 State
+            │       │    （下次请求经 _loadPrevConfigOverrides 应用新参数）
+            │       └─→ ComponentSwapStrategy → swapComponent / 重建图
             └─ No → 结束
 ```
 
@@ -477,375 +458,167 @@ feedback_node（图中节点）
 
 | 模式 | 说明 |
 |------|------|
-| `rule` | 规则评估（默认，无需额外LLM） |
-| `llm` | 使用独立LLM作为评判（temperature=0） |
-| `hybrid` | 规则初筛 + LLM复核 |
+| `rule` | 规则评估（默认，无需额外 LLM） |
+| `llm` | 独立 LLM 评判（provider 优先级：configurable > feedback.quality_monitor_llm_provider > llm.default_provider） |
+| `hybrid` | 规则初筛 + LLM 复核 |
 
 ### 进化策略
 
-- **ParameterTuneStrategy**: 参数调优（temperature、max_tokens等）
-- **ComponentSwapStrategy**: 组件替换（切换LLM提供商/版本）
-- **RollbackMechanism**: 版本回滚（质量持续下降时回退到上一稳定版本）
-- **VersionedComponentStore**: 版本化组件存储，支持多版本并行
+- **ParameterTuneStrategy**（parameter-tune.ts）：参数调优
+- **ComponentSwapStrategy**（component-swap.ts）：组件替换
+- **RollbackMechanism**（rollback-mechanism.ts）：版本回滚
+- **VersionedComponentStore**（versioned-store.ts）：版本化组件存储，多版本并行
+
+（依据：judge LLM 构造 [factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L217-L256)；config_overrides 跨请求应用 [runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts#L228-L279)；进化策略导出见 [evolution/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/evolution/index.ts#L1-L9)）
 
 ## 可观测性 (observability/)
 
 | 模块 | 文件 | 功能 |
 |------|------|------|
-| LoggingConfig | logging_config.py | 结构化日志配置 |
-| MetricsRegistry | metrics.py | Prometheus指标（请求计数、延迟、错误率） |
-| Tracing | tracing.py | OpenTelemetry分布式追踪 |
-| TraceContext | trace_context.py | trace_id传播 |
-| Exporters | exporters.py | OTLP导出器 |
+| LoggingConfig | logging-config.ts | 结构化日志配置（JSON 格式开关） |
+| MetricsRegistry | metrics.ts | Prometheus 指标（prom-client 可选依赖） |
+| Tracing | tracing.ts | OpenTelemetry 分布式追踪（OTel 为可选依赖） |
+| TraceContext | trace-context.ts | trace_id 传播 |
+| Exporters | exporters.ts | OTLP 导出器（gRPC/HTTP） |
 
-**Span埋点**：通过 `_span()` 上下文管理器统一埋点，Tracing启用时创建OTel span，未启用时退化为日志计时。
+**Span 埋点**：通过 `_span()` 辅助函数（[runner.ts L149](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts#L149)）统一埋点，Tracing 启用时创建 OTel span，未启用时退化为日志计时。所有配置默认关闭（observability.tracing.enabled=false 等）。
 
-## 多Agent协作 (orchestration/)
+## 多 Agent 协作 (orchestration/)
 
 ### 消息总线
 
-MessageBus 提供发布/订阅事件通信：
-- AgentEvent: 标准化事件（AgentDomain/EventAction）
-- 支持同步/异步事件处理
-- 事件日志持久化
+[EventBus](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/message-bus.ts#L56-L166)：发布/订阅、domain/action/priority 过滤、request/response 匹配与超时；支持事件日志持久化（`event_bus.log_file_path`，TTL 与滚动大小可配置，[runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L176-L187)）。
 
-### AG-UI协议
+### AG-UI 协议
 
-[agui_adapter.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/orchestration/communication/agui_adapter.py) 实现 AG-UI 流式协议转换：
-- 将 LangGraph stream 事件转换为前端标准事件
-- 事件类型：THINKING_START/END、TEXT_MESSAGE_CONTENT/END、TOOL_CALL_START/RESULT、RUN_ERROR等
-- 收集完整响应文本和工具调用记录
+[agui-adapter.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/orchestration/communication/agui-adapter.ts) 实现 AG-UI 流式协议转换：LangGraph stream 事件 → 前端标准事件（THINKING_START/END、TEXT_MESSAGE_CONTENT/END、TOOL_CALL_START/RESULT、RUN_ERROR 等），收集完整响应文本与工具调用记录。
 
 ### 协作模式
 
-- **Consensus**: 共识模式（多数投票 majority_vote / 加权 weighted / LLM裁决 llm_judge）
-- **Delegation**: 委派模式（Supervisor拆分任务给Subagent）
+- **Consensus**（patterns/consensus.ts）：共识模式（majority_vote / weighted / llm_judge，`consensus_strategy` 配置；失败可转进化信号）
+- **Delegation**（patterns/delegation.ts）：委派模式（Supervisor 拆分给 Subagent；v1.4 增强支持 LLM 驱动任务拆分 `use_llm_decompose` 默认开启、子 Agent 失败重试 `subagent_max_retries=1`，[runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L74-L87)）
+- **SensorManager**（sensor-manager.ts）：传感器生命周期管理（start_sensors/stop_sensors）
+
+## MCP 集成 (mcp/，新增章节)
+
+**状态：已实现（旧版"完全不具备 MCP"的结论已过时），默认关闭（`mcp.enabled=false`）。**
+
+| 模块 | 文件 | 功能 |
+|------|------|------|
+| MCPSession / MCPClient | client.ts | 单 Server 连接生命周期（L40-L158）/ 多连接管理器（L168-L239），`callTool` 支持 `server_name__tool_name` 或裸名路由（L276-L352） |
+| Transport | transport.ts | 三种传输：Stdio（L94-L190，子进程+SDK 握手）/ SSE / WebSocket（L199-L350） |
+| ToolDiscovery | discovery.ts | 工具发现缓存、`server__tool` 全名/裸名查找、`toBaseToolSchema()` 标准化（L21-L160） |
+| ServerLifecycleManager | lifecycle.ts | stdio/auto_start Server 子进程生命周期跟踪清理（L22-L74） |
+| 错误体系 | errors.ts | MCPConnectionError / MCPTimeoutError / MCPToolNotFound / MCPProtocolError（L12-L85） |
+
+**接入链路**：宿主 lifespan 中 `MCPClient.start()` → `create_agent()` 时 `_discover_and_register_mcp_tools()` 幂等注册 → MCPToolAdapter 包装为 BaseTool → 与内置工具同一 registry → `build_langchain_tools()` 自动进入图。
+
+（依据：SDK 依赖 [package.json](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/package.json#L24)；注册链路 [factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L498-L506)；mcp 配置默认值 [runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L255-L259)）
+
+## Skills 子系统 (skills/，新增章节)
+
+**状态：已实现（旧版"Skill 高级特性缺失"的结论大部分过时），默认关闭（`skills.enabled=false`）。**
+
+| 组件 | 文件 | 功能 |
+|------|------|------|
+| BaseSkill 接口 | core/interfaces/skill.ts | 见核心接口章节（含 version/tags/examples/preconditions/requiredScopes 元数据——旧版判定为"缺失"的自描述元数据已具备） |
+| SkillLoader | loader.ts | 按配置发现并加载 Skill（`skills.auto_discover_dirs` / `skills.active`） |
+| SkillToolWrapper | adapter.ts | Skill 工具执行隔离包装（经 setSkillToolWrapperFactory 注入 registry） |
+| SkillPromptAggregator | prompt-aggregator.ts | 聚合已注册 Skill 的 systemPromptFragment 注入 system prompt |
+| FewShotSelector | few-shot-selector.ts | 按 Skill examples 选择 few-shot 示例 |
+| MathSkill | math-skill.ts | 内置示例 Skill |
+
+**接入链路**：`create_agent()` 中 `skills.enabled=true` 时 SkillLoader 加载 → `registerSkill()` 自动注册内含工具 → SkillPromptAggregator 聚合提示片段。单一集成点，失败时继续无 Skill 运行。
+
+**仍存的差距**：无 Skill 市场/包分发格式（zip/wheel）、无 Skill 间链式调用编排。
+
+（依据：加载入口 [factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L448-L457)、提示聚合 [L534-L542](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L534-L542)；skills 配置 [runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L165-L169)；导出清单 [skills/index.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/skills/index.ts#L1-L18)）
 
 ---
 
-## 高级Agent模式能力深度分析
+## 高级 Agent 模式能力深度分析
 
-本节从架构层面深入分析 ModuAgent 对业界主流 Agent 高级模式（Plan-and-Execute、Skills、MCP）的支持现状与差距。
+> 本节依据 TS 版代码重新核对，旧版"Plan-and-Execute ❌ / Skills 高级特性 ❌ / MCP ❌"的结论已全部过时。
 
 ### 一、Plan-and-Execute 模式分析
 
-**结论：当前为 ReAct + Multi-Agent 混合架构，不具备完整的 Plan-and-Execute 模式，但具备部分规划能力。**
+**结论（已更新）：P4 已实现完整 Plan-and-Execute 模式，默认关闭（`plan_execute.enabled=false`），与 multi_agent 模式互斥（multi_agent 优先）。**
 
-#### 1.1 标准 Plan-and-Execute 的核心特征
+**已具备的核心要素**（旧版判定为"缺失"的各项均已落地）：
 
-Plan-and-Execute 模式（由 LangChain 提出）的核心流程：
+| 要素 | 状态 | 代码依据 |
+|------|------|----------|
+| 显式 Planner 节点 | ✅ | `planner` 节点注册（[graph.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts#L507)）；Planner 使用未绑定工具的原始 LLM（规划阶段禁止工具，[factory.ts L678](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L678)） |
+| 结构化 Plan 状态 | ✅ | `plan` / `current_step_index` / `step_results` / `replan_count` / `current_step` / `step_msg_baseline` / `plan_delta` 字段（[state.ts L562-L571](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L562-L571)） |
+| 单步 Executor | ✅ | `step_dispatch` → agent → `step_finalize` 循环（[graph.ts L508-L509, L560](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts#L508-L560)）；step_finalize 按步截取 messages 增量并校验 requires_tool 步骤是否实际调用工具 |
+| Replanner 机制 | ✅ | `max_replans=2` 重规划计数；planner 重规划返回空 step_results 清空旧结果（[state.ts L286-L297](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts#L286-L297) reducer 注释） |
+| 步骤依赖 | ✅ | 串行步骤执行（current_step_index 递进） |
+| 工具依赖推断 | ✅ | `BaseTool.providesRealtimeData()` 元数据供 Planner 推断 step.requires_tool（[action.ts L92-L94](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts#L92-L94)） |
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Planner    │────▶│  Executor    │────▶│  Replanner  │
-│ (制定计划)   │     │ (执行步骤)    │     │ (重新规划)   │
-└─────────────┘     └──────────────┘     └─────────────┘
-       │                   │                   │
-       │  输出步骤列表      │  单步执行+观察     │  根据观察调整计划
-       ▼                   ▼                   ▼
-   Step1, Step2...     Tool Call          更新计划
-                                         或结束
-```
+**配置项**（[runtime-config.ts L98-L106](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L98-L106)）：`enabled=false` / `max_steps=10` / `max_replans=2` / `planner_temperature=0.2` / `continue_on_failure=false` / `compact_completed_steps=false` / `step_summary_max_chars=500`。支持 per-request 强制启用（`configurable.plan_execute_enabled=true`，[factory.ts L675-L677](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L675-L677)）。
 
-关键要素：
-- **显式规划阶段**：Planner 独立生成结构化步骤计划（通常是 Pydantic 模型）
-- **单步执行**：Executor 一次只执行一个步骤
-- **重规划机制**：Replanner 根据执行结果决定是继续、调整计划还是结束
-- **计划持久化**：计划作为独立状态在图中传递
-
-#### 1.2 ModuAgent 当前工作流分析
-
-ModuAgent 的主图结构（来自 [graph.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/graph.py#L118-L134)）：
-
-```
-START → perception → route_after_perception
-                          ├─ memory_query → agent → route_after_agent
-                          │                       ├─ tools → tool_processor → agent (ReAct循环)
-                          │                       └─ response → feedback → memory_update → END
-                          └─ response (熔断)
-```
-
-**ReAct 循环特征**（agent ↔ tools 循环）：
-- LLM 在每一步同时思考（Thought）和决策（Action）
-- 没有独立的 Planning 阶段
-- 计划隐含在 LLM 的 reasoning chain 中
-- 无显式步骤列表状态字段
-
-**Multi-Agent Supervisor 分支**（当 `orchestration.multi_agent.enabled=True`）：
-
-```
-memory_query → supervisor → Send × N → subagent_run (并行) → consensus → response
-```
-
-来自 [supervisor.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/subgraph/supervisor.py)：
-- `decompose_task()` 函数将用户输入拆分为多个子任务（research/coding/review）
-- 但这是**并行多视角分工**（同 prompt 不同角色），不是**串行步骤规划**
-- 子任务之间没有依赖关系，不支持"先A后B"的步骤依赖
-- 每个子任务独立执行，结果通过共识聚合
-- Supervisor 不做动态重规划（Replanning）
-
-#### 1.3 状态字段分析
-
-查看 [state.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/state.py) 中的 `ModuAgentState`，当前状态字段包括：
-
-| 字段 | 用途 | Plan-and-Execute 需要 |
-|------|------|----------------------|
-| `messages` | 消息历史 | ✅ 已有 |
-| `input_data` | 输入数据 | ✅ 已有 |
-| `perception_result` | 感知结果 | ❌ 不需要 |
-| `tool_results` | 工具执行结果 | ⚠️ 部分（需 step_result） |
-| `subtasks` | 子任务列表 | ⚠️ 仅并行视角，非串行步骤 |
-| `subtask_results` | 子任务结果 | ⚠️ 并行聚合 |
-| `config_overrides` | 配置覆盖 | ❌ 不需要 |
-| **缺失** | **计划步骤(plan)** | ❌ 无结构化计划 |
-| **缺失** | **当前步骤索引(current_step)** | ❌ 无执行进度跟踪 |
-| **缺失** | **步骤观察(step_observations)** | ❌ 无单步观察 |
-
-#### 1.4 评估总结
-
-| 维度 | 状态 | 说明 |
-|------|------|------|
-| 显式 Planner 节点 | ❌ 缺失 | 无独立的计划生成节点 |
-| 结构化 Plan 状态 | ❌ 缺失 | 无 Pydantic Plan/Step 模型 |
-| 单步 Executor | ❌ 缺失 | 当前是 ReAct 循环（LLM自主决定下一步） |
-| Replanner 节点 | ❌ 缺失 | 无执行后重新规划机制 |
-| 并行任务拆分 | ⚠️ 部分具备 | Supervisor 支持多视角并行拆分，但非串行步骤规划 |
-| 步骤依赖 | ❌ 缺失 | 子任务间无依赖关系 |
-
-**结论**：ModuAgent 当前采用 **ReAct 循环** 作为主要推理执行模式，辅以 **Supervisor-Subagent 并行协作**模式。它**不具备完整的 Plan-and-Execute 能力**。如需支持，需要新增 Planner 节点、Plan 状态模型、单步执行逻辑和 Replanner 节点。
-
----
+**模式路由**：`orchestration.mode_router` 配置化规则表，multi_agent 命中优先于 planner（[runtime-config.ts L91-L95](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L91-L95)）。
 
 ### 二、Skills 能力分析
 
-**结论：具备类似 Skills 的工具注册/发现/调用机制，但缺乏 Skills 生态的高级特性（Skill包管理、版本控制、描述性元数据、Skill组合）。**
+**结论（已更新）：Skill 已成为一等公民（P1 落地），具备多工具封装、动态加载、版本管理、前置条件、权限声明、few-shot 示例等高级特性；默认关闭。仍缺 Skill 市场/包分发与 Skill 间编排。**
 
-#### 2.1 Skills 的核心概念
+与标准 Skills 生态的能力对比（更新版）：
 
-在主流 Agent 框架（如 OpenAI Skills、LangChain Tools、AutoGPT Skills）中，Skills 通常具备：
+| 能力维度 | 状态 | 依据 |
+|----------|------|------|
+| 基本调用 / JSON Schema / 注册发现 / 热替换 / 工具集筛选 | ✅ | registry + tool-adapter（同旧版） |
+| HITL 审批 | ✅ | `requiresApprovalFor` 参数级动态判定（[action.ts L56-L61](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/action.ts#L56-L61)） |
+| **自描述元数据** | ✅ 已具备 | `tags`/`examples`/`preconditions`/`requiredScopes`（[skill.ts L27-L44](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces/skill.ts#L27-L44)） |
+| **多工具封装（Skill 包）** | ✅ 已具备 | `tools()` + `systemPromptFragment()`（纯提示型 Skill 亦可） |
+| **动态加载** | ✅ 已具备 | SkillLoader 按配置目录发现（`auto_discover_dirs`） |
+| **版本管理** | ✅ 已具备 | `version()` + 工具级 `version()` semver |
+| **Skill 组合/链式调用** | ❌ 仍缺失 | 无 Skill 间编排机制 |
+| **Skill 包分发格式/市场** | ❌ 仍缺失 | 无 zip/wheel 分发格式 |
 
-1. **自描述能力**：不仅有 name/description/parameters，还有使用场景、示例、前置条件
-2. **封装性**：一个 Skill 可以包含多个工具、内部状态、甚至独立的 prompt 模板
-3. **动态发现与加载**：运行时扫描、加载、卸载 Skill 包
-4. **版本管理**：Skill 版本控制、兼容性检查
-5. **组合与编排**：Skill 之间可以组合、链式调用
-6. **权限控制**：Skill 级别权限声明
-7. **Skill 市场/仓库**：可分发的 Skill 包格式
+### 三、MCP 能力分析
 
-#### 2.2 ModuAgent 工具系统分析
+**结论（已更新）：MCP 集成已完整实现（Client/Transport×3/Discovery/Lifecycle/错误体系/工具适配器），默认关闭，失败不影响 Agent 启动。**
 
-**工具接口**（来自 [action.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces/action.py#L22-L68)）：
+| MCP 能力 | 状态 | 依据 |
+|----------|------|------|
+| MCP SDK 依赖 | ✅ `@modelcontextprotocol/sdk ^1.0` | [package.json L24](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/package.json#L24) |
+| MCP Client 实现 | ✅ | [client.ts L40-L352](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/client.ts#L40-L352) |
+| Server 生命周期管理 | ✅ | [lifecycle.ts L22-L74](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/lifecycle.ts#L22-L74) |
+| Tool → BaseTool 适配器 | ✅ | [mcp-tool-adapter.ts L31-L112](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/adapters/mcp-tool-adapter.ts#L31-L112) |
+| MCP Resource / Prompt 模板 | ❌ 未实现 | client 仅覆盖 tools/list 与 tools/call |
+| stdio / SSE 传输 | ✅（另有 WebSocket） | [transport.ts L94-L350](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp/transport.ts#L94-L350) |
+| 动态工具发现 | ✅ | discovery.ts + `_discover_and_register_mcp_tools` |
 
-```python
-class BaseTool(ABC):
-    @abstractmethod
-    def name(self) -> str: ...           # 工具名
-    
-    @abstractmethod
-    def description(self) -> str: ...    # 工具描述
-    
-    @abstractmethod
-    def parameters_schema(self) -> Dict: ...  # JSON Schema 参数
-    
-    @abstractmethod
-    def invoke(self, params, context) -> Dict: ...  # 执行
-    
-    def requires_approval(self) -> bool: ...       # HITL审批
-    def on_approval_rejected(self, params) -> Dict: ...  # 审批拒绝降级
-```
+### 四、综合能力矩阵（更新版）
 
-**内置工具**（7个，位于 [components/action/tools/](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/)）：
-
-| 工具 | 文件 | 能力 |
-|------|------|------|
-| CalculatorTool | [calculator.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/calculator.py) | 数学计算 |
-| CodeExecutorTool | [code_executor.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/code_executor.py) | 代码执行 |
-| DateTimeTool | [datetime_tool.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/datetime_tool.py) | 日期时间 |
-| FileOpsTool | [file_ops.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/file_ops.py) | 文件操作 |
-| HttpRequestTool | [http_request.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/http_request.py) | HTTP请求 |
-| SearchTool | [search.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/search.py) | 搜索 |
-| SqlQueryTool | [sql_query.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/action/tools/sql_query.py) | SQL查询 |
-
-**工具注册与发现**（来自 [registry.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/registry.py#L89-L107)）：
-
-- `register_tool(tool)`: 程序化注册
-- `get_tool(name)`: 按名查找
-- `list_tools()`: 列出所有工具（含 name/description/schema）
-- `swap_component("tool", name, new_tool)`: 运行时热替换
-
-**工具适配器**（来自 [tool_adapter.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/adapters/tool_adapter.py)）：
-- `wrap_modu_tool()`: 将 BaseTool 包装为 LangChain StructuredTool
-- `build_langchain_tools()`: 从注册表批量构建 LangChain 工具
-- 支持 `tool_names` 参数运行时筛选工具子集
-- 支持指数退避重试（P2-8）
-
-**Human-in-the-Loop**（来自 [nodes.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/nodes.py#L781-L917)）：
-- 敏感工具可声明 `requires_approval() → True`
-- 配置 `tools.human_in_loop.sensitive_tools` 列表
-- 使用 LangGraph `interrupt()` 暂停等待人工审批
-
-#### 2.3 与标准 Skills 能力对比
-
-| 能力维度 | ModuAgent 工具系统 | 标准 Skills 系统 | 差距 |
-|----------|-------------------|-----------------|------|
-| 基本调用(name/desc/params/invoke) | ✅ 完整支持 | ✅ | 无 |
-| JSON Schema 参数定义 | ✅ parameters_schema() | ✅ | 无 |
-| 运行时注册/发现 | ✅ register/list/get | ✅ | 无 |
-| 运行时热替换 | ✅ swap_component | ✅ | 无 |
-| 运行时工具集筛选 | ✅ configurable.tools | ✅ | 无 |
-| 人工审批(HITL) | ✅ requires_approval | ⚠️ 部分实现 | 无 |
-| 工具重试 | ✅ 指数退避 | ⚠️ 可选 | 无 |
-| **自描述元数据** | ❌ 仅有基本desc | ✅ 使用场景/示例/前置条件 | **缺失** |
-| **多工具封装(Skill包)** | ❌ 单工具=单类 | ✅ 一个Skill包含多个工具+prompt+资源 | **缺失** |
-| **动态加载(插件发现)** | ❌ 硬编码注册 | ✅ 扫描目录/entry_points自动发现 | **缺失** |
-| **版本管理** | ❌ 无版本概念 | ✅ 版本号/兼容性检查 | **缺失** |
-| **Skill组合/链式调用** | ❌ 无编排 | ✅ Skill调用Skill | **缺失** |
-| **权限声明** | ⚠️ 仅HITL审批 | ✅ 细粒度权限scope | **部分缺失** |
-| **Skill包分发格式** | ❌ Python源码 | ✅ zip/wheel/独立包 | **缺失** |
-
-#### 2.4 评估总结
-
-**ModuAgent 的工具系统具备"类 Skill"的核心能力**——注册、发现、调用、热替换、HITL审批、重试等基础能力完善，且通过 LangChain 的 `bind_tools` 与 LangGraph 的 `ToolNode` 无缝集成了原生 function calling。
-
-**但与成熟的 Skills 生态相比，差距在"Skill 作为一等公民"的高级特性**：
-1. 当前工具是"扁平的原子工具"，不支持将多个相关工具+prompt+资源封装为一个 Skill 单元
-2. 缺乏动态插件发现机制——工具必须在启动时通过代码硬编码注册
-3. 没有版本管理、Skill包分发、Skill市场等生态化能力
-4. 工具描述仅用于 LLM function calling，缺少面向开发者的使用文档、示例、前置条件等元数据
-
-**实现 Skills 的改造路径（如果需要）**：
-- 新增 `BaseSkill` 抽象类，包含多个工具、系统提示词、初始化逻辑
-- 新增 Skill 加载器（扫描目录、entry_points、配置文件）
-- 在注册表中新增 `_skills` 字典，Skill 注册时自动注册其包含的工具
-- 扩展 `parameters_schema()` 或新增元数据字段（examples、preconditions、tags）
+| 能力模式 | 支持程度 | 默认状态 | 代码依据 |
+|----------|---------|---------|----------|
+| **ReAct (思考-行动循环)** | ✅ 完整支持 | 默认路径 | graph.ts agent⇄tools 循环 |
+| **Tool Calling (函数调用)** | ✅ 完整支持 | 默认启用 | bindTools + ToolNode |
+| **Human-in-the-Loop** | ✅ 支持（含参数级动态审批 + 超时自动拒绝 + 过期清扫） | 代码默认 false；config.yaml 模板开启 | runner.ts L932/L1171/L1263；action.ts L56-L61 |
+| **多 Agent 并行协作** | ✅ 支持（含 LLM 任务拆分、子 Agent 重试、共享黑板） | 默认关闭 | runtime-config.ts L74-L87；state.ts blackboard |
+| **Plan-and-Execute** | ✅ **已实现**（旧版"不支持"结论过时） | 默认关闭 | plan-execute/ + graph.ts planner 节点 |
+| **Skills** | ✅ **已实现**（一等公民，含元数据/版本/动态加载） | 默认关闭 | skills/ + skill.ts |
+| **MCP 协议** | ✅ **已实现**（Client/3 种传输/发现/适配） | 默认关闭 | mcp/ + mcp-tool-adapter.ts |
+| **反馈进化闭环** | ✅ 支持（rule/llm/hybrid 三模式） | 默认启用（enable_evolution=true） | factory.ts L604-L617 |
+| **Markdown 提示注入** | ✅ 已实现 | 代码默认 false；config.yaml 模板开启 | factory.ts L552-L577 |
 
 ---
 
-### 三、MCP (Model Context Protocol) 能力分析
+## 已知限制与未实现项（新增章节）
 
-**结论：ModuAgent 当前完全不具备 MCP 协议集成能力，没有任何 MCP 相关代码、依赖或适配器。**
+依据全量代码扫描（TODO/FIXME 标记 + 实现核对）：
 
-#### 3.1 MCP 协议概述
-
-MCP（Model Context Protocol）是 Anthropic 提出的开放协议，用于标准化 AI 模型与外部数据源/工具之间的连接。核心概念：
-
-- **MCP Server**: 对外暴露工具、资源、提示的服务进程（stdio/SSE传输）
-- **MCP Client**: 连接 MCP Server，发现并调用其能力
-- **Tool**: Server 暴露的可调用函数（类似 ModuAgent 的 BaseTool）
-- **Resource**: Server 暴露的可读数据（文件、数据库记录等）
-- **Prompt**: Server 提供的预定义提示模板
-
-MCP 的核心价值在于**工具/数据源的跨进程、跨语言、标准化互操作**——任何支持 MCP 的客户端都能使用任何 MCP Server 提供的工具，无需为每个工具编写特定适配器。
-
-#### 3.2 ModuAgent 代码搜索结果
-
-在整个项目仓库中进行了全面搜索：
-
-| 搜索范围 | 搜索关键词 | 结果 |
-|----------|-----------|------|
-| 所有 `.py` 文件 | `mcp`, `model.context.protocol`, `mcp_server`, `fastmcp` | ❌ 无匹配 |
-| `requirements*.txt` | `mcp` | ❌ 无匹配 |
-| `pyproject.toml` | `mcp` | ❌ 无匹配 |
-| 所有 `package.json` | `mcp` | ❌ 无匹配 |
-
-**MCP 相关依赖完全缺失**：
-- 未安装 `mcp` Python SDK（`pip install mcp`）
-- 未安装 `fastmcp`（高级 MCP 框架）
-- 无 MCP Client/Server 实现代码
-- 无 MCP 传输层实现（stdio/SSE）
-- 无 MCP 工具适配器
-
-#### 3.3 当前工具调用架构对比
-
-ModuAgent 当前工具调用是**进程内调用**：
-
-```
-┌──────────────────────────────────────────────┐
-│                  ModuAgent 进程               │
-│  ┌──────────┐    ┌──────────┐    ┌─────────┐ │
-│  │ LLM      │───▶│ ToolNode │───▶│ BaseTool │ │
-│  │ (reason) │    │ (调度)    │    │ (执行)   │ │
-│  └──────────┘    └──────────┘    └─────────┘ │
-│                      │                        │
-│                      ▼ 直接Python方法调用       │
-│               ┌──────────────┐               │
-│               │ 内置工具实例   │               │
-│               │ (calculator,  │               │
-│               │  file_ops...) │               │
-│               └──────────────┘               │
-└──────────────────────────────────────────────┘
-```
-
-MCP 架构需要**跨进程协议通信**：
-
-```
-┌─────────────────────────────────────────────────────┐
-│              ModuAgent 进程 (MCP Client)             │
-│  ┌──────────┐    ┌──────────┐    ┌───────────────┐ │
-│  │ LLM      │───▶│ ToolNode │───▶│ MCP Tool      │ │
-│  │          │    │          │    │ Adapter       │ │
-│  └──────────┘    └──────────┘    └───────┬───────┘ │
-└──────────────────────────────────────────┼──────────┘
-                                           │ JSON-RPC (stdio/SSE)
-                                           ▼
-                        ┌──────────────────────────────┐
-                        │     MCP Server (独立进程)     │
-                        │  ┌────────┐  ┌────────────┐  │
-                        │  │ Tools  │  │ Resources  │  │
-                        │  │ Prompts│  │ (文件/DB)  │  │
-                        │  └────────┘  └────────────┘  │
-                        └──────────────────────────────┘
-```
-
-#### 3.4 实现 MCP 需要新增的组件
-
-要在 ModuAgent 中集成 MCP，需要新增以下模块：
-
-| 组件 | 路径建议 | 功能 |
-|------|---------|------|
-| MCP Client 封装 | `modu_graph/adapters/mcp_client.py` | 管理 MCP Server 连接生命周期（stdio/SSE） |
-| MCP Tool 适配器 | `modu_graph/adapters/mcp_tool_adapter.py` | 将 MCP Tool 包装为 ModuAgent BaseTool |
-| MCP Server 配置 | `config/mcp_servers.yaml` | 声明要连接的 MCP Server（命令/URL） |
-| MCP Server 生命周期管理 | `components/action/mcp/manager.py` | 启动/停止/监控 MCP Server 子进程 |
-| MCP 工具注册器 | `core/mcp_registry.py` | 从 MCP Server 发现工具并动态注册到 ComponentRegistry |
-
-关键集成点在 [factory.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/factory.py#L218-L219) 的 `build_langchain_tools()` 调用处——需要在构建工具列表时，先通过 MCP Client 发现远程工具，将其包装后加入工具列表。
-
-#### 3.5 评估总结
-
-| MCP 能力 | 状态 |
-|----------|------|
-| MCP SDK 依赖 | ❌ 未安装 |
-| MCP Client 实现 | ❌ 缺失 |
-| MCP Server 管理（启动/停止/监控） | ❌ 缺失 |
-| MCP Tool → BaseTool 适配器 | ❌ 缺失 |
-| MCP Resource 读取 | ❌ 缺失 |
-| MCP Prompt 模板 | ❌ 缺失 |
-| stdio 传输 | ❌ 缺失 |
-| SSE 传输 | ❌ 缺失 |
-| 动态工具发现 | ❌ 缺失 |
-| **MCP 集成** | **❌ 完全不具备** |
-
-**结论**：ModuAgent 当前是一个**纯进程内**的 Agent 框架，所有工具都是本地 Python 对象直接调用，**完全不支持 MCP 协议**。工具只能通过硬编码方式注册到 ComponentRegistry，无法连接外部 MCP Server 获取远程工具。
-
-**改造建议**：MCP 集成的核心工作量不大（官方 Python SDK 已封装了协议层），主要工作是：
-1. 添加 `mcp` Python 依赖
-2. 编写 `MCPToolAdapter` 将 MCP Tool 适配为 BaseTool
-3. 在 Agent 启动时根据配置连接 MCP Server 并动态注册工具
-4. 管理 MCP Server 子进程生命周期
-
----
-
-### 四、综合能力矩阵
-
-| 能力模式 | 支持程度 | 核心差距 | 改造难度 |
-|----------|---------|---------|---------|
-| **ReAct (思考-行动循环)** | ✅ 完整支持 | - | - |
-| **Tool Calling (函数调用)** | ✅ 完整支持 | - | - |
-| **Multi-Agent 并行协作** | ✅ 支持 | 无串行步骤依赖 | 低 |
-| **Human-in-the-Loop** | ✅ 支持 | 仅审批粒度 | 低 |
-| **反馈进化闭环** | ✅ 支持 | - | - |
-| **Plan-and-Execute** | ❌ 不支持 | 缺Planner/Plan状态/Replanner | 中 |
-| **Skills (基础工具)** | ✅ 类Skill能力 | 原子工具完善 | - |
-| **Skills (高级特性)** | ❌ 不支持 | 缺Skill包/动态加载/版本管理 | 中 |
-| **MCP 协议** | ❌ 完全不支持 | 缺MCP Client/Adapter/Server管理 | 中低 |
+| 项 | 说明 | 依据 |
+|----|------|------|
+| ASR 语音识别 | TODO 桩，返回低置信度空结果；建议接入 OpenAI Whisper API / Google Web Speech / ffmpeg | [asr-processor.ts L76/L235/L246/L266](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/audio/asr-processor.ts#L76) |
+| 摄像头/麦克风传感器 | TODO 桩（无 OpenCV/PyAudio 等价库），传感器始终不可用 | [camera.ts L67/L99/L212/L244](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/vision/camera.ts#L67) |
+| 图像 OCR | TODO 桩（无 pytesseract/easyocr 等价库，可考虑 tesseract.js） | [image-processor.ts L78/L88/L203](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/vision/image-processor.ts#L78) |
+| 本地 NER/情感分析 | TS 版无 spaCy/SnowNLP 等价库，仅由 LLM 填充 | [llm-parser.ts L145/L272/L287](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/text/llm-parser.ts#L145) |
+| 语种检测 | TODO，待集成 JS 语种检测库 | [rule-based.ts L644](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/text/rule-based.ts#L644) |
+| Checkpoint 持久化 | 默认 MemorySaver（进程内存），应用重启丢失会话与 HITL 中断状态；sqlite 路径硬编码 `checkpoints.db` 且依赖缺失时静默回退内存 | [factory.ts L136-L162](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L136-L162) |
+| 默认 system prompt 业务耦合 | 防幻觉 prompt 内含新闻搜索/doc_writer 文档生成的特定业务 SOP（规则 21-28），对非文档类业务是 Token 负担 | [factory.ts L93-L114](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L93-L114) |
+| MCP Resource/Prompt | 仅覆盖 tools 能力面 | mcp/client.ts |
+| MCP 工具发现参数冗余 | `_discover_and_register_mcp_tools` 的 runtimeConfig 参数未使用（仅保接口兼容） | [factory.ts L357-L361](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts#L357-L361) |
+| config.yaml 模板与代码默认值分叉 | HITL 模板 `enabled: true` vs 代码默认 `false`（依赖"删除配置段=关闭"约定） | [config.yaml L17-L25](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/config.yaml#L17-L25) vs [runtime-config.ts L116-L121](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts#L116-L121) |

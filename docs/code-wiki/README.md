@@ -22,7 +22,7 @@ Pioneering 项目代码文档，提供完整的架构说明、模块文档和开
 - **项目根目录**: [d:\Administrator\Desktop\pioneering](file:///d:/Administrator/Desktop/pioneering)
 - **后端API文档（启动后访问）**: http://localhost:9000/docs
 - **核心入口**: [main.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/app/main.py)
-- **ModuAgent工厂**: [factory.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/factory.py)
+- **ModuAgent工厂（TS 版）**: [factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts)
 
 ## 服务地址
 
@@ -36,20 +36,22 @@ Pioneering 项目代码文档，提供完整的架构说明、模块文档和开
 
 ## 关键模块索引
 
-### 后端核心 (ModuAgent)
+### 后端核心 (ModuAgent，TS 版位于 packages/modu-agent)
 
 | 模块 | 路径 |
 |------|------|
-| 核心接口 | [core/interfaces/](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/interfaces) |
-| 组件注册中心 | [core/registry.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/core/registry.py) |
-| LangGraph状态 | [modu_graph/state.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/state.py) |
-| 图节点定义 | [modu_graph/nodes.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/nodes.py) |
-| 图构建 | [modu_graph/graph.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/graph.py) |
-| 运行器 | [modu_graph/runner.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/runner.py) |
-| 组件工厂 | [modu_graph/factory.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/modu_graph/factory.py) |
-| 感知管线 | [components/perception/pipeline.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/components/perception/pipeline.py) |
-| 进化编排 | [evolution/evolution_orchestrator.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/evolution/evolution_orchestrator.py) |
-| 运行时配置 | [config/runtime_config.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/ModuAgent/config/runtime_config.py) |
+| 核心接口 | [core/interfaces/](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/interfaces) |
+| 组件注册中心 | [core/registry.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/core/registry.ts) |
+| LangGraph状态 | [graph/state.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/state.ts) |
+| 图节点定义 | [graph/nodes.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/nodes.ts) |
+| 图构建 | [graph/graph.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/graph.ts) |
+| 运行器 | [graph/runner.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/runner.ts) |
+| 组件工厂 | [graph/factory.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/graph/factory.ts) |
+| 感知管线 | [perception/pipeline.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/perception/pipeline.ts) |
+| 进化编排 | [evolution/evolution-orchestrator.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/evolution/evolution-orchestrator.ts) |
+| 运行时配置 | [config/runtime-config.ts](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/config/runtime-config.ts) |
+| MCP 集成 | [mcp/](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/mcp) |
+| Skills 子系统 | [skills/](file:///d:/Administrator/Desktop/pioneering/packages/modu-agent/src/skills) |
 
 ### 后端应用 (FastAPI)
 
