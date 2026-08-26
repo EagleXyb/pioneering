@@ -80,6 +80,9 @@ class ChatSession(Base):
     last_message_id = Column("last_message_id", String(64), nullable=True)
     is_archived = Column("is_archived", Boolean, default=False)
     agent_mode = Column("agent_mode", String(50), nullable=True)
+    # 云边双模（阶段 0）：会话归属运行时。'cloud'=云端 backend，'local'=桌面端本地。
+    # 存量会话与默认值均为 'cloud'（与既有 HTTP 行为一致）。
+    runtime = Column("runtime", String(20), nullable=False, server_default="cloud")
     created_at = Column("created_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column("updated_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

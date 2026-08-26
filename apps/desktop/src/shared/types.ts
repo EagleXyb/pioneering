@@ -46,11 +46,11 @@ export interface ChatSession {
   /** 会话分享链接（后端能力就绪后下发） */
   shareUrl?: string
   /**
-   * 云边双模（阶段 0 预留）：会话归属的运行时。
+   * 云边双模（阶段 0）：会话归属的运行时。
    * 'local' = 本地 Electron 主进程内嵌 agent；'cloud' = 云端 backend-ts。
    * 未定义时默认 'cloud'（存量会话与当前 HTTP 模式）。
-   * 注意：仅前端类型层预留，schema.prisma 的表结构由 Python 侧 init_db() 维护，
-   * 落库需与后端协同后再加列。
+   * 后端已落库：chat_sessions.runtime 列（Python init_db() 幂等 ALTER 维护，
+   * 创建/列表接口均透传该字段）。
    */
   runtime?: 'local' | 'cloud'
 }

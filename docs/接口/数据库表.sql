@@ -52,6 +52,7 @@ CREATE TABLE chat_sessions (
     last_message_id VARCHAR(64),
     is_archived BOOLEAN DEFAULT FALSE,
     agent_mode VARCHAR(50),        -- Agent 模式标识 (如: react_agent, rag_agent。NULL 表示普通对话)
+    runtime VARCHAR(20) NOT NULL DEFAULT 'cloud',  -- 云边双模：会话归属运行时 (cloud=云端 backend, local=桌面端本地)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -60,6 +61,9 @@ COMMENT ON TABLE chat_sessions IS 'AI 对话会话表';
 COMMENT ON COLUMN chat_sessions.title IS '会话标题 (可由 LLM 自动生成)';
 COMMENT ON COLUMN chat_sessions.model_config IS '模型配置 (如 temperature, top_p, model_name)';
 COMMENT ON COLUMN chat_sessions.agent_mode IS 'Agent 模式标识 (如: react_agent, rag_agent。NULL 表示普通单轮/多轮对话)';
+COMMENT ON COLUMN chat_sessions.runtime IS '云边双模：会话归属运行时 (cloud=云端 backend, local=桌面端本地)';
+-- 存量库手动补列（幂等，与 app/database.py init_db() 内语句一致；禁止 prisma migrate/db push）：
+-- ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS runtime VARCHAR(20) NOT NULL DEFAULT 'cloud';
 CREATE INDEX idx_sessions_user ON chat_sessions(user_id, is_archived, updated_at);
 CREATE INDEX idx_sessions_agent_mode ON chat_sessions(agent_mode);
 

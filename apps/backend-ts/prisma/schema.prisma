@@ -88,6 +88,9 @@ model ChatSession {
   lastMessageId String?   @map("last_message_id") @db.VarChar(64)
   isArchived    Boolean   @default(false) @map("is_archived")
   agentMode     String?   @map("agent_mode") @db.VarChar(50)
+  /// 云边双模（阶段 0）：会话归属运行时。cloud=云端 backend（存量与默认），local=桌面端本地。
+  /// 列由 Python 侧 init_db() 幂等 ALTER 维护；TS 版仅 generate，绝不 migrate/db push。
+  runtime       String    @default("cloud") @map("runtime") @db.VarChar(20)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 

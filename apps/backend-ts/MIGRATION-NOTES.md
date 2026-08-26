@@ -128,11 +128,23 @@ ModuAgent 被明确排除在本次迁移范围外，因此该端点暂不可用�
 
 ## 数据库约定
 
-**数据库表结构不做任何改动**。TS 版与 Python 版共用同一个 PostgreSQL 数据库，表结构由 Python 版 `init_db()` 创建和维护。
+TS 版与 Python 版共用同一个 PostgreSQL 数据库，表结构由 Python 版 `init_db()` 创建和维护。
 
 - Prisma schema（`prisma/schema.prisma`）通过 `@@map` / `@map` 精确对齐现有 9 张表的表名和列名
 - **只执行 `prisma generate`**（生成 Client），**绝不执行 `prisma migrate` 或 `db push`**
 - 字段名映射：Prisma 用 camelCase（`passwordHash`、`createdAt`），数据库列名为 snake_case（`password_hash`、`created_at`）
+
+### 表结构变更流程（不使用 prisma migrate / db push）
+
+新字段的添加统一收敛在 Python 侧 [database.py](file:///d:/Administrator/Desktop/pioneering/apps/backend/app/database.py) 的 `_IDEMPOTENT_COLUMNS` 幂等 ALTER 清单中（`ADD COLUMN IF NOT EXISTS`，可重复执行），Prisma schema 仅同步镜像定义后重新 `generate`。需要手动在 psql / PowerShell 执行时，用同样的语句即可。
+
+**变更记录：**
+
+| 日期 | 表 | 变更 | 手动 SQL（等价幂等 ALTER） |
+|------|-----|------|--------------------------|
+| 2026-08-26 | chat_sessions | 新增 `runtime` 列（云边双模阶段 0：会话归属运行时，`cloud`=云端默认 / `local`=桌面本地） | `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS runtime VARCHAR(20) NOT NULL DEFAULT 'cloud';` |
+
+镜像同步：`schema.prisma` 的 `ChatSession.runtime` 已同步（`@default("cloud") @db.VarChar(20)`），执行 `npm run db:generate --workspace @pioneering/backend` 重新生成 Client 即可，全程不触碰数据库。
 
 ---
 

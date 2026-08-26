@@ -1095,6 +1095,22 @@ export class AGUIStreamAdapter {
         break
       }
 
+      // HITL 中断探测（形状二）：LangGraph JS 在 updates 流模式下以 node='__interrupt__'
+      // 产出中断事件，data 即 Interrupt[]（经 runner._normalizeLangGraphStream 拆包后
+      // 的形状）。values 快照形状见下方 values 分支。
+      if (event_type === 'updates' && (event as any)?.node === '__interrupt__') {
+        const interrupts = Array.isArray(event.data) ? event.data : [event.data]
+        if (interrupts.length > 0 && interrupts[0] !== null && interrupts[0] !== undefined) {
+          interrupted = true
+          const first = interrupts[0]
+          interruptValue = (first?.value ?? first) as Record<string, any> | null
+          console.info(
+            '[agui-adapter] transform.interrupt_detected(updates) session=%s tool_calls=%d',
+            this._trace_id, Array.isArray(interruptValue?.tool_calls) ? interruptValue!.tool_calls.length : 0,
+          )
+        }
+      }
+
       if (event_type === 'values') {
         const data = event.data ?? {}
         if (typeof data === 'object' && data !== null) {

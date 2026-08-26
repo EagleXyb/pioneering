@@ -36,6 +36,9 @@ import {
   get_interrupt_state,
   checkInterruptTimeout,
   AGUIStreamAdapter,
+  getRegistry,
+  getConfig,
+  CodeExecutorTool,
 } from '@pioneering/modu-agent'
 import { IpcChannel } from '../shared/ipc-channels'
 import type { SendMessageRequest, ResumeRequest, HitlStateResponse } from '../shared/types'
@@ -207,6 +210,26 @@ function emitAguiDict(
 // 流执行：send / resume
 // ============================================================
 
+/**
+ * 宿主侧敏感工具注册（幂等）。
+ * factory 只默认注册无风险工具（datetime/search_engine/calculator/doc_writer），
+ * code_executor 等需审批工具由宿主按需注册（见 factory.ts 注释）。
+ * 仅当 HITL 启用时注册——否则敏感工具会绕过审批直接执行，违背安全默认。
+ */
+function ensureSensitiveToolsRegistered(): void {
+  const cfg = getConfig()
+  if (!cfg.get('tools.human_in_loop.enabled', false)) return
+  const registry = getRegistry()
+  if (registry.getTool('code_executor') === undefined) {
+    try {
+      registry.registerTool(new CodeExecutorTool())
+      logger.info('sensitive tool registered: code_executor')
+    } catch (e) {
+      logger.warn('code_executor register failed: %s', String(e))
+    }
+  }
+}
+
 interface StartRunOptions {
   runId: string
   sessionId: string
@@ -217,6 +240,7 @@ async function executeSend(run: AgentRun, request: SendMessageRequest): Promise<
   const emit = makeEmitter(run)
   const traceId = randomUUID()
   try {
+    ensureSensitiveToolsRegistered()
     const graph = await create_agent()
     const adapter = new AGUIStreamAdapter(traceId)
     const inputData: Record<string, unknown> = { input_type: 'text', prompt: request.message }
@@ -249,6 +273,7 @@ async function executeResume(run: AgentRun, request: ResumeRequest): Promise<voi
   const emit = makeEmitter(run)
   const traceId = randomUUID()
   try {
+    ensureSensitiveToolsRegistered()
     const graph = await create_agent()
     const adapter = new AGUIStreamAdapter(traceId)
     logger.info(

@@ -8,6 +8,8 @@ export const CreateSessionRequestSchema = z.object({
   // 对应 Python: Field(None, alias="system_prompt")
   systemPrompt: z.string().nullable().optional(),
   initialMessage: z.string().nullable().optional(),
+  // 云边双模（阶段 0）：会话归属运行时；缺省 'cloud'（存量行为不变）
+  runtime: z.enum(['cloud', 'local']).nullable().optional(),
 })
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>
 

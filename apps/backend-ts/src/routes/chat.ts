@@ -162,6 +162,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               createdAt: s.createdAt,
               updatedAt: s.updatedAt,
               isArchived: s.isArchived ?? false,
+              runtime: s.runtime ?? 'cloud',
             }
           }),
         )
@@ -185,6 +186,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             title: dto.title || '新对话',
             model: dto.model || env.LLM_DEFAULT_MODEL,
             systemPrompt: dto.systemPrompt ?? null,
+            runtime: dto.runtime ?? 'cloud',
           },
         })
 
@@ -198,6 +200,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
           isArchived: session.isArchived ?? false,
+          runtime: session.runtime ?? 'cloud',
         }
       })
 
