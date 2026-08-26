@@ -125,6 +125,31 @@ const mockApi: PioneeringApi = {
     stop: (_sessionId: string) =>
       Promise.resolve({ message: 'unsupported in browser', aborted: false }),
     onEvent: (_callback: (envelope: never) => void) => noop
+  },
+
+  // 云边双模阶段 2：本地持久化 / 密钥 / 上传 IPC 桩——
+  // 浏览器模式无主进程，统一返回 ok:false 降级错误而非崩溃
+  localChat: {
+    listSessions: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    createSession: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    updateSession: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    deleteSession: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    listMessages: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    appendMessages: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    deleteMessages: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
+    updateFeedback: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' })
+  },
+
+  secureKeys: {
+    list: () => Promise.resolve({ keys: [], descriptors: [] }),
+    set: () => Promise.resolve({ ok: false, error: '密钥管理仅在 Electron 桌面端可用' }),
+    delete: () => Promise.resolve({ ok: false, error: '密钥管理仅在 Electron 桌面端可用' })
+  },
+
+  upload: {
+    save: () => Promise.resolve({ ok: false, error: '本地上传仅在 Electron 桌面端可用' }),
+    list: () => Promise.resolve([]),
+    delete: () => Promise.resolve({ ok: false, error: '本地上传仅在 Electron 桌面端可用' })
   }
 }
 

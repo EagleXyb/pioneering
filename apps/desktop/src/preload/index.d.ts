@@ -7,13 +7,31 @@ import type {
   FileDialogOptions,
   FileWriteRequest,
   UserDataPath,
-  AgentEventEnvelope
+  AgentEventEnvelope,
+  LocalSessionListRequest,
+  LocalSessionListResult,
+  LocalCreateSessionRequest,
+  LocalUpdateSessionRequest,
+  LocalMessageListRequest,
+  LocalMessageListResult,
+  LocalAppendMessagesRequest,
+  LocalDeleteMessagesRequest,
+  LocalFeedbackRequest,
+  LocalDaoResult,
+  SecureKeyListResult,
+  SecureKeySetRequest,
+  SecureKeySetResult,
+  UploadSaveRequest,
+  UploadSaveResult,
+  UploadInfo,
+  UploadDeleteResult
 } from '../shared/ipc-channels'
 import type {
   SendMessageRequest,
   ResumeRequest,
   AbortRequest,
-  HitlStateResponse
+  HitlStateResponse,
+  ChatSession
 } from '../shared/types'
 
 declare global {
@@ -94,6 +112,42 @@ declare global {
     onEvent: (callback: (envelope: AgentEventEnvelope) => void) => () => void
   }
 
+  /** 本地会话/消息持久化（云边双模阶段 2）：与 preload localChatApi 一一对应 */
+  interface LocalChatApi {
+    listSessions: (
+      req?: LocalSessionListRequest
+    ) => Promise<LocalSessionListResult | LocalDaoResult>
+    createSession: (
+      req?: LocalCreateSessionRequest
+    ) => Promise<ChatSession | LocalDaoResult>
+    updateSession: (
+      sessionId: string,
+      patch: LocalUpdateSessionRequest
+    ) => Promise<ChatSession | LocalDaoResult>
+    deleteSession: (sessionId: string) => Promise<LocalDaoResult>
+    listMessages: (
+      req: LocalMessageListRequest
+    ) => Promise<LocalMessageListResult | LocalDaoResult>
+    appendMessages: (req: LocalAppendMessagesRequest) => Promise<LocalDaoResult>
+    /** 按 id 删除消息（regenerate 截断等场景） */
+    deleteMessages: (req: LocalDeleteMessagesRequest) => Promise<LocalDaoResult>
+    updateFeedback: (req: LocalFeedbackRequest) => Promise<LocalDaoResult>
+  }
+
+  /** 密钥 safeStorage 治理（云边双模阶段 2）：与 preload secureKeyApi 一一对应 */
+  interface SecureKeyApi {
+    list: () => Promise<SecureKeyListResult>
+    set: (req: SecureKeySetRequest) => Promise<SecureKeySetResult>
+    delete: (name: string) => Promise<LocalDaoResult>
+  }
+
+  /** 本地上传（云边双模阶段 2）：与 preload uploadApi 一一对应 */
+  interface UploadApi {
+    save: (req: UploadSaveRequest) => Promise<UploadSaveResult>
+    list: () => Promise<UploadInfo[]>
+    delete: (id: string) => Promise<UploadDeleteResult>
+  }
+
   interface PioneeringApi {
     window: WindowApi
     app: AppApi
@@ -104,6 +158,9 @@ declare global {
     store: StoreApi
     health: HealthApi
     agent: AgentApi
+    localChat: LocalChatApi
+    secureKeys: SecureKeyApi
+    upload: UploadApi
   }
 
   interface Window {

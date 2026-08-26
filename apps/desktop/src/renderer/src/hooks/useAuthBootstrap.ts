@@ -27,10 +27,12 @@ import {
   currentUserAtom,
   cachedUserAtom,
   ANONYMOUS_USER,
+  LOCAL_USER,
   toAppUser,
   isAuthFailure,
   toErrorMessage
 } from '@/stores/authStore'
+import { isLocalRuntimeActive } from '@/services/localChat'
 
 const TOKEN_STORAGE_KEY = 'auth.tokens'
 
@@ -41,7 +43,9 @@ function enterAnonymous(
   setStatus: (s: 'anonymous') => void,
   setError: (e: null) => void
 ): void {
-  setUser(ANONYMOUS_USER)
+  // 云边双模阶段 2：本地运行时激活时免登录——以本地单用户档案展示，
+  // 状态机仍为 anonymous（登录入口保留，可随时切换云端账号）。
+  setUser(isLocalRuntimeActive() ? LOCAL_USER : ANONYMOUS_USER)
   setCachedUser(null)
   setStatus('anonymous')
   setError(null)

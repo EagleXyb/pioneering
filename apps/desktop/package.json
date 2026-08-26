@@ -40,6 +40,7 @@
     "@shadcn/react": "^0.2.1",
     "@tanstack/react-virtual": "^3.14.5",
     "axios": "^1.18.1",
+    "better-sqlite3": "^13.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
@@ -63,6 +64,7 @@
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -85,6 +87,9 @@
     "files": [
       "out",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
     ],
     "mac": {
       "target": [

@@ -5,7 +5,24 @@ import type {
   FileWriteRequest,
   NotificationOptions,
   UserDataPath,
-  AgentEventEnvelope
+  AgentEventEnvelope,
+  LocalSessionListRequest,
+  LocalSessionListResult,
+  LocalCreateSessionRequest,
+  LocalUpdateSessionRequest,
+  LocalMessageListRequest,
+  LocalMessageListResult,
+  LocalAppendMessagesRequest,
+  LocalDeleteMessagesRequest,
+  LocalFeedbackRequest,
+  LocalDaoResult,
+  SecureKeyListResult,
+  SecureKeySetRequest,
+  SecureKeySetResult,
+  UploadSaveRequest,
+  UploadSaveResult,
+  UploadInfo,
+  UploadDeleteResult
 } from '../shared/ipc-channels'
 import type { SendMessageRequest, ResumeRequest, AbortRequest, HitlStateResponse } from '../shared/types'
 
@@ -124,6 +141,59 @@ const agentApi = {
   }
 }
 
+// ---- 本地会话/消息持久化（云边双模阶段 2：SQLite DAO）----
+// 语义对齐云端 /chat/* 子集；失败时主进程返回 { ok:false, error }，
+// 成功返回业务对象，由渲染端 service 层判别（'ok' in result）。
+const localChatApi = {
+  listSessions: (
+    req?: LocalSessionListRequest
+  ): Promise<LocalSessionListResult | LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_LIST_SESSIONS, req),
+  createSession: (
+    req?: LocalCreateSessionRequest
+  ): Promise<import('../shared/types').ChatSession | LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_CREATE_SESSION, req),
+  updateSession: (
+    sessionId: string,
+    patch: LocalUpdateSessionRequest
+  ): Promise<import('../shared/types').ChatSession | LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_UPDATE_SESSION, { sessionId, patch }),
+  deleteSession: (sessionId: string): Promise<LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_DELETE_SESSION, sessionId),
+  listMessages: (
+    req: LocalMessageListRequest
+  ): Promise<LocalMessageListResult | LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_LIST_MESSAGES, req),
+  appendMessages: (req: LocalAppendMessagesRequest): Promise<LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_APPEND_MESSAGES, req),
+  /** 按 id 删除消息（regenerate 截断等场景） */
+  deleteMessages: (req: LocalDeleteMessagesRequest): Promise<LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_DELETE_MESSAGES, req),
+  updateFeedback: (req: LocalFeedbackRequest): Promise<LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.LOCAL_CHAT_UPDATE_FEEDBACK, req)
+}
+
+// ---- 密钥 safeStorage 治理（云边双模阶段 2）----
+const secureKeyApi = {
+  /** 列出受管键展示态（值已掩码）+ 描述符清单 */
+  list: (): Promise<SecureKeyListResult> => ipcRenderer.invoke(IpcChannel.SECURE_KEY_LIST),
+  /** 写入/更新一个受管键；value 传空串表示清除 */
+  set: (req: SecureKeySetRequest): Promise<SecureKeySetResult> =>
+    ipcRenderer.invoke(IpcChannel.SECURE_KEY_SET, req),
+  /** 删除一个受管键 */
+  delete: (name: string): Promise<LocalDaoResult> =>
+    ipcRenderer.invoke(IpcChannel.SECURE_KEY_DELETE, name)
+}
+
+// ---- 本地上传（云边双模阶段 2：userData/uploads）----
+const uploadApi = {
+  save: (req: UploadSaveRequest): Promise<UploadSaveResult> =>
+    ipcRenderer.invoke(IpcChannel.UPLOAD_SAVE, req),
+  list: (): Promise<UploadInfo[]> => ipcRenderer.invoke(IpcChannel.UPLOAD_LIST),
+  delete: (id: string): Promise<UploadDeleteResult> =>
+    ipcRenderer.invoke(IpcChannel.UPLOAD_DELETE, id)
+}
+
 const api = {
   window: windowApi,
   app: appApi,
@@ -133,7 +203,10 @@ const api = {
   shell: shellApi,
   store: storeApi,
   health: healthApi,
-  agent: agentApi
+  agent: agentApi,
+  localChat: localChatApi,
+  secureKeys: secureKeyApi,
+  upload: uploadApi
 }
 
 // H5: 不再暴露整包 @electron-toolkit/preload 的 electronAPI（内含 ipcRenderer，

@@ -66,6 +66,31 @@ export enum IpcChannel {
   // 主进程 → 渲染端：AG-UI 事件推送（AgentEventEnvelope 载荷）
   AGENT_EVENT = 'agent:event',
 
+  // ---- 本地会话/消息持久化（云边双模阶段 2：SQLite DAO）----
+  // 语义对齐 backend-ts /chat/* 的会话/消息 CRUD 子集；
+  // 本地模式下渲染端经这些通道读写 userData/local-chat.db，
+  // 断网可用，去掉对云端 backend 的运行时依赖。
+  LOCAL_CHAT_LIST_SESSIONS = 'localChat:listSessions',
+  LOCAL_CHAT_CREATE_SESSION = 'localChat:createSession',
+  LOCAL_CHAT_UPDATE_SESSION = 'localChat:updateSession',
+  LOCAL_CHAT_DELETE_SESSION = 'localChat:deleteSession',
+  LOCAL_CHAT_LIST_MESSAGES = 'localChat:listMessages',
+  LOCAL_CHAT_APPEND_MESSAGES = 'localChat:appendMessages',
+  LOCAL_CHAT_DELETE_MESSAGES = 'localChat:deleteMessages',
+  LOCAL_CHAT_UPDATE_FEEDBACK = 'localChat:updateFeedback',
+
+  // ---- 密钥 safeStorage 治理（云边双模阶段 2）----
+  // LLM / 搜索密钥经系统密钥库（DPAPI / Keychain）加密后落
+  // electron-store，主进程启动 Agent 前解密注入 process.env。
+  SECURE_KEY_LIST = 'secureKey:list',
+  SECURE_KEY_SET = 'secureKey:set',
+  SECURE_KEY_DELETE = 'secureKey:delete',
+
+  // ---- 本地上传（云边双模阶段 2：userData/uploads）----
+  UPLOAD_SAVE = 'upload:save',
+  UPLOAD_LIST = 'upload:list',
+  UPLOAD_DELETE = 'upload:delete',
+
   // 健康检查
   PING = 'ping'
 }
@@ -136,5 +161,128 @@ export interface AgentEventEnvelope {
   runId: string
   seq: number
   event: Record<string, unknown>
+}
+
+// ---- 本地会话/消息持久化（云边双模阶段 2）----
+
+export interface LocalSessionListRequest {
+  page?: number
+  pageSize?: number
+  archived?: boolean
+}
+
+export interface LocalSessionListResult {
+  sessions: import('./types').ChatSession[]
+  total: number
+}
+
+export interface LocalCreateSessionRequest {
+  title?: string
+  agentMode?: string
+  model?: string
+  systemPrompt?: string
+}
+
+export interface LocalUpdateSessionRequest {
+  title?: string
+  modelConfig?: Record<string, unknown>
+  isArchived?: boolean
+}
+
+export interface LocalMessageListRequest {
+  sessionId: string
+  /** 游标 = 上一页最后一条消息 id；缺省取最新一页 */
+  cursor?: string
+  limit?: number
+  direction?: 'before' | 'after'
+}
+
+export interface LocalMessageListResult {
+  messages: import('./types').ChatMessage[]
+  nextCursor?: string
+}
+
+export interface LocalAppendMessagesRequest {
+  sessionId: string
+  messages: import('./types').ChatMessage[]
+}
+
+export interface LocalDeleteMessagesRequest {
+  sessionId: string
+  /** 要删除的消息 id 列表（regenerate 截断等场景） */
+  messageIds: string[]
+}
+
+export interface LocalFeedbackRequest {
+  messageId: string
+  feedback: 'like' | 'dislike' | 'none'
+}
+
+/** 本地 DAO 通用操作结果 */
+export interface LocalDaoResult {
+  ok: boolean
+  error?: string
+}
+
+// ---- 密钥 safeStorage（云边双模阶段 2）----
+
+/** 受管键描述符（与主进程 key-store.ts ManagedKeyDescriptor 结构对齐） */
+export interface SecureKeyDescriptor {
+  name: string
+  label: string
+  placeholder: string
+  sensitive: boolean
+}
+
+export interface SecureKeyListResult {
+  keys: SecureKeyInfo[]
+  descriptors: SecureKeyDescriptor[]
+}
+
+/** 单个受管密钥的展示态（值已掩码，绝不回传明文） */
+export interface SecureKeyInfo {
+  name: string
+  /** 掩码值（如 sk-1***xy）；未配置为空串 */
+  masked: string
+  /** 是否经系统密钥库加密存储 */
+  encrypted: boolean
+}
+
+export interface SecureKeySetRequest {
+  name: string
+  value: string
+}
+
+export interface SecureKeySetResult {
+  ok: boolean
+  error?: string
+}
+
+// ---- 本地上传（云边双模阶段 2）----
+
+export interface UploadSaveRequest {
+  fileName: string
+  /** 文件内容（base64，不含 data: 前缀） */
+  base64: string
+}
+
+export interface UploadInfo {
+  id: string
+  fileName: string
+  /** 绝对路径（userData/uploads 下） */
+  path: string
+  size: number
+  createdAt: string
+}
+
+export interface UploadSaveResult {
+  ok: boolean
+  upload?: UploadInfo
+  error?: string
+}
+
+export interface UploadDeleteResult {
+  ok: boolean
+  error?: string
 }
 

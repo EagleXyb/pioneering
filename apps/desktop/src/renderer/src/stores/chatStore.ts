@@ -20,7 +20,13 @@ import type {
 } from '@shared/types'
 import { chatService } from '../services/api/chat'
 import { agentService } from '../services/api/agent'
-import { getAgentTransport } from '../services/transport'
+import { getAgentTransport, getTransportForRuntime } from '../services/transport'
+import {
+  localChatService,
+  isLocalChatAvailable,
+  isLocalRuntimeActive,
+  toPersistMessage
+} from '../services/localChat'
 import type { ImageAttachment } from '../lib/input/image-attachments'
 import { buildSendText } from '../lib/input/select-file-editor'
 import {
@@ -315,6 +321,11 @@ function isAgentSession(session: ChatSession | undefined): boolean {
   return !!(session && session.agentMode)
 }
 
+/** 云边双模阶段 2：会话是否归属本地运行时（SQLite DAO + IPC Transport） */
+function isLocalSession(session: ChatSession | undefined): boolean {
+  return session?.runtime === 'local'
+}
+
 let streamSeq = 0
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -342,27 +353,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadSessions: async () => {
     set({ sessionsLoading: true, error: null })
+    // 云边双模阶段 2：云端列表 + 本地 SQLite 列表合并展示。
+    // 云端失败（断网/未登录）不再直接置错——本地会话可用即为可用产品；
+    // 仅当两侧都拿不到数据时才报错。
+    let cloudSessions: ChatSession[] = []
+    let cloudError: unknown = null
     try {
       const data = await chatService.getSessions(1, 50)
-      // 刷新兜底选中：
-      //   - 若 currentSessionId 为空，或选中的 id 不在新列表中（可能被其他端删除），
-      //     则自动选中列表第一个会话（后端按 createdAt DESC = 最新会话），
-      //   - 确保刷新后不会出现「导航高亮助理 + 会话列表无选中行」的错位。
-      //   参考经验 416906：selected 初始化缺失是刷新选中错位的常见根因。
-      const list = data.sessions
-      const prevId = get().currentSessionId
-      const stillValid = prevId && list.some((s) => s.id === prevId)
-      const nextCurrent = stillValid ? prevId : list[0]?.id ?? null
-      set({ sessions: list, sessionsLoading: false, currentSessionId: nextCurrent, isDraftNewSession: false })
-      // 兜底选中后拉取该会话消息，确保中栏内容与选中一致
-      if (nextCurrent && nextCurrent !== prevId) {
-        await get().loadMessages(nextCurrent)
-      }
+      cloudSessions = data.sessions
     } catch (err) {
+      cloudError = err
+    }
+    let localSessions: ChatSession[] = []
+    let localError: unknown = null
+    // 本地会话只要 DAO 可达就展示（与全局传输模式无关——
+    // local 会话的发送/恢复按 session.runtime 恒走 IPC）
+    if (isLocalChatAvailable()) {
+      try {
+        localSessions = (await localChatService.getSessions(1, 50)).sessions
+      } catch (err) {
+        localError = err
+      }
+    }
+    if (cloudError && localSessions.length === 0) {
       set({
-        error: err instanceof Error ? err.message : 'Failed to load sessions',
+        error:
+          cloudError instanceof Error ? cloudError.message : 'Failed to load sessions',
         sessionsLoading: false
       })
+      return
+    }
+    if (localError) {
+      // 本地库读失败：不阻断云端列表，但提示用户本地持久化异常
+      console.warn('[chatStore] local sessions load failed:', localError)
+    }
+    const list = [...localSessions, ...cloudSessions].sort((a, b) =>
+      (b.updatedAt || '').localeCompare(a.updatedAt || '')
+    )
+    // 刷新兜底选中：
+    //   - 若 currentSessionId 为空，或选中的 id 不在新列表中（可能被其他端删除），
+    //     则自动选中列表第一个会话（最新会话），
+    //   - 确保刷新后不会出现「导航高亮助理 + 会话列表无选中行」的错位。
+    //   参考经验 416906：selected 初始化缺失是刷新选中错位的常见根因。
+    const prevId = get().currentSessionId
+    const stillValid = prevId && list.some((s) => s.id === prevId)
+    const nextCurrent = stillValid ? prevId : list[0]?.id ?? null
+    set({ sessions: list, sessionsLoading: false, currentSessionId: nextCurrent, isDraftNewSession: false })
+    // 兜底选中后拉取该会话消息，确保中栏内容与选中一致
+    if (nextCurrent && nextCurrent !== prevId) {
+      await get().loadMessages(nextCurrent)
     }
   },
 
@@ -395,6 +434,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     try {
       const isAgent = get().agentMode
+      // 云边双模阶段 2：本地运行时激活（IPC 模式 + 本地 DAO 可达）时，
+      // 新会话归属 local——落本地 SQLite，后续发送/恢复恒走 IPC Transport。
+      if (isLocalRuntimeActive()) {
+        const session = await localChatService.createSession({
+          title: title ?? DEFAULT_SESSION_TITLE,
+          // 本地模式所有会话均由主进程内嵌 agent 承载（无独立纯聊天通道）；
+          // agentMode 仅作 UI 展示标记，保留用户的模式开关选择
+          agentMode: isAgent ? DEFAULT_AGENT_MODE_VALUE : undefined
+        })
+        const chatSession: ChatSession = {
+          id: session.id,
+          title: session.title || title || DEFAULT_SESSION_TITLE,
+          model: session.model,
+          modelConfig: session.modelConfig,
+          isArchived: false,
+          createdAt: session.createdAt || new Date().toISOString(),
+          updatedAt: session.updatedAt || new Date().toISOString(),
+          messageCount: session.messageCount,
+          agentMode: session.agentMode,
+          runtime: 'local'
+        }
+        set((state) => ({
+          sessions: [chatSession, ...state.sessions],
+          currentSessionId: chatSession.id,
+          isDraftNewSession: false
+        }))
+        return chatSession
+      }
       const session = isAgent
         ? await agentService.createSession({
             title: title ?? DEFAULT_SESSION_TITLE,
@@ -451,8 +518,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       )
     }))
     try {
-      const service = isAgentSession(prev) ? agentService : chatService
-      const updated = await service.updateSession(sessionId, { title: trimmed })
+      // 云边双模阶段 2：local 会话改本地 SQLite，cloud 会话按原有 agent/chat 分流
+      const updated = isLocalSession(prev)
+        ? await localChatService.updateSession(sessionId, { title: trimmed })
+        : await (
+            isAgentSession(prev) ? agentService : chatService
+          ).updateSession(sessionId, { title: trimmed })
       if (updated?.title) {
         get().setSessionTitle(sessionId, updated.title)
       }
@@ -475,14 +546,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       state.loadMessages(sessionId)
     }
     // 阶段四边界：关窗/刷新后重连，恢复该会话未答复的 HITL 暂停项
-    void useHitlStore.getState().recover(sessionId)
+    // 云边双模：按会话 runtime 路由到对应 Transport（local→IPC / cloud→全局模式）
+    void useHitlStore.getState().recover(sessionId, session?.runtime)
   },
 
   loadMessages: async (sessionId, append = false) => {
     set({ messagesLoading: true, error: null })
     try {
       const cursor = append ? get().messagesNextCursor[sessionId] : undefined
-      const data = await chatService.getMessages(sessionId, cursor)
+      // 云边双模阶段 2：local 会话读本地 SQLite，cloud 会话读云端
+      const session = get().sessions.find((s) => s.id === sessionId)
+      const data = isLocalSession(session)
+        ? await localChatService.getMessages(sessionId, cursor)
+        : await chatService.getMessages(sessionId, cursor)
       const newMessages = data.messages.map(chatMessageToMessage)
       set((state) => {
         const existing = append ? state.messages[sessionId] || [] : []
@@ -569,7 +645,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       optimisticTitle = content.slice(0, 30) + (content.length > 30 ? '...' : '')
       get().setSessionTitle(_sessionId, optimisticTitle)
     }
-    const useAgent = isAgentSession(targetSession) || globalAgentMode
+    // 云边双模阶段 2：local 会话恒走 IPC Transport（主进程内嵌 agent），
+    // 并把用户消息/assistant 终态落本地 SQLite（HITL 暂停半截消息不落库）
+    const isLocal = isLocalSession(targetSession)
+    const useAgent = isLocal || isAgentSession(targetSession) || globalAgentMode
     const service = useAgent ? agentService : chatService
     const now = Date.now()
     const mySeq = ++streamSeq
@@ -592,6 +671,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: '',
       createdAt: new Date(now).toISOString(),
       timestamp: now
+    }
+
+    // 本地持久化（仅 local 会话）：
+    //   - 用户消息：发送即落库
+    //   - assistant：仅在终态（done/error/aborted/stop）落库一次；
+    //     DAO 端 INSERT OR IGNORE 幂等兜底，重复调用无害
+    let assistantPersisted = false
+    const persistAssistant = (patch: Partial<Message>): void => {
+      if (!isLocal || assistantPersisted) return
+      assistantPersisted = true
+      const finalMsg: Message = {
+        ...assistantPlaceholder,
+        ...patch,
+        id: assistantMsgId,
+        sessionId: _sessionId
+      }
+      void localChatService
+        .appendMessages(_sessionId, [toPersistMessage(finalMsg)])
+        .catch((e) => console.warn('[chatStore] local persist assistant failed:', e))
+    }
+    if (isLocal) {
+      void localChatService
+        .appendMessages(_sessionId, [toPersistMessage(userMessage)])
+        .catch((e) => console.warn('[chatStore] local persist user message failed:', e))
     }
 
     set((state) => ({
@@ -631,33 +734,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }))
       },
       onDone: ({ msgId, content, thinking, toolCalls, traceNodes, traceRootOrder, attachments, meta }) => {
-        set((state) => {
-          // 从 trace 树推导最终的 text 正文（避免依赖外部 content 闭包）
-          const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
-          const finalContent = textNode?.content ?? content
-          return finalizeStreamingMessage(state, _sessionId, assistantMsgId, {
-            id: msgId,
-            sessionId: _sessionId,
-            content: finalContent,
-            thinking: thinking ? { content: thinking } : undefined,
-            toolCalls: toolCalls.length ? toolCalls : undefined,
-            traceNodes,
-            traceRootOrder,
-            attachments: attachments.length ? attachments : undefined,
-            model: meta.model,
-            tokenCount: meta.tokenCount,
-            tokenUsage: meta.tokenCount
-              ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
-              : undefined,
-            timestamp: Date.now()
-          })
-        })
+        // 从 trace 树推导最终的 text 正文（避免依赖外部 content 闭包）
+        const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
+        const finalContent = textNode?.content ?? content
+        const donePatch: Partial<Message> = {
+          id: msgId,
+          sessionId: _sessionId,
+          content: finalContent,
+          thinking: thinking ? { content: thinking } : undefined,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          traceNodes,
+          traceRootOrder,
+          attachments: attachments.length ? attachments : undefined,
+          model: meta.model,
+          tokenCount: meta.tokenCount,
+          tokenUsage: meta.tokenCount
+            ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
+            : undefined,
+          timestamp: Date.now()
+        }
+        set((state) => finalizeStreamingMessage(state, _sessionId, assistantMsgId, donePatch))
+        // 云边双模阶段 2：local 会话 assistant 终态落本地库
+        persistAssistant(donePatch)
         // 阶段二（AI 命名）：助手实际回复了内容，且标题仍是默认值或阶段一的临时截断值时，
         // 调用后端生成 AI 摘要标题覆盖；失败则保留阶段一结果（后续消息可重试）。
         // 触发判据用「标题值」而非时间标志：AI 标题生成后标题不再是默认/临时值，
         // 刷新后从后端读回已持久化的固定标题，不会重复生成导致标题反复变化。
-        const doneTextNode = traceNodes[makeTextNodeId(assistantMsgId)]
-        const doneContent = doneTextNode?.content ?? content
+        const doneContent = finalContent
         if (doneContent) {
           const current = get().sessions.find((s) => s.id === _sessionId)
           const stillNeedsTitle =
@@ -665,34 +768,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
             (current.title === DEFAULT_SESSION_TITLE ||
               (optimisticTitle !== null && current.title === optimisticTitle))
           if (stillNeedsTitle) {
-            service
-              .generateTitle(_sessionId)
-              .then((title) => {
-                if (title) get().setSessionTitle(_sessionId, title)
-              })
-              .catch(() => {})
+            if (isLocal) {
+              // 本地模式：不走云端 LLM 命名，降级为截取首条用户消息并落本地库
+              void localChatService
+                .generateTitleFrom(_sessionId, content)
+                .then((title) => {
+                  if (title) get().setSessionTitle(_sessionId, title)
+                })
+                .catch(() => {})
+            } else {
+              service
+                .generateTitle(_sessionId)
+                .then((title) => {
+                  if (title) get().setSessionTitle(_sessionId, title)
+                })
+                .catch(() => {})
+            }
           }
         }
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder, attachments }) => {
-        set((state) => {
-          const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
-          const baseContent = textNode?.content ?? content
-          return {
-            ...finalizeStreamingMessage(state, _sessionId, assistantMsgId, {
-              id: assistantMsgId,
-              sessionId: _sessionId,
-              content: baseContent ? `${baseContent}\n\n[Error] ${error}` : `[Error] ${error}`,
-              thinking: thinking ? { content: thinking } : undefined,
-              toolCalls: toolCalls.length ? toolCalls : undefined,
-              traceNodes,
-              traceRootOrder,
-              attachments: attachments.length ? attachments : undefined,
-              timestamp: Date.now()
-            }),
-            error
-          }
-        })
+        const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
+        const baseContent = textNode?.content ?? content
+        const errorPatch: Partial<Message> = {
+          id: assistantMsgId,
+          sessionId: _sessionId,
+          content: baseContent ? `${baseContent}\n\n[Error] ${error}` : `[Error] ${error}`,
+          thinking: thinking ? { content: thinking } : undefined,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          traceNodes,
+          traceRootOrder,
+          attachments: attachments.length ? attachments : undefined,
+          timestamp: Date.now()
+        }
+        set((state) => ({
+          ...finalizeStreamingMessage(state, _sessionId, assistantMsgId, errorPatch),
+          error
+        }))
+        // 云边双模阶段 2：error 也是终态，local 会话落库
+        persistAssistant(errorPatch)
       },
       // ===== HITL（阶段二 2.4）=====
       // 消息生命周期由 streaming→done/error 扩展为 streaming→paused→resuming→done：
@@ -715,12 +829,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onHitlAborted: () => {
         const st = get()
-        set((s) => finalizeStreamingMessage(
-          s,
-          _sessionId,
-          assistantMsgId,
-          buildHitlAbortedPatch(st, _sessionId, assistantMsgId)
-        ))
+        const abortedPatch = buildHitlAbortedPatch(st, _sessionId, assistantMsgId)
+        set((s) => finalizeStreamingMessage(s, _sessionId, assistantMsgId, abortedPatch))
+        // 云边双模阶段 2：中止是终态，local 会话落库
+        persistAssistant(abortedPatch)
         set({ isHitlPaused: false, hitlPending: null })
         // 当前弹窗对应的暂停项已收敛，出队展示队列下一项（若有）
         useHitlStore.getState().dequeue()
@@ -737,7 +849,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     let controller: AbortController
     if (useAgent) {
-      const transport = getAgentTransport()
+      // 云边双模阶段 2：local 会话恒走 IPC（与全局模式无关）
+      const transport = isLocal
+        ? getTransportForRuntime('local')
+        : getAgentTransport()
       if (transport.kind === 'ipc') {
         // 本地模式：主进程无会话状态，携带多轮上下文
         streamRequest.history = buildIpcHistory(get().messages[_sessionId])
@@ -767,11 +882,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (abortController) abortController.abort()
 
     const targetSession = currentSessionId ? sessions.find((s) => s.id === currentSessionId) : undefined
-    const useAgent = isAgentSession(targetSession) || globalAgentMode
+    // 云边双模阶段 2：local 会话恒走 IPC stop（主进程 stopRun）
+    const isLocal = isLocalSession(targetSession)
+    const useAgent = isLocal || isAgentSession(targetSession) || globalAgentMode
     if (currentSessionId) {
       if (useAgent) {
         // 云边双模阶段 1：Agent 停止生成经 Transport 分流（http=云端端点 / ipc=主进程 stopRun）
-        void getAgentTransport().stop(currentSessionId).catch(() => {})
+        void getTransportForRuntime(targetSession?.runtime)
+          .stop(currentSessionId)
+          .catch(() => {})
       } else {
         void chatService.stopGeneration?.(currentSessionId).catch(() => {})
       }
@@ -779,6 +898,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const sid = currentSessionId
     const id = streamingMessageId
+
+    // 停止也是终态：local 会话把聚合后的 assistant 消息落本地库
+    const persistLocalStop = (msg: Message): void => {
+      if (!isLocal || !sid) return
+      void localChatService
+        .appendMessages(sid, [toPersistMessage(msg)])
+        .catch((e) => console.warn('[chatStore] local persist (stop) failed:', e))
+    }
 
     set((state) => {
       if (sid && id) {
@@ -810,6 +937,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             traceRootOrder: streamingTraceRootOrder.length ? streamingTraceRootOrder : prev.traceRootOrder,
             attachments: streamingAttachments.length ? streamingAttachments : prev.attachments
           }
+          persistLocalStop(merged[idx]!)
           return {
             ...finalizeStreamingMessage(state, sid, id, merged[idx]!)
           }
@@ -832,6 +960,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!isHitlPaused || !currentSessionId || !streamingMessageId) return
     const _sessionId = currentSessionId
     const assistantMsgId = streamingMessageId
+
+    // 云边双模阶段 2：local 会话 resume 后的终态落本地库
+    // （暂停半截消息按 HITL 约定不落库，resume 续写完成才聚合落库）
+    const session = get().sessions.find((s) => s.id === _sessionId)
+    const isLocal = isLocalSession(session)
+    let resumePersisted = false
+    const persistResumeTerminal = (patch: Partial<Message>): void => {
+      if (!isLocal || resumePersisted) return
+      resumePersisted = true
+      const base = get().messages[_sessionId]?.find((m) => m.id === assistantMsgId)
+      if (!base) return
+      const finalMsg: Message = { ...base, ...patch, id: assistantMsgId, sessionId: _sessionId }
+      void localChatService
+        .appendMessages(_sessionId, [toPersistMessage(finalMsg)])
+        .catch((e) => console.warn('[chatStore] local persist (resume terminal) failed:', e))
+    }
 
     // 从暂停消息（paused=true）提取 trace 树/工具调用/附件，作为 resume 续写容器的种子
     const pausedMsg = get().messages[_sessionId]?.find((m) => m.id === assistantMsgId)
@@ -870,49 +1014,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }))
       },
       onDone: ({ msgId, content, thinking, toolCalls, traceNodes, traceRootOrder, attachments, meta }) => {
-        set((state) => {
-          const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
-          const finalContent = textNode?.content ?? content
-          return finalizeStreamingMessage(state, _sessionId, assistantMsgId, {
-            id: msgId,
-            sessionId: _sessionId,
-            content: finalContent,
-            thinking: thinking ? { content: thinking } : undefined,
-            toolCalls: toolCalls.length ? toolCalls : undefined,
-            traceNodes,
-            traceRootOrder,
-            attachments: attachments.length ? attachments : undefined,
-            paused: false,
-            model: meta.model,
-            tokenCount: meta.tokenCount,
-            tokenUsage: meta.tokenCount
-              ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
-              : undefined,
-            timestamp: Date.now()
-          })
-        })
+        const resumeDonePatch: Partial<Message> = {
+          id: msgId,
+          sessionId: _sessionId,
+          content: (traceNodes[makeTextNodeId(assistantMsgId)]?.content ?? content),
+          thinking: thinking ? { content: thinking } : undefined,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          traceNodes,
+          traceRootOrder,
+          attachments: attachments.length ? attachments : undefined,
+          paused: false,
+          model: meta.model,
+          tokenCount: meta.tokenCount,
+          tokenUsage: meta.tokenCount
+            ? { prompt: 0, completion: meta.tokenCount, total: meta.tokenCount }
+            : undefined,
+          timestamp: Date.now()
+        }
+        set((state) => finalizeStreamingMessage(state, _sessionId, assistantMsgId, resumeDonePatch))
+        persistResumeTerminal(resumeDonePatch)
         useHitlStore.getState().dequeue()
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder, attachments }) => {
-        set((state) => {
-          const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
-          const baseContent = textNode?.content ?? content
-          return {
-            ...finalizeStreamingMessage(state, _sessionId, assistantMsgId, {
-              id: assistantMsgId,
-              sessionId: _sessionId,
-              content: baseContent ? `${baseContent}\n\n[Error] ${error}` : `[Error] ${error}`,
-              thinking: thinking ? { content: thinking } : undefined,
-              toolCalls: toolCalls.length ? toolCalls : undefined,
-              traceNodes,
-              traceRootOrder,
-              attachments: attachments.length ? attachments : undefined,
-              paused: false,
-              timestamp: Date.now()
-            }),
-            error
-          }
-        })
+        const resumeErrorPatch: Partial<Message> = {
+          id: assistantMsgId,
+          sessionId: _sessionId,
+          content: (traceNodes[makeTextNodeId(assistantMsgId)]?.content ?? content)
+            ? `${traceNodes[makeTextNodeId(assistantMsgId)]?.content ?? content}\n\n[Error] ${error}`
+            : `[Error] ${error}`,
+          thinking: thinking ? { content: thinking } : undefined,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          traceNodes,
+          traceRootOrder,
+          attachments: attachments.length ? attachments : undefined,
+          paused: false,
+          timestamp: Date.now()
+        }
+        set((state) => ({
+          ...finalizeStreamingMessage(state, _sessionId, assistantMsgId, resumeErrorPatch),
+          error
+        }))
+        persistResumeTerminal(resumeErrorPatch)
         useHitlStore.getState().dequeue()
       },
       // ===== HITL：resume 流上的暂停/中止处理（多次 interrupt 串行）=====
@@ -931,19 +1073,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onHitlAborted: () => {
         const st = get()
-        set((s) => finalizeStreamingMessage(
-          s,
-          _sessionId,
-          assistantMsgId,
-          buildHitlAbortedPatch(st, _sessionId, assistantMsgId)
-        ))
+        const abortedPatch = buildHitlAbortedPatch(st, _sessionId, assistantMsgId)
+        set((s) => finalizeStreamingMessage(s, _sessionId, assistantMsgId, abortedPatch))
+        persistResumeTerminal(abortedPatch)
         set({ isHitlPaused: false, hitlPending: null })
         useHitlStore.getState().dequeue()
       }
     })
 
-    // 云边双模阶段 0：HITL resume 走 Transport 抽象（当前恒为 HttpTransport，行为不变）
-    const controller = getAgentTransport().resume(
+    // 云边双模阶段 2：HITL resume 按会话 runtime 路由（local→IPC / cloud→全局模式）
+    const controller = getTransportForRuntime(session?.runtime).resume(
       { sessionId: _sessionId, approved, feedback, modifiedArgs },
       streamHandler
     )
@@ -956,9 +1095,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!currentSessionId) return
     get().abortController?.abort()
     // 通知后端中止（best-effort；后端未就绪由 catch 忽略）
-    // 云边双模阶段 0：HITL abort 走 Transport 抽象（当前恒为 HttpTransport，行为不变）
+    // 云边双模阶段 2：HITL abort 按会话 runtime 路由（local→IPC / cloud→全局模式）
+    const session = get().sessions.find((s) => s.id === currentSessionId)
     try {
-      await getAgentTransport().abort(currentSessionId, 'user_cancel')
+      await getTransportForRuntime(session?.runtime).abort(currentSessionId, 'user_cancel')
     } catch {
       // 忽略：本地收尾即可
     }
@@ -966,14 +1106,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const msgId = streamingMessageId
     if (msgId) {
       const st = get()
-      set((s) => finalizeStreamingMessage(s, sid, msgId, buildHitlAbortedPatch(st, sid, msgId)))
+      const abortedPatch = buildHitlAbortedPatch(st, sid, msgId)
+      set((s) => finalizeStreamingMessage(s, sid, msgId, abortedPatch))
+      // 云边双模阶段 2：中止是终态，local 会话聚合落库
+      if (isLocalSession(session)) {
+        const base = get().messages[sid]?.find((m) => m.id === msgId)
+        if (base) {
+          const finalMsg: Message = { ...base, ...abortedPatch, id: msgId, sessionId: sid }
+          void localChatService
+            .appendMessages(sid, [toPersistMessage(finalMsg)])
+            .catch((e) => console.warn('[chatStore] local persist (abort) failed:', e))
+        }
+      }
     }
     set({ isHitlPaused: false, hitlPending: null })
     useHitlStore.getState().dequeue()
   },
 
   toggleMessageFeedback: async (messageId, feedback) => {
-    const { currentSessionId, messages } = get()
+    const { currentSessionId, messages, sessions } = get()
     if (!currentSessionId) return
     const list = messages[currentSessionId]
     if (!list) return
@@ -990,7 +1141,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
 
     try {
-      await chatService.sendFeedback(messageId, next)
+      // 云边双模阶段 2：local 会话反馈写本地 SQLite
+      const target = sessions.find((s) => s.id === currentSessionId)
+      if (isLocalSession(target)) {
+        await localChatService.sendFeedback(messageId, next)
+      } else {
+        await chatService.sendFeedback(messageId, next)
+      }
     } catch {
       set((state) => {
         const msgs = state.messages[currentSessionId] || []
@@ -1008,7 +1165,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       get().stopStreaming()
     }
     try {
-      await chatService.deleteSession(sessionId, true)
+      // 云边双模阶段 2：local 会话删本地库（物理级联），cloud 会话走归档删除
+      const target = state.sessions.find((s) => s.id === sessionId)
+      if (isLocalSession(target)) {
+        await localChatService.deleteSession(sessionId)
+      } else {
+        await chatService.deleteSession(sessionId, true)
+      }
       set((state) => {
         const { [sessionId]: _, ...restMessages } = state.messages
         const { [sessionId]: __, ...restCursors } = state.messagesNextCursor
@@ -1038,6 +1201,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   shareSession: async (sessionId) => {
+    // 云边双模阶段 2：本地会话不支持云端分享（阶段 4 单向同步后再评估）
+    const target = get().sessions.find((s) => s.id === sessionId)
+    if (isLocalSession(target)) return null
     try {
       return await chatService.shareSession(sessionId)
     } catch {
@@ -1046,6 +1212,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   moveSessionToWorkspace: async (sessionId, workspaceId) => {
+    // 云边双模阶段 2：本地会话不支持云端工作空间
+    const target = get().sessions.find((s) => s.id === sessionId)
+    if (isLocalSession(target)) return
     try {
       const updated = await chatService.updateSessionWorkspace(sessionId, workspaceId)
       // 乐观写入本地 workspaceId；后端回包缺失时用入参兜底
@@ -1061,25 +1230,44 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  // 登出 / 切换账号时清空会话与消息数据。
+  // 登出 / 切换账号时清空云端会话与消息数据。
+  // 云边双模阶段 2：本地会话（runtime='local'）归属设备而非账号，
+  // 登出/切号时保留本地会话及其消息，避免误删设备上的数据。
   // 仅重置数据字段，刻意不触碰 isStreaming / abortController / streaming* 等流式状态，
   // 也不动任何业务 action 函数，避免打断进行中的对话或引入状态不一致。
   resetSessions: () =>
-    set({
-      sessions: [],
-      sessionsLoading: false,
-      currentSessionId: null,
-      isDraftNewSession: false,
-      messages: {},
-      messagesLoading: false,
-      messagesNextCursor: {},
-      messagesHasMore: {}
+    set((state) => {
+      const localIds = new Set(
+        state.sessions.filter((s) => s.runtime === 'local').map((s) => s.id)
+      )
+      const messages: typeof state.messages = {}
+      const cursors: typeof state.messagesNextCursor = {}
+      const hasMore: typeof state.messagesHasMore = {}
+      for (const id of localIds) {
+        messages[id] = state.messages[id] ?? []
+        cursors[id] = state.messagesNextCursor[id]
+        hasMore[id] = state.messagesHasMore[id] ?? false
+      }
+      return {
+        sessions: state.sessions.filter((s) => s.runtime === 'local'),
+        sessionsLoading: false,
+        // 选中会话被清掉时回退到第一个本地会话（若有）
+        currentSessionId:
+          state.currentSessionId && localIds.has(state.currentSessionId)
+            ? state.currentSessionId
+            : null,
+        isDraftNewSession: false,
+        messages,
+        messagesLoading: false,
+        messagesNextCursor: cursors,
+        messagesHasMore: hasMore
+      }
     }),
 
   clearError: () => set({ error: null }),
 
   regenerateMessage: async (messageId) => {
-    const { currentSessionId, messages, isStreaming } = get()
+    const { currentSessionId, messages, sessions, isStreaming } = get()
     if (!currentSessionId || isStreaming) return
     const list = messages[currentSessionId]
     if (!list || list.length === 0) return
@@ -1095,6 +1283,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     if (userIdx === -1) return
     const userMsg = list[userIdx]!
+
+    // 云边双模阶段 2：local 会话同步截断本地库（被移除的旧消息从 SQLite 删除），
+    // 防止刷新后旧 assistant 消息与重新生成的回复同时出现
+    const target = sessions.find((s) => s.id === currentSessionId)
+    if (isLocalSession(target)) {
+      const removedIds = list.slice(userIdx).map((m) => m.id)
+      void localChatService
+        .deleteMessages(currentSessionId, removedIds)
+        .catch((e) => console.warn('[chatStore] local truncate (regenerate) failed:', e))
+    }
 
     set((state) => {
       const msgs = state.messages[currentSessionId] || []

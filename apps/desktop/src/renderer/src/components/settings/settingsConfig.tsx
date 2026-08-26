@@ -20,7 +20,8 @@ import {
   Sparkles,
   Database,
   Shield,
-  HelpCircle
+  HelpCircle,
+  HardDrive
 } from 'lucide-react'
 import { ApiConnectionSection } from './sections/ApiConnectionSection'
 import { AuthSection } from './sections/AuthSection'
@@ -28,6 +29,7 @@ import { AppearanceSection } from './sections/AppearanceSection'
 import { AboutSection } from './sections/AboutSection'
 import { HelpSection } from './sections/HelpSection'
 import { ModelSection } from './sections/ModelSection'
+import { LocalRuntimeSection } from './sections/LocalRuntimeSection'
 
 export interface SettingsCategory {
   id: string
@@ -73,6 +75,12 @@ export const settingsCategories: SettingsCategory[] = [
 
   // 已有功能分类
   { id: 'api', label: 'API 连接', icon: Globe, Component: ApiConnectionSection },
+  {
+    id: 'local-runtime',
+    label: '本地运行时',
+    icon: HardDrive,
+    Component: LocalRuntimeSection
+  },
   { id: 'auth', label: '认证', icon: Key, Component: AuthSection },
   { id: 'appearance', label: '外观', icon: Monitor, Component: AppearanceSection },
   { id: 'about', label: '关于', icon: Info, Component: AboutSection }

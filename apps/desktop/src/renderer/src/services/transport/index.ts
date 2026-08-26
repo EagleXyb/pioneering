@@ -75,6 +75,25 @@ export function getAgentTransport(): AgentTransport {
   return currentTransport
 }
 
+/**
+ * 云边双模阶段 2：按会话归属（ChatSession.runtime）选择 Transport。
+ *   - 'local'  会话恒走 IPC（主进程内嵌 agent），与全局 TRANSPORT_MODE 无关；
+ *              preload 不可用（纯浏览器 dev）时回退 http 并告警一次。
+ *   - 'cloud'/undefined 会话沿用全局模式（getAgentTransport）。
+ * 阶段 3 将把 resume / abort / getState 的路由也统一收敛到本入口。
+ */
+export function getTransportForRuntime(runtime?: 'local' | 'cloud'): AgentTransport {
+  if (runtime === 'local') {
+    if (isIpcAvailable()) return ipcTransport
+    if (!warnedIpcUnavailable) {
+      warnedIpcUnavailable = true
+      console.warn('[transport] local 会话需要 IPC 通道，但 preload agent API 不可用，回退 http')
+    }
+    return httpTransport
+  }
+  return getAgentTransport()
+}
+
 /** 当前传输模式（日志与设置页展示用） */
 export function getAgentTransportMode(): AgentTransportMode {
   return currentMode

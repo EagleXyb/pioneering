@@ -17,3 +17,5 @@ release
 *.sw?
 # TypeScript incremental build cache
 *.tsbuildinfo
+# 临时/冒烟测试脚本（不入库）
+*.tmp.mts

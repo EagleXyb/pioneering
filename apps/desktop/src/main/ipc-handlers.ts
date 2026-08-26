@@ -28,7 +28,24 @@ import type {
   FileWriteRequest,
   NotificationOptions,
   UserDataPath,
-  AgentRunRequestPayload
+  AgentRunRequestPayload,
+  LocalSessionListRequest,
+  LocalSessionListResult,
+  LocalCreateSessionRequest,
+  LocalUpdateSessionRequest,
+  LocalMessageListRequest,
+  LocalMessageListResult,
+  LocalAppendMessagesRequest,
+  LocalDeleteMessagesRequest,
+  LocalFeedbackRequest,
+  LocalDaoResult,
+  SecureKeySetRequest,
+  SecureKeySetResult,
+  SecureKeyInfo,
+  UploadSaveRequest,
+  UploadSaveResult,
+  UploadInfo,
+  UploadDeleteResult
 } from '../shared/ipc-channels'
 import {
   ensureAgentEnv,
@@ -42,6 +59,9 @@ import {
   abortRunsForSender,
   type AgentEventSender
 } from './agent-runtime'
+import { getLocalChatStore, type LocalChatStore } from './local-store'
+import { getKeyStore, MANAGED_KEYS } from './key-store'
+import { getUploadStore } from './upload-store'
 import type { AbortRequest, HitlStateResponse } from '../shared/types'
 
 // 使用 electron-store 持久化到磁盘，应用重启后 Token/配置不丢失。
@@ -505,7 +525,15 @@ export function registerIpcHandlers(): void {
 
   // 首次使用前加载 Agent 运行环境变量（LLM key 等）。
   // 候选路径：desktop 自身 .env 优先，开发态回退到 backend-ts 的 .env。
+  // 云边双模阶段 2：safeStorage 受管密钥先于 .env 注入（用户 UI 配置
+  // 优先生效；ensureAgentEnv 只填未设值，不会覆盖）。
   function ensureAgentRuntimeEnv(): void {
+    const keyStore = getKeyStore(appStore)
+    try {
+      keyStore.applyToEnv()
+    } catch (e) {
+      console.warn('[ipc] secure keys apply failed:', String(e))
+    }
     const appPath = app.getAppPath()
     ensureAgentEnv(
       [path.join(appPath, '.env'), path.resolve(appPath, '../backend-ts/.env')],
@@ -588,6 +616,243 @@ export function registerIpcHandlers(): void {
         return { message: 'Invalid payload', aborted: false }
       }
       return stopRun(sessionId)
+    },
+  )
+
+  // ---- 本地会话/消息持久化（云边双模阶段 2：SQLite DAO）----
+  // 语义对齐 backend-ts /chat/* 的 CRUD 子集；库文件 userData/local-chat.db。
+  // 打开失败（原生模块缺失/磁盘不可写）时各通道统一返回错误，不崩溃。
+
+  const localDbPath = path.join(app.getPath('userData'), 'local-chat.db')
+  function localChat(): LocalChatStore {
+    const store = getLocalChatStore(localDbPath)
+    if (!store) throw new Error('本地数据库不可用（better-sqlite3 缺失或磁盘不可写）')
+    return store
+  }
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_LIST_SESSIONS,
+    (event, req: LocalSessionListRequest): Promise<LocalSessionListResult | LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      try {
+        return Promise.resolve(
+          localChat().listSessions({
+            page: req?.page,
+            pageSize: req?.pageSize,
+            archived: req?.archived,
+          }),
+        )
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_CREATE_SESSION,
+    (event, req: LocalCreateSessionRequest): Promise<unknown> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      try {
+        return Promise.resolve(localChat().createSession(req ?? {}))
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_UPDATE_SESSION,
+    (
+      event,
+      payload: { sessionId: string; patch: LocalUpdateSessionRequest },
+    ): Promise<unknown> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (!payload || typeof payload.sessionId !== 'string' || !payload.sessionId) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      try {
+        const updated = localChat().updateSession(payload.sessionId, payload.patch ?? {})
+        if (!updated) return Promise.resolve({ ok: false, error: 'session not found' })
+        return Promise.resolve(updated)
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_DELETE_SESSION,
+    (event, sessionId: string): Promise<LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (typeof sessionId !== 'string' || !sessionId) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      try {
+        return Promise.resolve({ ok: localChat().deleteSession(sessionId) })
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_LIST_MESSAGES,
+    (event, req: LocalMessageListRequest): Promise<LocalMessageListResult | LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (!req || typeof req.sessionId !== 'string' || !req.sessionId) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      try {
+        return Promise.resolve(
+          localChat().listMessages({
+            sessionId: req.sessionId,
+            cursor: req.cursor,
+            limit: req.limit,
+          }),
+        )
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_APPEND_MESSAGES,
+    (event, req: LocalAppendMessagesRequest): Promise<LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (
+        !req ||
+        typeof req.sessionId !== 'string' ||
+        !req.sessionId ||
+        !Array.isArray(req.messages)
+      ) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      // H6: 深度清洗防原型链污染（消息体含 contentBlocks 等嵌套结构）
+      const sanitized = sanitizeValue(req.messages)
+      if (!Array.isArray(sanitized)) {
+        return Promise.resolve({ ok: false, error: 'Invalid messages' })
+      }
+      try {
+        const n = localChat().appendMessages(req.sessionId, sanitized as never)
+        return Promise.resolve({ ok: true, error: n >= 0 ? undefined : undefined })
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_UPDATE_FEEDBACK,
+    (event, req: LocalFeedbackRequest): Promise<LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (
+        !req ||
+        typeof req.messageId !== 'string' ||
+        !['like', 'dislike', 'none'].includes(req.feedback)
+      ) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      try {
+        return Promise.resolve({ ok: localChat().updateMessageFeedback(req.messageId, req.feedback) })
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.LOCAL_CHAT_DELETE_MESSAGES,
+    (event, req: LocalDeleteMessagesRequest): Promise<LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (
+        !req ||
+        typeof req.sessionId !== 'string' ||
+        !req.sessionId ||
+        !Array.isArray(req.messageIds) ||
+        !req.messageIds.every((id) => typeof id === 'string' && !!id)
+      ) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      try {
+        localChat().deleteMessages(req.sessionId, req.messageIds)
+        return Promise.resolve({ ok: true })
+      } catch (e) {
+        return Promise.resolve({ ok: false, error: String(e) })
+      }
+    },
+  )
+
+  // ---- 密钥 safeStorage 治理（云边双模阶段 2）----
+
+  ipcMain.handle(
+    IpcChannel.SECURE_KEY_LIST,
+    (event): Promise<{ keys: SecureKeyInfo[]; descriptors: typeof MANAGED_KEYS }> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ keys: [], descriptors: MANAGED_KEYS })
+      try {
+        return Promise.resolve({
+          keys: getKeyStore(appStore).list(),
+          descriptors: MANAGED_KEYS,
+        })
+      } catch (e) {
+        return Promise.resolve({ keys: [], descriptors: MANAGED_KEYS })
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.SECURE_KEY_SET,
+    (event, req: SecureKeySetRequest): Promise<SecureKeySetResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (!req || typeof req.name !== 'string' || typeof req.value !== 'string') {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      return Promise.resolve(getKeyStore(appStore).set(req.name, req.value))
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.SECURE_KEY_DELETE,
+    (event, name: string): Promise<LocalDaoResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (typeof name !== 'string' || !name) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      return Promise.resolve({ ok: getKeyStore(appStore).delete(name) })
+    },
+  )
+
+  // ---- 本地上传（云边双模阶段 2：userData/uploads）----
+
+  const uploadStore = getUploadStore(path.join(app.getPath('userData'), 'uploads'))
+
+  ipcMain.handle(
+    IpcChannel.UPLOAD_SAVE,
+    (event, req: UploadSaveRequest): Promise<UploadSaveResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (!req || typeof req.fileName !== 'string' || typeof req.base64 !== 'string') {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      return uploadStore.save(req.fileName, req.base64)
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.UPLOAD_LIST,
+    (event): Promise<UploadInfo[]> => {
+      if (!isTrustedSender(event)) return Promise.resolve([])
+      return uploadStore.list()
+    },
+  )
+
+  ipcMain.handle(
+    IpcChannel.UPLOAD_DELETE,
+    (event, id: string): Promise<UploadDeleteResult> => {
+      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
+      if (typeof id !== 'string' || !id) {
+        return Promise.resolve({ ok: false, error: 'Invalid payload' })
+      }
+      return uploadStore.delete(id)
     },
   )
 

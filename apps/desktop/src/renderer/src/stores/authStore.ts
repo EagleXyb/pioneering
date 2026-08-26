@@ -37,6 +37,19 @@ export const ANONYMOUS_USER: AppUser = {
   avatar: null
 }
 
+/**
+ * 云边双模阶段 2：本地单用户档案。
+ * 本地模式（IPC Transport + 本地 SQLite DAO）免登录即完整可用；
+ * 无云端 token 时以该档案展示，登录云端后仍可切换为真实账号。
+ */
+export const LOCAL_USER: AppUser = {
+  id: 'local_user',
+  username: '本地用户',
+  nickname: null,
+  email: null,
+  avatar: null
+}
+
 /** 后端 UserProfile -> 前端 AppUser 的统一映射，避免各调用点各写一遍 */
 export function toAppUser(profile: UserProfile): AppUser {
   return {
