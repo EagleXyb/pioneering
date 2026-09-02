@@ -9,6 +9,7 @@
 import { getDefaultStore } from 'jotai'
 import { settingsOpenAtom } from '@/stores/atoms'
 import { appApi, windowApi, shellApi } from '@/services/ipc'
+import { DOCS_URL, FEEDBACK_URL } from '@shared/links'
 import type { MenuActionId } from '@shared/menu-template'
 
 export function runMenuAction(id: MenuActionId): void {
@@ -45,7 +46,7 @@ export function runMenuAction(id: MenuActionId): void {
       void windowApi.close()
       break
     case 'openDocs':
-      void shellApi.openExternal('https://docs.pioneering.ai')
+      void shellApi.openExternal(DOCS_URL)
       break
     case 'networkCheck':
       void appApi.networkCheck()
@@ -54,7 +55,7 @@ export function runMenuAction(id: MenuActionId): void {
       void appApi.openLogDir()
       break
     case 'feedback':
-      void shellApi.openExternal('https://github.com/pioneering/feedback')
+      void shellApi.openExternal(FEEDBACK_URL)
       break
     case 'devTools':
       void windowApi.toggleDevTools()

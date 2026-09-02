@@ -8,6 +8,7 @@
 import { Menu, BrowserWindow, app, shell, type MenuItemConstructorOptions } from 'electron'
 import { menuTemplate, type MenuActionId } from '../shared/menu-template'
 import { IpcChannel } from '../shared/ipc-channels'
+import { DOCS_URL, FEEDBACK_URL } from '../shared/links'
 
 // id -> Electron 原生 role（macOS 编辑菜单由系统自动处理，解决 execCommand 废弃问题）
 const EDIT_ROLES: Partial<Record<MenuActionId, MenuItemConstructorOptions['role']>> = {
@@ -40,10 +41,10 @@ function runAction(id: MenuActionId, win: BrowserWindow | null): void {
       target?.webContents.toggleDevTools()
       break
     case 'openDocs':
-      void shell.openExternal('https://docs.pioneering.ai')
+      void shell.openExternal(DOCS_URL)
       break
     case 'feedback':
-      void shell.openExternal('https://github.com/pioneering/feedback')
+      void shell.openExternal(FEEDBACK_URL)
       break
     default:
       // 其余（checkUpdate/networkCheck/openLogDir/closeWindow）交由渲染端处理

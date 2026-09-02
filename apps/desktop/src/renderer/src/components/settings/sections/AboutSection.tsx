@@ -1,5 +1,5 @@
 // ============================================================
-// AboutSection（合并版 v2）—— 整合「关于 + 帮助与反馈」
+// AboutSection（合并版 v3）—— 整合「关于 + 帮助与反馈」
 // 本轮优化要点（v2）：
 //   1) 删除顶部 "关于 Pioneering Pioneering Desktop AI Agent" 标题区
 //   2) 全部 5 行（当前版本 / 关于 Pioneering / 帮助文档 / 意见反馈 / 联系我们）
@@ -7,6 +7,10 @@
 //      单个行默认透明，只有 hover 时显现 #f0f0f0 灰色背景
 //   3) 下方二维码区放入另一个独立圆角卡片，
 //      与上一卡片宽度完全一致（两卡片同级 flex w-full 同宽）
+// v3 变更点：
+//   - 「前往官网」「帮助文档」「联系我们」改走 shellApi.openExternal，
+//     与 menu-actions / menu-template 路径一致；URL 抽离到 @shared/links，
+//     单点维护官网 / 文档 / 反馈 / 客服邮箱等外部链接
 //   调色板 / 圆角 / hover 与 HelpSection 风格保持一致：
 //     row bg 默认透明 → hover #f0f0f0；行间距由外卡片统一
 //     外链图标 stroke #bfbfbf；前缀图标 18×18 stroke #8c8c8c
@@ -24,8 +28,29 @@ import {
   XCircle,
   Info
 } from 'lucide-react'
+import { shellApi } from '@/services/ipc'
+import {
+  DOCS_URL,
+  OFFICIAL_SITE_URL,
+  SUPPORT_MAILTO_URL
+} from '@shared/links'
 
 type UpdateStatus = 'idle' | 'checking' | 'latest' | 'error'
+
+/**
+ * 统一的安全打开外部链接包装。
+ *
+ *  - Electron 模式：经 shellApi.openExternal 走主进程 `shell.openExternal`，
+ *    由 Electron 保证协议白名单与跨平台行为一致（macOS 在默认浏览器打开，
+ *    Windows/Linux 走系统默认浏览器）。
+ *  - 浏览器模式：mocks/electron-mock.ts 已把 openExternal 兜底成 `window.open`，
+ *    此处仍能正常工作。
+ *
+ * 抹平两层差异后调用方无需再关心当前运行环境。
+ */
+function openExternal(url: string): void {
+  void shellApi.openExternal(url)
+}
 
 // ==================================================
 // 导出主组件：两大卡片 + 法律页脚
@@ -42,7 +67,7 @@ export function AboutSection() {
           label="关于 Pioneering"
           actionLabel="前往官网"
           external
-          onClick={() => window.open('https://pioneering.example.com', '_blank', 'noopener,noreferrer')}
+          onClick={() => openExternal(OFFICIAL_SITE_URL)}
         />
         <Divider />
         <ActionRow
@@ -50,7 +75,7 @@ export function AboutSection() {
           label="帮助文档"
           actionLabel="查看文档"
           external
-          onClick={() => window.open('https://example.com/docs', '_blank', 'noopener,noreferrer')}
+          onClick={() => openExternal(DOCS_URL)}
         />
         <Divider />
         <ActionRow
@@ -65,7 +90,7 @@ export function AboutSection() {
           label="联系我们"
           actionLabel="发送邮件"
           external
-          onClick={() => window.open('mailto:support@example.com', '_blank')}
+          onClick={() => openExternal(SUPPORT_MAILTO_URL)}
         />
       </MenuCard>
 
