@@ -170,9 +170,6 @@
   html[data-font-size='small'] body {
     -webkit-font-smoothing: antialiased;
   }
-  html[data-font-size='large'] :where(.chat-markdown) {
-    font-size: 17px !important;
-  }
 
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -190,7 +187,10 @@
    ============================================= */
 @layer components {
   .chat-markdown {
-    @apply w-full max-w-none min-w-0 block font-sans text-[15px] leading-7 text-foreground;
+    @apply w-full max-w-none min-w-0 block font-sans leading-7 text-foreground;
+    /* 字号用 rem 跟随全局字体档位（基准 15px = 15/14 rem），
+       与聊天区其它文本随档位同比例缩放，不再固定 15px 造成脱节 */
+    font-size: 1.0714286rem;
   }
 
   /* 容器首尾子元素去掉多余外边距，避免气泡内出现额外留白 */
@@ -215,7 +215,9 @@
   }
   .chat-markdown h3,
   .chat-markdown h4 {
-    @apply mt-3.5 mb-1.5 text-[15px] font-semibold leading-snug;
+    @apply mt-3.5 mb-1.5 font-semibold leading-snug;
+    /* 与正文同基准（15px=15/14rem），随档位缩放 */
+    font-size: 1.0714286rem;
   }
 
   /* P1：列表间距和缩进优化 */
@@ -267,7 +269,8 @@
   .chat-markdown .code-block-pre {
     font-family: Consolas, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Andale Mono',
       'Courier New', monospace;
-    font-size: 13px;
+    /* 13px=13/14rem，随档位缩放与 UI 保持一致 */
+    font-size: 0.9285714rem;
     line-height: 1.65;
     tab-size: 4;
     -moz-tab-size: 4;

@@ -11,6 +11,7 @@
 // ============================================================
 
 import { HardDrive, Globe, Key } from 'lucide-react'
+import { pxToRem } from '@/lib/utils'
 import { LocalRuntimeSection } from './LocalRuntimeSection'
 import { ApiConnectionSection } from './ApiConnectionSection'
 import { AuthSection } from './AuthSection'
@@ -46,7 +47,7 @@ function GroupHeader({ label, icon }: { label: string; icon?: ReactNode }) {
   return (
     <div
       className="flex items-center gap-1.5 font-semibold select-none shrink-0"
-      style={{ fontSize: 13, color: '#262626', marginTop: 24, marginBottom: 12 }}
+      style={{ fontSize: pxToRem(14), color: '#262626', marginTop: 32, marginBottom: 16 }}
     >
       {icon}
       <span>{label}</span>

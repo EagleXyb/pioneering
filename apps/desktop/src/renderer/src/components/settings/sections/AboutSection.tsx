@@ -29,6 +29,7 @@ import {
   Info
 } from 'lucide-react'
 import { shellApi } from '@/services/ipc'
+import { pxToRem } from '@/lib/utils'
 import {
   DOCS_URL,
   OFFICIAL_SITE_URL,
@@ -164,8 +165,8 @@ function VersionRow() {
       <span className="flex items-center gap-[10px] min-w-0">
         <Info className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />
         <span className="flex flex-col min-w-0">
-          <span className="text-sm text-[#262626] truncate">当前版本 v0.1.0</span>
-          <span className="text-[11px] text-[#bfbfbf] mt-0.5 truncate">
+          <span className="text-[#262626] truncate" style={{ fontSize: pxToRem(14) }}>当前版本 v0.1.0</span>
+          <span className="text-[#bfbfbf] mt-0.5 truncate" style={{ fontSize: pxToRem(11) }}>
             Powered by Electron 42 · React 19 · LangGraph
           </span>
         </span>
@@ -188,7 +189,7 @@ function SocialFollowCard() {
         border: '1px solid #f0f0f0'
       }}
     >
-      <p className="text-sm text-[#595959] text-center">关注我们，获取实用技巧与产品最新动态</p>
+      <p className="text-[#595959] text-center" style={{ fontSize: pxToRem(14) }}>关注我们，获取实用技巧与产品最新动态</p>
       <div className="flex items-start justify-center gap-10 flex-wrap">
         <QrPlaceholder label="公众号" accent="#1677ff" />
         <QrPlaceholder label="社区频道" accent="#13c2c2" />
@@ -210,8 +211,8 @@ function LegalFooter({ className = '' }: { className?: string }) {
 
   return (
     <div
-      className={`text-center text-[13px] select-none ${className}`}
-      style={{ color: '#bfbfbf' }}
+      className={`text-center select-none ${className}`}
+      style={{ color: '#bfbfbf', fontSize: pxToRem(13) }}
     >
       <a
         href="#"
@@ -279,7 +280,7 @@ function ActionRow({ icon, label, actionLabel, external, onClick }: ActionRowPro
         outline: 'none'
       }}
     >
-      <span className="flex items-center gap-[10px] text-sm min-w-0">
+      <span className="flex items-center gap-[10px] min-w-0" style={{ fontSize: pxToRem(14) }}>
         {icon}
         <span className="truncate">{label}</span>
       </span>
@@ -353,7 +354,7 @@ function ActionButton({
     flexShrink: 0,
     padding: '4px 12px',
     minHeight: 28,
-    fontSize: 13,
+    fontSize: pxToRem(13),
     lineHeight: '20px',
     border: '1px solid',
     borderColor: effectiveBorder,
@@ -526,7 +527,7 @@ function QrPlaceholder({ label, accent }: { label: string; accent: string }) {
           <rect x={54} y={54} width={12} height={12} rx={2} fill={accent} opacity={0.9} />
         </svg>
       </div>
-      <span className="text-[11px]" style={{ color: '#8c8c8c' }}>{label}</span>
+      <span style={{ color: '#8c8c8c', fontSize: pxToRem(11) }}>{label}</span>
     </div>
   )
 }

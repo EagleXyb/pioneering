@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, Trash2, AlertTriangle, RotateCcw, X } from 'lucide-react'
+import { pxToRem } from '@/lib/utils'
 import { useAppStore } from '@/stores/useAppStore'
 import {
   HOTKEY_DEFINITIONS,
@@ -168,7 +169,7 @@ export function ShortcutsSection() {
           style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
         >
           <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: '#faad14' }} />
-          <div className="text-[13px]" style={{ color: '#8c6d1f' }}>
+          <div style={{ color: '#8c6d1f', fontSize: pxToRem(13) }}>
             当前为纯浏览器环境：快捷键修改不会持久化，全局快捷键（如唤起主窗口）不可用。
             渲染层快捷键仍按默认绑定生效。
           </div>
@@ -182,7 +183,7 @@ export function ShortcutsSection() {
           style={{ background: '#fff2f0', border: '1px solid #ffccc7' }}
         >
           <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: '#ff4d4f' }} />
-          <div className="text-[13px]" style={{ color: '#8c3b38' }}>
+          <div style={{ color: '#8c3b38', fontSize: pxToRem(13) }}>
             {globalConflicts.join('；')}
           </div>
         </div>
@@ -200,7 +201,7 @@ export function ShortcutsSection() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索快捷键"
             className="flex-1 outline-none bg-transparent"
-            style={{ fontSize: 13, color: '#262626' }}
+            style={{ fontSize: pxToRem(13), color: '#262626' }}
           />
           {query && (
             <button
@@ -219,7 +220,7 @@ export function ShortcutsSection() {
           className="flex items-center gap-1.5 rounded-[5px] px-3"
           style={{
             height: 30,
-            fontSize: 13,
+            fontSize: pxToRem(13),
             background: '#fff',
             border: '1px solid #d9d9d9',
             color: '#595959',
@@ -250,9 +251,9 @@ export function ShortcutsSection() {
             borderBottom: '1px solid #f0f0f0'
           }}
         >
-          <span className="text-[12px]" style={{ color: '#8c8c8c', width: 260 }}>命令</span>
-          <span className="text-[12px]" style={{ color: '#8c8c8c', flex: 1 }}>按键绑定</span>
-          <span className="text-[12px]" style={{ color: '#8c8c8c', width: 60, textAlign: 'right' }}>操作</span>
+          <span style={{ color: '#8c8c8c', width: 260, fontSize: pxToRem(12) }}>命令</span>
+          <span style={{ color: '#8c8c8c', flex: 1, fontSize: pxToRem(12) }}>按键绑定</span>
+          <span style={{ color: '#8c8c8c', width: 60, textAlign: 'right', fontSize: pxToRem(12) }}>操作</span>
         </div>
 
         {/* 列表行 */}
@@ -276,11 +277,11 @@ export function ShortcutsSection() {
               >
                 {/* 命令列 */}
                 <div className="flex flex-col min-w-0" style={{ width: 260 }}>
-                  <span className="truncate" style={{ fontSize: 14, color: '#262626', fontWeight: 500 }}>
+                  <span className="truncate" style={{ fontSize: pxToRem(14), color: '#262626', fontWeight: 500 }}>
                     {def.label}
                   </span>
                   {def.scope === 'global' && (
-                    <span style={{ fontSize: 11, color: '#bfbfbf', marginTop: 2 }}>全局（窗口外生效）</span>
+                    <span style={{ fontSize: pxToRem(12), color: '#bfbfbf', marginTop: 2 }}>全局（窗口外生效）</span>
                   )}
                 </div>
 
@@ -293,7 +294,7 @@ export function ShortcutsSection() {
                     style={{
                       height: 26,
                       padding: '0 10px',
-                      fontSize: 12,
+                      fontSize: pxToRem(12),
                       background: isRecording ? '#e6f4ff' : binding ? '#f5f5f5' : 'transparent',
                       border: isRecording
                         ? '1px solid #1677ff'
@@ -313,7 +314,7 @@ export function ShortcutsSection() {
                     <button
                       onClick={() => resetOne(def.id)}
                       className="flex items-center gap-1"
-                      style={{ fontSize: 12, color: '#8c8c8c', cursor: 'pointer', background: 'transparent', border: 'none' }}
+                      style={{ fontSize: pxToRem(12), color: '#8c8c8c', cursor: 'pointer', background: 'transparent', border: 'none' }}
                       title="恢复此命令默认绑定"
                     >
                       <RotateCcw size={12} />
@@ -356,7 +357,7 @@ export function ShortcutsSection() {
           })
         ) : (
           /* 空态（在卡片内） */
-          <div className="py-10 text-center text-[13px]" style={{ color: '#bfbfbf' }}>
+          <div className="py-10 text-center" style={{ color: '#bfbfbf', fontSize: pxToRem(13) }}>
             没有匹配「{query}」的命令
           </div>
         )}
@@ -368,7 +369,7 @@ export function ShortcutsSection() {
           className="flex items-start justify-between gap-2 rounded-[5px] px-4 py-3 mt-4"
           style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
         >
-          <div className="text-[13px]" style={{ color: '#8c6d1f' }}>
+          <div style={{ color: '#8c6d1f', fontSize: pxToRem(13) }}>
             {conflictInfo.binding} 已被「{conflictInfo.others.join('、')}」使用，同时生效时先命中者执行。
           </div>
           <button
@@ -387,7 +388,7 @@ export function ShortcutsSection() {
           className="flex items-start justify-between gap-2 rounded-[5px] px-4 py-3 mt-2"
           style={{ background: '#fff2f0', border: '1px solid #ffccc7' }}
         >
-          <div className="text-[13px]" style={{ color: '#8c3b38' }}>
+          <div style={{ color: '#8c3b38', fontSize: pxToRem(13) }}>
             {dangerBinding} 存在浏览器/系统原生行为（关闭窗口、刷新等），可能干扰应用操作，建议换用其它组合。
           </div>
           <button
@@ -478,7 +479,7 @@ function CaptureOverlay({
         className="rounded-[8px] flex flex-col items-center gap-4"
         style={{ background: '#fff', padding: '28px 40px', minWidth: 380 }}
       >
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#262626' }}>请按下新的快捷键组合</div>
+        <div style={{ fontSize: pxToRem(16), fontWeight: 600, color: '#262626' }}>请按下新的快捷键组合</div>
 
         {/* 实时键位显示 */}
         <div
@@ -488,14 +489,14 @@ function CaptureOverlay({
             height: 40,
             background: '#fafafa',
             border: '1px solid #f0f0f0',
-            fontSize: 14,
+            fontSize: pxToRem(14),
             color: current ? '#595959' : '#bfbfbf'
           }}
         >
           {current ?? '等待输入…'}
         </div>
 
-        <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+        <div style={{ fontSize: pxToRem(12), color: '#8c8c8c' }}>
           按 Esc 取消录制；仅含修饰键的组合不会保存
         </div>
 
@@ -504,7 +505,7 @@ function CaptureOverlay({
           className="rounded-[5px]"
           style={{
             padding: '5px 16px',
-            fontSize: 13,
+            fontSize: pxToRem(13),
             background: '#fff',
             border: '1px solid #d9d9d9',
             color: '#595959',

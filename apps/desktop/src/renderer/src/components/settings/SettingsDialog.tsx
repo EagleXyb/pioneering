@@ -10,11 +10,23 @@ import { X } from 'lucide-react'
 import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
 import { getCategory } from './settingsConfig'
 import { SettingsSidebar } from './SettingsSidebar'
+import { useAppStore, FONT_SIZE_PX, type FontSizeMode } from '@/stores/useAppStore'
+import { pxToRem } from '@/lib/utils'
 import './settings-dialog.css'
 
 export function SettingsDialog() {
   const [open, setOpen] = useAtom(settingsOpenAtom)
   const [categoryId] = useAtom(settingsCategoryAtom)
+
+  // ========================================================
+  // 字体大小档位 → 作用到弹壳自身：
+  //   Radix DialogPortal 将内容挂到 body 下的独立节点，
+  //   html { font-size: var(--app-font-size) } 无法穿透到弹内，
+  //   所以必须在弹壳根元素（DialogContent）上显式同步档位，
+  //   弹内以 rem 声明的文本字号才能正确按档位缩放。
+  // ========================================================
+  const fontSize: FontSizeMode = useAppStore((s) => s.fontSize)
+  const shellRemPx = FONT_SIZE_PX[fontSize]
 
   const category = getCategory(categoryId)
   // 平铺时代：每个分类右栏大标题直接用分类自己的 label
@@ -26,11 +38,16 @@ export function SettingsDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         className="settings-dialog-root flex !max-w-none !p-0 !gap-0 overflow-hidden"
+        data-font-size={fontSize}
         style={{
           width: 1000,
           height: 680,
           borderRadius: 12,
-          boxShadow: '0 16px 56px rgba(0,0,0,0.14)'
+          boxShadow: '0 16px 56px rgba(0,0,0,0.14)',
+          // 让弹壳下的 1rem = 档位基准（small=13 / medium=14 / large=16），
+          // 配合内部用 rem 声明的字号，档位切换时整个弹框按比例缩放。
+          fontSize: `${shellRemPx}px`,
+          ['--shell-rem' as any]: `${shellRemPx}px`
         }}
         hideClose
       >
@@ -46,14 +63,14 @@ export function SettingsDialog() {
             className="absolute top-4 right-4 flex items-center justify-center h-8 w-8 text-[#8c8c8c] hover:text-[#595959] hover:bg-black/5 transition-colors bg-transparent border-none p-0 cursor-pointer rounded-md z-10"
             aria-label="关闭"
           >
-            <X style={{ width: 18, height: 18 }} strokeWidth={1.5} />
+            <X style={{ width: pxToRem(18), height: pxToRem(18) }} strokeWidth={1.5} />
           </button>
 
           {/* 标题栏 */}
           <div className="shrink-0 px-10 pt-8 pb-4">
             <DialogTitle
-              className="m-0 text-[22px] font-semibold leading-none tracking-[0.01em]"
-              style={{ color: '#1a1a1a' }}
+              className="m-0 font-semibold leading-none tracking-[0.01em]"
+              style={{ color: '#1a1a1a', fontSize: pxToRem(22) }}
             >
               {label}
             </DialogTitle>

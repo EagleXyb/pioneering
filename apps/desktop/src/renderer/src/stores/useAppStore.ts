@@ -14,14 +14,14 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 export type Language = 'zh-CN' | 'zh-TW' | 'en-US'
 
 /** 界面字体大小（通用 · 基础设置 / 字体大小）
- *  - small  ≈ 13px（紧凑型）
- *  - medium ≈ 14px（默认）
- *  - large  ≈ 16px（舒适型） */
+ *  - small  ≈ 14px（紧凑型）
+ *  - medium ≈ 15px（默认）
+ *  - large  ≈ 17px（舒适型） */
 export type FontSizeMode = 'small' | 'medium' | 'large'
 export const FONT_SIZE_PX: Record<FontSizeMode, number> = {
-  small: 13,
-  medium: 14,
-  large: 16
+  small: 14,
+  medium: 15,
+  large: 17
 }
 
 // ---- 模型配置相关类型 ----

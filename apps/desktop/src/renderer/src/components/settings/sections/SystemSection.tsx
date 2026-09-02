@@ -10,6 +10,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { Cloud, HardDrive, MonitorSmartphone } from 'lucide-react'
+import { pxToRem } from '@/lib/utils'
 
 type TransportMode = 'http' | 'ipc'
 
@@ -53,8 +54,8 @@ export function SystemSection() {
           className="flex items-center justify-between px-4 py-[13px]"
           style={{ background: '#f7f7f7' }}
         >
-          <span className="text-sm text-[#262626]">传输模式</span>
-          {hint && <span className="text-[11px] text-[#8c8c8c]">{hint}</span>}
+          <span className="text-[#262626]" style={{ fontSize: pxToRem(14) }}>传输模式</span>
+          {hint && <span className="text-[#8c8c8c]" style={{ fontSize: pxToRem(12) }}>{hint}</span>}
         </div>
         <div style={{ height: 1, background: '#f0f0f0' }} aria-hidden />
         <ModeRow
@@ -83,7 +84,7 @@ export function SystemSection() {
           style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
         >
           <MonitorSmartphone className="shrink-0" size={16} stroke="#d48806" strokeWidth={2} />
-          <span className="text-[13px] leading-5 text-[#8c6116]">
+          <span className="leading-5 text-[#8c6116]" style={{ fontSize: pxToRem(13) }}>
             当前为纯浏览器环境，本地模式（IPC）等桌面端专属能力不可用；请使用桌面应用获得完整功能。
           </span>
         </div>
@@ -129,12 +130,12 @@ function ModeRow({
       }}
     >
       <span className="flex items-center gap-[10px] min-w-0">
-        {icon}
-        <span className="flex flex-col min-w-0">
-          <span className="text-sm text-[#262626] truncate">{label}</span>
-          <span className="text-[11px] text-[#bfbfbf] mt-0.5 truncate">{desc}</span>
+          {icon}
+          <span className="flex flex-col min-w-0">
+            <span className="text-[#262626] truncate" style={{ fontSize: pxToRem(14) }}>{label}</span>
+            <span className="text-[#bfbfbf] mt-0.5 truncate" style={{ fontSize: pxToRem(12) }}>{desc}</span>
+          </span>
         </span>
-      </span>
       {/* 选中指示：实心小圆点 */}
       <span
         className="shrink-0 rounded-full"

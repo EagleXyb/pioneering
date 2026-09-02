@@ -30,16 +30,18 @@
 //      路径框：左 8px 圆角 + 右 更改按钮（默认按钮 30px 高）
 // ============================================================
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronDown,
   Settings as SettingsGear,
   FolderOpen
 } from 'lucide-react'
 import { useSetAtom } from 'jotai'
-import { cn } from '@/lib/utils'
+import { cn, pxToRem } from '@/lib/utils'
+import { selectListReducer } from '@/lib/select-list'
 import { Button } from '@/components/ui/button'
-import { useAppStore, type ThemeMode, type Language, type FontSizeMode } from '@/stores/useAppStore'
+import { useAppStore, FONT_SIZE_PX, type ThemeMode, type Language, type FontSizeMode } from '@/stores/useAppStore'
 import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
 import { resolveBinding } from '../../../../../shared/hotkey-registry'
 import { formatBindingForDisplay } from '@/lib/match-accelerator'
@@ -56,9 +58,9 @@ const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
   { value: 'en-US', label: 'English' }
 ]
 const FONT_SIZE_OPTIONS: { value: FontSizeMode; label: string }[] = [
-  { value: 'small', label: '紧凑（13px）' },
-  { value: 'medium', label: '默认（14px）' },
-  { value: 'large', label: '舒适（16px）' }
+  { value: 'small', label: '紧凑（14px）' },
+  { value: 'medium', label: '默认（15px）' },
+  { value: 'large', label: '舒适（17px）' }
 ]
 const LINK_OPEN_OPTIONS: { value: string; label: string }[] = [
   { value: 'always-ask', label: '始终询问' },
@@ -82,6 +84,8 @@ export function GeneralSection() {
   const [transcribeHotkey, setTranscribeHotkey] = useState(true)
   const [linkOpen, setLinkOpen] = useState('always-ask')
   const [storagePath, setStoragePath] = useState('C:\\Users\\Administrator\\AppData\\Roaming\\Pioneering\\workspace')
+  /** 当前字体档位的 1rem 像素基准（13/14/16），注入 Select 使 portal 下拉同步缩放 */
+  const shellRemPx = FONT_SIZE_PX[fontSize]
 
   return (
     // 宽度对齐截图：内容限宽 + 左对齐（SettingsDialog 右侧已经有 padding），
@@ -98,6 +102,7 @@ export function GeneralSection() {
             <Select
               value={theme}
               options={THEME_OPTIONS}
+              remBasePx={shellRemPx}
               onChange={(v) => setTheme(v as ThemeMode)}
             />
           }
@@ -110,6 +115,7 @@ export function GeneralSection() {
             <Select
               value={language}
               options={LANGUAGE_OPTIONS}
+              remBasePx={shellRemPx}
               onChange={(v) => setLanguage(v as Language)}
             />
           }
@@ -117,11 +123,12 @@ export function GeneralSection() {
         <SettingRow
           index={2}
           title="字体大小"
-          subtitle="调整界面整体字号基准，16px 舒适档同时放大对话区 Markdown"
+          subtitle="调整界面整体字号基准，对话区 Markdown 随档位同比例缩放"
           control={
             <Select
               value={fontSize}
               options={FONT_SIZE_OPTIONS}
+              remBasePx={shellRemPx}
               onChange={(v) => setFontSize(v as FontSizeMode)}
             />
           }
@@ -173,7 +180,7 @@ export function GeneralSection() {
           title="本地链接的默认打开方式"
           subtitle="点击终端中的本地链接时，是否自动使用内置浏览器打开"
           control={
-            <Select value={linkOpen} options={LINK_OPEN_OPTIONS} onChange={setLinkOpen} />
+            <Select value={linkOpen} options={LINK_OPEN_OPTIONS} remBasePx={shellRemPx} onChange={setLinkOpen} />
           }
         />
         <SettingRow
@@ -197,7 +204,7 @@ function GroupHeader({ label }: { label: string }) {
   return (
     <div
       className="font-semibold select-none shrink-0"
-      style={{ fontSize: 14, color: '#262626', marginTop: 32, marginBottom: 16 }}
+      style={{ fontSize: pxToRem(14), color: '#262626', marginTop: 32, marginBottom: 16 }}
     >
       {label}
     </div>
@@ -251,14 +258,14 @@ function SettingRow({
         <div className="flex flex-col min-w-0 pr-6 flex-1">
           <span
             className="shrink-0 truncate"
-            style={{ fontSize: 14, color: '#262626', lineHeight: '20px', fontWeight: 500 }}
+            style={{ fontSize: pxToRem(14), color: '#262626', lineHeight: pxToRem(20), fontWeight: 500 }}
           >
             {title}
           </span>
           {subtitle && (
             <span
               className="mt-1 truncate"
-              style={{ fontSize: 12, color: '#8c8c8c', lineHeight: '18px' }}
+              style={{ fontSize: pxToRem(12), color: '#8c8c8c', lineHeight: pxToRem(18) }}
             >
               {subtitle}
             </span>
@@ -281,30 +288,131 @@ function SettingRow({
 // ==================================================
 // 控件 A：Select 下拉（自绘，不依赖 shadcn 组件）
 //   30px 高 · 220px 宽（截图右侧下拉框宽度） · 8px 圆角 · 右侧 ChevronDown 14
+//
+//   ★ 关键：下拉层通过 createPortal 挂载到 body
+//     避免 SectionCard 的 overflow:hidden（圆角卡片）把底部最后一行的下拉选项裁剪掉。
+//     用 trigger.getBoundingClientRect() 定位在 trigger 下方 4px，
+//     打开后监听 resize / scroll 自动重新对齐，滚动后仍准确对齐。
 // ==================================================
 function Select<T extends string>({
   value,
   options,
-  onChange
+  onChange,
+  remBasePx
 }: {
   value: T
   options: { value: T; label: string }[]
   onChange: (v: T) => void
+  /** 当前字体档位的 rem 基准（13/14/16）。dropdown 经 portal 挂到 body，
+      不继承弹壳的 font-size，需显式注入使下拉文字与 trigger 同步缩放。 */
+  remBasePx: number
 }) {
-  const [open, setOpen] = useState(false)
+  // 状态机（纯逻辑，见 lib/select-list.ts）：open / activeIdx
+  const valueIdx = Math.max(0, options.findIndex((o) => o.value === value))
+  const [state, dispatch] = useReducer(selectListReducer, {
+    open: false,
+    activeIdx: valueIdx
+  })
+  const { open, activeIdx } = state
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+  /** 下拉层绝对定位（相对于 viewport，已换算为滚动后的像素坐标） */
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null)
   const current = options.find((o) => o.value === value) ?? options[0]!
+
+  // ---------- 对齐：根据 trigger 的 bbox 算出 dropdown 在 viewport 的绝对坐标 ----------
+  const reposition = () => {
+    const t = triggerRef.current
+    if (!t) return
+    const r = t.getBoundingClientRect()
+    setPos({ left: r.left, top: r.bottom + 4, width: r.width })
+  }
+
+  // 打开瞬间强制对齐（useLayoutEffect 避免 portal 渲染完第一帧闪烁错位）
+  useLayoutEffect(() => {
+    if (!open) return
+    reposition()
+    // ----- 滚动 / 尺寸变化时自动重对齐：SettingsDialog 内部滚动会改变 trigger 位置 -----
+    const onReflow = () => reposition()
+    window.addEventListener('resize', onReflow)
+    window.addEventListener('scroll', onReflow, true) // capture，命中内部滚动容器
+    return () => {
+      window.removeEventListener('resize', onReflow)
+      window.removeEventListener('scroll', onReflow, true)
+    }
+  }, [open])
+
+  // Esc 关闭（capture 阶段先于 Dialog 处理，避免被吞）
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      dispatch({ type: 'ESC' })
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [open])
+
+  // Tab 焦点移出 trigger/dropdown 时关闭
+  useEffect(() => {
+    if (!open) return
+    const onFocusOut = (e: FocusEvent) => {
+      const target = e.relatedTarget as Node | null
+      if (target && triggerRef.current?.contains(target)) return
+      if (target && dropdownRef.current?.contains(target)) return
+      dispatch({ type: 'CLOSE' })
+    }
+    document.addEventListener('focusout', onFocusOut)
+    return () => document.removeEventListener('focusout', onFocusOut)
+  }, [open])
+
+  /** 提交选中：先 onChange 再关闭（同步，无 document 级竞态） */
+  const commit = (v: T) => {
+    onChange(v)
+    dispatch({ type: 'CLOSE' })
+  }
+
   return (
     <div className="relative shrink-0" style={{ width: 220 }}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        className="flex items-center justify-between w-full px-3 bg-white text-left transition-colors hover:border-[#bfbfbf]"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() =>
+          open
+            ? dispatch({ type: 'CLOSE' })
+            : dispatch({ type: 'OPEN', selectedIndex: valueIdx })
+        }
+        onKeyDown={(e) => {
+          // 聚焦 trigger 时 ↓/Enter/Space 开下拉，随后交给列表区键盘导航
+          if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault()
+            dispatch({ type: 'OPEN', selectedIndex: valueIdx })
+            return
+          }
+          if (open) {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              dispatch({ type: 'ARROW_DOWN', optionCount: options.length })
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              dispatch({ type: 'ARROW_UP', optionCount: options.length })
+            } else if (e.key === 'Enter') {
+              e.preventDefault()
+              const target = options[activeIdx]
+              if (target) commit(target.value)
+            }
+          }
+        }}
+        className="flex items-center justify-between w-full px-3 bg-white text-left transition-colors hover:border-[#bfbfbf] focus:outline-none focus:ring-2 focus:ring-[#1677ff]/30"
         style={{
           height: 30,
           border: '1px solid #d9d9d9',
           borderRadius: 8,
-          fontSize: 13,
+          fontSize: pxToRem(13),
           color: '#262626'
         }}
       >
@@ -316,36 +424,81 @@ function Select<T extends string>({
           className={cn('shrink-0 transition-transform', open && '-rotate-180')}
         />
       </button>
-      {open && (
-        <div
-          role="listbox"
-          className="absolute right-0 top-[34px] z-20 w-full overflow-hidden bg-white shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
-          style={{ borderRadius: 8, border: '1px solid #f0f0f0' }}
-        >
-          {options.map((o) => (
+
+      {/* Portal 到 body，彻底绕开 SectionCard 的 overflow:hidden。
+          关键：改用「backdrop 关闭层 + 下拉层」两个兄弟节点，而非 document 级
+          mousedown 监听——彻底消除「点击选项时 document 先关、选项的
+          onChange 丢失」的竞态（这是此前选不中的根因）。 */}
+      {open && pos && typeof document !== 'undefined' && document.body &&
+        createPortal(
+          <>
+            {/* 透明遮罩：点击任意外部区域关闭下拉（z 低于下拉层，不遮挡选项）。
+                必须显式 pointerEvents:auto —— Radix Dialog 默认 modal 模式会把
+                dialog 外的 body 内容设为 pointer-events:none（这正是下拉"看得到
+                点不中"的根因），portal 到 body 的下拉层必须显式恢复。 */}
             <div
-              key={o.value}
-              role="option"
-              aria-selected={o.value === value}
+              className="fixed inset-0 z-[9998]"
+              style={{ pointerEvents: 'auto' }}
               onMouseDown={(e) => {
                 e.preventDefault()
-                onChange(o.value)
-                setOpen(false)
+                dispatch({ type: 'CLOSE' })
               }}
-              className="cursor-pointer px-3 transition-colors"
+            />
+            <div
+              ref={dropdownRef}
+              role="listbox"
+              tabIndex={-1}
+              aria-activedescendant={activeIdx >= 0 ? `sel-opt-${activeIdx}` : undefined}
+              className="fixed z-[9999] overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
               style={{
-                height: 32,
-                lineHeight: '32px',
-                fontSize: 13,
-                color: o.value === value ? '#1677ff' : '#262626',
-                background: o.value === value ? '#f0f7ff' : '#fff'
+                left: pos.left,
+                top: pos.top,
+                width: pos.width,
+                borderRadius: 8,
+                border: '1px solid #f0f0f0',
+                background: '#fff',
+                // 关键（同 backdrop）：显式恢复 pointer events，否则 Radix modal
+                // 的 pointer-events:none 会让选项无法被点击。
+                pointerEvents: 'auto',
+                // dropdown 挂在 body 下不继承弹壳的 rem 基准，显式注入当前档位
+                // 的 1rem 值（13/14/16），内部 pxToRem 字号即可与 trigger 同步缩放。
+                fontSize: remBasePx,
+                lineHeight: 1
               }}
             >
-              {o.label}
+              {options.map((o, i) => {
+                const isSelected = o.value === value
+                const isActive = i === activeIdx
+                // 选中总是蓝底优先；未选中才应用 hover/键盘 active 淡蓝
+                const bg = isSelected ? '#f0f7ff' : isActive ? '#f5f9ff' : '#fff'
+                return (
+                  <div
+                    key={o.value}
+                    id={`sel-opt-${i}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      commit(o.value)
+                    }}
+                    onMouseEnter={() => dispatch({ type: 'HOVER', index: i })}
+                    className="cursor-pointer px-3 transition-colors"
+                    style={{
+                      height: 32,
+                      lineHeight: '32px',
+                      fontSize: pxToRem(13),
+                      color: isSelected ? '#1677ff' : '#262626',
+                      background: bg
+                    }}
+                  >
+                    {o.label}
+                  </div>
+                )
+              })}
             </div>
-          ))}
-        </div>
-      )}
+          </>,
+          document.body
+        )}
     </div>
   )
 }
@@ -398,8 +551,9 @@ function HotkeyTag({ keys }: { keys: string[] }) {
       {keys.map((k, i) => (
         <span key={`${k}-${i}`} className="contents">
           <span
-            className="inline-flex items-center justify-center text-[12px]"
+            className="inline-flex items-center justify-center"
             style={{
+              fontSize: pxToRem(12),
               minWidth: 24,
               height: 22,
               padding: '0 6px',
@@ -414,7 +568,7 @@ function HotkeyTag({ keys }: { keys: string[] }) {
             {k}
           </span>
           {i < keys.length - 1 && (
-            <span className="text-[12px]" style={{ color: '#bfbfbf', padding: '0 2px' }}>
+            <span style={{ fontSize: pxToRem(12), color: '#bfbfbf', padding: '0 2px' }}>
               +
             </span>
           )}
@@ -447,7 +601,7 @@ function PathPicker({
           border: '1px solid #d9d9d9',
           borderRight: 'none',
           borderRadius: '8px 0 0 8px',
-          fontSize: 12,
+          fontSize: pxToRem(12),
           color: '#595959'
         }}
         title={value}
@@ -467,7 +621,7 @@ function PathPicker({
           borderBottomLeftRadius: 0,
           borderTopRightRadius: 8,
           borderBottomRightRadius: 8,
-          fontSize: 13
+          fontSize: pxToRem(13)
         }}
         onClick={() => {
           const next = window.prompt('请输入新的存储路径', value)

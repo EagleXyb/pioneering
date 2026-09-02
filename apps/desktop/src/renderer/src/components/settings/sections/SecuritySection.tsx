@@ -27,7 +27,7 @@ import {
   Code,
   GitBranch
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, pxToRem } from '@/lib/utils'
 
 // ================================================================
 // 主组件
@@ -198,11 +198,11 @@ export function SecuritySection() {
           <div className="flex flex-col min-w-0 pr-4">
             <span
               className="shrink-0 truncate"
-              style={{ fontSize: 14, color: '#262626', fontWeight: 600 }}
+              style={{ fontSize: pxToRem(14), color: '#262626', fontWeight: 600 }}
             >
               审计中心
             </span>
-            <span className="mt-1 truncate" style={{ fontSize: 12, color: '#8c8c8c' }}>
+            <span className="mt-1 truncate" style={{ fontSize: pxToRem(12), color: '#8c8c8c' }}>
               拦截/放行记录与日志导出
             </span>
           </div>
@@ -255,7 +255,7 @@ function GroupHeader({ label }: { label: string }) {
   return (
     <div
       className="font-semibold select-none shrink-0"
-      style={{ fontSize: 14, color: '#262626', marginTop: 32, marginBottom: 16 }}
+      style={{ fontSize: pxToRem(14), color: '#262626', marginTop: 32, marginBottom: 16 }}
     >
       {label}
     </div>
@@ -329,7 +329,7 @@ function LeftColumn({
         <div className="flex items-center gap-2 min-w-0">
           <span
             className="shrink-0 truncate"
-            style={{ fontSize: 14, color: '#262626', fontWeight: 500, lineHeight: '20px' }}
+            style={{ fontSize: pxToRem(14), color: '#262626', fontWeight: 500, lineHeight: '20px' }}
           >
             {title}
           </span>
@@ -337,7 +337,7 @@ function LeftColumn({
             <span
               className="shrink-0 rounded-[4px] px-1.5 py-px select-none"
               style={{
-                fontSize: 11,
+                fontSize: pxToRem(11),
                 color: '#bfbfbf',
                 background: '#fafafa',
                 border: '1px dashed #e5e5e5'
@@ -350,7 +350,7 @@ function LeftColumn({
         {subtitle && (
           <span
             className="mt-1 truncate"
-            style={{ fontSize: 12, color: '#8c8c8c', lineHeight: '18px' }}
+            style={{ fontSize: pxToRem(12), color: '#8c8c8c', lineHeight: '18px' }}
           >
             {subtitle}
           </span>
@@ -473,7 +473,7 @@ function StatusTagRow({
       <span
         className="shrink-0 rounded-[4px] px-2 py-px select-none"
         style={{
-          fontSize: 12,
+          fontSize: pxToRem(12),
           ...styles
         }}
       >
@@ -522,7 +522,7 @@ function BackupLimitRow({
               border: '1px solid #d9d9d9',
               borderRight: 'none',
               borderRadius: '5px 0 0 5px',
-              fontSize: 13,
+              fontSize: pxToRem(13),
               color: '#262626'
             }}
           />
@@ -535,7 +535,7 @@ function BackupLimitRow({
               border: '1px solid #d9d9d9',
               borderLeft: 'none',
               borderRadius: '0 5px 5px 0',
-              fontSize: 12,
+              fontSize: pxToRem(12),
               color: '#595959'
             }}
           >
@@ -549,7 +549,7 @@ function BackupLimitRow({
           style={{
             height: 30,
             padding: '0 12px',
-            fontSize: 13,
+            fontSize: pxToRem(13),
             background: disabled ? '#fafafa' : '#fff',
             border: '1px solid #d9d9d9',
             color: disabled ? '#bfbfbf' : '#595959',
@@ -603,7 +603,7 @@ function NumberRow({
           padding: '0 10px',
           background: disabled ? '#f5f5f5' : '#fff',
           border: disabled ? '1px solid #f0f0f0' : '1px solid #d9d9d9',
-          fontSize: 13,
+          fontSize: pxToRem(13),
           color: disabled ? '#bfbfbf' : '#262626',
           cursor: disabled ? 'not-allowed' : 'text'
         }}
@@ -686,7 +686,7 @@ function LogRow({
             <span
               className="shrink-0 rounded-[4px] px-1.5 py-px select-none"
               style={{
-                fontSize: 11,
+                fontSize: pxToRem(11),
                 background: '#e6f4ff',
                 color: '#1677ff',
                 border: '1px solid #91caff'
@@ -696,12 +696,12 @@ function LogRow({
             </span>
             <span
               className="truncate min-w-0"
-              style={{ fontSize: 13, color: '#262626', lineHeight: '18px' }}
+              style={{ fontSize: pxToRem(13), color: '#262626', lineHeight: '18px' }}
             >
               {content}
             </span>
           </div>
-          <span className="mt-1 shrink-0" style={{ fontSize: 11, color: '#bfbfbf' }}>
+          <span className="mt-1 shrink-0" style={{ fontSize: pxToRem(11), color: '#bfbfbf' }}>
             {timestamp}
           </span>
         </div>
@@ -802,7 +802,7 @@ function ButtonGhost({
       style={{
         height: 28,
         padding: '0 10px',
-        fontSize: 12,
+        fontSize: pxToRem(12),
         background: '#fff',
         border: '1px solid #d9d9d9',
         color: danger ? '#ff4d4f' : '#595959',

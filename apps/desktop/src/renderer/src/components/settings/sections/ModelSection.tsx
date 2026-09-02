@@ -20,7 +20,7 @@ import {
   Network
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, pxToRem } from '@/lib/utils'
 import {
   useAppStore,
   type ModelConfigItem
@@ -156,10 +156,10 @@ export function ModelSection() {
     <div className="space-y-5">
       {/* 标题区 */}
       <div>
-        <h2 className="text-[22px] font-semibold leading-[1.2] tracking-[0.01em]" style={{ color: '#1a1a1a' }}>
+        <h2 className="font-semibold leading-[1.2] tracking-[0.01em]" style={{ color: '#1a1a1a', fontSize: pxToRem(22) }}>
           模型管理
         </h2>
-        <p className="mt-1 text-[13px] leading-[1.5] text-[#595959]">
+        <p className="mt-1 leading-[1.5] text-[#595959]" style={{ fontSize: pxToRem(13) }}>
           配置 API key 添加更多可用模型，预置模型默认使用稳定版本。
         </p>
       </div>
@@ -174,11 +174,12 @@ export function ModelSection() {
 
       {/* 提示条 */}
       <div
-        className="flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[12px] leading-[1.55]"
+        className="flex items-start gap-2 rounded-lg border px-3 py-2.5 leading-[1.55]"
         style={{
           background: 'rgba(59,130,246,0.08)',
           borderColor: 'rgba(59,130,246,0.25)',
-          color: '#1d4ed8'
+          color: '#1d4ed8',
+          fontSize: pxToRem(12)
         }}
       >
         <Info className="mt-[1px] shrink-0 size-4" />
@@ -192,8 +193,8 @@ export function ModelSection() {
       >
         {/* 表头 */}
         <div
-          className="grid grid-cols-[1fr_240px_120px] items-center px-4 py-2 text-[12px] font-medium"
-          style={{ background: '#f5f5f5', color: '#595959' }}
+          className="grid grid-cols-[1fr_240px_120px] items-center px-4 py-2 font-medium"
+          style={{ background: '#f5f5f5', color: '#595959', fontSize: pxToRem(12) }}
         >
           <div>模型</div>
           <div>服务商</div>
@@ -203,7 +204,7 @@ export function ModelSection() {
         {/* 行 */}
         <div className="divide-y" style={{ borderColor: '#f0f0f0' }}>
           {rows.length === 0 && (
-            <div className="px-4 py-10 text-center text-[12px] text-[#8c8c8c]">
+            <div className="px-4 py-10 text-center text-[#8c8c8c]" style={{ fontSize: pxToRem(13) }}>
               暂无模型，点击「添加模型」开始配置。
             </div>
           )}
@@ -224,15 +225,15 @@ export function ModelSection() {
                     <IconComp className={cn('size-3.5', iconColor)} />
                   </div>
                   <span
-                    className="truncate text-[13px] font-medium"
-                    style={{ color: '#262626' }}
+                    className="truncate font-medium"
+                    style={{ color: '#262626', fontSize: pxToRem(13) }}
                   >
                     {item.name}
                   </span>
                 </div>
 
                 {/* 服务商 */}
-                <div className="truncate text-[12px] text-[#595959]">{item.provider}</div>
+                <div className="truncate text-[#595959]" style={{ fontSize: pxToRem(12) }}>{item.provider}</div>
 
                 {/* 操作列：编辑 / 删除 / 开关 */}
                 <div className="flex items-center justify-end gap-1.5">
@@ -268,7 +269,7 @@ export function ModelSection() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="!max-w-[480px] !p-0 !gap-0 overflow-hidden" style={{ borderRadius: 12 }}>
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="text-[17px] font-semibold" style={{ color: '#1a1a1a' }}>
+            <DialogTitle className="font-semibold" style={{ color: '#1a1a1a', fontSize: pxToRem(16) }}>
               {dialogTitle}
             </DialogTitle>
             <DialogDescription className="sr-only">{dialogTitle}</DialogDescription>
@@ -327,7 +328,7 @@ export function ModelSection() {
                 checked={form.enabled}
                 onCheckedChange={(v) => setForm({ ...form, enabled: v })}
               />
-              <span className="ml-2.5 text-[12px] text-[#595959]">
+              <span className="ml-2.5 text-[#595959]" style={{ fontSize: pxToRem(12) }}>
                 启用后将出现在输入框模型列表
               </span>
             </div>
@@ -382,8 +383,8 @@ export function ModelSection() {
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="flex items-center h-8 text-[13px] font-medium"
-      style={{ color: '#595959' }}
+      className="flex items-center h-8 font-medium"
+      style={{ color: '#595959', fontSize: pxToRem(13) }}
     >
       {children}
     </div>

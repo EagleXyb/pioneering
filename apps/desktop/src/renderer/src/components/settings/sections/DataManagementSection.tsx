@@ -13,6 +13,7 @@
 
 import { useMemo, useState } from 'react'
 import { FileText, CheckSquare, Rocket, Archive } from 'lucide-react'
+import { pxToRem } from '@/lib/utils'
 
 // ============ Tab 定义（顺序与参考截图一致） ============
 interface DataTab {
@@ -58,7 +59,7 @@ export function DataManagementSection() {
               style={{
                 height: 30,
                 padding: '0 14px',
-                fontSize: 13,
+                fontSize: pxToRem(13),
                 background: active ? '#f0f0f0' : 'transparent',
                 color: active ? '#262626' : '#595959',
                 fontWeight: active ? 600 : 400,
@@ -101,7 +102,7 @@ export function DataManagementSection() {
             strokeWidth={1.5}
             style={{ color: '#d9d9d9', marginBottom: 10 }}
           />
-          <span style={{ fontSize: 13, color: '#8c8c8c' }}>{activeTab.emptyText}</span>
+          <span style={{ fontSize: pxToRem(13), color: '#8c8c8c' }}>{activeTab.emptyText}</span>
         </div>
       </div>
     </div>
