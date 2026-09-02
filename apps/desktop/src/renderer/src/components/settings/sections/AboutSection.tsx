@@ -265,45 +265,147 @@ function ActionRow({ icon, label, actionLabel, external, onClick }: ActionRowPro
   )
 }
 
-// ActionRow 内嵌：胶囊按钮（WorkBuddy 样式）
+// ======================================================
+// 原子组件 0：ActionButton —— "单一来源"按钮设计 token（所有按钮共享此基底）
+//   统一口径（对齐参考截图中的 5 个按钮外观）：
+//     · 高度 28px（padding 4/12 + line-height 20）
+//     · 圆角 5px
+//     · 13px / 20px 字行
+//     · 常态：#fff 底 / 1px #d9d9d9 边框 / #595959 字色
+//     · hover：#f5f5f5 底 / 1px #bfbfbf 边框
+//     · disabled：#fafafa 底 / 文字 #bfbfbf
+//     · 图标：与文字 gap:1，size:12 strokeWidth:2
+//   语义色通过 `variant` 透传：默认 secondary / 成功 success / 错误 error
+// ======================================================
+interface ActionButtonProps {
+  label: string
+  onClick?: (e: React.MouseEvent) => void
+  icon?: ReactNode
+  trailingIcon?: ReactNode
+  disabled?: boolean
+  variant?: 'default' | 'success' | 'error'
+  /** 作为 span 纯展示（不接收点击，不带 button role）—— 兼容 ActionRow 内嵌
+   *  当 ActionRow 自己承载整行 click 时，按钮内部只是视觉壳。 */
+  asSpan?: boolean
+  /** 来自父行的 hover（整行 hover 时按钮也要表现出被"激活"） */
+  parentHover?: boolean
+}
+
+function ActionButton({
+  label,
+  onClick,
+  icon,
+  trailingIcon,
+  disabled = false,
+  variant = 'default',
+  asSpan = false,
+  parentHover = false
+}: ActionButtonProps) {
+  // 用 useState 管理自身 hover（asSpan 时只跟随 parentHover）
+  const [selfHover, setSelfHover] = useState(false)
+  const hover = (asSpan ? parentHover : selfHover || parentHover) && !disabled
+
+  // ====== variant → 文字色 & 常态边框色（非 default 态直接用语义色边框，像"已取得结果"的状态按钮）======
+  const variantFg =
+    variant === 'success' ? '#52c41a' : variant === 'error' ? '#ff4d4f' : '#595959'
+  const variantBorder =
+    variant === 'success'
+      ? '#95de64'
+      : variant === 'error'
+        ? '#ff7875'
+        : hover
+          ? '#bfbfbf'
+          : '#d9d9d9'
+  const effectiveFg = disabled ? '#bfbfbf' : variantFg
+  const effectiveBg = disabled ? '#fafafa' : hover ? '#f5f5f5' : '#fff'
+  const effectiveBorder = disabled ? '#f0f0f0' : variantBorder
+
+  // ===== 公共 inline style 提取（避免两份代码分裂） =====
+  const sharedStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    padding: '4px 12px',
+    minHeight: 28,
+    fontSize: 13,
+    lineHeight: '20px',
+    border: '1px solid',
+    borderColor: effectiveBorder,
+    borderRadius: 5,
+    background: effectiveBg,
+    color: effectiveFg,
+    userSelect: 'none',
+    transition: 'all 0.15s ease'
+  }
+
+  const content = (
+    <>
+      {icon}
+      <span>{label}</span>
+      {trailingIcon}
+    </>
+  )
+
+  if (asSpan) {
+    return (
+      <span
+        className="shrink-0"
+        style={{
+          ...sharedStyle,
+          cursor: disabled ? 'not-allowed' : 'inherit'
+        }}
+      >
+        {content}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        ...sharedStyle,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        outline: 'none',
+        textAlign: 'left'
+      }}
+      onMouseEnter={() => setSelfHover(true)}
+      onMouseLeave={() => setSelfHover(false)}
+    >
+      {content}
+    </button>
+  )
+}
+
+// ActionRow 内嵌：胶囊按钮（基于 ActionButton 统一 token）
 function CapsuleButton({
   label,
   external,
-  hover,
-  disabled
+  hover
 }: {
   label: string
   external?: boolean
   hover?: boolean
-  disabled?: boolean
 }) {
   return (
-    <span
-      className="inline-flex items-center gap-1 shrink-0"
-      style={{
-        padding: '4px 12px',
-        fontSize: '13px',
-        lineHeight: '20px',
-        border: '1px solid',
-        borderColor: hover && !disabled ? '#bfbfbf' : '#d9d9d9',
-        borderRadius: '5px',
-        background: disabled ? '#fafafa' : hover ? '#f5f5f5' : '#fff',
-        color: disabled ? '#bfbfbf' : '#595959',
-        cursor: disabled ? 'not-allowed' : 'inherit',
-        transition: 'all 0.15s ease',
-        userSelect: 'none'
-      }}
-    >
-      <span>{label}</span>
-      {external && (
-        <ExternalLink size={12} strokeWidth={2} stroke="#bfbfbf" className="shrink-0" />
-      )}
-    </span>
+    <ActionButton
+      asSpan
+      label={label}
+      parentHover={hover}
+      trailingIcon={
+        external ? (
+          <ExternalLink size={12} strokeWidth={2} stroke="currentColor" className="shrink-0 opacity-80" />
+        ) : undefined
+      }
+    />
   )
 }
 
 // ======================================================
-// 原子组件 B：CheckUpdateButton —— 4 态状态机按钮
+// 原子组件 B：CheckUpdateButton —— 4 态状态机按钮（基于 ActionButton 统一 token）
 // ======================================================
 function CheckUpdateButton({
   status,
@@ -313,55 +415,32 @@ function CheckUpdateButton({
   onClick: (e: React.MouseEvent) => void
 }) {
   const isBusy = status === 'checking'
-  const hoverRef = useState(false)
-  const [hover] = hoverRef
 
   let text = '检查更新'
-  let fgColor = '#595959'
-  let IconNode: ReactNode = null
+  let variant: 'default' | 'success' | 'error' = 'default'
+  let icon: ReactNode = null
 
   if (status === 'checking') {
     text = '检查中...'
-    IconNode = <RefreshCw size={12} strokeWidth={2} className="shrink-0 animate-spin" />
+    icon = <RefreshCw size={12} strokeWidth={2} className="shrink-0 animate-spin" />
   } else if (status === 'latest') {
     text = '已是最新版本'
-    fgColor = '#52c41a'
-    IconNode = <CheckCircle2 size={12} strokeWidth={2} className="shrink-0" />
+    variant = 'success'
+    icon = <CheckCircle2 size={12} strokeWidth={2} className="shrink-0" />
   } else if (status === 'error') {
     text = '检查失败，请重试'
-    fgColor = '#ff4d4f'
-    IconNode = <XCircle size={12} strokeWidth={2} className="shrink-0" />
+    variant = 'error'
+    icon = <XCircle size={12} strokeWidth={2} className="shrink-0" />
   }
 
   return (
-    <button
-      type="button"
-      disabled={isBusy}
+    <ActionButton
+      label={text}
       onClick={onClick}
-      className="inline-flex items-center gap-1 shrink-0"
-      style={{
-        padding: '4px 12px',
-        fontSize: '13px',
-        lineHeight: '20px',
-        border: '1px solid',
-        borderColor: status !== 'idle'
-          ? fgColor
-          : hover && !isBusy
-            ? '#bfbfbf'
-            : '#d9d9d9',
-        borderRadius: '5px',
-        background: isBusy ? '#fafafa' : hover ? '#f5f5f5' : '#fff',
-        color: fgColor,
-        cursor: isBusy ? 'not-allowed' : 'pointer',
-        transition: 'all 0.15s ease',
-        outline: 'none'
-      }}
-      onMouseEnter={() => hoverRef[1](true)}
-      onMouseLeave={() => hoverRef[1](false)}
-    >
-      {IconNode}
-      <span>{text}</span>
-    </button>
+      icon={icon}
+      disabled={isBusy}
+      variant={variant}
+    />
   )
 }
 

@@ -4,12 +4,26 @@
 // 本文件为欢迎页的纯数据层，与组件解耦：
 //   - WELCOME_FEATURES：功能标签配置
 //   - TEMPLATES_BY_FEATURE：各功能标签下的模板列表
-// 后续可扩展为远程配置或用户自定义模板。
 //
-// 背景色设计原则：
-//   - 每个模板有独特的渐变色/图案组合，视觉识别度强
-//   - 使用 oklch 颜色空间确保明暗主题都美观
-//   - 色值与 title 文案语义匹配（求职=稳重蓝绿，活动=活力橙等）
+// 缩略图风格设计原则（对齐参考图）：
+//   - 每个模板指定 scene 类型，TemplateCard 据此渲染场景化缩略图：
+//       'habit'    : 习惯打卡台历桌面实景
+//       'flow'     : 流程图 / 作业流程
+//       'benchmark': 六边形雷达 + 柱状图（模型测评）
+//       'portfolio': 雷达图 + 柱状图（基金诊断）
+//       'resume'   : 简历文档
+//       'event'    : 活动策划画板
+//       'brand'    : 品牌方案情绪板
+//       'article'  : 文章编辑器
+//       'report'   : 工作汇报数据看板
+//       'pitch'    : 产品路演幻灯片
+//       'training' : 培训课件
+//       'insight'  : 数据洞察
+//       'forecast' : 预测模型
+//       'tech'     : 技术调研
+//       'market'   : 市场研究
+//       'academic' : 学术综述
+//   - 背景使用柔和渐变 / 轻量图案，明暗主题兼容
 // ============================================================
 
 // ---- 类型定义 ----
@@ -18,18 +32,33 @@ export interface WelcomeFeature {
   label: string
 }
 
+export type TemplateScene =
+  | 'habit'
+  | 'flow'
+  | 'benchmark'
+  | 'portfolio'
+  | 'resume'
+  | 'event'
+  | 'brand'
+  | 'article'
+  | 'report'
+  | 'pitch'
+  | 'training'
+  | 'insight'
+  | 'forecast'
+  | 'tech'
+  | 'market'
+  | 'academic'
+
 export interface TemplateItem {
   id: string
   title: string
   desc: string
   prompt: string
-  /** 缩略图背景渐变（Tailwind bg-gradient-to-r from-x via-y to-z） */
+  /** 缩略图背景渐变（Tailwind bg-gradient-to-br from-x via-y to-z） */
   gradient: string
-  /** 预览卡片装饰图案（可选，用文字或CSS模拟） */
-  preview?: {
-    label: string
-    tags: string[]
-  }
+  /** 缩略图场景类型（决定 TemplateCard 内部画什么） */
+  scene: TemplateScene
 }
 
 // ---- 功能标签 ----
@@ -43,118 +72,271 @@ export const WELCOME_FEATURES: WelcomeFeature[] = [
 // ---- 默认激活的功能标签 ID ----
 export const DEFAULT_FEATURE_ID = WELCOME_FEATURES[0]!.id
 
-// ---- 各功能标签下的模板列表（含背景渐变和预览图案）----
+// ---- 各功能标签下的模板列表 ----
+// 每个 feature 至少 8 个模板，支持「换一批」轮换展示（每次 4 个）
 export const TEMPLATES_BY_FEATURE: Record<string, TemplateItem[]> = {
   doc: [
     {
+      id: 'habit-tracker',
+      title: '治愈系习惯打卡台',
+      desc: '每日打卡与习惯养成计划',
+      prompt: '帮我设计一份治愈系习惯打卡台，包含每日打卡、月度复盘和鼓励语',
+      gradient: 'from-[#F5EFE6] via-[#EFE7D8] to-[#E6DCC8]',
+      scene: 'habit'
+    },
+    {
+      id: 'customer-sop',
+      title: '客户投诉处理标准作业流程',
+      desc: 'SOP 流程图与关键节点说明',
+      prompt: '帮我整理客户投诉处理的标准作业流程，输出结构化 SOP 与责任分工',
+      gradient: 'from-[#F7F7F8] via-[#EFEFF1] to-[#E6E6E9]',
+      scene: 'flow'
+    },
+    {
       id: 'resume',
-      title: '求职面试',
-      desc: '面试自我介绍与问答准备',
-      prompt: '帮我准备一份面试自我介绍，包含个人优势和常见问题回答',
-      gradient: 'from-[#C9F0C9] via-[#B8E6B8] to-[#A5D8A5]',
-      preview: { label: '简历', tags: ['自我介绍', '优势总结', '问答'] }
+      title: '求职面试准备包',
+      desc: '自我介绍与常见问答准备',
+      prompt: '帮我准备一份面试自我介绍，包含个人优势、项目亮点和常见问题回答',
+      gradient: 'from-[#F0F4EF] via-[#E6EEE4] to-[#DAE5D7]',
+      scene: 'resume'
     },
     {
-      id: 'event',
-      title: '活动策划',
-      desc: '活动方案与流程规划',
-      prompt: '帮我策划一场活动，包含主题、流程、预算和分工',
-      gradient: 'from-[#D9E8F5] via-[#C8DCEE] to-[#B5CDE5]',
-      preview: { label: '策划', tags: ['流程', '预算', '分工'] }
+      id: 'event-plan',
+      title: '线下沙龙活动策划',
+      desc: '主题、流程、预算与分工',
+      prompt: '帮我策划一场线下沙龙活动，包含主题、流程、预算和分工清单',
+      gradient: 'from-[#F5EEE6] via-[#EDE2D4] to-[#E4D3BD]',
+      scene: 'event'
     },
     {
-      id: 'brand',
-      title: '品牌方案',
+      id: 'brand-plan',
+      title: '新消费品牌定位方案',
       desc: '品牌定位与传播策略',
-      prompt: '帮我制定品牌方案，包含品牌定位、目标人群和传播策略',
-      gradient: 'from-[#E5D9F5] via-[#D8C8EE] to-[#CAB5E5]',
-      preview: { label: '品牌', tags: ['定位', '人群', '传播'] }
+      prompt: '帮我制定新消费品牌定位方案，包含用户画像、差异化卖点和传播策略',
+      gradient: 'from-[#F0EBF5] via-[#E3DAEE] to-[#D5C8E5]',
+      scene: 'brand'
     },
     {
-      id: 'article',
-      title: '文章撰写',
-      desc: '专业文章与内容创作',
-      prompt: '帮我撰写一篇专业文章，主题清晰、结构完整',
-      gradient: 'from-[#F5D9D9] via-[#EEC8C8] to-[#E5B5B5]',
-      preview: { label: '文章', tags: ['大纲', '撰写', '润色'] }
+      id: 'article-blog',
+      title: '深度行业文章撰写',
+      desc: '专业长文 / 公众号内容',
+      prompt: '帮我撰写一篇深度行业分析文章，结构清晰、论据充分、语言专业',
+      gradient: 'from-[#F5ECEC] via-[#EED9D9] to-[#E5C4C4]',
+      scene: 'article'
+    },
+    {
+      id: 'okr-writing',
+      title: '季度 OKR 制定',
+      desc: '目标拆解与关键结果',
+      prompt: '帮我制定部门季度 OKR，包含目标拆解、关键结果和衡量标准',
+      gradient: 'from-[#ECF0F5] via-[#DEE5EE] to-[#CFD8E3]',
+      scene: 'article'
+    },
+    {
+      id: 'trip-plan',
+      title: '家庭亲子旅行攻略',
+      desc: '行程、预算与注意事项',
+      prompt: '帮我规划一份家庭亲子旅行攻略，包含行程、预算清单和注意事项',
+      gradient: 'from-[#EBF4F0] via-[#DAEBE2] to-[#C7DFD3]',
+      scene: 'event'
     }
   ],
   ppt: [
     {
-      id: 'report',
-      title: '工作汇报',
-      desc: '季度/年度工作总结',
-      prompt: '帮我制作一份工作汇报PPT大纲，包含成果、数据和计划',
-      gradient: 'from-[#D9EAF5] via-[#C6DCED] to-[#B1CCE3]',
-      preview: { label: '汇报', tags: ['数据', '成果', '计划'] }
+      id: 'llm-benchmark',
+      title: '三强争锋：顶尖大模型能力全景测评',
+      desc: '多维度模型对比 PPT',
+      prompt: '帮我设计一份顶尖大模型能力对比测评 PPT 大纲，包含维度、结论和图表',
+      gradient: 'from-[#EDEFF8] via-[#DEE1F2] to-[#CED3EB]',
+      scene: 'benchmark'
     },
     {
-      id: 'pitch',
-      title: '产品路演',
-      desc: '产品介绍与融资路演',
-      prompt: '帮我设计一份产品路演PPT，突出核心卖点和市场前景',
-      gradient: 'from-[#F5E3D9] via-[#EED2C6] to-[#E5BFB1]',
-      preview: { label: '路演', tags: ['卖点', '市场', '融资'] }
+      id: 'work-report',
+      title: '季度工作汇报',
+      desc: '数据驱动的总结与计划',
+      prompt: '帮我制作一份季度工作汇报 PPT 大纲，突出数据成果、不足和下季度计划',
+      gradient: 'from-[#ECF0F5] via-[#DEE5EE] to-[#CFD8E3]',
+      scene: 'report'
     },
     {
-      id: 'training',
-      title: '培训课件',
-      desc: '知识分享与培训材料',
-      prompt: '帮我规划一份培训课件大纲，适合团队内部知识分享',
-      gradient: 'from-[#E0F5D9] via-[#CFEDC6] to-[#BCE5B1]',
-      preview: { label: '培训', tags: ['知识', '案例', '练习'] }
+      id: 'product-pitch',
+      title: 'SaaS 产品融资路演',
+      desc: '10 分钟路演 Deck',
+      prompt: '帮我设计一份 SaaS 产品融资路演 PPT，突出市场痛点、产品价值和商业模式',
+      gradient: 'from-[#F5EEE7] via-[#ECDFD0] to-[#E1CCB6]',
+      scene: 'pitch'
+    },
+    {
+      id: 'training-deck',
+      title: '新员工入职培训课件',
+      desc: '体系化知识分享材料',
+      prompt: '帮我规划一份新员工入职培训课件大纲，覆盖业务、流程和文化',
+      gradient: 'from-[#ECF4EC] via-[#DAE9DA] to-[#C6DDC6]',
+      scene: 'training'
+    },
+    {
+      id: 'brand-launch',
+      title: '新品发布会宣讲',
+      desc: '亮点与故事线并重',
+      prompt: '帮我策划一份新品发布会宣讲 PPT，突出产品亮点、用户故事和核心卖点',
+      gradient: 'from-[#F0ECF5] via-[#E1D8EE] to-[#D1C4E5]',
+      scene: 'pitch'
+    },
+    {
+      id: 'sales-deck',
+      title: '大客户销售方案',
+      desc: '定制化售前材料',
+      prompt: '帮我制作一份大客户定制化销售方案 PPT，强调需求匹配与 ROI',
+      gradient: 'from-[#E8F0F4] via-[#D6E3EB] to-[#C2D4E0]',
+      scene: 'report'
+    },
+    {
+      id: 'teacher-class',
+      title: '教师公开课课件',
+      desc: '教学目标 + 互动环节',
+      prompt: '帮我设计一份公开课教学课件，包含教学目标、知识要点和互动环节',
+      gradient: 'from-[#F4EFE8] via-[#E8DED0] to-[#DCC9B5]',
+      scene: 'training'
+    },
+    {
+      id: 'year-summary',
+      title: '年度总结与展望',
+      desc: '全年回顾 + 明年规划',
+      prompt: '帮我制作一份年度总结与展望 PPT 大纲，包含全年复盘和明年规划思路',
+      gradient: 'from-[#F0F2F5] via-[#E2E5EA] to-[#D3D7DE]',
+      scene: 'benchmark'
     }
   ],
   data: [
     {
-      id: 'insight',
-      title: '数据洞察',
-      desc: '趋势分析与可视化建议',
-      prompt: '我有一组业务数据，帮我分析趋势并给出可视化建议',
-      gradient: 'from-[#F5F0D9] via-[#EEE8C6] to-[#E5DDB1]',
-      preview: { label: '洞察', tags: ['趋势', '可视化', '建议'] }
+      id: 'fund-health',
+      title: '基金组合健康诊断',
+      desc: '多维指标 + 可视化图表',
+      prompt: '帮我分析一组基金组合数据，从收益、风险、分散度等维度做健康诊断',
+      gradient: 'from-[#EAF0F6] via-[#D9E2ED] to-[#C6D2E2]',
+      scene: 'portfolio'
     },
     {
-      id: 'report-data',
-      title: '数据报告',
-      desc: '结构化数据分析报告',
-      prompt: '帮我生成一份数据分析报告，包含结论和建议',
-      gradient: 'from-[#D9F5EC] via-[#C6EEDF] to-[#B1E5D2]',
-      preview: { label: '报告', tags: ['数据', '结论', '建议'] }
+      id: 'insight',
+      title: '销售数据洞察与趋势',
+      desc: '归因分析与可视化建议',
+      prompt: '我有一组业务销售数据，帮我分析趋势、定位问题并给出可视化建议',
+      gradient: 'from-[#F5F0E6] via-[#EDE3CF] to-[#E4D4B6]',
+      scene: 'insight'
+    },
+    {
+      id: 'data-report',
+      title: 'A/B 实验分析报告',
+      desc: '显著性 + 指标拆解',
+      prompt: '帮我生成一份 A/B 实验分析报告，包含显著性判断和核心指标拆解',
+      gradient: 'from-[#E8F4EF] via-[#D5EBDF] to-[#BEDFCF]',
+      scene: 'insight'
     },
     {
       id: 'forecast',
-      title: '预测建模',
-      desc: '数据预测与建模思路',
-      prompt: '帮我设计一个数据预测模型，包含特征选择和评估方法',
-      gradient: 'from-[#F5D9EA] via-[#EEC6DE] to-[#E5B1D1]',
-      preview: { label: '预测', tags: ['特征', '模型', '评估'] }
+      title: '销量预测建模方案',
+      desc: '特征工程 + 评估思路',
+      prompt: '帮我设计一个销量预测模型方案，包含特征选择、建模思路和评估指标',
+      gradient: 'from-[#F5EAF0] via-[#EBD5E2] to-[#DEBCD0]',
+      scene: 'forecast'
+    },
+    {
+      id: 'churn-analysis',
+      title: '用户流失分析专题',
+      desc: '画像 + 根因 + 策略',
+      prompt: '帮我做一份用户流失专题分析，输出流失画像、根因分析和挽留策略',
+      gradient: 'from-[#F0ECE8] via-[#E2D9D0] to-[#D3C5B6]',
+      scene: 'portfolio'
+    },
+    {
+      id: 'marketing-roi',
+      title: '投放渠道 ROI 评估',
+      desc: '渠道对比与预算优化',
+      prompt: '帮我评估多渠道投放 ROI，给出渠道对比、归因结论和预算优化建议',
+      gradient: 'from-[#ECF0EC] via-[#DBE2DA] to-[#C8D2C6]',
+      scene: 'forecast'
+    },
+    {
+      id: 'operation-dashboard',
+      title: '运营指标看板设计',
+      desc: '北极星指标 + 分层指标体系',
+      prompt: '帮我设计一套运营指标看板，包含北极星指标、分层指标体系和可视化建议',
+      gradient: 'from-[#EEF2F5] via-[#DDE4EA] to-[#CBD4DC]',
+      scene: 'insight'
+    },
+    {
+      id: 'survey-report',
+      title: '用户调研报告分析',
+      desc: '问卷统计 + 洞察结论',
+      prompt: '帮我分析一份用户调研问卷数据，产出结构化统计报告和关键洞察',
+      gradient: 'from-[#F4EBF0] via-[#E8D5E1] to-[#DAB9CB]',
+      scene: 'portfolio'
     }
   ],
   research: [
     {
-      id: 'tech',
-      title: '技术调研',
-      desc: '技术选型与方案对比',
-      prompt: '帮我深度调研一个技术方向，给出选型对比和推荐',
-      gradient: 'from-[#D9DFF5] via-[#C6CFEE] to-[#B1BDE5]',
-      preview: { label: '调研', tags: ['方案', '对比', '推荐'] }
+      id: 'tech-scouting',
+      title: 'AI 工程化技术选型调研',
+      desc: '方案对比 + 落地建议',
+      prompt: '帮我深度调研 AI 工程化技术选型，给出方案对比、优缺点和落地推荐',
+      gradient: 'from-[#ECEEF5] via-[#DDDFEE] to-[#CCD0E6]',
+      scene: 'tech'
     },
     {
-      id: 'market',
-      title: '市场研究',
-      desc: '行业趋势与竞品分析',
-      prompt: '帮我研究一个行业的市场现状，包含竞品和发展趋势',
-      gradient: 'from-[#F5E8D9] via-[#EEDAC6] to-[#E5CAB1]',
-      preview: { label: '研究', tags: ['行业', '竞品', '趋势'] }
+      id: 'market-research',
+      title: '智能眼镜行业全景研究',
+      desc: '市场 + 竞品 + 趋势',
+      prompt: '帮我研究智能眼镜行业全景，包含市场规模、竞品格局和发展趋势',
+      gradient: 'from-[#F5EEEB] via-[#ECDED6] to-[#E1C9BE]',
+      scene: 'market'
     },
     {
-      id: 'academic',
-      title: '学术综述',
-      desc: '论文综述与文献整理',
-      prompt: '帮我整理论文综述，梳理研究现状和关键发现',
-      gradient: 'from-[#E5F5D9] via-[#D5EEC6] to-[#C2E5B1]',
-      preview: { label: '综述', tags: ['文献', '现状', '发现'] }
+      id: 'academic-survey',
+      title: '多模态大模型论文综述',
+      desc: '发展脉络 + 代表工作',
+      prompt: '帮我整理多模态大模型的论文综述，梳理发展脉络、代表工作和未来方向',
+      gradient: 'from-[#ECF5EC] via-[#DAEEDA] to-[#C6E2C6]',
+      scene: 'academic'
+    },
+    {
+      id: 'competitive-analysis',
+      title: '短视频平台竞品分析',
+      desc: '功能对比 + 差异化',
+      prompt: '帮我做一份短视频平台竞品分析，从产品、算法、商业化维度对比差异',
+      gradient: 'from-[#F0EEEB] via-[#E1DDD5] to-[#D1CBBE]',
+      scene: 'market'
+    },
+    {
+      id: 'policy-research',
+      title: '生成式 AI 政策合规研究',
+      desc: '国内外政策对比',
+      prompt: '帮我调研生成式 AI 的国内外监管政策，输出合规要点和应对建议',
+      gradient: 'from-[#EAF2F5] via-[#D7E5EB] to-[#C1D4DD]',
+      scene: 'tech'
+    },
+    {
+      id: 'user-research',
+      title: '职场 AI 工具用户研究',
+      desc: '用户画像 + 使用场景',
+      prompt: '帮我设计一份职场 AI 工具用户研究方案，给出用户画像、核心场景和研究方法',
+      gradient: 'from-[#F5ECEC] via-[#EBD6D6] to-[#DCBABA]',
+      scene: 'academic'
+    },
+    {
+      id: 'investment-thesis',
+      title: '低空经济赛道投资逻辑',
+      desc: '产业链 + 关键变量',
+      prompt: '帮我研究低空经济赛道的投资逻辑，梳理产业链、关键变量和标的方向',
+      gradient: 'from-[#EFF4EE] via-[#DEE8DC] to-[#CADBC7]',
+      scene: 'market'
+    },
+    {
+      id: 'framework-compare',
+      title: '前端框架性能对比研究',
+      desc: '基准测试 + 场景建议',
+      prompt: '帮我做一份主流前端框架性能对比研究，包含基准测试、差异分析和选型建议',
+      gradient: 'from-[#EEF0F5] via-[#DDE0EC] to-[#C9CEDE]',
+      scene: 'tech'
     }
   ]
 }
