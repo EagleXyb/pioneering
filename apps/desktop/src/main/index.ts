@@ -1,7 +1,8 @@
 import { app, shell, BrowserWindow, Menu, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { registerIpcHandlers } from './ipc-handlers'
+import { registerIpcHandlers, appStore } from './ipc-handlers'
+import { bootstrapHotkeys } from './hotkey-main'
 import { getWindowOptions } from './window-config'
 import { buildAppMenu } from './menu'
 import { IpcChannel } from '../shared/ipc-channels'
@@ -140,6 +141,10 @@ app.whenReady().then(() => {
   })
 
   registerIpcHandlers()
+
+  // 快捷键治理：启动时按 electron-store 覆盖表注册全局快捷键（Shift+Alt+W 唤起/隐藏主窗口），
+  // will-quit 时由 HotkeyManager.cleanup() 统一注销
+  bootstrapHotkeys(app, appStore)
 
   const mainWindow = createWindow()
 

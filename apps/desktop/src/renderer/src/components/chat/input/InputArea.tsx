@@ -79,6 +79,9 @@ import { getSessionInputDraftKey } from '@/lib/input/input-drafts'
 
 import { useInputDraftPersistence } from '@/hooks/use-input-draft-persistence'
 import { useChatStore } from '@/stores/chatStore'
+import { useAppStore } from '@/stores/useAppStore'
+import { resolveBinding } from '../../../../../shared/hotkey-registry'
+import { matchesAccelerator } from '@/lib/match-accelerator'
 import { FileAwareEditor, type FileAwareEditorHandle } from './FileAwareEditor'
 import {
   SlashCommandPopover,
@@ -244,6 +247,8 @@ export function InputArea({
 }: InputAreaProps) {
   const editorRef = useRef<FileAwareEditorHandle>(null)
   const [text, setText] = useState('')
+  // M2 快捷键引擎：发送/换行绑定（主进程 SOT 的缓存）
+  const hotkeyOverrides = useAppStore((s) => s.hotkeys)
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
@@ -517,12 +522,33 @@ export function InputArea({
         }
       }
 
-      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-        e.preventDefault()
-        handleSend()
+      // M2 快捷键引擎：发送/换行走可配置绑定（设置页「快捷键」可改绑）。
+      // isComposing 检查保留（IME 输入中的 Enter 不发送）；
+      // slash/mention 弹层已在上面的分支提前 return，不受影响。
+      if (!e.nativeEvent.isComposing) {
+        if (matchesAccelerator(e.nativeEvent, resolveBinding('send-message', hotkeyOverrides))) {
+          e.preventDefault()
+          handleSend()
+          return
+        }
+        // 换行绑定命中时插入 \n（默认 Shift+Enter，textarea 原生行为一致）
+        if (
+          matchesAccelerator(
+            e.nativeEvent,
+            resolveBinding('newline-on-input', hotkeyOverrides)
+          )
+        ) {
+          // 默认 Shift+Enter 是 textarea 原生行为，无需干预；
+          // 仅当用户改绑到其它组合时才需要手动插入换行
+          const nl = resolveBinding('newline-on-input', hotkeyOverrides)
+          if (nl && nl !== 'Shift+Enter') {
+            e.preventDefault()
+            editorRef.current?.insertText('\n')
+          }
+        }
       }
     },
-    [slashOpen, slashCommands, slashActiveIndex, mentionOpen, mentionFiles, mentionActiveIndex, applySlash, applyMention, handleSend]
+    [slashOpen, slashCommands, slashActiveIndex, mentionOpen, mentionFiles, mentionActiveIndex, applySlash, applyMention, handleSend, hotkeyOverrides]
   )
 
   // ---- 草稿持久化（HITL 精简态禁用）----

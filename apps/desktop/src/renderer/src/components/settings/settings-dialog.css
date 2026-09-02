@@ -1,0 +1,89 @@
+/* ============================================================
+   settings-dialog.css — SettingsDialog 专用滚动条样式
+   目标：滚动条不要太宽、颜色不要太深（Windows 默认滚动条过粗过深）
+   作用域：所有样式以 .settings-dialog-root 为前缀，绝不泄漏到应用其它部分。
+   兼容：
+     · WebKit (Chromium / Electron / Safari)：::-webkit-scrollbar 系列
+     · Firefox：scrollbar-width / scrollbar-color
+   规格（与参考截图的细浅视觉对齐）：
+     · 宽度：垂直 6px / 水平 6px
+     · Thumb：#e0e0e0（浅灰），悬停 #bfbfbf，圆角 3px（= 宽度一半呈胶囊）
+     · Track：transparent（不显示，让内容区更干净）
+     · 左右栏（侧边栏导航 + 右侧内容）统一此规格
+   ============================================================ */
+
+/* ---------- WebKit (Electron main / Chrome) ---------- */
+
+/* 右侧内容滚动区 */
+.settings-dialog-root .settings-scroll-area::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.settings-dialog-root .settings-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.settings-dialog-root .settings-scroll-area::-webkit-scrollbar-thumb {
+  background: #e0e0e0;
+  border-radius: 3px;
+  border: none;
+  transition: background-color 0.15s ease;
+}
+
+.settings-dialog-root .settings-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+/* 让 WebKit 上下按钮消失（不需要） */
+.settings-dialog-root .settings-scroll-area::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.settings-dialog-root .settings-scroll-area::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 左侧边栏导航滚动区 */
+.settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #d9d9d9;   /* 侧栏背景 #f2f2f2 比内容区深一点，thumb 也稍深色 */
+  border-radius: 3px;
+  border: none;
+}
+
+.settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+.settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-button {
+  display: none;
+}
+
+.settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------- Firefox ---------- */
+
+.settings-dialog-root .settings-scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: #e0e0e0 transparent;
+}
+
+.settings-dialog-root .settings-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d9d9d9 transparent;
+}

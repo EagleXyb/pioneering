@@ -6,22 +6,26 @@
 
 import { useAtom } from 'jotai'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { X } from 'lucide-react'
 import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
 import { getCategory } from './settingsConfig'
 import { SettingsSidebar } from './SettingsSidebar'
+import './settings-dialog.css'
 
 export function SettingsDialog() {
   const [open, setOpen] = useAtom(settingsOpenAtom)
   const [categoryId] = useAtom(settingsCategoryAtom)
 
-  const { label, Component } = getCategory(categoryId)
+  const category = getCategory(categoryId)
+  // 平铺时代：每个分类右栏大标题直接用分类自己的 label
+  // （账号 / 通用 / 快捷键 / 系统设置 / 智能体 / ... / 模型 / ... / 关于）
+  const label = category.label
+  const Component = category.Component
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
-        className="flex !max-w-none !p-0 !gap-0 overflow-hidden"
+        className="settings-dialog-root flex !max-w-none !p-0 !gap-0 overflow-hidden"
         style={{
           width: 1000,
           height: 680,
@@ -56,12 +60,16 @@ export function SettingsDialog() {
             <DialogDescription className="sr-only">{label}相关设置</DialogDescription>
           </div>
 
-          {/* 内容区 */}
-          <ScrollArea className="flex-1">
+          {/* 内容区
+              注意：这里刻意不用 Radix ScrollArea —— 它会把子内容包进
+              <div style="display:table; min-width:100%">，table 布局下 truncate（nowrap）
+              文本的 min-content 会把宽度撑爆，导致行内控件溢出右边界。
+              原生 overflow-y-auto 的块级容器没有该问题，宽度始终收敛为 100%。 */}
+          <div className="settings-scroll-area flex-1 min-h-0 overflow-y-auto">
             <div className="px-10 pb-10">
               <Component />
             </div>
-          </ScrollArea>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

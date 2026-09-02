@@ -115,7 +115,17 @@ async function probeHealth(baseURL: string): Promise<HealthCheckResult> {
   }
 }
 
-export function ApiConnectionSection() {
+export interface SectionCompactProps {
+  /** 是否显示内部的 h2 大标题（独立展示默认 true；复合页嵌入为 false） */
+  showHeader?: boolean
+  /** 紧凑模式：去掉最外层 spacing，交给外层卡片统一留白 */
+  compact?: boolean
+}
+
+export function ApiConnectionSection({
+  showHeader = true,
+  compact = false
+}: SectionCompactProps) {
   const [apiBaseUrl, setApiBaseUrl] = useState(
     normalizeBaseUrl(apiClient.getBaseURL() || DEFAULT_API_BASE_URL)
   )
@@ -150,11 +160,13 @@ export function ApiConnectionSection() {
   }, [])
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Globe className="size-5 text-primary" />
-        <h2 className="text-lg font-semibold">API 连接</h2>
-      </div>
+    <div className={compact ? '' : 'space-y-4'}>
+      {showHeader && (
+        <div className="flex items-center gap-2">
+          <Globe className="size-5 text-primary" />
+          <h2 className="text-lg font-semibold">外网 API</h2>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <input

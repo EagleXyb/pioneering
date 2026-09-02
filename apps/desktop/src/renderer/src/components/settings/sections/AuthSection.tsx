@@ -16,7 +16,17 @@ import {
   toErrorMessage
 } from '@/stores/authStore'
 
-export function AuthSection() {
+export interface SectionCompactProps {
+  /** 是否显示内部的 h2 大标题（独立展示默认 true；复合页嵌入为 false） */
+  showHeader?: boolean
+  /** 紧凑模式：去掉最外层 spacing，交给外层卡片统一留白 */
+  compact?: boolean
+}
+
+export function AuthSection({
+  showHeader = true,
+  compact = false
+}: SectionCompactProps) {
   // 登录态改为读取全局 authStore，不再维护局部副本，
   // 避免与侧边栏出现「一处已登录、一处未登录」的不一致。
   const { isAuthed, user } = useAtomValue(authViewAtom)
@@ -59,11 +69,13 @@ export function AuthSection() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Key className="size-5 text-primary" />
-        <h2 className="text-lg font-semibold">认证</h2>
-      </div>
+    <div className={compact ? '' : 'space-y-4'}>
+      {showHeader && (
+        <div className="flex items-center gap-2">
+          <Key className="size-5 text-primary" />
+          <h2 className="text-lg font-semibold">认证</h2>
+        </div>
+      )}
 
       {isAuthed ? (
         <div className="space-y-3">

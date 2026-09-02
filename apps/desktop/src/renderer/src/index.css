@@ -131,6 +131,17 @@
 }
 
 @layer base {
+  :root {
+    /* 应用级字体大小基准：由 <html style="font-size:var(--app-font-size)"> 覆盖
+       （GeneralSection / 基础设置 / 字体大小） */
+    --app-font-size: 14px;
+  }
+
+  html {
+    /* 先声明默认值，store initAppearance() 重新恢复用户偏好后会覆盖 */
+    font-size: var(--app-font-size);
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -141,6 +152,26 @@
     color: var(--color-foreground);
     margin: 0;
     padding: 0;
+    /* 行高和 body 字号一起跟随字号档变化，保持文本垂直节奏 */
+    font-size: 1rem;
+  }
+
+  /* 语言档占位：后续接入 i18n 可按 data-language 覆盖字体族与断行策略
+     （简体中文字号紧凑、繁体/英文更宽松等） */
+  html[data-language='zh-TW'] body {
+    /* 可在此处接入系统繁体 CJK 字体族（如微软正黑体） */
+  }
+  html[data-language='en-US'] body {
+    font-family: 'Public Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+
+  /* 字体大小档的附加细节：大屏下舒适档放大更明显 */
+  html[data-font-size='small'] body {
+    -webkit-font-smoothing: antialiased;
+  }
+  html[data-font-size='large'] :where(.chat-markdown) {
+    font-size: 17px !important;
   }
 
   button:not(:disabled),

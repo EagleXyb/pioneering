@@ -154,7 +154,7 @@ export function AccountMenu({
             <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
           </DropdownMenuItem>
 
-          <DropdownMenuItem onSelect={() => runMenuAction('openDocs')}>
+          <DropdownMenuItem onSelect={() => openSettingsWithCategory('about')}>
             <HelpCircle />
             帮助与反馈
             <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />

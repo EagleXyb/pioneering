@@ -150,6 +150,17 @@ const mockApi: PioneeringApi = {
     save: () => Promise.resolve({ ok: false, error: '本地上传仅在 Electron 桌面端可用' }),
     list: () => Promise.resolve([]),
     delete: () => Promise.resolve({ ok: false, error: '本地上传仅在 Electron 桌面端可用' })
+  },
+
+  // 快捷键治理：纯浏览器环境无主进程 globalShortcut。
+  // get 返回空覆盖表（全部走默认绑定，渲染层快捷键仍可用）；
+  // set/reset 返回降级错误，设置页据此显示降级提示条。
+  hotkeys: {
+    get: () => Promise.resolve({ ok: true, overrides: {}, conflicts: [] as string[] }),
+    set: () =>
+      Promise.resolve({ ok: false, overrides: {}, conflicts: [] as string[], error: '快捷键持久化仅在 Electron 桌面端可用' }),
+    reset: () =>
+      Promise.resolve({ ok: false, overrides: {}, conflicts: [] as string[], error: '快捷键持久化仅在 Electron 桌面端可用' })
   }
 }
 

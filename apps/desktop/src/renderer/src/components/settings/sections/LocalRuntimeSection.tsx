@@ -29,7 +29,17 @@ interface KeyRowState {
   error: string | null
 }
 
-export function LocalRuntimeSection() {
+export interface SectionCompactProps {
+  /** 是否显示内部的 h2 大标题（独立展示默认 true；复合页嵌入为 false） */
+  showHeader?: boolean
+  /** 紧凑模式：去掉最外层 spacing，交给外层卡片统一留白 */
+  compact?: boolean
+}
+
+export function LocalRuntimeSection({
+  showHeader = true,
+  compact = false
+}: SectionCompactProps) {
   const [descriptors, setDescriptors] = useState<SecureKeyDescriptor[]>([])
   const [keyInfos, setKeyInfos] = useState<Record<string, SecureKeyInfo>>({})
   const [rows, setRows] = useState<Record<string, KeyRowState>>({})
@@ -118,8 +128,8 @@ export function LocalRuntimeSection() {
 
   if (unavailable) {
     return (
-      <div className="space-y-4">
-        <SectionHeader />
+      <div className={compact ? '' : 'space-y-4'}>
+        {showHeader && <SectionHeader />}
         <p className="text-sm text-muted-foreground">
           当前环境不支持本地密钥管理（需在 Electron 桌面应用中使用）。
         </p>
@@ -128,8 +138,8 @@ export function LocalRuntimeSection() {
   }
 
   return (
-    <div className="space-y-5">
-      <SectionHeader />
+    <div className={compact ? '' : 'space-y-5'}>
+      {showHeader && <SectionHeader />}
 
       {/* 运行模式切换：云端 / 本地 */}
       <div className="space-y-2">

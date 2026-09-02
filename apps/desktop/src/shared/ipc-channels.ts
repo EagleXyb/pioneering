@@ -32,6 +32,12 @@ export enum IpcChannel {
   // 主进程(原生菜单) -> 渲染端 的动作转发（如打开设置弹框）
   MENU_ACTION = 'menu:action',
 
+  // ---- 快捷键治理（electron-store 为主进程唯一真源）----
+  // 渲染端 → 主进程：拉取覆盖表 / 应用新覆盖表 / 恢复默认
+  HOTKEYS_GET = 'hotkeys:get',
+  HOTKEYS_SET = 'hotkeys:set',
+  HOTKEYS_RESET = 'hotkeys:reset',
+
   // 文件系统
   FILE_OPEN_DIALOG = 'file:openDialog',
   FILE_SAVE_DIALOG = 'file:saveDialog',
@@ -285,4 +291,12 @@ export interface UploadDeleteResult {
   ok: boolean
   error?: string
 }
+
+// ---- 快捷键治理（云边双模 · 快捷键功能）----
+// 类型从 hotkey-protocol 复用，preload / 渲染端 / 主进程共用
+export type {
+  HotkeyBinding,
+  HotkeyOverrides,
+  HotkeyApplyResult
+} from './hotkey-protocol'
 

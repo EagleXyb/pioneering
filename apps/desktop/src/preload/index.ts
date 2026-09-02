@@ -22,7 +22,9 @@ import type {
   UploadSaveRequest,
   UploadSaveResult,
   UploadInfo,
-  UploadDeleteResult
+  UploadDeleteResult,
+  HotkeyOverrides,
+  HotkeyApplyResult
 } from '../shared/ipc-channels'
 import type { SendMessageRequest, ResumeRequest, AbortRequest, HitlStateResponse } from '../shared/types'
 
@@ -194,6 +196,17 @@ const uploadApi = {
     ipcRenderer.invoke(IpcChannel.UPLOAD_DELETE, id)
 }
 
+// ---- 快捷键治理（electron-store 为主进程唯一真源，渲染端只读缓存 + 提交全量覆盖表）----
+const hotkeysApi = {
+  /** 拉取当前覆盖表（应用启动 hydrate 用） */
+  get: (): Promise<HotkeyApplyResult> => ipcRenderer.invoke(IpcChannel.HOTKEYS_GET),
+  /** 提交完整覆盖表：主进程持久化 + 重注册全局快捷键，回传实际生效值与冲突列表 */
+  set: (overrides: HotkeyOverrides): Promise<HotkeyApplyResult> =>
+    ipcRenderer.invoke(IpcChannel.HOTKEYS_SET, overrides),
+  /** 恢复全部默认绑定 */
+  reset: (): Promise<HotkeyApplyResult> => ipcRenderer.invoke(IpcChannel.HOTKEYS_RESET)
+}
+
 const api = {
   window: windowApi,
   app: appApi,
@@ -206,7 +219,8 @@ const api = {
   agent: agentApi,
   localChat: localChatApi,
   secureKeys: secureKeyApi,
-  upload: uploadApi
+  upload: uploadApi,
+  hotkeys: hotkeysApi
 }
 
 // H5: 不再暴露整包 @electron-toolkit/preload 的 electronAPI（内含 ipcRenderer，

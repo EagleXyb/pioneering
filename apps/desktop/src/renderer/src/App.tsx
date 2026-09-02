@@ -26,7 +26,7 @@ import { useAuthBootstrap } from './hooks/useAuthBootstrap'
 const API_BASE_URL_STORAGE_KEY = 'api.baseUrl'
 
 function App() {
-  const initTheme = useAppStore((s) => s.initTheme)
+  const initAppearance = useAppStore((s) => s.initAppearance)
   const setPlatform = useSetAtom(platformAtom)
   const setIsFullscreen = useSetAtom(isFullscreenAtom)
   const isFullscreen = useAtomValue(isFullscreenAtom)
@@ -35,9 +35,27 @@ function App() {
   // 统一在此处完成，避免各组件自行判断登录态而产生竞态。
   useAuthBootstrap()
 
+  // 启动时恢复持久化的主题 / 语言 / 字体大小，并应用到 <html> 属性。
+  // initAppearance 包含原 initTheme 全部职责，额外覆盖语言与字号。
   useEffect(() => {
-    initTheme()
-  }, [initTheme])
+    initAppearance()
+  }, [initAppearance])
+
+  // 快捷键 hydrate：拉取主进程 electron-store 的覆盖表（SOT），
+  // 校正 localStorage 缓存快照（首帧先用快照兜底，消除时序空窗）。
+  // 纯浏览器环境 mock 返回空表 = 全默认绑定，静默降级。
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await window.api.hotkeys.get()
+        if (result?.ok) {
+          useAppStore.getState().syncHotkeys(result.overrides ?? {})
+        }
+      } catch {
+        // 降级：保持 localStorage 快照（默认绑定），不阻塞启动
+      }
+    })()
+  }, [])
 
   // 启动时恢复持久化的 API baseURL，并同步到主进程。
   // 解决原实现 baseURL 仅存于 apiClient 内存、重启即丢失的问题（M5 修复）。

@@ -24,7 +24,9 @@ import type {
   UploadSaveRequest,
   UploadSaveResult,
   UploadInfo,
-  UploadDeleteResult
+  UploadDeleteResult,
+  HotkeyOverrides,
+  HotkeyApplyResult
 } from '../shared/ipc-channels'
 import type {
   SendMessageRequest,
@@ -148,6 +150,13 @@ declare global {
     delete: (id: string) => Promise<UploadDeleteResult>
   }
 
+  /** 快捷键治理：与 preload hotkeysApi 一一对应（浏览器模式由 electron-mock 降级桩兜底） */
+  interface HotkeysApi {
+    get: () => Promise<HotkeyApplyResult>
+    set: (overrides: HotkeyOverrides) => Promise<HotkeyApplyResult>
+    reset: () => Promise<HotkeyApplyResult>
+  }
+
   interface PioneeringApi {
     window: WindowApi
     app: AppApi
@@ -161,6 +170,7 @@ declare global {
     localChat: LocalChatApi
     secureKeys: SecureKeyApi
     upload: UploadApi
+    hotkeys: HotkeysApi
   }
 
   interface Window {

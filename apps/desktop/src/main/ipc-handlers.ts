@@ -62,12 +62,17 @@ import {
 import { getLocalChatStore, type LocalChatStore } from './local-store'
 import { getKeyStore, MANAGED_KEYS } from './key-store'
 import { getUploadStore } from './upload-store'
+import { getHotkeyManager } from './hotkey-main'
 import type { AbortRequest, HitlStateResponse } from '../shared/types'
+import type { HotkeyOverrides, HotkeyApplyResult } from '../shared/hotkey-protocol'
 
 // 使用 electron-store 持久化到磁盘，应用重启后 Token/配置不丢失。
 // 注意：electron-store 内部在读写时自动做 JSON 序列化/反序列化，
 // 我们在 IPC 边界仍保留 sanitizeValue 深度清洗以杜绝原型链污染。
 const appStore = new Store({ name: 'pioneering-app-store' })
+
+/** 供 main/index.ts 启动时 bootstrap 快捷键（同一 Store 实例，避免双写） */
+export { appStore }
 
 // 主进程持有的后端 baseURL，由渲染端通过 IPC 同步。
 // 解决原 APP_NETWORK_CHECK 直接读 process.env['VITE_API_BASE_URL']（主进程不加载
@@ -214,6 +219,28 @@ function normalizeFileError(err: unknown): string {
 
 export function registerIpcHandlers(): void {
   const allowedRoots = getAllowedRoots()
+
+  // ---- 快捷键治理（electron-store 为唯一真源）----
+  const hotkeys = getHotkeyManager(appStore)
+  ipcMain.handle(IpcChannel.HOTKEYS_GET, (event) => {
+    if (!isTrustedSender(event)) return { ok: false, overrides: {}, conflicts: [] as string[] }
+    return { ok: true, overrides: hotkeys.getOverrides(), conflicts: [] as string[] }
+  })
+  ipcMain.handle(
+    IpcChannel.HOTKEYS_SET,
+    (event, overrides: HotkeyOverrides): HotkeyApplyResult => {
+      if (!isTrustedSender(event)) {
+        return { ok: false, overrides: {}, conflicts: [], error: 'untrusted sender' }
+      }
+      return hotkeys.applyOverrides(overrides ?? {})
+    }
+  )
+  ipcMain.handle(IpcChannel.HOTKEYS_RESET, (event): HotkeyApplyResult => {
+    if (!isTrustedSender(event)) {
+      return { ok: false, overrides: {}, conflicts: [], error: 'untrusted sender' }
+    }
+    return hotkeys.resetAll()
+  })
 
   // ---- 窗口控制 ----
   ipcMain.handle(IpcChannel.WINDOW_MINIMIZE, (event) => {

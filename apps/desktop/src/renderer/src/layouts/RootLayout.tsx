@@ -37,7 +37,7 @@ import { NAV_ITEMS } from '@/components/sidebar/SidebarNav'
 import { ContextPanel } from '@/components/context-panel/ContextPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Drawer } from '@/components/layout/Drawer'
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useHotkeyEngine } from '@/hooks/useHotkeyEngine'
 import { useAtom, useAtomValue } from 'jotai'
 import {
   sidebarVisibleAtom,
@@ -91,7 +91,9 @@ export function RootLayout() {
     setSidebarVisible(!sidebarVisible)
   }, [sidebarVisible, setSidebarVisible])
 
-  useKeyboardShortcuts(handleCreate)
+  // M2 快捷键引擎：接管原 useKeyboardShortcuts 的 Ctrl+B/N，
+  // 并支持设置页「快捷键」分类的用户自定义绑定（appStore.hotkeys）
+  useHotkeyEngine({ 'new-chat': handleCreate })
 
   const showTopBarActions = !isMac && !sidebarVisible
 
