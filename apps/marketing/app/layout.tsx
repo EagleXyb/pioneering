@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter, Noto_Sans_SC } from 'next/font/google'
-import { SITE } from '@/lib/constants'
+import { OFFICIAL_SITE } from '@/lib/constants'
 import './globals.css'
 
 const inter = Inter({
@@ -16,29 +16,33 @@ const notoSansSC = Noto_Sans_SC({
   display: 'swap',
 })
 
+// 默认 metadata = 官网首页（/），趋势报告（/trends）由自身 metadata 覆盖。
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE.url),
-  title: SITE.title,
-  description: SITE.description,
+  metadataBase: new URL(OFFICIAL_SITE.url),
+  title: {
+    default: OFFICIAL_SITE.title,
+    template: '%s · Pioneering'
+  },
+  description: OFFICIAL_SITE.description,
   openGraph: {
-    title: SITE.ogTitle,
-    description: SITE.ogDescription,
+    title: OFFICIAL_SITE.ogTitle,
+    description: OFFICIAL_SITE.ogDescription,
     type: 'website',
-    locale: SITE.locale,
-    siteName: SITE.name,
+    locale: OFFICIAL_SITE.locale,
+    siteName: OFFICIAL_SITE.name
   },
   twitter: {
     card: 'summary_large_image',
-    title: SITE.ogTitle,
-    description: SITE.ogDescription,
+    title: OFFICIAL_SITE.ogTitle,
+    description: OFFICIAL_SITE.ogDescription
   },
   alternates: {
-    canonical: '/',
-  },
+    canonical: '/'
+  }
 }
 
 export default function RootLayout({
-  children,
+  children
 }: {
   children: React.ReactNode
 }) {

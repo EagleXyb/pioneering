@@ -1,12 +1,12 @@
 import { MetadataRoute } from 'next'
-import { SITE } from '@/lib/constants'
+import { OFFICIAL_SITE } from '@/lib/constants'
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
-      allow: '/',
+      allow: '/'
     },
-    sitemap: `${SITE.url}/sitemap.xml`,
+    sitemap: `${OFFICIAL_SITE.url.replace(/\/$/, '')}/sitemap.xml`
   }
 }
