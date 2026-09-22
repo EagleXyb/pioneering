@@ -22,9 +22,8 @@
 //      （MCP 工具发现 listAllTools 是异步的，无法像 Python 那样新建事件循环）。
 //   2. Python threading.Lock → Node 单线程无需锁（简化为直接访问）。
 //   3. Python @contextmanager _span → TS [Symbol.dispose] + using 语法。
-import crypto from 'crypto'
+import crypto, { randomUUID } from 'crypto'
 import { performance } from 'perf_hooks'
-import { randomUUID } from 'crypto'
 
 import { Command } from '@langchain/langgraph'
 
@@ -344,12 +343,16 @@ async function* _normalizeLangGraphStream(
 ): AsyncGenerator<Record<string, any>> {
   let rawIdx = 0
   let normIdx = 0
-  console.info('[runner.normalize] start')
+  // 修复（流式热路径性能）：本函数对每个 token chunk 都会被调用一次，
+  // 原实现在此逐条 console.info（含 isArray/type/node 等格式化），
+  // 是生产流式路径上最热的循环，直接抬升首 token 延迟与日志成本。
+  // 统一降级为 logger.debug，仅保留汇总日志。
+  logger.debug('[runner.normalize] start')
 
   for await (const event of rawStream) {
     rawIdx++
     const isArray = Array.isArray(event)
-    console.info(
+    logger.debug(
       '[runner.normalize] raw[%d] isArray=%s type=%s',
       rawIdx, isArray,
       isArray ? `[${event[0]}]` : ((event as any)?.type ?? typeof event),
@@ -360,7 +363,7 @@ async function* _normalizeLangGraphStream(
       if (mode === 'updates' && chunk && typeof chunk === 'object' && !Array.isArray(chunk)) {
         for (const [node, data] of Object.entries(chunk)) {
           normIdx++
-          console.info(
+          logger.debug(
             '[runner.normalize] yield[%d] type=updates node=%s',
             normIdx, node,
           )
@@ -374,29 +377,29 @@ async function* _normalizeLangGraphStream(
         const msgMeta = Array.isArray(chunk) && chunk.length > 1 ? (chunk[1] ?? {}) : {}
         normIdx++
         const msgType = msgObj?._getType?.() ?? msgObj?.constructor?.name ?? typeof msgObj
-        console.info('[runner.normalize] yield[%d] type=messages msg_type=%s node=%s', normIdx, msgType, msgMeta?.langgraph_node ?? '')
+        logger.debug('[runner.normalize] yield[%d] type=messages msg_type=%s node=%s', normIdx, msgType, msgMeta?.langgraph_node ?? '')
         yield { type: 'messages', event: msgObj, data: msgObj, metadata: msgMeta }
       } else {
         normIdx++
-        console.info('[runner.normalize] yield[%d] type=%s', normIdx, mode)
+        logger.debug('[runner.normalize] yield[%d] type=%s', normIdx, mode)
         yield { type: mode, data: chunk }
       }
     } else if (event && typeof event === 'object' && !Array.isArray(event)) {
       normIdx++
-      console.info(
+      logger.debug(
         '[runner.normalize] yield[%d] passthrough type=%s',
         normIdx, (event as any)?.type ?? '',
       )
       yield event as Record<string, any>
     } else {
-      console.warn(
+      logger.warning(
         '[runner.normalize] raw[%d] skipped unknown format: %s',
         rawIdx, typeof event,
       )
     }
   }
 
-  console.info('[runner.normalize] end raw=%d normalized=%d', rawIdx, normIdx)
+  logger.debug('[runner.normalize] end raw=%d normalized=%d', rawIdx, normIdx)
 }
 
 /**

@@ -37,6 +37,22 @@ const _RETRYABLE_ERROR_CODES = new Set([
 ])
 
 /**
+ * 统一的指数退避延迟计算（返回毫秒）。
+ *
+ * 修复（重复实现 + 单位混用）：仓库内曾有多处各自实现的退避公式，
+ * 且秒/毫秒单位混用（一处误用会放大 1000 倍）。统一由此函数产出毫秒。
+ *
+ * @param attempt 重试序号（从 0 开始）
+ * @param baseMs 基础延迟（毫秒）
+ * @param maxMs 单次延迟上限（毫秒）
+ */
+export function computeExponentialBackoffMs(attempt: number, baseMs: number, maxMs: number): number {
+  if (baseMs <= 0) return 0
+  const raw = baseMs * Math.pow(2, Math.max(attempt, 0))
+  return Math.min(raw, Math.max(maxMs, 0))
+}
+
+/**
  * 判断异常是否可重试。
  *
  * 对于 HTTP 错误，只重试 429（RateLimit）和 5xx（Server Error）；
@@ -109,8 +125,8 @@ export function with_tool_retry(
         }
         lastExc = e
         if (attempt < maxAttempts - 1) {
-          // 指数退避：base_delay * 2^attempt，钳制到 max_delay
-          const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
+          // 指数退避：base_delay * 2^attempt，钳制到 max_delay（统一走共享实现）
+          const delayMs = computeExponentialBackoffMs(attempt, baseDelay * 1000, maxDelay * 1000)
           logger.warning(
             "Tool '%s' attempt %d/%d failed (%s: %s), retrying in %.2fs",
             toolName,
@@ -118,9 +134,9 @@ export function with_tool_retry(
             maxAttempts,
             e.constructor?.name || 'Error',
             String(e).slice(0, 200),
-            delay,
+            delayMs / 1000,
           )
-          await new Promise((resolve) => setTimeout(resolve, delay * 1000))
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
         } else {
           logger.error(
             "Tool '%s' exhausted %d attempts, last error: %s",

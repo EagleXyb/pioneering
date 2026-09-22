@@ -141,7 +141,14 @@ export class FileOpsTool extends BaseTool {
     }
 
     // 拒绝绝对路径与盘符前缀（Windows）
-    if (path.isAbsolute(relPath) || /^[CDEF]:/i.test(relPath.slice(0, 2))) {
+    // 修复（盘符绕过）：原正则 /^[CDEF]:/i 只拦 C/D/E/F，G: 及之后的盘符
+    // （含 "G:secret" 这类驱动器相对路径）被放行，可经 path.resolve 逃逸到其他盘。
+    // 改为匹配任意盘符，并额外校验 path.parse().root 为空。
+    if (
+      path.isAbsolute(relPath) ||
+      /^[a-z]:/i.test(relPath) ||
+      path.parse(relPath).root !== ''
+    ) {
       throw new Error(`Absolute path not allowed: ${relPath}`)
     }
 

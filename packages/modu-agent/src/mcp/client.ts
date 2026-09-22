@@ -407,7 +407,18 @@ export function getMcpClient(): MCPClient {
  * 重置单例（测试清理用）。
  *
  * 对应 Python reset_mcp_client。
+ *
+ * 修复（资源泄漏）：原实现仅把单例置 null，不关闭旧实例持有的 stdio 子进程，
+ * 反复重置会泄漏子进程与连接。改为先异步 stop 再置空（失败不影响重置）。
  */
-export function resetMcpClient(): void {
+export async function resetMcpClient(): Promise<void> {
+  const client = _mcpClient
   _mcpClient = null
+  if (client) {
+    try {
+      await client.stop()
+    } catch (e) {
+      logger.warning('resetMcpClient: failed to stop previous client: %s', String(e))
+    }
+  }
 }

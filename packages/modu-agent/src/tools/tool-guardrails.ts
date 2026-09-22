@@ -60,10 +60,13 @@ export interface GuardrailCheckResult {
  */
 export const ACTION_GUARDRAILS: GuardrailRule[] = [
   {
+    // 修复（规则永不命中）：FileOpsTool 的实际参数是 `op`（枚举 read/write/list/delete），
+    // 原规则写的是不存在的 `mode`，导致该规则与 guard_file_ops_delete 永远匹配不上。
+    // `=` 前缀表示精确匹配（见 _matchParamCondition）。
     rule_id: 'guard_file_ops_write',
     tool_name: 'file_ops',
     operation_type: 'write',
-    param_conditions: { mode: 'write|append|overwrite' },
+    param_conditions: { op: '=write' },
     description: 'File write operation requires approval (may modify filesystem)',
     dry_run_supported: true,
   },
@@ -71,15 +74,16 @@ export const ACTION_GUARDRAILS: GuardrailRule[] = [
     rule_id: 'guard_file_ops_delete',
     tool_name: 'file_ops',
     operation_type: 'delete',
-    param_conditions: { mode: 'delete|remove' },
+    param_conditions: { op: '=delete' },
     description: 'File delete operation requires approval (irreversible)',
     dry_run_supported: true,
   },
   {
+    // 修复（规则永不命中）：SqlQueryTool 的实际参数是 `query`，原规则写的是 `sql`。
     rule_id: 'guard_sql_query_write',
     tool_name: 'sql_query',
     operation_type: 'write',
-    param_conditions: { sql: 'INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE' },
+    param_conditions: { query: 'INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE' },
     description: 'SQL write operation requires approval (modifies database)',
     dry_run_supported: true,
   },
@@ -87,15 +91,17 @@ export const ACTION_GUARDRAILS: GuardrailRule[] = [
     rule_id: 'guard_http_request_sensitive',
     tool_name: 'http_request',
     operation_type: 'sensitive_read',
-    param_conditions: { method: 'POST|PUT|PATCH|DELETE' },
+    param_conditions: { method: '=POST|=PUT|=PATCH|=DELETE' },
     description: 'HTTP write request requires approval (may modify external service)',
     dry_run_supported: true,
   },
   {
+    // 修复（误报）：原 'net' 子串会命中任何含 net 的单词（如 planet），
+    // 改为 'net.' / 'node:net' 等更精确的网络特征。
     rule_id: 'guard_code_executor_network',
     tool_name: 'code_executor',
     operation_type: 'network_access',
-    param_conditions: { code: 'fetch|requests|http|socket|net' },
+    param_conditions: { code: 'fetch|requests|urllib|axios|http|socket|net.|node:net' },
     description: 'Code execution with network access requires approval',
     dry_run_supported: false,
   },
@@ -120,20 +126,25 @@ export function registerGuardrailRule(rule: GuardrailRule): void {
 /**
  * 检查单个参数条件是否匹配。
  *
+ * 匹配语义：
+ *   - 候选项以 `=` 前缀开头 → 精确匹配（用于枚举型参数，如 file_ops 的 op）
+ *   - 否则 → 子串匹配（用于自由文本参数，如 SQL 语句、代码内容）
+ *   - 多个候选项以 `|` 分隔，任一命中即可
+ *
  * @param actualValue 参数实际值
- * @param pattern 期望值或正则字符串（含 | 表示多选，否则精确匹配）
+ * @param pattern 期望值或候选项字符串
  */
 function _matchParamCondition(actualValue: any, pattern: string): boolean {
   if (actualValue === undefined || actualValue === null) return false
   const actualStr = String(actualValue).toLowerCase()
-  // 含 | 表示多选模式（如 'write|append|overwrite'）
-  if (pattern.includes('|')) {
-    const alternatives = pattern.split('|').map((p) => p.trim().toLowerCase())
-    // 使用 includes 而非 === 以支持 SQL 语句中的关键词匹配
-    return alternatives.some((alt) => actualStr.includes(alt))
-  }
-  // 精确匹配（大小写不敏感）
-  return actualStr === pattern.toLowerCase()
+  const alternatives = pattern.split('|').map((p) => p.trim().toLowerCase())
+  return alternatives.some((alt) => {
+    if (alt.startsWith('=')) {
+      // 精确匹配（大小写不敏感）：避免枚举值之间的子串误判
+      return actualStr === alt.slice(1)
+    }
+    return actualStr.includes(alt)
+  })
 }
 
 /**
@@ -153,11 +164,18 @@ export function checkGuardrail(
   toolName: string,
   args: Record<string, any>,
   dryRun: boolean = false,
+  operationType?: string,
 ): GuardrailCheckResult {
   // 第一层：ACTION_GUARDRAILS 规则匹配
   for (const rule of ACTION_GUARDRAILS) {
     // tool_name 匹配（null 表示通配）
     if (rule.tool_name && rule.tool_name !== toolName) continue
+
+    // operation_type 匹配：仅在调用方显式提供操作类型时参与过滤
+    // （此前该字段声明后从未参与匹配，属于死字段）
+    if (rule.operation_type && operationType && rule.operation_type !== operationType) {
+      continue
+    }
 
     // param_conditions 匹配（所有条件均需满足）
     if (rule.param_conditions) {
@@ -241,7 +259,8 @@ export function checkGuardrailsForToolCalls(
   for (const tc of toolCalls) {
     const toolName = tc['name'] ?? ''
     const args = tc['args'] ?? {}
-    const result = checkGuardrail(toolName, args, dryRun)
+    const operationType = typeof tc['operation_type'] === 'string' ? tc['operation_type'] : undefined
+    const result = checkGuardrail(toolName, args, dryRun, operationType)
     if (result.hit) {
       hits.push({ toolCall: tc, guardrailResult: result })
     }

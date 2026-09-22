@@ -19,6 +19,9 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js'
 import { MCPConnectionError, MCPProtocolError } from './errors.js'
 
+/** MCP 握手默认超时（毫秒）。 */
+const _DEFAULT_CONNECT_TIMEOUT_MS = 30_000
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[mcp] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[mcp] ${msg}`, ...args),
@@ -96,6 +99,8 @@ export class StdioTransport extends Transport {
   private _args: string[]
   private _env: Record<string, string>
   private _cwd: string | null
+  /** 握手（connect）超时时间，毫秒；0 表示不限制。 */
+  private _connectTimeoutMs: number
   private _sdkTransport: StdioClientTransport | null = null
   private _client: Client | null = null
   private _connected: boolean = false
@@ -105,6 +110,7 @@ export class StdioTransport extends Transport {
     args: string[] | null = null,
     env: Record<string, string> | null = null,
     cwd: string | null = null,
+    connectTimeoutMs: number = _DEFAULT_CONNECT_TIMEOUT_MS,
   ) {
     super()
     this._command = command
@@ -117,6 +123,7 @@ export class StdioTransport extends Transport {
     }
     this._env = { ...procEnv, ...resolveEnv(env ?? {}) }
     this._cwd = cwd
+    this._connectTimeoutMs = connectTimeoutMs
   }
 
   /** 启动子进程并建立 stdin/stdout 管道（含 MCP 握手）。 */
@@ -134,7 +141,30 @@ export class StdioTransport extends Transport {
       { name: 'moduagent', version: '0.1.0' },
       { capabilities: {} },
     )
-    await this._client.connect(this._sdkTransport)
+
+    // 修复（握手无超时）：SDK 的 connect() 在子进程不响应时会无限挂起。
+    // 增加外层超时，超时后主动 disconnect 清理已 spawn 的子进程，避免悬挂进程泄漏。
+    if (this._connectTimeoutMs > 0) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new MCPConnectionError(
+            `MCP stdio handshake timed out after ${this._connectTimeoutMs}ms: ${this._command}`,
+          )),
+          this._connectTimeoutMs,
+        )
+      })
+      try {
+        await Promise.race([this._client.connect(this._sdkTransport), timeoutPromise])
+      } catch (e) {
+        await this.disconnect().catch(() => undefined)
+        throw e
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    } else {
+      await this._client.connect(this._sdkTransport)
+    }
     this._connected = true
     logger.info(
       'StdioTransport connected: command=%s args=%s',

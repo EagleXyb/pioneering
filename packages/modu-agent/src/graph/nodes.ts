@@ -793,8 +793,10 @@ export function docGenEnforceNode(state: ModuAgentState): Partial<ModuAgentState
 
   return {
     messages: [reminderMsg],
-    // 修复：使用正确的递增值而非硬编码 1
-    doc_writer_enforcement_count: enforcementCount,
+    // 修复（计数跳变）：state.ts 中该字段是累加 reducer，本节点必须返回「增量 1」。
+    // 原实现返回绝对值（prev+1），与累加语义叠加后计数跳变为 1→3→7，
+    // 导致 routeAfterAgent 的「最多强制 2 次」判定失真。
+    doc_writer_enforcement_count: 1,
   }
 }
 
@@ -1120,19 +1122,37 @@ export function makeAgentNode(
       }
     }
 
+    // 主 ReAct 循环的 LLM 调用超时（llm.request_timeout_ms，0=不限制）。
+    // 原实现仅子 Agent 路径有超时，provider 挂起时主循环会无限阻塞
+    // （recursionLimit 无法终止单步未返回的调用）。
+    let llmTimeoutMs = 0
+    try {
+      llmTimeoutMs = Number(getConfig().get('llm.request_timeout_ms', 0)) || 0
+    } catch {
+      llmTimeoutMs = 0
+    }
+
     let response: any
+    let target: any = boundLlm
     if (needCustomTemp) {
       // 克隆 LLM 并设置温度
       try {
-        const llmWithTemp = boundLlm.bind({ temperature: effectiveTemperature })
-        response = await llmWithTemp.invoke(messages)
-      } catch {
-        // 如果 bind 不支持 temperature，直接使用原 LLM
-        response = await boundLlm.invoke(messages)
+        target = boundLlm.bind({ temperature: effectiveTemperature })
+      } catch (e: any) {
+        // 如果 bind 不支持 temperature，直接使用原 LLM（记录原因，便于排查）
+        logger.warning(
+          'LLM bind(temperature=%.2f) failed, falling back to default LLM: %s',
+          effectiveTemperature,
+          String(e?.message ?? e),
+        )
+        target = boundLlm
       }
-    } else {
-      response = await boundLlm.invoke(messages)
     }
+    response = await _invokeWithTimeout(
+      target.invoke(messages),
+      llmTimeoutMs,
+      'agent LLM invoke',
+    )
 
     // P0-1: 递增 Thought 轮数计数器
     // routeAfterAgent 读取此值判定是否超出 reasoning_budget
@@ -1235,7 +1255,13 @@ export function makeToolResultProcessor(
     state: ModuAgentState,
   ): Partial<ModuAgentState> {
     const messages = state.messages ?? []
-    const toolResults: Array<Record<string, any>> = [...(state.tool_results ?? [])]
+    // 修复（state 膨胀）：本节点只产出「增量」，state.tool_results 由 append reducer 累积。
+    // 原实现先复制全量旧列表再整体返回，与 reducer 语义叠加后每轮翻倍。
+    const newToolResults: Array<Record<string, any>> = []
+    // 已处理过的 execution_id 集合：复用 state 现状构建一次，循环内增量维护（原实现循环内重建为 O(n²)）
+    const processedIds = new Set(
+      (state.tool_results ?? []).map((r) => r['execution_id']),
+    )
     // P0-3: 收集蒸馏后的 Observation 历史，写入 state.observation_history
     const observationHistoryEntries: Array<Record<string, any>> = []
     // Artifact 产物收集：检测 doc_writer / file_ops write 成功结果
@@ -1283,8 +1309,7 @@ export function makeToolResultProcessor(
         }
         if (!toolName) toolName = 'unknown'
 
-        const existingIds = new Set(toolResults.map((r) => r['execution_id']))
-        if (!existingIds.has(toolCallId)) {
+        if (!processedIds.has(toolCallId)) {
           // 修复: 读取工具返回的真实 status，而非硬编码 'success'
           // 工具返回格式: { status: 'success'|'error', error_code: string, data: {...} }
           // 特殊处理：content 是字符串且无法解析为 JSON，或包含错误关键词，视为失败
@@ -1302,12 +1327,13 @@ export function makeToolResultProcessor(
           } else {
             toolStatus = 'success'
           }
-          toolResults.push({
+          newToolResults.push({
             tool: toolName,
             execution_id: toolCallId,
             result: typeof parsedContent === 'object' && parsedContent !== null ? parsedContent : { data: parsedContent },
             status: toolStatus,
           })
+          processedIds.add(toolCallId)
 
           // 追踪 doc_writer 成功/失败状态（按解析后的工具名）
           if (toolName === 'doc_writer') {
@@ -1389,7 +1415,7 @@ export function makeToolResultProcessor(
     // 仅写入 observation_history 供 agentNode 读取作为上下文 SystemMessage。
     // 原始 ToolMessage content 保留在 messages 中，LLM 仍可见；
     // 蒸馏后的精简版本通过 observation_history 在 agentNode 中作为辅助上下文注入。
-    const update: Partial<ModuAgentState> = { tool_results: toolResults }
+    const update: Partial<ModuAgentState> = { tool_results: newToolResults }
     if (observationHistoryEntries.length > 0) {
       update.observation_history = observationHistoryEntries
     }
@@ -1492,7 +1518,6 @@ export function responseNode(
   const messages = state.messages ?? []
   let response = ''
   let usage = state.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-  const toolResults = state.tool_results ?? []
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
@@ -1533,16 +1558,14 @@ export function responseNode(
       response,
       error_code: errorCode,
       error_message: state.error_message ?? '',
-      tool_results: toolResults,
-      artifacts: state.artifacts ?? [],
       usage,
     }
   }
 
+  // 修复（state 膨胀）：tool_results / artifacts 使用 append reducer，
+  // 本节点返回全量会与之叠加导致列表翻倍，故不再回写这两个字段（state 中已保留）。
   return {
     response,
-    tool_results: toolResults,
-    artifacts: state.artifacts ?? [],
     usage,
     error_code: '',
     error_message: '',
@@ -2387,10 +2410,17 @@ async function _invokeWithTimeout<T>(
   label: string,
 ): Promise<T> {
   if (timeoutMs <= 0) return promise
+  let timer: ReturnType<typeof setTimeout> | undefined
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
   })
-  return Promise.race([promise, timeoutPromise]) as Promise<T>
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    // 修复（定时器泄漏）：race 结束后无论谁先完成都必须清理，
+    // 原实现中先完成的分支会让 timer 一直驻留到超时时刻才释放。
+    if (timer) clearTimeout(timer)
+  }
 }
 
 /**

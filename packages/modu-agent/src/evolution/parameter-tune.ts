@@ -190,10 +190,10 @@ export class ParameterTuneStrategy {
         if (toolStatus === 'failed' || toolStatus === 'error' || toolFailureRate > 0) {
           failedToolCalls += 1
         }
-        // 从 metrics 提取失败率
-        if ('tool_failure_rate' in metrics) {
-          failedToolCalls = Math.floor(metrics['tool_failure_rate'] * totalToolCalls)
-        }
+        // 修复（统计被覆盖）：原实现在逐次累加之后又用
+        // 「累计失败率 × 当前总数」整体覆盖 failedToolCalls，两种口径互相打架，
+        // 导致失败次数与失败率统计不可靠。此处仅保留逐次累加口径。
+        // （若后续需要按 metrics 提供的失败率还原次数，应在循环外单独计算并显式命名。）
       }
     }
 

@@ -141,10 +141,13 @@ describe('capability-registry.ts 配置能力注册表', () => {
     expect(st.prompt_composer).toBe(false) // 未覆盖 → fallback default false
   })
 
-  it('UNDECLARED_CONSUMED_KEYS 记录声明/消费脱节的键', () => {
-    expect(UNDECLARED_CONSUMED_KEYS).toContain('plan_execute.planner_max_tokens')
-    expect(UNDECLARED_CONSUMED_KEYS).toContain('plan_execute.step_retry.default_max_attempts')
-    expect(UNDECLARED_CONSUMED_KEYS).toContain('plan_execute.step_retry.default_base_delay')
+  it('UNDECLARED_CONSUMED_KEYS 应为空（声明/消费脱节已修复）', () => {
+    // 回归哨兵：planner_max_tokens / step_retry.* / tools.register_defaults
+    // 已补齐到 DEFAULT_CONFIG，此处不允许重新积累脱节键
+    expect(UNDECLARED_CONSUMED_KEYS).toEqual([])
+    expect(UNDECLARED_CONSUMED_KEYS).not.toContain('plan_execute.planner_max_tokens')
+    expect(UNDECLARED_CONSUMED_KEYS).not.toContain('plan_execute.step_retry.default_max_attempts')
+    expect(UNDECLARED_CONSUMED_KEYS).not.toContain('plan_execute.step_retry.default_base_delay')
   })
 
   it('CAPABILITY_REGISTRY 中 planned 项不含真实实现路径', () => {

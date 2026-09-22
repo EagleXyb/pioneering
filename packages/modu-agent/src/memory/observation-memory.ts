@@ -60,6 +60,15 @@ export interface MemoryStore {
 }
 
 /**
+ * working_memory 条目数上限。
+ *
+ * 兜底约束：working_memory 每轮驱逐都会追加条目，而负责压缩清理的
+ * summarizeLongTerm() 当前无调用点，长会话会单调膨胀并随 state 持久化
+ * 拖累 checkpoint 体积。超出上限时按插入顺序淘汰最旧条目。
+ */
+const _MAX_WORKING_MEMORY_ENTRIES = 200
+
+/**
  * 记忆上下文（供 agentNode 注入 SystemMessage）。
  */
 export interface MemoryContext {
@@ -138,6 +147,8 @@ export class ObservationMemory {
       const evicted = newStore.short_term.shift()!
       this._extractToWorkingMemory(evicted, newStore.working_memory)
     }
+    // 约束 working_memory 规模，避免长会话无界增长（见 _MAX_WORKING_MEMORY_ENTRIES）
+    this._enforceWorkingMemoryLimit(newStore.working_memory)
 
     // 惰性触发 long_term 摘要生成（每 summaryInterval 轮一次）
     // 注意：此处仅标记需要生成，实际 LLM 调用在 summarizeLongTerm() 中异步执行
@@ -168,7 +179,7 @@ export class ObservationMemory {
     const maxChars = this.maxContextTokens * this.charsPerToken
 
     let availableChars = maxChars - keyFactsStr.length
-    let trimmedRecent = recentStr
+    let trimmedRecentEntries = recent
     let trimmedHistory = historySummary
 
     if (availableChars < 0) {
@@ -181,7 +192,11 @@ export class ObservationMemory {
     }
 
     if (recentStr.length > availableChars) {
-      trimmedRecent = recentStr.slice(0, availableChars) + '\n... [truncated]'
+      // 修复（token 预算失效）：原实现只计算了截断后的字符串 trimmedRecent 却仍返回
+      // 完整 recent 数组（以及未截断的 keyFacts），导致 maxContextTokens 预算被击穿
+      // （单条工具 stdout 可达数 KB），SystemMessage 膨胀侵蚀模型上下文窗口。
+      // 这里从最新往回保留条目，直到累计长度落入预算。
+      trimmedRecentEntries = this._trimRecentToBudget(recent, availableChars)
       trimmedHistory = ''
     } else {
       availableChars -= recentStr.length
@@ -191,7 +206,7 @@ export class ObservationMemory {
     }
 
     return {
-      recent_observations: recent,
+      recent_observations: trimmedRecentEntries,
       key_facts: keyFacts,
       history_summary: trimmedHistory,
     }
@@ -359,6 +374,39 @@ export class ObservationMemory {
           `[${e.round}] ${e.tool ?? 'unknown'} (${e.status ?? 'success'}): ${e.observation}`,
       )
       .join('\n')
+  }
+
+  /**
+   * 限制 working_memory 条目数（超出时按插入顺序淘汰最旧条目）。
+   */
+  private _enforceWorkingMemoryLimit(working: Record<string, any>): void {
+    const keys = Object.keys(working)
+    const overflow = keys.length - _MAX_WORKING_MEMORY_ENTRIES
+    if (overflow <= 0) return
+    for (const key of keys.slice(0, overflow)) {
+      delete working[key]
+    }
+  }
+
+  /**
+   * 按字符预算裁剪 recent 条目（保留最新的若干条）。
+   *
+   * 与 _formatRecent 的行格式保持一致（行之间以 '\n' 连接）。
+   */
+  private _trimRecentToBudget(entries: ObservationEntry[], maxChars: number): ObservationEntry[] {
+    if (maxChars <= 0) return []
+    let used = 0
+    const kept: ObservationEntry[] = []
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i]
+      const lineLen = this._formatRecent([entry]).length
+      // 除首条外还需计入换行符
+      const cost = lineLen + (kept.length > 0 ? 1 : 0)
+      if (used + cost > maxChars) break
+      used += cost
+      kept.push(entry)
+    }
+    return kept.reverse()
   }
 
   /**

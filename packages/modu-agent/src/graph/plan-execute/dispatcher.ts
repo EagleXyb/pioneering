@@ -21,8 +21,14 @@ import type { Send } from '@langchain/langgraph'
 import { Send as SendClass } from '@langchain/langgraph'
 
 import { getConfig } from '../../config/runtime-config.js'
+import { computeExponentialBackoffMs } from '../adapters/retry.js'
 import type { ModuAgentState } from '../state.js'
 import type { PlanStep, StepResult } from './types.js'
+
+/** 单步重试退避基数上限（秒），与 StepRetryPolicySchema.base_delay 对齐。 */
+const _MAX_RETRY_BASE_DELAY_SECONDS = 10
+/** 单次重试等待上限（毫秒），防止指数退避放大成请求级挂起。 */
+const _MAX_RETRY_DELAY_MS = 30_000
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.plan_execute.dispatcher] ${msg}`, ...args),
@@ -474,7 +480,12 @@ export function makeStepFinalizeNode(): (
       const retryDecision = _decideStepRetry(step, config)
       if (retryDecision.canRetry) {
         const newRetryCount = retryDecision.currentRetryCount + 1
-        const delayMs = retryDecision.baseDelay * Math.pow(2, newRetryCount - 1) * 1000
+        // 统一走共享退避实现（毫秒口径），并整体钳制到 _MAX_RETRY_DELAY_MS
+        const delayMs = computeExponentialBackoffMs(
+          newRetryCount - 1,
+          retryDecision.baseDelay * 1000,
+          _MAX_RETRY_DELAY_MS,
+        )
 
         logger.warning(
           'Step %s failed, scheduling retry %d/%d (delay=%dms) trace_id=%s',
@@ -616,14 +627,23 @@ function _decideStepRetry(
 
   // 优先读取 step 级 retry_policy
   const stepPolicy = step['retry_policy']
-  const maxAttempts =
+  const rawMaxAttempts =
     typeof stepPolicy?.['max_attempts'] === 'number'
       ? stepPolicy['max_attempts']
       : Number(config.get('plan_execute.step_retry.default_max_attempts', 0))
-  const baseDelay =
+  const rawBaseDelay =
     typeof stepPolicy?.['base_delay'] === 'number'
       ? stepPolicy['base_delay']
       : Number(config.get('plan_execute.step_retry.default_base_delay', 1))
+
+  // 修复（请求级挂死）：retry_policy 由 LLM 输出，原实现直接使用未校验的值，
+  // 若 LLM 输出 base_delay=100，指数退避 100 * 2^n 秒会让请求长时间挂起。
+  // 这里统一钳制到 [0, 10] 秒，maxAttempts 钳制到 [0, 5]（与 StepRetryPolicySchema 对齐）。
+  const maxAttempts = Math.min(Math.max(Number.isFinite(rawMaxAttempts) ? rawMaxAttempts : 0, 0), 5)
+  const baseDelay = Math.min(
+    Math.max(Number.isFinite(rawBaseDelay) ? rawBaseDelay : 1, 0),
+    _MAX_RETRY_BASE_DELAY_SECONDS,
+  )
 
   const canRetry = maxAttempts > 0 && currentRetryCount < maxAttempts
   return { canRetry, maxAttempts, baseDelay, currentRetryCount }

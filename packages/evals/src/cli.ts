@@ -76,7 +76,7 @@ async function runDataset(
   const runTag = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
   const bundle = await createDefaultExecutor(globalCfg, runTag)
   try {
-    const judgeLlm = buildJudgeLlm(globalCfg, bundle.runtimeConfig)
+    const judgeLlm = buildJudgeLlm(globalCfg)
     const { report, caseResults } = await runEvaluation({
       dataset,
       executor: bundle.executor,
@@ -138,6 +138,11 @@ async function main(argv: string[]): Promise<number> {
       for (const f of report.failures) {
         console.info(`  - ${f.caseId} [${f.category}] 未达标: ${f.failedMetrics.join(', ')}`)
       }
+      // 修复（CI 门禁静默通过）：原实现无论失败多少都返回 0，
+      // 把 `eval:smoke` 接入 CI 会得到永远绿的步骤。存在失败用例时返回非零码。
+      // 需要严格阈值判定（含 delta 回归）时请使用 `gate` 命令。
+      console.info('\n[cli] 存在失败用例，退出码 1（如需阈值门禁请使用 gate 命令）')
+      return 1
     }
     return 0
   }

@@ -596,7 +596,6 @@ export function makePlannerNode(
     // 已完成步骤标记 status='done'，前端展示完整执行轨迹
     let finalPlan: PlanStep[] = plan
     let finalStepIndex = 0
-    let stepResultsToKeep: Array<Record<string, any>> = []
     if (isReplan && completedSteps.length > 0) {
       // 从原 plan 中提取已完成步骤的定义
       const completedStepDefs: PlanStep[] = []
@@ -613,8 +612,6 @@ export function makePlannerNode(
       if (completedStepDefs.length > 0) {
         finalPlan = [...completedStepDefs, ...plan]
         finalStepIndex = completedStepDefs.length
-        // 保留已完成步骤的 step_results（不清空），仅清空失败步骤的 step_results
-        stepResultsToKeep = completedSteps
         logger.info(
           'Partial replan: keeping %d completed steps, generating %d new steps (replan_count=%d)',
           completedStepDefs.length, plan.length, newReplanCount,
@@ -632,38 +629,12 @@ export function makePlannerNode(
       plan: finalPlan as unknown as Array<Record<string, any>>,
       plan_phase: 'executing',
       current_step_index: finalStepIndex,
-      // P1-6 修复：step_results reducer 已改为空数组清空语义
-      // v1.2 #4 部分重规划：保留已完成步骤的 step_results，仅清空失败步骤
-      //   - 全量重规划（completedSteps 为空）：返回 [] 清空所有旧结果
-      //   - 部分重规划：返回 completedSteps 覆盖旧结果（reducer 追加语义）
-      //     注意：reducer 行为是 next.length===0 → 清空，否则追加。
-      //     此处需要"替换"语义，故返回 [...completedSteps, ...failedPlaceholder]，
-      //     其中 failedPlaceholder 为空数组，触发清空+追加完成步骤
-      //     实际上更简单的做法：直接返回 completedSteps（非空），reducer 会追加到 prev
-      //     但这会导致旧失败步骤仍残留。所以先返回 [] 清空，再由后续 step_dispatch 写入
-      //     —— 但这丢失了已完成步骤的 step_results
-      //     正确做法：state.step_results 在重规划前后由 planner 显式重置为 completedSteps
-      //     reducer 检测 next.length>0 时追加，所以需要先清空再写入：
-      //     这里返回 [] 清空，dispatcher 重新执行时 step_finalize 会补回已完成步骤的 results
-      //     —— 但已完成步骤不会被重新执行（current_step_index 跳过它们）
-      //     所以这里必须保留 completedSteps 的 step_results
-      //     方案：返回 completedSteps（非空），reducer 会 [...prev, ...completedSteps]
-      //     —— 这会保留旧失败步骤 + 重复的 completedSteps
-      //     为避免重复，planner 必须返回 [] 清空，然后由 step_dispatch 在执行前
-      //     重新填充 completedSteps 到 state（通过 step_results 字段返回）
-      //     但 step_dispatch 不知道哪些是已完成的——它依赖 step_results 判断
-      //     最终方案：planner 直接覆盖 step_results 为 completedSteps（替换语义）
-      //     reducer 当前是"空清空/非空追加"——为支持替换语义，我们需要让 planner
-      //     返回 completedSteps，并在 reducer 中检测 replan_count 变化时触发替换
-      //     —— 但 reducer 无法感知 replan_count
-      //     简化方案：直接返回 completedSteps（非空），reducer 追加，会重复 completedSteps
-      //     —— 接受这个重复，step_dispatch 路由 _currentGenerationResults 按 replan 标签过滤，
-      //        completedSteps 重复 N 次不影响 stepDispatch 路由逻辑（lastResult 仍是新生成的）
-      //     更好的方案：state 中 step_results 在重规划前由 dispatcher 过滤掉失败步骤
-      //     —— 但 planner 已经在读 step_results，时机对不上
-      //     最终选择：planner 返回 [] 清空（保持原行为），completedSteps 信息通过
-      //     plan 中已完成步骤的 status='done' 传递，dispatcher 在 step_dispatch 看到
-      //     status='done' 的步骤时跳过执行，并在 step_finalize 中重新写入 step_results
+      // step_results 语义（v1.2 #4 部分重规划）：
+      //   reducer 为「空数组清空 / 非空追加」，无法表达替换语义，故 planner 统一
+      //   返回 [] 清空旧结果；已完成步骤的信息通过 plan 中 status='done' 传递——
+      //   step_dispatch 遇到 status='done' 的步骤直接跳过执行，
+      //   step_finalize 再按代际（replan 标签）写入新的 step_results。
+      //   （_currentGenerationResults 按 replan_count 过滤，避免跨代际结果污染。）
       step_results: [],
       replan_count: newReplanCount,
       // SSE: plan_created delta（phase='plan' 携带完整计划，含已完成步骤）

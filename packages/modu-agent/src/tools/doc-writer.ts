@@ -131,9 +131,29 @@ export class DocWriterTool extends BaseTool {
     }
   }
 
-  /** 文档生成是用户明确请求的产物，默认不需审批 */
+  /**
+   * 文档写入属于文件系统写操作，默认需要审批。
+   *
+   * 修复（绕过 HITL）：原实现无条件下 false，与同为写盘工具的 FileOpsTool
+   * （write/delete 需审批）策略不一致，LLM 可无审批覆盖 allowedRoot 下任意 .md。
+   * 注意：仅在 human_in_loop 启用时生效，未启用时不改变任何执行行为。
+   */
   requiresApproval(): boolean {
-    return false
+    return true
+  }
+
+  /**
+   * 参数级审批判定：读取类/仅查询类操作无需审批，写入类需审批。
+   */
+  requiresApprovalFor(
+    params: Record<string, any>,
+    _context: Record<string, any>,
+  ): boolean {
+    const op = typeof params?.op === 'string' ? params.op.toLowerCase().trim() : ''
+    if (op === 'read' || op === 'list') {
+      return false
+    }
+    return true
   }
 
   followUpTools(): string[] {
@@ -154,7 +174,12 @@ export class DocWriterTool extends BaseTool {
     if (!relPath) {
       throw new Error('Path is empty')
     }
-    if (path.isAbsolute(relPath) || /^[CDEF]:/i.test(relPath.slice(0, 2))) {
+    // 修复（盘符绕过）：与 file-ops 同步，拦截任意盘符的驱动器相对路径
+    if (
+      path.isAbsolute(relPath) ||
+      /^[a-z]:/i.test(relPath) ||
+      path.parse(relPath).root !== ''
+    ) {
       throw new Error(`Absolute path not allowed: ${relPath}`)
     }
     const parts = relPath.split(path.sep)

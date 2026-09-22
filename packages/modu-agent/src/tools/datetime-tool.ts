@@ -136,20 +136,42 @@ export class DateTimeTool extends BaseTool {
   /**
    * strftime 等价格式化（支持 %Y %m %d %H %M %S %A 等常见占位符）。
    */
-  private _strftime(date: Date, formatStr: string): string {
+  private _strftime(date: Date, formatStr: string, utc: boolean = false): string {
     const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const pad = (n: number, len: number = 2) => String(n).padStart(len, '0')
+    // utc=true：按 UTC 字段读取。用于「epoch + 时区偏移」得到的挂钟时间对象，
+    // 避免再次叠加宿主机本地偏移（原实现在非 UTC 宿主机上结果偏移数小时）。
+    const year = utc ? date.getUTCFullYear() : date.getFullYear()
+    const month = utc ? date.getUTCMonth() : date.getMonth()
+    const day = utc ? date.getUTCDate() : date.getDate()
+    const hours = utc ? date.getUTCHours() : date.getHours()
+    const minutes = utc ? date.getUTCMinutes() : date.getMinutes()
+    const seconds = utc ? date.getUTCSeconds() : date.getSeconds()
+    const weekday = utc ? date.getUTCDay() : date.getDay()
 
     let result = formatStr
-      .replace(/%Y/g, String(date.getFullYear()))
-      .replace(/%m/g, pad(date.getMonth() + 1))
-      .replace(/%d/g, pad(date.getDate()))
-      .replace(/%H/g, pad(date.getHours()))
-      .replace(/%M/g, pad(date.getMinutes()))
-      .replace(/%S/g, pad(date.getSeconds()))
-      .replace(/%A/g, weekdays[date.getDay()])
+      .replace(/%Y/g, String(year))
+      .replace(/%m/g, pad(month + 1))
+      .replace(/%d/g, pad(day))
+      .replace(/%H/g, pad(hours))
+      .replace(/%M/g, pad(minutes))
+      .replace(/%S/g, pad(seconds))
+      .replace(/%A/g, weekdays[weekday])
 
     return result
+  }
+
+  /**
+   * 生成 ISO8601 风格的挂钟时间字符串（不含时区后缀）。
+   *
+   * 入参 date 为「epoch + 目标时区偏移」构造的对象，故全部使用 UTC getter 读取。
+   */
+  private _toWallClockIso(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return (
+      `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}` +
+      `T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
+    )
   }
 
   private _now(params: Record<string, any>): Record<string, any> {
@@ -162,19 +184,23 @@ export class DateTimeTool extends BaseTool {
         data: { message: `Unknown timezone: ${tzName}` },
       }
     }
-    // UTC 当前时间 + 偏移
+    // 修复（时区计算错误）：原实现先加 now.getTimezoneOffset() 把 epoch 平移成
+    // "本地挂钟伪装 epoch"，导致非 UTC 宿主机上 unix_timestamp 与 iso 偏差
+    // getTimezoneOffset()（东八区差 8 小时）。
+    //   - unix_timestamp 与时区无关，必须直接取 epoch 秒数
+    //   - 目标时区挂钟时间 = epoch + 目标偏移，并用 UTC getter 读取字段
     const now = new Date()
-    const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
-    const tzDate = new Date(utcMs + offsetHours * 3600000)
+    const epochMs = now.getTime()
+    const tzDate = new Date(epochMs + offsetHours * 3600000)
     const formatStr = params.format_str ?? '%Y-%m-%d %H:%M:%S'
     return {
       status: 'success',
       error_code: '',
       data: {
-        datetime: this._strftime(tzDate, formatStr),
-        iso: tzDate.toISOString().replace(/\.\d{3}Z$/, ''),
+        datetime: this._strftime(tzDate, formatStr, true),
+        iso: this._toWallClockIso(tzDate),
         timezone: tzName,
-        unix_timestamp: Math.floor(tzDate.getTime() / 1000),
+        unix_timestamp: Math.floor(epochMs / 1000),
       },
     }
   }
@@ -295,7 +321,7 @@ export class DateTimeTool extends BaseTool {
       data: {
         source_datetime: this._strftime(dt, formatStr),
         source_timezone: srcTz,
-        target_datetime: this._strftime(tgtDate, formatStr),
+        target_datetime: this._strftime(tgtDate, formatStr, true),
         target_timezone: tgtTz,
         offset_diff_hours: (tgtOffset - srcOffset),
       },

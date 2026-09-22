@@ -182,16 +182,18 @@ export class LangGraphEventBridge {
     graphStream: AsyncGenerator<Record<string, any>>,
   ): AsyncGenerator<Record<string, any>> {
     let eventIdx = 0
-    logger.info('consume.start trace_id=%s session_id=%s', this._traceId, this._sessionId)
+    // 修复（流式热路径性能）：consume 在 messages 模式下对每个 token chunk 执行一次，
+    // 原实现每事件输出 2-3 条 info 日志，其中 `keys=%j` 还会对每个事件做
+    // Object.keys + JSON 序列化。统一降级为 debug，仅保留首尾汇总日志。
+    logger.debug('consume.start trace_id=%s session_id=%s', this._traceId, this._sessionId)
 
     for await (const event of graphStream) {
       eventIdx++
       const evtType = (event as any)?.type ?? (Array.isArray(event) ? `[array:${event[0]}]` : typeof event)
       const evtNode = (event as any)?.node ?? ''
-      logger.info(
-        'consume.event[%d] type=%s node=%s keys=%j',
+      logger.debug(
+        'consume.event[%d] type=%s node=%s',
         eventIdx, evtType, evtNode,
-        Object.keys(event || {}),
       )
 
       // 映射并发布到 EventBus
@@ -216,7 +218,7 @@ export class LangGraphEventBridge {
       // 发送 SSE 细粒度事件
       const sseEvents = this._emitSseEvents(event)
       for (const sseEvent of sseEvents) {
-        logger.info(
+        logger.debug(
           'consume.sse_yield type=%s',
           (sseEvent as any)?.type ?? '',
         )
@@ -224,7 +226,7 @@ export class LangGraphEventBridge {
       }
 
       // 透传原始事件
-      logger.info('consume.raw_yield type=%s', evtType)
+      logger.debug('consume.raw_yield type=%s', evtType)
       yield event
     }
 

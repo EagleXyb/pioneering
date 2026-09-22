@@ -71,34 +71,42 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
   // checkGuardrail
   // ============================================================
   describe('checkGuardrail', () => {
-    it('file_ops write 操作命中 guardrail', () => {
-      const r = checkGuardrail('file_ops', { mode: 'write', path: '/tmp/test' })
+    // 参数名必须与工具真实入参一致：FileOpsTool 用 op（read/write/list/delete），
+    // SqlQueryTool 用 query。历史 bug：规则写的是 mode / sql，导致规则永不命中。
+    it('file_ops write 操作命中 guardrail（真实参数名 op）', () => {
+      const r = checkGuardrail('file_ops', { op: 'write', path: '/tmp/test' })
       expect(r.hit).toBe(true)
       expect(r.rule?.rule_id).toBe('guard_file_ops_write')
     })
 
-    it('file_ops append 操作命中 guardrail', () => {
-      const r = checkGuardrail('file_ops', { mode: 'append', path: '/tmp/test' })
-      expect(r.hit).toBe(true)
-    })
-
-    it('file_ops delete 操作命中 guardrail', () => {
-      const r = checkGuardrail('file_ops', { mode: 'delete', path: '/tmp/test' })
+    it('file_ops delete 操作命中 guardrail（真实参数名 op）', () => {
+      const r = checkGuardrail('file_ops', { op: 'delete', path: '/tmp/test' })
       expect(r.hit).toBe(true)
       expect(r.rule?.rule_id).toBe('guard_file_ops_delete')
     })
 
-    it('file_ops read 操作不命中 guardrail', () => {
-      const r = checkGuardrail('file_ops', { mode: 'read', path: '/tmp/test' })
-      // read 不匹配 write|append|overwrite 或 delete|remove
+    it('file_ops read 操作不命中写/删规则（回退矩阵层）', () => {
+      const r = checkGuardrail('file_ops', { op: 'read', path: '/tmp/test' })
+      // read 为只读，不应命中 guard_file_ops_write / guard_file_ops_delete；
       // 但 file_ops 在矩阵中 requires_confirmation=true，所以仍命中第二层
       expect(r.hit).toBe(true)
       expect(r.rule?.rule_id).toBe('matrix_file_ops')
     })
 
-    it('sql_query INSERT 命中 guardrail', () => {
+    it('file_ops list 操作不命中写/删规则（回退矩阵层）', () => {
+      const r = checkGuardrail('file_ops', { op: 'list', path: '/tmp' })
+      expect(r.rule?.rule_id).toBe('matrix_file_ops')
+    })
+
+    it('回归：参数名写错（旧 mode 参数）时不应命中规则层', () => {
+      // 这是历史缺陷的反向断言：工具实际传 op，若仍传 mode 说明某处未同步
+      const r = checkGuardrail('file_ops', { mode: 'write', path: '/tmp/test' })
+      expect(r.rule?.rule_id).not.toBe('guard_file_ops_write')
+    })
+
+    it('sql_query INSERT 命中 guardrail（真实参数名 query）', () => {
       const r = checkGuardrail('sql_query', {
-        sql: 'INSERT INTO users VALUES (1, "test")',
+        query: 'INSERT INTO users VALUES (1, "test")',
       })
       expect(r.hit).toBe(true)
       expect(r.rule?.rule_id).toBe('guard_sql_query_write')
@@ -106,26 +114,31 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
 
     it('sql_query UPDATE 命中 guardrail', () => {
       const r = checkGuardrail('sql_query', {
-        sql: 'UPDATE users SET name = "test"',
+        query: 'UPDATE users SET name = "test"',
       })
       expect(r.hit).toBe(true)
     })
 
     it('sql_query DROP 命中 guardrail', () => {
       const r = checkGuardrail('sql_query', {
-        sql: 'DROP TABLE users',
+        query: 'DROP TABLE users',
       })
       expect(r.hit).toBe(true)
     })
 
     it('sql_query SELECT 不命中写操作 guardrail（但矩阵标注 requires_confirmation）', () => {
       const r = checkGuardrail('sql_query', {
-        sql: 'SELECT * FROM users',
+        query: 'SELECT * FROM users',
       })
-      // SELECT 不匹配 INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE
+      // SELECT 不匹配 INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE
       // 但 sql_query 在矩阵中 requires_confirmation=true，所以命中第二层
       expect(r.hit).toBe(true)
       expect(r.rule?.rule_id).toBe('matrix_sql_query')
+    })
+
+    it('回归：参数名写错（旧 sql 参数）时不应命中规则层', () => {
+      const r = checkGuardrail('sql_query', { sql: 'DELETE FROM users' })
+      expect(r.rule?.rule_id).not.toBe('guard_sql_query_write')
     })
 
     it('http_request POST 命中 guardrail', () => {
@@ -189,7 +202,7 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
   // ============================================================
   describe('dry_run 模式', () => {
     it('dryRun=true 时返回 dry_run_result', () => {
-      const r = checkGuardrail('file_ops', { mode: 'write' }, true)
+      const r = checkGuardrail('file_ops', { op: 'write' }, true)
       expect(r.hit).toBe(true)
       expect(r.dry_run_result).toBeDefined()
       expect(r.dry_run_result?.would_execute).toBe(false)
@@ -197,7 +210,7 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
     })
 
     it('dryRun=false 时不返回 dry_run_result', () => {
-      const r = checkGuardrail('file_ops', { mode: 'write' }, false)
+      const r = checkGuardrail('file_ops', { op: 'write' }, false)
       expect(r.hit).toBe(true)
       expect(r.dry_run_result).toBeUndefined()
     })
@@ -223,9 +236,9 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
     it('批量检查返回命中的 tool_calls', () => {
       const toolCalls = [
         { id: 'call_1', name: 'search_engine', args: { query: 'test' } },
-        { id: 'call_2', name: 'file_ops', args: { mode: 'write' } },
+        { id: 'call_2', name: 'file_ops', args: { op: 'write' } },
         { id: 'call_3', name: 'calculator', args: { expression: '1+1' } },
-        { id: 'call_4', name: 'sql_query', args: { sql: 'DELETE FROM users' } },
+        { id: 'call_4', name: 'sql_query', args: { query: 'DELETE FROM users' } },
       ]
       const hits = checkGuardrailsForToolCalls(toolCalls)
       expect(hits.length).toBe(2)
@@ -253,19 +266,31 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
   // ============================================================
   describe('参数条件匹配', () => {
     it('多选模式 | 匹配任一关键词', () => {
-      // sql 规则: INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE
-      expect(checkGuardrail('sql_query', { sql: 'ALTER TABLE users' }).hit).toBe(true)
-      expect(checkGuardrail('sql_query', { sql: 'TRUNCATE TABLE users' }).hit).toBe(true)
-      expect(checkGuardrail('sql_query', { sql: 'CREATE TABLE users' }).hit).toBe(true)
+      // query 规则: INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE
+      expect(checkGuardrail('sql_query', { query: 'ALTER TABLE users' }).hit).toBe(true)
+      expect(checkGuardrail('sql_query', { query: 'TRUNCATE TABLE users' }).hit).toBe(true)
+      expect(checkGuardrail('sql_query', { query: 'CREATE TABLE users' }).hit).toBe(true)
+      expect(checkGuardrail('sql_query', { query: 'REPLACE INTO users VALUES (1)' }).hit).toBe(true)
     })
 
     it('大小写不敏感匹配', () => {
-      expect(checkGuardrail('sql_query', { sql: 'insert into users' }).hit).toBe(true)
-      expect(checkGuardrail('sql_query', { sql: 'drop table users' }).hit).toBe(true)
+      expect(checkGuardrail('sql_query', { query: 'insert into users' }).hit).toBe(true)
+      expect(checkGuardrail('sql_query', { query: 'drop table users' }).hit).toBe(true)
+    })
+
+    it('精确匹配（= 前缀）不会子串误判', () => {
+      // POST 精确命中；POSTMAN / POSTX 这类伪造值不应命中
+      expect(checkGuardrail('http_request', { method: 'POST' }).rule?.rule_id)
+        .toBe('guard_http_request_sensitive')
+      expect(checkGuardrail('http_request', { method: 'POSTMAN' }).rule?.rule_id)
+        .not.toBe('guard_http_request_sensitive')
+      // file_ops 的 op 为枚举，writeX 这类非枚举值不应命中写规则
+      expect(checkGuardrail('file_ops', { op: 'writeX' }).rule?.rule_id)
+        .not.toBe('guard_file_ops_write')
     })
 
     it('参数缺失时不匹配该规则', () => {
-      // 缺少 mode 参数，file_ops write 规则不命中
+      // 缺少 op 参数，file_ops write 规则不命中
       // 但 file_ops 矩阵 requires_confirmation=true，命中第二层
       const r = checkGuardrail('file_ops', {})
       expect(r.hit).toBe(true)

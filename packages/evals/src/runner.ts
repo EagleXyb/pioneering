@@ -58,10 +58,18 @@ export interface RunnerOutput {
   caseResults: EvalCaseResult[]
 }
 
+/** 超时哨兵错误（便于区分超时与引擎异常）。 */
+class EvalTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`EVAL_CASE_TIMEOUT after ${timeoutMs}ms`)
+    this.name = 'EvalTimeoutError'
+  }
+}
+
 /** 带超时的 Promise 包装。 */
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve_, reject) => {
-    const timer = setTimeout(() => reject(new Error('EVAL_CASE_TIMEOUT')), timeoutMs)
+    const timer = setTimeout(() => reject(new EvalTimeoutError(timeoutMs)), timeoutMs)
     promise.then(
       (v) => { clearTimeout(timer); resolve_(v) },
       (e) => { clearTimeout(timer); reject(e) },
@@ -69,8 +77,16 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   })
 }
 
-/** 超时/异常的兜底 AgentRunResult（保留 caseId 关联，指标记 0）。 */
-function timeoutResult(evalCaseId: string, latencyMs: number, error: unknown): AgentRunResult {
+/**
+ * 失败用例的兜底 AgentRunResult（保留 caseId 关联，指标记 0）。
+ *
+ * 修复（错误码语义失真）：原实现把所有引擎异常都标记为 EVAL_CASE_TIMEOUT
+ * 且 timedOut=true，导致「agent crash」被误报为「超时」，排障方向被带偏。
+ * 现按错误类型区分：超时 → EVAL_CASE_TIMEOUT（timedOut=true）；
+ * 其他异常 → EVAL_CASE_FAILED（timedOut=false）。
+ */
+function failureResult(evalCaseId: string, latencyMs: number, error: unknown): AgentRunResult {
+  const isTimeout = error instanceof EvalTimeoutError
   return {
     caseId: evalCaseId,
     ok: false,
@@ -80,9 +96,9 @@ function timeoutResult(evalCaseId: string, latencyMs: number, error: unknown): A
     iteration: 0,
     reasoningRoundCount: 0,
     latencyMs,
-    errorCode: 'EVAL_CASE_TIMEOUT',
+    errorCode: isTimeout ? 'EVAL_CASE_TIMEOUT' : 'EVAL_CASE_FAILED',
     errorMessage: String(error),
-    timedOut: true,
+    timedOut: isTimeout,
   }
 }
 
@@ -123,12 +139,12 @@ export class EvaluationRunner {
           `用例 ${evalCase.id} 第 ${attempt + 1} 次执行失败: ${String(e)}`,
         )
         if (attempt === retries) {
-          agentRun = timeoutResult(evalCase.id, Date.now() - startedAt, e)
+          agentRun = failureResult(evalCase.id, Date.now() - startedAt, e)
         }
       }
     }
     if (agentRun === null) {
-      agentRun = timeoutResult(evalCase.id, 0, lastError ?? 'unknown')
+      agentRun = failureResult(evalCase.id, 0, lastError ?? 'unknown')
     }
 
     // ---- 三层指标（output -> process -> system 顺序，system 复用 output） ----
@@ -210,7 +226,7 @@ export class EvaluationRunner {
             metrics: {},
             pass: false,
             failedBlockMetrics: ['internal_error'],
-            agentRun: timeoutResult(evalCase.id, 0, e),
+            agentRun: failureResult(evalCase.id, 0, e),
           }
         }
         completed++

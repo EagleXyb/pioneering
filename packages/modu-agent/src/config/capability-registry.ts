@@ -168,7 +168,7 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDescriptor[] = [
       'plan_execute.continue_on_failure',
       'plan_execute.compact_completed_steps',
       'plan_execute.step_summary_max_chars',
-      // 以下为"已消费但 DEFAULT_CONFIG 未声明"的键（见 registerUndeclaredKeys）
+      // 以下键此前为"已消费但 DEFAULT_CONFIG 未声明"，现已补齐到 DEFAULT_CONFIG
       'plan_execute.planner_max_tokens',
       'plan_execute.step_retry.default_max_attempts',
       'plan_execute.step_retry.default_base_delay',
@@ -256,20 +256,18 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDescriptor[] = [
 ]
 
 /**
- * 已知"被消费但 DEFAULT_CONFIG 未声明"的配置键清单。
+ * 已知"被消费但 DEFAULT_CONFIG 未声明"的配置键清单（应始终保持为空）。
  *
- * 来源（2026-08-21 源码核对）：
- *   - graph/plan-execute/planner.ts:435 → plan_execute.planner_max_tokens
- *   - graph/plan-execute/dispatcher.ts:622,626 → plan_execute.step_retry.default_max_attempts / default_base_delay
+ * 历史来源（2026-08-21 源码核对，均已在 DEFAULT_CONFIG 补齐声明）：
+ *   - graph/plan-execute/planner.ts → plan_execute.planner_max_tokens
+ *   - graph/plan-execute/dispatcher.ts → plan_execute.step_retry.default_max_attempts / default_base_delay
+ *   - graph/factory.ts → tools.register_defaults
  *
- * 这些键靠 `config.get(key, fallback)` 的 fallback 掩盖了"未声明"，且
+ * 这些键此前靠 `config.get(key, fallback)` 的 fallback 掩盖了"未声明"，且
  * loadConfigYamlValidated 只校验"已存在键"，故这些键不受类型安全保护。
+ * 新增消费点时应同步声明，避免重新积累脱节项。
  */
-export const UNDECLARED_CONSUMED_KEYS: readonly string[] = [
-  'plan_execute.planner_max_tokens',
-  'plan_execute.step_retry.default_max_attempts',
-  'plan_execute.step_retry.default_base_delay',
-]
+export const UNDECLARED_CONSUMED_KEYS: readonly string[] = []
 
 /**
  * 按状态/前缀过滤能力清单。

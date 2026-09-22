@@ -117,21 +117,27 @@ export async function createDefaultExecutor(
  *
  * 复用 modu-agent factory._build_judge_llm：按 judge.provider 读取
  * RuntimeConfig 构造 ChatModel 并包装为 ModuLLM。rule 模式返回 null。
+ *
+ * 修复（评测串扰）：judge 参数此前被写入被测 Agent 正在使用的同一个 RuntimeConfig，
+ * 而被测图内部的 QualityMonitor 也读取同一组 feedback.quality_monitor_* 键，
+ * 于是「评测器的配置」会改变被测系统行为，测量效度受损。
+ * 现改为在评测专用的独立配置实例上构造 judge，与 SUT 配置完全隔离。
  */
-export function buildJudgeLlm(globalCfg: GlobalConfig, runtimeConfig: RuntimeConfig): any | null {
+export function buildJudgeLlm(globalCfg: GlobalConfig): any | null {
   const mode = globalCfg.judge?.mode ?? 'rule'
   if (mode === 'rule') return null
   try {
-    // judge 参数写入 RuntimeConfig 供 _build_judge_llm 读取
+    // judge 参数写入「评测专用」RuntimeConfig（不触碰被测系统的配置）
+    const judgeConfig = new RuntimeConfig()
     const j = globalCfg.judge ?? {}
-    runtimeConfig.updateMany({
+    judgeConfig.updateMany({
       'feedback.quality_monitor_mode': mode,
       'feedback.quality_monitor_llm_timeout': j.timeout_seconds ?? 15,
       'feedback.quality_monitor_llm_temperature': j.temperature ?? 0,
       'feedback.quality_monitor_llm_max_tokens': j.max_tokens ?? 256,
       ...(j.provider ? { 'feedback.quality_monitor_llm_provider': j.provider } : {}),
     })
-    return _build_judge_llm(runtimeConfig, {})
+    return _build_judge_llm(judgeConfig, {})
   } catch (e) {
     logger.warning(`judge LLM 构造失败，降级 rule 模式: ${String(e)}`)
     return null

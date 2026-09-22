@@ -22,7 +22,8 @@ const logger = {
 }
 
 // 危险 SQL 关键词（仅允许 SELECT）
-const _FORBIDDEN_SQL_KEYWORDS = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|ANALYZE)\b/i
+// 纵深防御：连接级 readonly 之外的第二层防护（原黑名单缺 REPLACE / load_extension 等）
+const _FORBIDDEN_SQL_KEYWORDS = /\b(DROP|DELETE|INSERT|UPDATE|REPLACE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|ANALYZE|LOAD_EXTENSION)\b/i
 
 // SELECT 语句前缀校验
 const _SELECT_PREFIX = /^\s*SELECT\b/i
@@ -236,7 +237,9 @@ export class SqlQueryTool extends BaseTool {
       logger.error('SqlQuery: better-sqlite3 not available: %s', String(e))
       return {
         status: 'error',
-        error_code: 'SQL_003',
+        // 修复（错误码歧义）：原实现复用 SQL_003 表示「依赖缺失」与「SQL 执行错误」，
+        // 排障无法区分。依赖缺失改用独立错误码 SQL_005。
+        error_code: 'SQL_005',
         data: { message: `better-sqlite3 not available: ${e}` },
       }
     }
@@ -245,13 +248,20 @@ export class SqlQueryTool extends BaseTool {
     try {
       // SQLite 连接
       const dbPath = this._dbPath === ':memory:' ? ':memory:' : this._dbPath
-      db = new Database(dbPath)
+      // 修复（只读保证脆弱）：原实现以读写模式打开且依赖可静默失败的 query_only pragma，
+      // pragma 失败时唯一的写防护只剩正则黑名单。改为使用 better-sqlite3 的
+      // readonly 构造选项（连接级只读），并要求文件必须已存在（避免误创建空库）。
+      // 注意：better-sqlite3 不允许对 in-memory/temp 数据库设置 readonly，
+      // 故仅文件型数据库启用连接级只读；内存库仍由 pragma + 关键词黑名单防护。
+      db = dbPath === ':memory:'
+        ? new Database(dbPath)
+        : new Database(dbPath, { readonly: true, fileMustExist: true })
 
-      // 强制只读模式（SQLite pragma）
+      // 二次防护：仍尝试设置 query_only（部分环境版本差异时忽略）
       try {
         db.pragma('query_only = ON')
-      } catch {
-        // 某些 SQLite 版本不支持，忽略
+      } catch (e) {
+        logger.warning('SqlQuery: query_only pragma unsupported, relying on readonly option: %s', String(e))
       }
 
       const stmt = db.prepare(query)

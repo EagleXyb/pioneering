@@ -25,8 +25,9 @@ function _simpleHashEmbedding(text: string, dim: number = _EMBEDDING_DIM): numbe
   const raw = crypto.createHash('sha256').update(text, 'utf-8').digest()
   const values: number[] = []
   for (let i = 0; i < dim; i++) {
-    const chunk = crypto.createHash('sha256').update(Buffer.concat([raw, Buffer.allocUnsafe(4)])).digest()
     // 写入 i 到 buffer
+    // （原实现此处多计算了一次 chunk：使用 Buffer.allocUnsafe(4) 的未初始化内存，
+    //   结果从未被使用——既浪费又存在读取未初始化内存的风险，已移除）
     const buf = Buffer.allocUnsafe(4)
     buf.writeUInt32LE(i, 0)
     const fullChunk = crypto.createHash('sha256').update(Buffer.concat([raw, buf])).digest()

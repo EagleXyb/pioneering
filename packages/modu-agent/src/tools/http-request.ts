@@ -12,6 +12,8 @@
 //
 // 需要人工审批（requiresApproval() = true）。
 import { promises as dns } from 'dns'
+import http from 'http'
+import https from 'https'
 import { BaseTool } from '../core/interfaces/action.js'
 import { inject_trace_context } from '../observability/trace-context.js'
 
@@ -37,6 +39,26 @@ const _PRIVATE_CIDRS: Array<{ base: number; mask: number }> = [
 const _ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH'])
 const _DEFAULT_TIMEOUT = 30
 const _DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024  // 1MB
+
+// 禁止调用方覆盖的安全相关请求头（HTTP 请求工具始终自行设置）
+const _FORBIDDEN_REQUEST_HEADERS = new Set([
+  'host',
+  'connection',
+  'content-length',
+  'transfer-encoding',
+])
+
+/**
+ * 移除用户传入请求头中的受限头（大小写不敏感）。
+ */
+function _stripForbiddenHeaders(headers: Record<string, string>): Record<string, string> {
+  for (const key of Object.keys(headers)) {
+    if (_FORBIDDEN_REQUEST_HEADERS.has(key.toLowerCase())) {
+      delete headers[key]
+    }
+  }
+  return headers
+}
 
 /**
  * 将 IPv4 地址转为 32 位整数。
@@ -209,14 +231,33 @@ export class HttpRequestTool extends BaseTool {
    * 对应 Python _is_private_ip。
    */
   private _isPrivateIp(ipStr: string): boolean {
-    const ipInt = _ipv4ToInt(ipStr)
+    // URL.hostname 对 IPv6 会保留方括号，先归一化
+    const ip = ipStr.trim().replace(/^\[|\]$/g, '')
+    const lower = ip.toLowerCase()
+
+    // IPv4-mapped IPv6（::ffff:10.0.0.1 / ::10.0.0.1）：还原内嵌 IPv4 后再判定
+    const embeddedIpv4 = /^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)
+    if (embeddedIpv4) return this._isIpv4Private(embeddedIpv4[1])
+
+    // IPv6 保留段：loopback / 未指定 / ULA / link-local / 6to4
+    if (ip === '::1' || ip === '::') return true
+    if (
+      lower.startsWith('fc') || lower.startsWith('fd') ||
+      lower.startsWith('fe80') || lower.startsWith('2002:')
+    ) {
+      return true
+    }
+    return this._isIpv4Private(ip)
+  }
+
+  /**
+   * 判定 IPv4 是否落在私有/保留网段。
+   */
+  private _isIpv4Private(ip: string): boolean {
+    const ipInt = _ipv4ToInt(ip)
     if (ipInt === null) return false
     for (const cidr of _PRIVATE_CIDRS) {
       if (_ipInCidr(ipInt, cidr)) return true
-    }
-    // IPv6 loopback / ULA / link-local 简化检测
-    if (ipStr === '::1' || ipStr.startsWith('fc') || ipStr.startsWith('fd') || ipStr.startsWith('fe80')) {
-      return true
     }
     return false
   }
@@ -238,55 +279,209 @@ export class HttpRequestTool extends BaseTool {
    * 校验 URL 安全性。
    * 对应 Python _validate_url。
    *
-   * @returns [isValid, errorMessage]
+   * 修复（DNS Rebinding / TOCTOU）：校验通过的同时返回「已校验的 IP」，
+   * 调用方必须用该 IP 发起连接（见 _requestPinned），避免校验与连接之间
+   * 二次 DNS 解析导致内网绕过。
+   *
+   * @returns [isValid, errorMessage, pinnedIp]
    */
-  private async _validateUrl(url: string): Promise<[boolean, string]> {
+  private async _validateUrl(url: string): Promise<[boolean, string, string | null]> {
     if (!url || typeof url !== 'string') {
-      return [false, 'URL is empty']
+      return [false, 'URL is empty', null]
     }
 
     let parsed: URL
     try {
       parsed = new URL(url)
     } catch (e) {
-      return [false, `Invalid URL: ${e}`]
+      return [false, `Invalid URL: ${e}`, null]
     }
 
     // 协议白名单
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return [false, `Protocol not allowed: ${parsed.protocol.replace(':', '')}`]
+      return [false, `Protocol not allowed: ${parsed.protocol.replace(':', '')}`, null]
     }
 
     const hostname = parsed.hostname
     if (!hostname) {
-      return [false, 'URL missing hostname']
+      return [false, 'URL missing hostname', null]
     }
 
     // 域名白名单检查
     if (this._allowedDomains !== null) {
       if (!this._allowedDomains.has(hostname.toLowerCase())) {
-        return [false, `Domain not in whitelist: ${hostname}`]
+        return [false, `Domain not in whitelist: ${hostname}`, null]
       }
     }
 
-    // SSRF 防护：直接 IP 地址检查
-    const ipInt = _ipv4ToInt(hostname)
-    if (ipInt !== null) {
-      // 是 IPv4 地址
-      if (this._isPrivateIp(hostname)) {
-        return [false, `Private IP not allowed: ${hostname}`]
+    // SSRF 防护：直接 IP 地址检查（URL.hostname 对 IPv6 带方括号，需归一化）
+    const bareHost = hostname.replace(/^\[|\]$/g, '')
+    const isIpLiteral = _ipv4ToInt(bareHost) !== null || bareHost.includes(':')
+    if (isIpLiteral) {
+      if (this._isPrivateIp(bareHost)) {
+        return [false, `Private IP not allowed: ${bareHost}`, null]
       }
-    } else {
-      // 不是 IP 地址，是域名；解析后检查所有解析结果
-      const ips = await this._resolveHost(hostname)
-      for (const ipStr of ips) {
-        if (this._isPrivateIp(ipStr)) {
-          return [false, `Host resolves to private IP ${ipStr} (SSRF protection): ${hostname}`]
+      return [true, '', bareHost]
+    }
+
+    // 不是 IP 地址，是域名；解析后检查所有解析结果
+    const ips = await this._resolveHost(bareHost)
+    if (ips.length === 0) {
+      return [false, `Cannot resolve host: ${bareHost}`, null]
+    }
+    for (const ipStr of ips) {
+      if (this._isPrivateIp(ipStr)) {
+        return [false, `Host resolves to private IP ${ipStr} (SSRF protection): ${bareHost}`, null]
+      }
+    }
+
+    return [true, '', ips[0]]
+  }
+
+  /**
+   * 在已校验的 IP 上发起请求（防 DNS Rebinding）。
+   *
+   * 通过 http/https 的 lookup 钩子把连接目标钉死在校验通过的 IP 上，
+   * 同时保留原 hostname 作为 SNI（servername）与 Host 头，保证 TLS 证书校验正常。
+   * 响应体采用流式读取并在超过 maxBytes 时中断，避免整体缓冲导致的内存 DoS。
+   */
+  private _requestPinned(
+    target: URL,
+    pinnedIp: string | null,
+    method: string,
+    headers: Record<string, string>,
+    body: string,
+    timeoutMs: number,
+    maxBytes: number,
+  ): Promise<{
+    statusCode: number
+    headers: Record<string, string>
+    body: Uint8Array
+    truncated: boolean
+  }> {
+    const isHttps = target.protocol === 'https:'
+    const transport: any = isHttps ? https : http
+    const hostname = target.hostname.replace(/^\[|\]$/g, '')
+    const port = target.port ? Number(target.port) : (isHttps ? 443 : 80)
+
+    // 始终以原始 hostname 作为 Host / SNI，避免 IP 直连导致证书校验失败
+    const reqHeaders: Record<string, string> = { ...headers, Host: target.host }
+    if (body) {
+      reqHeaders['Content-Length'] = String(new TextEncoder().encode(body).length)
+    }
+
+    const options: Record<string, any> = {
+      method,
+      host: pinnedIp ?? hostname,
+      port,
+      path: `${target.pathname}${target.search}`,
+      headers: reqHeaders,
+    }
+    if (isHttps) {
+      options.servername = hostname
+    }
+    if (pinnedIp) {
+      const family = pinnedIp.includes(':') ? 6 : 4
+      options.lookup = (_host: string, _opts: unknown, cb: (err: Error | null, ip: string, family: number) => void) => {
+        cb(null, pinnedIp, family)
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let settled = false
+
+      const timeoutError = () => {
+        const err: any = new Error(`Request timeout after ${timeoutMs}ms`)
+        err.name = 'AbortError'
+        return err
+      }
+      function fail(e: any) {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
+        try {
+          req.destroy()
+        } catch {
+          // 销毁失败可忽略
         }
+        reject(e)
       }
-    }
 
-    return [true, '']
+      function collectHeaders(res: any): Record<string, string> {
+        const out: Record<string, string> = {}
+        for (const [key, value] of Object.entries(res.headers ?? {})) {
+          out[key] = Array.isArray(value) ? value.join(', ') : String(value)
+        }
+        return out
+      }
+
+      const req: any = transport.request(options, (res: any) => {
+        const chunks: Uint8Array[] = []
+        let received = 0
+        let truncated = false
+        let finished = false
+
+        const done = () => {
+          if (finished || settled) return
+          finished = true
+          settled = true
+          if (timer) clearTimeout(timer)
+          const total = chunks.reduce((n, c) => n + c.length, 0)
+          const merged = new Uint8Array(total)
+          let offset = 0
+          for (const chunk of chunks) {
+            merged.set(chunk, offset)
+            offset += chunk.length
+          }
+          resolve({
+            statusCode: Number(res.statusCode ?? 0),
+            headers: collectHeaders(res),
+            body: merged,
+            truncated,
+          })
+        }
+
+        res.on('data', (chunk: Uint8Array) => {
+          if (truncated || finished) return
+          const remaining = maxBytes - received
+          if (chunk.length > remaining) {
+            chunks.push(chunk.subarray(0, Math.max(remaining, 0)))
+            received = maxBytes
+            truncated = true
+            // 已达上限：中断连接，避免继续下载完整响应体
+            try {
+              res.destroy()
+            } catch {
+              // 忽略
+            }
+            done()
+            return
+          }
+          chunks.push(chunk)
+          received += chunk.length
+        })
+        res.on('end', () => done())
+        res.on('error', (e: any) => fail(e))
+        // socket 不活跃超时：覆盖响应体读取阶段（原实现超时在响应头后即被清除）
+        res.setTimeout(timeoutMs, () => {
+          if (finished || settled) return
+          try {
+            res.destroy()
+          } catch {
+            // 忽略
+          }
+          fail(timeoutError())
+        })
+      })
+
+      timer = setTimeout(() => fail(timeoutError()), timeoutMs)
+      req.on('error', (e: any) => fail(e))
+      req.setTimeout(timeoutMs, () => fail(timeoutError()))
+
+      if (body) req.write(body)
+      req.end()
+    })
   }
 
   async invoke(
@@ -307,8 +502,8 @@ export class HttpRequestTool extends BaseTool {
       }
     }
 
-    // 2. URL 安全校验
-    const [isValid, errorMsg] = await this._validateUrl(url)
+    // 2. URL 安全校验（返回已校验 IP，供后续钉死连接目标）
+    const [isValid, errorMsg, pinnedIp] = await this._validateUrl(url)
     if (!isValid) {
       logger.warning('HttpRequest rejected: %s', errorMsg)
       return {
@@ -318,56 +513,40 @@ export class HttpRequestTool extends BaseTool {
       }
     }
 
-    // 3. 发起请求（使用 fetch API，禁用重定向防止 SSRF 重定向绕过）
+    // 3. 发起请求（IP 固定 + 不跟随重定向 + 流式限长读取）
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), this._timeout * 1000)
-
       // 对应文档 §2.4 建议2：W3C TraceContext 注入
       // 将当前 OTel span 的 traceparent + 业务层 trace_id header 注入到请求中，
       // 实现跨服务分布式追踪（tracing 未启用时 inject_trace_context 为 no-op）
       const finalHeaders: Record<string, string> =
         typeof headers === 'object' && headers !== null
-          ? { ...headers }
+          ? _stripForbiddenHeaders({ ...headers })
           : {}
       inject_trace_context(finalHeaders)
 
-      const fetchOptions: RequestInit = {
+      const sendBody = ['POST', 'PUT', 'PATCH'].includes(method) && body ? body : ''
+
+      const response = await this._requestPinned(
+        new URL(url),
+        pinnedIp,
         method,
-        headers: finalHeaders,
-        redirect: 'manual',  // 禁用重定向
-        signal: controller.signal,
-      }
+        finalHeaders,
+        sendBody,
+        this._timeout * 1000,
+        this._maxResponseBytes,
+      )
 
-      if (['POST', 'PUT', 'PATCH'].includes(method) && body) {
-        fetchOptions.body = body
-      }
-
-      const response = await fetch(url, fetchOptions)
-      clearTimeout(timeoutId)
-
-      // 读取响应（限制大小）
-      const arrayBuffer = await response.arrayBuffer()
-      const contentBytes = new Uint8Array(arrayBuffer)
-      const truncated = contentBytes.length > this._maxResponseBytes
-      const sliced = contentBytes.slice(0, this._maxResponseBytes)
-      const text = new TextDecoder('utf-8', { fatal: false }).decode(sliced)
-
-      // 收集响应头
-      const responseHeaders: Record<string, string> = {}
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value
-      })
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(response.body)
 
       return {
         status: 'success',
         error_code: '',
         data: {
-          status_code: response.status,
-          headers: responseHeaders,
+          status_code: response.statusCode,
+          headers: response.headers,
           content: text,
-          content_length: sliced.length,
-          truncated,
+          content_length: response.body.length,
+          truncated: response.truncated,
         },
       }
     } catch (e: any) {

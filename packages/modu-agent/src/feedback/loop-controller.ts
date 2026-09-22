@@ -7,6 +7,14 @@ import { AccuracyMetrics } from './metrics/accuracy.js'
 import { QualityMonitor } from './quality-monitor.js'
 
 /**
+ * 累积指标最多保留的样本数（定长环形缓冲）。
+ *
+ * 决策（shouldEvolve）只使用最近 minSampleSize 条，保留上限远大于该值即可，
+ * 同时避免长生命周期单例的样本数组无界增长。
+ */
+const _MAX_CUMULATIVE_SAMPLES = 200
+
+/**
  * 反馈循环控制器：评估响应质量，决定是否触发进化。
  *
  * 评估维度：
@@ -89,7 +97,13 @@ export class FeedbackLoop extends BaseFeedbackLoop {
     return evaluation
   }
 
-  /** 累积评估样本用于统计。 */
+  /**
+   * 累积评估样本用于统计。
+   *
+   * 修复（无界增长）：FeedbackLoop 是长生命周期单例，原实现每次评估都无上限 push，
+   * 既缓慢泄漏内存，也让 getCumulativeMetrics 的平均值被远古样本稀释
+   * （决策实际只用最近 minSampleSize 条）。改为定长环形缓冲。
+   */
   private _accumulateSample(evaluation: Record<string, any>): void {
     this._sampleCount += 1
 
@@ -98,7 +112,11 @@ export class FeedbackLoop extends BaseFeedbackLoop {
       if (!(key in this._cumulativeMetrics)) {
         this._cumulativeMetrics[key] = []
       }
-      this._cumulativeMetrics[key].push(evaluation[key] ?? 0.0)
+      const bucket = this._cumulativeMetrics[key]
+      bucket.push(evaluation[key] ?? 0.0)
+      if (bucket.length > _MAX_CUMULATIVE_SAMPLES) {
+        bucket.splice(0, bucket.length - _MAX_CUMULATIVE_SAMPLES)
+      }
     }
   }
 

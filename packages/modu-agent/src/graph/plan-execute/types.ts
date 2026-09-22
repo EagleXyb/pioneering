@@ -74,7 +74,9 @@ export const PLAN_STEP_VERIFICATION_HINT_MAX_CHARS = 300
 
 export const StepRetryPolicySchema = z.object({
   max_attempts: z.number().int().min(0).max(5),
-  base_delay: z.number().positive().optional(),
+  // 修复（请求级挂死）：base_delay 由 LLM 输出，原无上限约束，
+  // 指数退避 base_delay * 2^n 可让单步等待数十分钟。此处限定 0.1~10 秒。
+  base_delay: z.number().min(0.1).max(10).optional(),
 })
 
 export const PlanStepSchema = z.object({

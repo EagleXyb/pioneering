@@ -25,7 +25,13 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     //     graph/subgraph/builder.ts 的 _SYSTEM_PROMPT_TEMPLATES 承载，
     //     无任何代码通过 RuntimeConfig.get('llm.prompt_template') 读取，
     //     故在 P0 清理中移除（见文档 4.4）。
-    tool_call_pattern: /```tool_call\s*\n(.*?)\n```/,
+    // 注：原 `tool_call_pattern` 为声明冗余（全仓库零消费），且其为 RegExp 对象，
+    //     一旦被消费，RuntimeConfig.get() 的对象浅拷贝会把它展开为普通对象导致
+    //     .test() 崩溃。故在本次清理中移除（工具调用解析已由 LangChain 侧承担）。
+    // 主 LLM 调用超时（毫秒）。0 = 不限制。
+    // 仅作用于 graph/nodes.ts 中 agentNode / plannerNode 的 invoke 包装，
+    // 防止 provider 挂起时主 ReAct 循环无限阻塞（recursionLimit 无法救单步挂起）。
+    request_timeout_ms: 0,
     max_reasoning_iterations: 3,
     max_format_retries: 2,
     retry: {
@@ -103,8 +109,19 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     continue_on_failure: false,
     compact_completed_steps: false,
     step_summary_max_chars: 500,
+    // 补齐此前「已消费未声明」的键（否则 YAML 校验无法覆盖这些键的类型安全）
+    // 消费点：graph/plan-execute/planner.ts（planner_max_tokens）
+    //         graph/plan-execute/dispatcher.ts（step_retry.*）
+    planner_max_tokens: 2000,
+    step_retry: {
+      default_max_attempts: 0,
+      default_base_delay: 1,
+    },
   },
   tools: {
+    // 是否默认注册无风险内置工具（DateTime/Search/Calculator）
+    // 消费点：graph/factory.ts create_agent()
+    register_defaults: true,
     // 注：原 `default_timeout_ms: 1800000` 为声明冗余，无任何代码通过
     //     RuntimeConfig.get('tools.default_timeout_ms') 读取（工具超时由
     //     tools 包装层各自管理），故在 P0 清理中移除（见文档 4.4）。

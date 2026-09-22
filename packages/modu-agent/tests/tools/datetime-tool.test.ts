@@ -15,6 +15,26 @@ describe('DateTimeTool', () => {
     expect(r.data.unix_timestamp).toBeTypeOf('number')
   })
 
+  it('unix_timestamp 是真实 epoch 秒（不受宿主机时区影响）', () => {
+    const before = Math.floor(Date.now() / 1000)
+    const r = tool.invoke({ op: 'now', timezone: 'UTC' }, {}) as any
+    const after = Math.floor(Date.now() / 1000)
+    // 回归：原实现会叠加宿主机 getTimezoneOffset()，东八区会偏差 8 小时
+    expect(r.data.unix_timestamp).toBeGreaterThanOrEqual(before - 5)
+    expect(r.data.unix_timestamp).toBeLessThanOrEqual(after + 5)
+  })
+
+  it('iso / datetime 反映目标时区挂钟时间', () => {
+    const r = tool.invoke({ op: 'now', timezone: 'CST' }, {}) as any
+    expect(r.status).toBe('success')
+    // CST 在时区表中为 +8：挂钟小时应等于 UTC 小时 + 8（模 24）
+    const d = new Date()
+    const expectedHour = (d.getUTCHours() + 8) % 24
+    const actualHour = Number(String(r.data.iso).slice(11, 13))
+    expect(actualHour).toBe(expectedHour)
+    expect(String(r.data.datetime)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+  })
+
   it('errors on unknown timezone', () => {
     const r = tool.invoke({ op: 'now', timezone: 'ZZZ' }, {}) as any
     expect(r.status).toBe('error')

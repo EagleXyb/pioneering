@@ -35,6 +35,70 @@ function _namespaceToStr(namespace: string[]): string {
 /** SearchItem：Item + score（LangGraph 内部 SearchItem 的等价类型）。 */
 type SearchItem = Item & { score?: number }
 
+/** 批量操作执行所需的 IO 能力（由具体 Store 实现注入）。 */
+interface BatchStoreIO {
+  put: (namespace: string[], key: string, value: Record<string, any>) => Promise<void>
+  del: (namespace: string[], key: string) => Promise<void>
+  search: (namespacePrefix: string[], op: any) => Promise<SearchItem[]>
+  get: (namespace: string[], key: string) => Promise<any>
+}
+
+/** 操作判别字段的可能取值（不同 langgraph 版本可能提供 type 字段）。 */
+const _DELETE_OP_TYPES = new Set(['delete', 'delete_operation'])
+const _GET_OP_TYPES = new Set(['get', 'get_operation'])
+
+/**
+ * 通用批量操作执行器（ChromaStore / InMemoryStoreAdapter 共用）。
+ *
+ * 修复（Get 被误判为 Delete）：原实现按 `value != null → put / key != null → delete`
+ * 的顺序判定，而 LangGraph 的 GetOperation 同样不含 value 且带 key，
+ * 因此批量读会被当作删除执行（静默数据丢失），末尾的 get 分支永不可达。
+ *
+ * 现策略：按 `value` 判 Put、`namespacePrefix` 判 Search；对 `{namespace, key}`
+ * 这类 Get/Delete 结构相同的 op，优先使用 op.type 判别字段；缺失判别字段时
+ * 保守按 Get 处理——宁可不删，绝不误删。
+ */
+async function _runBatchOps<Op extends Operation[]>(
+  operations: Op,
+  io: BatchStoreIO,
+  tag: string,
+): Promise<OperationResults<Op>> {
+  const results: any[] = []
+  for (const op of operations as any[]) {
+    try {
+      if ('value' in op && op.value != null) {
+        // PutOperation
+        await io.put(op.namespace, op.key, op.value)
+        results.push(null)
+      } else if (op.namespacePrefix != null) {
+        // SearchOperation / ListNamespacesOperation
+        results.push(await io.search(op.namespacePrefix, op))
+      } else if (op.key != null) {
+        const opType = typeof op.type === 'string' ? op.type.toLowerCase() : ''
+        if (_DELETE_OP_TYPES.has(opType)) {
+          await io.del(op.namespace, op.key)
+          results.push(null)
+        } else {
+          if (opType && !_GET_OP_TYPES.has(opType)) {
+            logger.debug(
+              '[%s] Unknown operation type "%s", treating as Get to avoid data loss',
+              tag,
+              opType,
+            )
+          }
+          results.push(await io.get(op.namespace, op.key))
+        }
+      } else {
+        results.push(null)
+      }
+    } catch (e: any) {
+      logger.error('%s.batch op error: %s', tag, String(e))
+      results.push(null)
+    }
+  }
+  return results as OperationResults<Op>
+}
+
 /**
  * 将 ChromaLongTermMemory 包装为 LangGraph BaseStore。
  *
@@ -219,34 +283,18 @@ export class ChromaStore extends BaseStore {
     }
   }
 
-  /** 批量操作（简化实现：逐个执行）。 */
+  /** 批量操作（简化实现：逐个执行，复用 _runBatchOps 统一判别）。 */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    const results: any[] = []
-    for (const op of operations as any[]) {
-      try {
-        if (op.value != null) {
-          await this.put(op.namespace, op.key, op.value)
-          results.push(null)
-        } else if (op.key != null) {
-          await this.delete(op.namespace, op.key)
-          results.push(null)
-        } else if (op.namespacePrefix != null) {
-          // SearchOperation
-          const searchResult = await this.search(op.namespacePrefix, op)
-          results.push(searchResult)
-        } else if (op.namespace != null && op.key != null) {
-          // GetOperation
-          const item = await this.get(op.namespace, op.key)
-          results.push(item)
-        } else {
-          results.push(null)
-        }
-      } catch (e: any) {
-        logger.error('ChromaStore.batch op error: %s', String(e))
-        results.push(null)
-      }
-    }
-    return results as OperationResults<Op>
+    return _runBatchOps<Op>(
+      operations,
+      {
+        put: (ns, key, value) => this.put(ns, key, value),
+        del: (ns, key) => this.delete(ns, key),
+        search: (prefix, op) => this.search(prefix, op),
+        get: (ns, key) => this.get(ns, key),
+      },
+      'ChromaStore',
+    )
   }
 
   /** 列出命名空间（简化实现）。 */
@@ -337,30 +385,16 @@ export class InMemoryStoreAdapter extends BaseStore {
   }
 
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    const results: any[] = []
-    for (const op of operations as any[]) {
-      try {
-        if (op.value != null) {
-          await this.put(op.namespace, op.key, op.value)
-          results.push(null)
-        } else if (op.key != null) {
-          await this.delete(op.namespace, op.key)
-          results.push(null)
-        } else if (op.namespacePrefix != null) {
-          const searchResult = await this.search(op.namespacePrefix, op)
-          results.push(searchResult)
-        } else if (op.namespace != null && op.key != null) {
-          const item = await this.get(op.namespace, op.key)
-          results.push(item)
-        } else {
-          results.push(null)
-        }
-      } catch (e: any) {
-        logger.error('InMemoryStoreAdapter.batch op error: %s', String(e))
-        results.push(null)
-      }
-    }
-    return results as OperationResults<Op>
+    return _runBatchOps<Op>(
+      operations,
+      {
+        put: (ns, key, value) => this.put(ns, key, value),
+        del: (ns, key) => this.delete(ns, key),
+        search: (prefix, op) => this.search(prefix, op),
+        get: (ns, key) => this.get(ns, key),
+      },
+      'InMemoryStoreAdapter',
+    )
   }
 
   async listNamespaces(_options?: {
