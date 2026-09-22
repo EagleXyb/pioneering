@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Noto_Sans_SC } from 'next/font/google'
 import { OFFICIAL_SITE } from '@/lib/constants'
+import { MotionProvider } from '@/components/animations/MotionProvider'
 import './globals.css'
 
 const inter = Inter({
@@ -51,7 +52,9 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${inter.variable} ${notoSansSC.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <MotionProvider>{children}</MotionProvider>
+      </body>
     </html>
   )
 }

@@ -1,20 +1,24 @@
+'use client'
+
 // ============================================================
 // Header — 趋势报告（/trends）顶部导航
 //
-// 与 v1 视觉保持一致：72px 高 + 行内锚链导航。
-// 新增「返回官网」入口（带左箭头图标）便于从 trends 回到 /。
+// 基于 SiteHeader 统一实现（桌面锚链 + 移动端汉堡菜单），
+// 品牌区保留「返回官网」入口与 AI TRENDS 标识。
 // ============================================================
 
 import { NAV_ITEMS, OFFICIAL_SITE } from '@/lib/constants'
+import { SiteHeader } from '@/components/SiteHeader'
 
 export function Header() {
   return (
-    <>
-      <header className="w-full flex justify-between items-center h-[72px] px-12 max-sm:px-5 bg-bg">
-        <div className="flex items-center gap-5">
+    <SiteHeader
+      nav={NAV_ITEMS}
+      left={
+        <>
           <a
             href="/"
-            className="text-xs text-text-muted2 no-underline transition-colors duration-200 hover:text-text-primary font-noto flex items-center gap-1"
+            className="text-xs text-text-muted2 no-underline transition-colors duration-200 hover:text-text-primary flex items-center gap-1 shrink-0"
           >
             <span aria-hidden>←</span>
             <span>返回 {OFFICIAL_SITE.brand}</span>
@@ -23,20 +27,8 @@ export function Header() {
           <div className="text-xl font-bold text-text-primary tracking-[3px]">
             AI TRENDS
           </div>
-        </div>
-        <nav className="flex items-center gap-8 max-sm:gap-4">
-          {NAV_ITEMS.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="text-sm text-text-muted no-underline transition-colors duration-200 hover:text-text-primary"
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
-      </header>
-      <div className="w-full h-px bg-divider" />
-    </>
+        </>
+      }
+    />
   )
 }

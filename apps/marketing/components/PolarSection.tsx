@@ -1,6 +1,13 @@
 'use client'
 
+// ============================================================
+// PolarSection — 中美欧三极格局（3 列卡片）
+//
+// 网格：lg 3 列，md 2 列，< md 1 列；卡片统一走全局 .card 类。
+// ============================================================
+
 import { motion } from 'framer-motion'
+import { fadeUp } from '@/components/animations/fade-up'
 import { polars } from '@/data/polar'
 
 export function PolarSection() {
@@ -9,24 +16,21 @@ export function PolarSection() {
       <div className="section-title">中美欧三极格局</div>
       <p className="section-subtitle">全球 AI 投资分布与竞争态势</p>
 
-      <div className="w-full flex gap-5 max-lg:flex-wrap">
+      <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {polars.map((p, i) => (
           <motion.div
             key={p.flag}
-            className="flex-1 min-w-[260px] flex flex-col gap-4 p-8 rounded-2xl bg-card"
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-50px' }}
-            transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94], delay: i * 0.1 }}
+            className="card flex flex-col gap-4 p-8"
+            {...fadeUp(i * 0.1)}
           >
             <div className="text-lg font-bold text-text-primary">{p.flag}</div>
             <div className="text-5xl font-bold text-accent leading-none">
               {p.pct}
             </div>
-            <div className="text-[13px] text-text-muted font-noto">
+            <div className="text-[13px] text-text-muted">
               {p.label}
             </div>
-            <div className="text-xs text-text-muted2 leading-[22px] font-noto">
+            <div className="text-xs text-text-muted2 leading-[22px]">
               {p.data}
             </div>
           </motion.div>

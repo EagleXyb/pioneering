@@ -46,3 +46,6 @@ export const rightTrends: Trend[] = [
     badge: '安全事故 +55% · Stanford HAI',
   },
 ]
+
+/** 双列合并后的完整趋势列表（按序号排列，供 grid 布局直接消费） */
+export const trends: Trend[] = [...leftTrends, ...rightTrends]

@@ -26,8 +26,8 @@ export default function NotFound() {
       <section className="section">
         <div className="flex flex-col items-center gap-4 py-16">
           <div className="text-6xl font-bold text-text-primary">404</div>
-          <p className="text-base text-text-muted font-noto">页面未找到</p>
-          <p className="max-w-[520px] text-sm text-text-muted2 text-center leading-6 font-noto">
+          <p className="text-base text-text-muted">页面未找到</p>
+          <p className="max-w-[520px] text-sm text-text-muted2 text-center leading-6">
             你访问的页面不存在或已被移动。可以从下方入口继续浏览官网内容。
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 mt-4">

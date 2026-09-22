@@ -3,8 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* 页面级水平内边距：窄屏自动收敛到 20px，宽屏上限 120px */
+    --page-x: clamp(20px, 8vw, 120px);
+  }
+
   html {
-    @apply bg-bg text-text-primary font-inter antialiased;
+    @apply bg-bg text-text-primary font-sans antialiased;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -12,6 +17,12 @@
 
   body {
     @apply min-h-screen;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
 }
 
@@ -21,28 +32,57 @@
   }
 
   .section-subtitle {
-    @apply text-base text-text-muted font-noto text-center;
+    @apply text-base text-text-muted text-center;
   }
 
   .page {
     @apply max-w-page mx-auto flex flex-col items-center;
   }
 
+  /* 页面级区块：统一水平内边距（Hero / Footer / section 均使用 --page-x） */
   .section {
     @apply w-full flex flex-col items-center gap-12;
-    padding: 80px 120px;
+    padding: 80px var(--page-x);
   }
 
-  @media (max-width: 1024px) {
-    .section {
-      padding: 60px 40px;
-    }
+  /* 统一卡片：所有卡片网格共用，附带 hover 反馈 */
+  .card {
+    @apply rounded-2xl bg-card border border-card-border;
+    transition:
+      border-color 0.2s ease,
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
   }
 
-  @media (max-width: 640px) {
-    .section {
-      padding: 40px 20px;
-      gap: 32px;
-    }
+  .card:hover {
+    border-color: rgba(94, 106, 210, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Hero 顶部低饱和光斑背景，提升首屏品质感 */
+  .hero-glow {
+    position: relative;
+  }
+
+  .hero-glow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(600px 280px at 50% 0%, rgba(94, 106, 210, 0.14), transparent 70%),
+      radial-gradient(400px 200px at 80% 20%, rgba(94, 106, 210, 0.06), transparent 70%);
+  }
+
+  .hero-glow > * {
+    position: relative;
+  }
+}
+
+@media (max-width: 640px) {
+  .section {
+    padding: 40px var(--page-x);
+    gap: 32px;
   }
 }

@@ -15,7 +15,6 @@ export default {
         accent: {
           DEFAULT: '#5E6AD2',
           soft: 'rgba(94,106,210,0.13)',
-          ight: 'rgba(94,106,210,0.10)',
         },
         green: {
           DEFAULT: '#22C55E',
@@ -37,8 +36,18 @@ export default {
         'progress-bg': '#232328',
       },
       fontFamily: {
-        inter: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
-        noto: ['var(--font-noto-sans-sc)', "'PingFang SC'", "'Microsoft YaHei'", 'sans-serif'],
+        sans: [
+          'var(--font-inter)',
+          'var(--font-noto-sans-sc)',
+          'system-ui',
+          '-apple-system',
+          "'PingFang SC'",
+          "'Microsoft YaHei'",
+          'sans-serif',
+        ],
+      },
+      boxShadow: {
+        glow: '0 0 40px rgba(94,106,210,0.25)',
       },
       maxWidth: {
         page: '1440px',
