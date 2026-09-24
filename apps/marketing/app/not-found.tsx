@@ -1,51 +1,44 @@
 // ============================================================
-// not-found — 404 兜底页
-//
-// 与营销页同样的 section/page 排版，便于从任意路径回到官网首页或趋势报告。
+// not-found — 404 兜底页（认知品牌站浅色视觉体系）
+// 独立引入 brand.css，保证直达不存在路径时样式也完整。
 // ============================================================
 
-import { OFFICIAL_SITE, SITE } from '@/lib/constants'
+import Link from 'next/link'
+import './(site)/brand.css'
+import { Logo } from '@/components/site/ui/Logo'
 
 export const metadata = {
-  title: '页面未找到'
+  title: '页面未找到',
 }
 
 export default function NotFound() {
   return (
-    <div className="page">
-      <header className="w-full flex justify-between items-center h-[72px] px-12 max-sm:px-5 bg-bg">
-        <a
-          href="/"
-          className="text-xl font-bold text-text-primary tracking-[3px] no-underline"
-        >
-          {OFFICIAL_SITE.brand}
-        </a>
-      </header>
-      <div className="w-full h-px bg-divider" />
-
-      <section className="section">
-        <div className="flex flex-col items-center gap-4 py-16">
-          <div className="text-6xl font-bold text-text-primary">404</div>
-          <p className="text-base text-text-muted">页面未找到</p>
-          <p className="max-w-[520px] text-sm text-text-muted2 text-center leading-6">
-            你访问的页面不存在或已被移动。可以从下方入口继续浏览官网内容。
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
-            <a
-              href="/"
-              className="inline-flex items-center px-5 py-2.5 rounded-[6px] bg-accent text-white text-sm font-medium no-underline transition-colors duration-200 hover:opacity-90"
-            >
-              返回官网首页
-            </a>
-            <a
-              href={`${SITE.url}/trends`}
-              className="inline-flex items-center px-5 py-2.5 rounded-[6px] bg-transparent border border-divider text-text-muted text-sm font-medium no-underline transition-colors duration-200 hover:text-text-primary hover:border-text-muted"
-            >
-              查看趋势报告
-            </a>
-          </div>
+    <div className="brand-site" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <header className="nav">
+        <div className="wrap nav-in">
+          <Logo />
         </div>
-      </section>
+      </header>
+      <main className="wrap" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '96px 32px' }}>
+        <div className="h1" style={{ fontSize: 72 }}>
+          404
+        </div>
+        <h1 className="h3 mt-3">页面未找到</h1>
+        <p className="body mt-3" style={{ maxWidth: 480 }}>
+          你访问的页面不存在或已被移动。可以从下方入口继续浏览。
+        </p>
+        <div className="btn-row mt-6" style={{ justifyContent: 'center' }}>
+          <Link href="/" className="btn btn-primary">
+            返回首页
+          </Link>
+          <Link href="/agent" className="btn btn-ghost">
+            体验认知陪练
+          </Link>
+          <Link href="/trends" className="btn btn-ghost">
+            查看趋势报告
+          </Link>
+        </div>
+      </main>
     </div>
   )
 }

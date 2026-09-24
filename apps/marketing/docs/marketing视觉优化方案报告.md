@@ -164,3 +164,157 @@
 ## 四、总体评价
 
 项目工程底子好：token 化意识、数据/视图分离、Server/Client Component 边界、SEO 配置都在水准之上。当前视觉问题主要不是"设计能力"问题，而是**规范执行不彻底**——token 定义了却被魔法值绕过、动画抽象写了却没接入、两代页面组件并存导致细节漂移。上述方案中 8 项属于"低复杂度收敛"即可显著提升品质感，无需推翻重来。
+
+---
+
+## 五、整体架构逻辑分析（2026-09-24 追加）
+
+> 分析方式：全量源码阅读 + 实际运行验证（dev 服务器实测）
+> 说明：本节为架构全景（前端技术栈、后端服务、数据层、API、组件交互、数据流转、部署架构），与第二~四节的视觉专项互补。Mermaid 图需在支持 Mermaid 的查看器中渲染（GitHub / VS Code 插件 / Typora 等）。
+
+### 5.0 前置说明：本次分析确认的历史问题修复状态
+
+对比本报告 09-22 版本，以下视觉/工程问题已在当前代码中落地修复：
+
+| 报告问题 | 当前状态 |
+|---|---|
+| P0-1 卡片样式不一致 | 已修：`globals.css` 出现统一 `.card` 类（`rounded-2xl bg-card border` + hover 反馈） |
+| P0-2 移动端导航溢出 | 已修：`SiteHeader` 增加汉堡菜单（`< md` 折叠，`aria-expanded` 无障碍标注） |
+| P0-3 魔法值内边距 | 已修：`--page-x: clamp(20px, 8vw, 120px)` 变量收敛页面水平内边距 |
+| P2-9 动效抽象未接入 | 部分修复：`fadeUp()` 工厂已被 OfficialHero / PillarsSection / DataSection 等使用；`StaggerContainer` 仍为零引用死代码 |
+| P2-12 Header/Footer 双套重复 | 已修：`SiteHeader` 统一实现，`Header`/`OfficialHeader` 变为注入 `left`/`nav` 的薄封装 |
+| 隐性依赖 lucide-react | 已修：已写入 package.json dependencies |
+
+### 5.1 系统分层架构与模块职责
+
+```mermaid
+flowchart TB
+    U(["用户浏览器"])
+
+    subgraph DEPLOY["部署层 · Ubuntu Server 24.04（run.sh + pm2）"]
+        PX["反向代理 *<br/>(由域名常量推断)"]
+        NX["Next.js Node 服务<br/>next start :9001"]
+        ST["静态资源<br/>/_next/static"]
+    end
+
+    subgraph APP["应用层 · @pioneering/marketing（Next.js 14 App Router，单包单进程）"]
+        A["app/ 路由层<br/>Server 页面壳<br/>robots · sitemap · 404"]
+        B["components/ 组件层<br/>16 个 client 动效岛<br/>SiteHeader 统一导航"]
+        C["data/ · lib/ 数据层<br/>8 个静态数据模块<br/>constants 单一来源"]
+        A --> B
+        B --> C
+    end
+
+    U --> PX
+    PX --> NX
+    NX --> APP
+    NX -. 同进程托管 .-> ST
+
+    style NX fill:#1a3d2b,stroke:#22C55E,color:#F8FAFC
+    style U fill:#12343d,stroke:#27D2BF,color:#F8FAFC
+```
+
+**模块职责一览**：
+
+| 模块 | 职责 | 关键实现 |
+|---|---|---|
+| `app/` | 路由与全局壳 | `layout.tsx`（字体 + MotionProvider + 全局 metadata）、`page.tsx`（官网）、`trends/page.tsx`（子站）、`not-found.tsx`、`robots.ts`/`sitemap.ts`（Metadata Routes，构建期生成） |
+| `components/` | 展示与动效 | 页面壳全为 Server Component；16 个 section 标 `'use client'` 承载 framer-motion；`SiteHeader` 注入式统一导航 |
+| `components/animations/` | 动效基建 | `fadeUp(delay)` props 工厂统一入场四件套；`MotionProvider` 用 `MotionConfig reducedMotion="user"` 全局无障碍降级 |
+| `data/` | 内容源 | 8 个静态 TS 模块（约 12.8KB），构建期 import 内联 |
+| `lib/constants.ts` | 站点常量单一来源 | `SITE`（trends）/ `OFFICIAL_SITE`（官网）双集合，保留 v2 重构演进痕迹 |
+
+**核心技术选型依据**：
+
+| 层 | 选型 | 依据 |
+|---|---|---|
+| 框架 | Next.js 14.2.35 + React 18.3（App Router） | 营销站 SEO 硬需求：metadataBase / OG / canonical / robots / sitemap 全套 Metadata API；RSC 让文本内容不进 JS bundle |
+| 样式 | Tailwind 3.4 + globals.css 双 token 层 | tailwind.config.ts 语义色板 + `@layer components` 布局类（`.page/.section/.card/.hero-glow`），零运行时 CSS |
+| 动效 | framer-motion 11 | `whileInView` 滚动入场 + reducedMotion 全局降级 |
+| 字体 | next/font/google（Inter + Noto Sans SC） | 构建期自托管、`display: swap`、零 CLS |
+| 数据 | 静态 TS 模块（数据即代码） | 内容变更频率低，免 CMS/DB 运维 |
+| 进程 | pm2 | 单机常驻 + `pm2 save` 开机自启，运维成本最低 |
+
+### 5.2 后端服务架构 / 数据库设计 / API 接口
+
+结论先行：**本项目没有自建后端服务、没有数据库、没有业务 API**。
+
+- **后端**：Node 进程仅承担 SSR/静态资源托管 + Metadata Routes 生成，全站 0 处 `fetch` 调用、无 API Route、无 middleware。
+- **数据库**：不存在。数据层即 `data/*.ts`，随构建产物内联，"数据变更 = 重新构建"。
+- **API 面**：对外仅有 4 类——页面路由 `/`、`/trends`、`sitemap.xml` / `robots.txt`（构建期生成）、404 兜底。无鉴权/限流设计需求，攻击面收敛为静态文件服务。
+
+### 5.3 渲染管线与数据流转路径
+
+```mermaid
+flowchart LR
+    subgraph BUILD["构建期 · next build（数据绑定在此完成）"]
+        D["data/*.ts<br/>8 个静态模块"] --> R["RSC 预渲染<br/>数据内联 payload"] --> O["静态产物<br/>HTML + Flight + chunks"]
+    end
+
+    subgraph REQ["请求期 · Node 服务（无 API 路由）"]
+        G["浏览器<br/>GET 页面路由"] --> H["水合<br/>下载 JS chunks"] --> I["client 岛激活<br/>framer-motion"] --> M["入场动效<br/>whileInView"]
+    end
+
+    O --> G
+
+    style R fill:#1a3d2b,stroke:#22C55E,color:#F8FAFC
+    style I fill:#1a3d2b,stroke:#22C55E,color:#F8FAFC
+```
+
+关键细节：
+
+1. **Server/Client 边界纪律**：两个页面壳（`app/page.tsx`、`app/trends/page.tsx`）无 hooks/事件，全为 Server Component；数据在服务端序列化进 Flight payload，客户端只 hydrate 交互岛。
+2. **请求期零数据请求**：无 fetch / 无 API / 无 DB，页面无任何动态 API 调用 → 生产 `next build` 后可完整静态预渲染（dev 模式观测到的 `Cache-Control: no-store` 为 dev 特征）。
+3. **SEO 数据流**：`lib/constants.ts` → layout/page `metadata` → `robots.ts` / `sitemap.ts` 构建期生成，单一来源无漂移。
+
+### 5.4 部署架构
+
+```mermaid
+flowchart LR
+    B["next build<br/>依赖 + 产物构建"] --> P["pm2 常驻<br/>next start :9001"] --> R["反向代理 *<br/>域名 · TLS 终结"] --> W(["公网域名<br/>主域 / 子域"])
+
+    P -.- S1["pm2 save · 开机自启"]
+    P -.- S2["curl 健康检查"]
+
+    style P fill:#1a3d2b,stroke:#22C55E,color:#F8FAFC
+    style W fill:#12343d,stroke:#27D2BF,color:#F8FAFC
+```
+
+> `*` 反向代理不在仓库内，由 9001 端口与域名常量（`pioneering.ai` / `ai-trends.pioneering.dev`）推断；本地开发为 `npm run dev`，同一 Node 服务、同一端口。
+
+`run.sh` 为幂等脚本：存在 pm2 进程则 `restart`，否则 `start` + `pm2 save` 持久化进程列表，最后 curl 健康检查。生产侧由反代按 Host 分流到 9001。
+
+### 5.5 实际运行验证（2026-09-24，dev 模式）
+
+| 验证项 | 结果 | 说明 |
+|---|---|---|
+| `GET /` | 200，HTML 32.6KB | 含 `__next_f` Flight payload，RSC 渲染生效 |
+| `GET /trends` | 200，HTML 23.5KB | 子站正常 |
+| `GET /sitemap.xml` | 200 | 3 条 URL，lastmod 为生成时间 |
+| `Cache-Control` | `no-store` | dev 特征；生产构建后页面可完整静态化 |
+| 安全头 | `X-Powered-By: Next.js` 泄露 | 见 5.7 优化项 P1 |
+| 冷启动 | Ready in 5.7s | — |
+
+### 5.6 架构优势
+
+1. **零后端依赖**：无 DB、无 API、无第三方运行时调用 → 攻击面极小、无数据泄露路径、可用性只取决于 Node 进程本身。
+2. **RSC 边界纪律清晰**：页面壳全 Server，动效岛 client 化，遵循"server 默认、client 例外"的正确方向。
+3. **设计系统双层收敛**：语义 token（tailwind.config）+ 布局组件类（globals.css `@layer`），新 section 组合 `.card/.section` 即可保持视觉一致。
+4. **SEO 完备度高**：metadataBase + title template + OG/Twitter + canonical + sitemap + robots + 404。
+5. **无障碍细节**：`reducedMotion="user"` 全局降级、汉堡菜单 `aria-expanded`、CSS `prefers-reduced-motion` 双兜底。
+6. **部署幂等**：run.sh 可重复执行，进程列表持久化，服务器重启自动恢复。
+
+### 5.7 瓶颈与可优化点（按优先级）
+
+| 优先级 | 问题 | 可实施优化 |
+|---|---|---|
+| **P0** | 全站 100% 可静态化却用 Node SSR 常驻——进程崩溃即全站下线 | `next.config.js` 加 `output: 'export'`，产物直接交 Nginx/CDN，去掉运行时依赖；代价是放弃未来 API Route 能力（营销站现阶段不需要） |
+| **P1** | 16 个 section 全部 `'use client'`，DataSection/PillarsSection 等纯展示卡也进 JS bundle | 拆为 server 壳 + 仅 motion 子组件 client 化，或入场动效改 CSS `@keyframes` + IntersectionObserver |
+| **P1** | `X-Powered-By` 暴露框架指纹 | `next.config.js` 加 `poweredByHeader: false`（一行） |
+| **P2** | `stagger-container.tsx` 零引用死代码 | 直接删除 |
+| **P2** | sitemap 同时收录 `pioneering.ai/trends` 与 `ai-trends.pioneering.dev/trends`，双域名重复收录风险 | 收敛到单一 canonical 域，或子域做 301 |
+| **P2** | `metadataBase` 用占位域名 `pioneering.ai` | 上线前与真实域名同步，否则 OG/canonical 指向错误地址 |
+| **P3** | 无监控/分析、无 CI、无 lint 配置文件 | 接入轻量分析（如 Plausible）、GitHub Actions 跑 `lint + build` |
+| **P3** | run.sh 健康检查仅重试 1 次；`pm2 start npm` 多一层 npm 包装进程 | 健康检查改重试循环；直接 `pm2 start node_modules/.bin/next` |
+
+**架构侧一句话总结**：工程纪律良好，最大杠杆不在"加东西"，而在**去掉 Node 运行时**（静态导出）与**收敛 client bundle**——可用性与首屏性能双双受益。

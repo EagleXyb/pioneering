@@ -1,12 +1,13 @@
 import { MetadataRoute } from 'next'
-import { OFFICIAL_SITE } from '@/lib/constants'
+import { BRAND_SITE } from '@/data/site/site'
 
 export default function robots(): MetadataRoute.Robots {
+  const base = BRAND_SITE.url.replace(/\/$/, '')
   return {
     rules: {
       userAgent: '*',
-      allow: '/'
+      allow: '/',
     },
-    sitemap: `${OFFICIAL_SITE.url.replace(/\/$/, '')}/sitemap.xml`
+    sitemap: `${base}/sitemap.xml`,
   }
 }
