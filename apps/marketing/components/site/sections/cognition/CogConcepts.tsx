@@ -1,6 +1,7 @@
-import Link from 'next/link'
 import { COG_CONCEPTS } from '@/data/site/cognition'
 import { Reveal } from '@/components/site/ui/Reveal'
+import { Button } from '@/components/site/ui/Button'
+import { Card } from '@/components/site/ui/Card'
 
 // 概念卡片库（6 张卡，每卡内嵌自测问题 + 提问 CTA），白底
 export function CogConcepts() {
@@ -12,7 +13,7 @@ export function CogConcepts() {
         <div className="grid">
           {COG_CONCEPTS.items.map((c) => (
             <Reveal key={c.title} className="col-6 col-4">
-              <div className="card card-hover" style={{ height: '100%' }}>
+              <Card variant="hover" style={{ height: '100%' }}>
                 <div className="h4">{c.title}</div>
                 <p className="body" style={{ fontSize: 15 }}>
                   {c.desc}
@@ -22,11 +23,11 @@ export function CogConcepts() {
                   <div className="q" style={{ fontSize: 14 }}>
                     {c.question}
                   </div>
-                  <Link href="/agent#try" className="btn btn-primary btn-sm">
+                  <Button href="/agent#try" variant="primary" size="sm">
                     就这个概念提问 →
-                  </Link>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             </Reveal>
           ))}
         </div>

@@ -6,6 +6,9 @@
   "author": "pioneering",
   "license": "MIT",
   "type": "module",
+  "overrides": {
+    "node-gyp": "^10.3.1"
+  },
   "scripts": {
     "format": "prettier --write .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

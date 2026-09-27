@@ -8,13 +8,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#0B0B10',
-        card: '#1E1E23',
-        'card-border': 'rgba(30,30,38,0.8)',
-        'card-hover': '#252530',
+        // 中性近黑体系（对齐 Apple 深色页：无蓝紫色偏）
+        bg: '#161617',
+        card: '#1F1F21',
+        'card-border': 'rgba(255,255,255,0.09)',
+        'card-hover': '#2A2A2C',
         accent: {
-          DEFAULT: '#5E6AD2',
-          soft: 'rgba(94,106,210,0.13)',
+          DEFAULT: '#0A84FF',
+          soft: 'rgba(10,132,255,0.14)',
         },
         green: {
           DEFAULT: '#22C55E',
@@ -28,12 +29,12 @@ export default {
           DEFAULT: '#EF4444',
           bg: 'rgba(239,68,68,0.13)',
         },
-        'text-primary': '#F8FAFC',
-        'text-muted': '#94A3B8',
-        'text-muted2': '#64748B',
-        'text-dim': '#475569',
-        divider: '#1E293B',
-        'progress-bg': '#232328',
+        'text-primary': '#F5F5F7',
+        'text-muted': '#98989D',
+        'text-muted2': '#6E6E73',
+        'text-dim': '#48484A',
+        divider: '#2C2C2E',
+        'progress-bg': '#2C2C2E',
       },
       fontFamily: {
         sans: [
@@ -47,7 +48,7 @@ export default {
         ],
       },
       boxShadow: {
-        glow: '0 0 40px rgba(94,106,210,0.25)',
+        glow: '0 0 40px rgba(10,132,255,0.25)',
       },
       maxWidth: {
         page: '1440px',

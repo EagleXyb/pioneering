@@ -1,6 +1,6 @@
-import Link from 'next/link'
 import { CASE_PROOF } from '@/data/site/home'
 import { Reveal } from '@/components/site/ui/Reveal'
+import { Card } from '@/components/site/ui/Card'
 
 // ============================================================
 // CaseProof — 首页案例与数据（琥珀标签 + 三项指标）
@@ -24,17 +24,21 @@ export function CaseProof() {
             ))}
           </div>
         </div>
-        <div className="grid">
+        <div className="grid grid-snap">
           {CASE_PROOF.cards.map((c) => (
             <Reveal key={c.title} className="col-4">
-              <Link href="/cases" className="card card-hover" style={{ display: 'block', height: '100%' }}>
+              <Card
+                variant="hover"
+                href="/cases"
+                style={{ display: 'block', height: '100%' }}
+              >
                 <div className="tag tag-amber mb-3">{c.tag}</div>
                 <div className="h4 mb-2">{c.title}</div>
                 <p className="body" style={{ fontSize: 15 }}>
                   {c.desc}
                 </p>
                 <div className="small mt-3">查看完整复盘 →</div>
-              </Link>
+              </Card>
             </Reveal>
           ))}
         </div>

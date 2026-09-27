@@ -1,5 +1,6 @@
-import Link from 'next/link'
 import { FEATURED_ARTICLE } from '@/data/site/insights'
+import { Button } from '@/components/site/ui/Button'
+import { Card } from '@/components/site/ui/Card'
 
 // ============================================================
 // ArticleDetail — 文章详情（同页 #article）：
@@ -30,9 +31,9 @@ export function ArticleDetail() {
               <div className="inline-agent">
                 <div className="t">↳ 工具化延伸</div>
                 <div className="q">这个检查方法已经在智能体里做成了自动追问。要不要拿你最近的一个决定试一遍？</div>
-                <Link href="/agent#try" className="btn btn-primary btn-sm">
+                <Button href="/agent#try" variant="primary" size="sm">
                   检查我的一个决定 →
-                </Link>
+                </Button>
               </div>
               <h3>三个可识别的信号</h3>
               <p>
@@ -48,12 +49,12 @@ export function ArticleDetail() {
               <div className="inline-agent">
                 <div className="t">↳ 场景入口</div>
                 <div className="q">把这个方法用在你现在正纠结的那件事上。</div>
-                <Link href="/agent#try" className="btn btn-ghost btn-sm">
+                <Button href="/agent#try" variant="ghost" size="sm">
                   用在我的问题上 →
-                </Link>
+                </Button>
               </div>
               <hr className="hr mt-6 mb-6" />
-              <div className="card" style={{ background: 'var(--paper)' }}>
+              <Card style={{ background: 'var(--paper)' }}>
                 <div className="flex items-c gap-3">
                   <div
                     className="avatar"
@@ -70,14 +71,14 @@ export function ArticleDetail() {
                   {a.author.note}
                 </p>
                 <div className="btn-row mt-3">
-                  <a href="#" className="btn btn-ink btn-sm">
+                  <Button href="#" variant="ink" size="sm">
                     订阅 newsletter
-                  </a>
-                  <Link href="/insights" className="btn btn-ghost btn-sm">
+                  </Button>
+                  <Button href="/insights" variant="ghost" size="sm">
                     相关阅读 3 篇
-                  </Link>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             </article>
           </div>
           <div className="col-4">

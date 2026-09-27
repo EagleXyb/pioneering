@@ -7,9 +7,11 @@
 // 滚动加细线；≤1000px 收纳为汉堡键，手风琴面板见 MobileMenu。
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Button } from '@/components/site/ui/Button'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   LayoutGrid,
@@ -58,10 +60,17 @@ const HOVER_CLOSE_DELAY = 140
 export function SiteNav() {
   const pathname = usePathname()
   const rootRef = useRef<HTMLElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [openHref, setOpenHref] = useState<string | null>(null)
+
+  const canHover = () =>
+    typeof window !== 'undefined' &&
+    window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  const closeMobileMenu = useCallback(() => setMenuOpen(false), [])
 
   // 滚动加细线
   useEffect(() => {
@@ -76,14 +85,34 @@ export function SiteNav() {
     setOpenHref(null)
   }, [pathname])
 
-  // Esc 关闭 + 外部点击关闭
+  // 设备旋转 / iPad 分屏进入移动档时，关闭仅桌面端使用的 Mega 面板
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1000px)')
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) setOpenHref(null)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  // Esc 关闭 + 外部点击关闭；Esc 后焦点返回对应触发器
   useEffect(() => {
     if (!openHref) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenHref(null)
+      if (e.key === 'Escape') {
+        const href = openHref
+        setOpenHref(null)
+        requestAnimationFrame(() => triggerRefs.current[href]?.focus())
+      }
     }
     const onDocClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(target) &&
+        panelRef.current &&
+        !panelRef.current.contains(target)
+      ) {
         setOpenHref(null)
       }
     }
@@ -117,12 +146,23 @@ export function SiteNav() {
       ? BRAND_NAV.find((n) => n.kind === 'menu' && n.href === openHref)
       : undefined
 
+  // Portal 容器：.brand-site（在 header 外，脱离 header 的 backdrop root；
+  // 同时保留 .brand-site 样式作用域），兜底 body
+  const portalContainer =
+    typeof document !== 'undefined'
+      ? document.querySelector('.brand-site') ?? document.body
+      : null
+
   return (
     <header
       ref={rootRef}
       className={`nav${scrolled ? ' scrolled' : ''}${openHref ? ' is-open' : ''}`}
-      onMouseEnter={cancelHoverClose}
-      onMouseLeave={scheduleHoverClose}
+      onMouseEnter={() => {
+        if (canHover()) cancelHoverClose()
+      }}
+      onMouseLeave={() => {
+        if (canHover()) scheduleHoverClose()
+      }}
     >
       <div className="wrap nav-in">
         <Logo />
@@ -136,6 +176,8 @@ export function SiteNav() {
                   key={item.href}
                   href={item.href}
                   className={`nav-link${current ? ' active' : ''}`}
+                  aria-current={current ? 'page' : undefined}
+                  onClick={() => setOpenHref(null)}
                 >
                   {item.label}
                 </Link>
@@ -145,6 +187,9 @@ export function SiteNav() {
             return (
               <button
                 key={item.href}
+                ref={(node) => {
+                  triggerRefs.current[item.href] = node
+                }}
                 type="button"
                 className={`nav-trigger${expanded ? ' expanded' : ''}${
                   current ? ' active' : ''
@@ -152,7 +197,10 @@ export function SiteNav() {
                 aria-haspopup="true"
                 aria-expanded={expanded}
                 aria-controls={`mega-${item.href.replace('/', '')}`}
-                onMouseEnter={() => openWithHover(item.href)}
+                aria-current={current ? 'true' : undefined}
+                onMouseEnter={() => {
+                  if (canHover()) openWithHover(item.href)
+                }}
                 onClick={() =>
                   setOpenHref((cur) => (cur === item.href ? null : item.href))
                 }
@@ -169,18 +217,26 @@ export function SiteNav() {
         </nav>
 
         <div className="nav-right">
-          <Link href={BRAND_NAV_ABOUT.href} className="nav-login">
+          <Link
+            href={BRAND_NAV_ABOUT.href}
+            className="nav-login"
+            aria-current={isActive(pathname, BRAND_NAV_ABOUT.href) ? 'page' : undefined}
+          >
             {BRAND_NAV_ABOUT.label}
           </Link>
-          <Link href="/agent#try" className="btn btn-primary btn-sm">
+          <Button href="/agent#try" variant="primary" size="sm">
             免费体验
-          </Link>
+          </Button>
           <button
             type="button"
             className="icon-btn nav-close"
             aria-label="关闭菜单"
             tabIndex={openHref ? 0 : -1}
-            onClick={() => setOpenHref(null)}
+            onClick={() => {
+              const href = openHref
+              setOpenHref(null)
+              if (href) requestAnimationFrame(() => triggerRefs.current[href]?.focus())
+            }}
           >
             <X size={18} strokeWidth={2.2} />
           </button>
@@ -190,66 +246,87 @@ export function SiteNav() {
           type="button"
           className="icon-btn burger"
           aria-label="打开菜单"
-          onClick={() => setMenuOpen(true)}
+          aria-expanded={menuOpen}
+          aria-controls="mobile-site-menu"
+          onClick={(event) => {
+            event.currentTarget.focus()
+            setMenuOpen(true)
+          }}
         >
           <BurgerIcon />
         </button>
       </div>
 
-      {/* Mega dropdown 大面板（全宽，紧贴顶栏） */}
-      <AnimatePresence>
-        {activeItem && activeItem.kind === 'menu' && (
-          <motion.div
-            key={activeItem.href}
-            id={`mega-${activeItem.href.replace('/', '')}`}
-            className="mega"
-            role="region"
-            aria-label={`${activeItem.label}菜单`}
-            onMouseEnter={cancelHoverClose}
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-          >
-            <div className="wrap mega-in">
-              <div className="mega-items">
-                {activeItem.children.map((child) => {
-                  const Icon = ICONS[child.icon]
-                  return (
-                    <Link key={child.href} href={child.href} className="mega-item">
-                      <span className="mega-icon">
-                        <Icon size={20} strokeWidth={1.8} />
-                      </span>
-                      <span className="mega-text">
-                        <strong>{child.title}</strong>
-                        <span>{child.desc}</span>
-                      </span>
-                    </Link>
-                  )
-                })}
-              </div>
+      {/* Mega dropdown 大面板：portal 到 header 外（header 的 backdrop-filter 会形成
+          backdrop root，面板挂在 header 内时自身的 backdrop-filter 无法模糊页面内容） */}
+      {portalContainer &&
+        createPortal(
+          <AnimatePresence>
+            {activeItem && activeItem.kind === 'menu' && (
+              <motion.div
+                key={activeItem.href}
+                ref={panelRef}
+                id={`mega-${activeItem.href.replace('/', '')}`}
+                className="mega"
+                role="region"
+                aria-label={`${activeItem.label}菜单`}
+                onMouseEnter={() => {
+                  if (canHover()) cancelHoverClose()
+                }}
+                onMouseLeave={() => {
+                  if (canHover()) scheduleHoverClose()
+                }}
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+              >
+                <div className="wrap mega-in">
+                  <div className="mega-items">
+                    {activeItem.children.map((child) => {
+                      const Icon = ICONS[child.icon]
+                      return (
+                        <Link
+                          key={child.title}
+                          href={child.href}
+                          className="mega-item"
+                          onClick={() => setOpenHref(null)}
+                        >
+                          <span className="mega-icon">
+                            <Icon size={20} strokeWidth={1.8} />
+                          </span>
+                          <span className="mega-text">
+                            <strong>{child.title}</strong>
+                            <span>{child.desc}</span>
+                          </span>
+                        </Link>
+                      )
+                    })}
+                  </div>
 
-              {activeItem.promo && (
-                <aside className="mega-promo">
-                  <span className="mega-badge">{activeItem.promo.badge}</span>
-                  <strong>{activeItem.promo.title}</strong>
-                  <p>{activeItem.promo.desc}</p>
-                  <Link href={activeItem.promo.href} className="mega-cta">
-                    {activeItem.promo.cta}
-                    <ArrowRight size={15} strokeWidth={2.2} />
-                  </Link>
-                </aside>
-              )}
-            </div>
-          </motion.div>
+                  {activeItem.promo && (
+                    <aside className="mega-promo">
+                      <span className="mega-badge">{activeItem.promo.badge}</span>
+                      <strong>{activeItem.promo.title}</strong>
+                      <p>{activeItem.promo.desc}</p>
+                      <Link
+                        href={activeItem.promo.href}
+                        className="mega-cta"
+                        onClick={() => setOpenHref(null)}
+                      >
+                        {activeItem.promo.cta}
+                        <ArrowRight size={15} strokeWidth={2.2} />
+                      </Link>
+                    </aside>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          portalContainer,
         )}
-      </AnimatePresence>
 
-      <MobileMenu
-        open={menuOpen}
-        current={pathname}
-        onClose={() => setMenuOpen(false)}
-      />
+      <MobileMenu open={menuOpen} current={pathname} onClose={closeMobileMenu} />
     </header>
   )
 }

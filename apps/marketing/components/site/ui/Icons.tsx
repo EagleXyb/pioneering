@@ -3,9 +3,10 @@
 // ============================================================
 
 export function LogoMark({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
-  const outer = tone === 'dark' ? '#12203A' : '#FFFFFF'
-  const mid = tone === 'dark' ? '#2F7A72' : '#7FC4BB'
-  const dot = tone === 'dark' ? '#2F7A72' : '#7FC4BB'
+  // 配色对齐 brand.css：zinc-950 外环 + indigo 内核（深底反白 + indigo-300）
+  const outer = tone === 'dark' ? '#09090B' : '#FFFFFF'
+  const mid = tone === 'dark' ? '#4F46E5' : '#A5B4FC'
+  const dot = tone === 'dark' ? '#4F46E5' : '#A5B4FC'
   return (
     <svg className="logo-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
       <circle cx="16" cy="16" r="13" stroke={outer} strokeWidth="1.4" />
@@ -22,8 +23,8 @@ export function LogoMark({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
 export function SearchIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="7" cy="7" r="5" stroke="#4A5568" strokeWidth="1.5" />
-      <path d="M11 11l4 4" stroke="#4A5568" strokeWidth="1.5" />
+      <circle cx="7" cy="7" r="5" stroke="#52525B" strokeWidth="1.5" />
+      <path d="M11 11l4 4" stroke="#52525B" strokeWidth="1.5" />
     </svg>
   )
 }
@@ -31,7 +32,7 @@ export function SearchIcon() {
 export function BurgerIcon() {
   return (
     <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true">
-      <path d="M0 1h18M0 6h18M0 11h18" stroke="#12203A" strokeWidth="1.6" />
+      <path d="M0 1h18M0 6h18M0 11h18" stroke="#09090B" strokeWidth="1.6" />
     </svg>
   )
 }
@@ -39,7 +40,7 @@ export function BurgerIcon() {
 export function CloseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M1 1l14 14M15 1L1 15" stroke="#12203A" strokeWidth="1.6" />
+      <path d="M1 1l14 14M15 1L1 15" stroke="#09090B" strokeWidth="1.6" />
     </svg>
   )
 }

@@ -1,4 +1,5 @@
 import { COG_HEADER } from '@/data/site/cognition'
+import { Button } from '@/components/site/ui/Button'
 
 // 认知理念页首（标题 + 下载占位按钮，PDF 资源为占位链接）
 export function CogHeader() {
@@ -14,9 +15,9 @@ export function CogHeader() {
             </p>
           </div>
           <div className="col-4 flex items-c">
-            <a href="#" className="btn btn-ink">
+            <Button href="#" variant="ink">
               {COG_HEADER.pdfCta}
-            </a>
+            </Button>
           </div>
         </div>
       </div>

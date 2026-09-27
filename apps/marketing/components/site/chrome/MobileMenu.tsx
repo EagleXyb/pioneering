@@ -6,9 +6,10 @@
 // 默认展开当前页所属菜单。底部保留「免费体验」主按钮。
 // ============================================================
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { Button } from '@/components/site/ui/Button'
 import {
   LayoutGrid,
   MessagesSquare,
@@ -58,6 +59,15 @@ export function MobileMenu({
 }) {
   const [expandedHref, setExpandedHref] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const shouldReturnFocusRef = useRef(true)
+
+  const closeWithoutFocusReturn = () => {
+    shouldReturnFocusRef.current = false
+    onClose()
+  }
 
   useEffect(() => setMounted(true), [])
 
@@ -71,32 +81,110 @@ export function MobileMenu({
     }
   }, [open, current])
 
-  // 打开期间隐藏页面悬浮元素（fab / mcta），避免遮挡全屏菜单
+  // 模态菜单：锁定背景滚动、处理 Esc 与 Tab，并在关闭后把焦点还给汉堡键
   useEffect(() => {
     if (!open) return
-    document.body.classList.add('mmenu-on')
-    return () => document.body.classList.remove('mmenu-on')
-  }, [open])
 
-  if (!mounted) return null
+    shouldReturnFocusRef.current = true
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+
+    const previousOverflow = document.body.style.overflow
+    const brandRoot = document.querySelector('.brand-site')
+    document.body.classList.add('mmenu-on')
+    document.body.style.overflow = 'hidden'
+    brandRoot?.setAttribute('inert', '')
+
+    const focusFrame = requestAnimationFrame(() => closeRef.current?.focus())
+
+    const getFocusable = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled])',
+        ) ?? [],
+      ).filter((element) => element.tabIndex !== -1)
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        shouldReturnFocusRef.current = true
+        onClose()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const focusable = getFocusable()
+      if (focusable.length === 0) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const activeElement = document.activeElement
+
+      if (event.shiftKey && activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      cancelAnimationFrame(focusFrame)
+      document.removeEventListener('keydown', onKeyDown)
+      brandRoot?.removeAttribute('inert')
+      document.body.classList.remove('mmenu-on')
+      document.body.style.overflow = previousOverflow
+      if (shouldReturnFocusRef.current) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => previousFocusRef.current?.focus())
+        })
+      }
+    }
+  }, [open, onClose])
+
+  if (!mounted || !open) return null
+
+  const menuPanelId = 'mobile-site-menu'
 
   // Portal 到 body：header 的 backdrop-filter 会为 fixed 后代建立包含块，
   // 挂在 header 内会把全屏菜单限制在 68px 的 header 高度里
   return createPortal(
-    <div className={`mmenu${open ? ' open' : ''}`} aria-hidden={!open}>
-      <button type="button" className="icon-btn mclose" aria-label="关闭菜单" onClick={onClose}>
+    <div
+      id={menuPanelId}
+      ref={panelRef}
+      className="mmenu open"
+      role="dialog"
+      aria-modal="true"
+      aria-label="全站导航"
+    >
+      <button
+        ref={closeRef}
+        type="button"
+        className="icon-btn mclose"
+        aria-label="关闭菜单"
+        onClick={() => {
+          shouldReturnFocusRef.current = true
+          onClose()
+        }}
+      >
         <CloseIcon />
       </button>
 
       <div className="mmenu-scroll">
         {BRAND_NAV.map((item) => {
           if (item.kind === 'link') {
+            const active = isActive(current, item.href)
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={onClose}
-                className={`m-item${isActive(current, item.href) ? ' active' : ''}`}
+                onClick={closeWithoutFocusReturn}
+                className={`m-item${active ? ' active' : ''}`}
+                aria-current={active ? 'page' : undefined}
               >
                 {item.label}
               </Link>
@@ -104,31 +192,36 @@ export function MobileMenu({
           }
 
           const expanded = expandedHref === item.href
+          const submenuId = `mobile-submenu-${item.href.replace('/', '')}`
           return (
             <div key={item.href} className={`m-group${expanded ? ' open' : ''}`}>
               <button
                 type="button"
                 className="m-group-head"
                 aria-expanded={expanded}
+                aria-controls={submenuId}
                 onClick={() =>
                   setExpandedHref((cur) => (cur === item.href ? null : item.href))
                 }
               >
-                <span className={isActive(current, item.href) ? 'active' : undefined}>
+                <span
+                  className={isActive(current, item.href) ? 'active' : undefined}
+                  aria-current={isActive(current, item.href) ? 'true' : undefined}
+                >
                   {item.label}
                 </span>
                 <ChevronDown size={18} className="m-caret" strokeWidth={2.2} />
               </button>
 
               {expanded && (
-                <div className="m-sub">
+                <div id={submenuId} className="m-sub" role="group">
                   {item.children.map((child) => {
                     const Icon = ICONS[child.icon]
                     return (
                       <Link
-                        key={child.href}
+                        key={child.title}
                         href={child.href}
-                        onClick={onClose}
+                        onClick={closeWithoutFocusReturn}
                         className="m-sub-item"
                       >
                         <span className="m-sub-icon">
@@ -147,7 +240,7 @@ export function MobileMenu({
                       <span className="mega-badge">{item.promo.badge}</span>
                       <strong>{item.promo.title}</strong>
                       <p>{item.promo.desc}</p>
-                      <Link href={item.promo.href} className="mega-cta" onClick={onClose}>
+                      <Link href={item.promo.href} className="mega-cta" onClick={closeWithoutFocusReturn}>
                         {item.promo.cta}
                         <ArrowRight size={15} strokeWidth={2.2} />
                       </Link>
@@ -161,16 +254,17 @@ export function MobileMenu({
 
         <Link
           href={BRAND_NAV_ABOUT.href}
-          onClick={onClose}
+          onClick={closeWithoutFocusReturn}
           className={`m-item${isActive(current, BRAND_NAV_ABOUT.href) ? ' active' : ''}`}
+          aria-current={isActive(current, BRAND_NAV_ABOUT.href) ? 'page' : undefined}
         >
           {BRAND_NAV_ABOUT.label}
         </Link>
       </div>
 
-      <Link href="/agent#try" className="btn btn-primary m-cta" onClick={onClose}>
+      <Button href="/agent#try" variant="primary" className="m-cta" onClick={closeWithoutFocusReturn}>
         免费体验
-      </Link>
+      </Button>
     </div>,
     document.body,
   )

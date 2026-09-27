@@ -19,6 +19,46 @@
     @apply min-h-screen;
   }
 
+  .trends-nav {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    background: rgba(22, 22, 23, 0.94);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  }
+
+  @media (min-width: 768px) {
+    .trends-nav {
+      padding-left: max(48px, env(safe-area-inset-left, 0px));
+      padding-right: max(48px, env(safe-area-inset-right, 0px));
+    }
+  }
+
+  .trends-mobile-nav {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .trends-nav {
+      background: #161617;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  /* 键盘可访问性：全站统一可见焦点环（/trends 深色体系） */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid #0a84ff;
+    outline-offset: 3px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
@@ -55,28 +95,9 @@
   }
 
   .card:hover {
-    border-color: rgba(94, 106, 210, 0.4);
+    border-color: rgba(10, 132, 255, 0.45);
     transform: translateY(-2px);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-  }
-
-  /* Hero 顶部低饱和光斑背景，提升首屏品质感 */
-  .hero-glow {
-    position: relative;
-  }
-
-  .hero-glow::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background:
-      radial-gradient(600px 280px at 50% 0%, rgba(94, 106, 210, 0.14), transparent 70%),
-      radial-gradient(400px 200px at 80% 20%, rgba(94, 106, 210, 0.06), transparent 70%);
-  }
-
-  .hero-glow > * {
-    position: relative;
   }
 }
 

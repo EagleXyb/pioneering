@@ -1,6 +1,7 @@
-import Link from 'next/link'
 import { AGENT_PRICING } from '@/data/site/agent'
 import { Reveal } from '@/components/site/ui/Reveal'
+import { Button } from '@/components/site/ui/Button'
+import { Card } from '@/components/site/ui/Card'
 
 // 价格（3 档 + 企业版宽卡，中间档高亮）；价格为原型占位
 export function AgentPricing() {
@@ -16,8 +17,7 @@ export function AgentPricing() {
               key={p.title}
               className="col-4"
             >
-              <div
-                className="card"
+              <Card
                 style={{
                   height: '100%',
                   ...(p.featured
@@ -40,26 +40,27 @@ export function AgentPricing() {
                     </li>
                   ))}
                 </ul>
-                <a
+                <Button
                   href="#try"
-                  className={`btn ${p.featured ? 'btn-primary' : 'btn-ghost'} mt-4`}
+                  variant={p.featured ? 'primary' : 'ghost'}
+                  className="mt-4"
                   style={{ width: '100%' }}
                 >
                   {p.cta}
-                </a>
-              </div>
+                </Button>
+              </Card>
             </Reveal>
           ))}
         </div>
-        <div className="card mt-6" style={{ background: 'var(--paper)' }}>
+        <Card className="mt-6" style={{ background: 'var(--paper)' }}>
           <div className="h4 mb-2">{AGENT_PRICING.enterprise.title}</div>
           <p className="body" style={{ fontSize: 15 }}>
             {AGENT_PRICING.enterprise.body}
           </p>
-          <Link href="/about#contact" className="btn btn-ink btn-sm mt-3">
+          <Button href="/about#contact" variant="ink" size="sm" className="mt-3">
             {AGENT_PRICING.enterprise.cta}
-          </Link>
-        </div>
+          </Button>
+        </Card>
       </div>
     </section>
   )

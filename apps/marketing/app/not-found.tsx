@@ -3,9 +3,9 @@
 // 独立引入 brand.css，保证直达不存在路径时样式也完整。
 // ============================================================
 
-import Link from 'next/link'
 import './(site)/brand.css'
 import { Logo } from '@/components/site/ui/Logo'
+import { Button } from '@/components/site/ui/Button'
 
 export const metadata = {
   title: '页面未找到',
@@ -28,15 +28,15 @@ export default function NotFound() {
           你访问的页面不存在或已被移动。可以从下方入口继续浏览。
         </p>
         <div className="btn-row mt-6" style={{ justifyContent: 'center' }}>
-          <Link href="/" className="btn btn-primary">
+          <Button href="/" variant="primary">
             返回首页
-          </Link>
-          <Link href="/agent" className="btn btn-ghost">
+          </Button>
+          <Button href="/agent" variant="ghost">
             体验认知陪练
-          </Link>
-          <Link href="/trends" className="btn btn-ghost">
+          </Button>
+          <Button href="/trends" variant="ghost">
             查看趋势报告
-          </Link>
+          </Button>
         </div>
       </main>
     </div>

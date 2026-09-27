@@ -6,14 +6,14 @@
 export function DecorDiagram({ caption = '示意图 · 认知加工模型（品牌视觉占位）' }: { caption?: string }) {
   return (
     <svg viewBox="0 0 1200 800" fill="none" className="img-zone" role="img" aria-label={caption}>
-      <rect width="1200" height="800" fill="#F3F0E9" />
-      <circle cx="600" cy="400" r="240" stroke="#2F7A72" strokeWidth="2" strokeDasharray="6 8" opacity=".5" />
-      <circle cx="600" cy="400" r="150" stroke="#12203A" strokeWidth="2" opacity=".3" />
-      <circle cx="600" cy="400" r="60" fill="#2F7A72" opacity=".12" />
-      <path d="M600 80v120M600 600v120M280 400h120M800 400h120" stroke="#12203A" strokeWidth="2" />
-      <rect x="520" y="340" width="160" height="120" rx="8" fill="#fff" stroke="#D6D1C8" />
-      <path d="M560 380h80M560 410h60" stroke="#2F7A72" strokeWidth="3" strokeLinecap="round" />
-      <text x="600" y="700" textAnchor="middle" fill="#8A94A6" fontSize="22">
+      <rect width="1200" height="800" fill="#F4F4F5" />
+      <circle cx="600" cy="400" r="240" stroke="#6366F1" strokeWidth="2" strokeDasharray="6 8" opacity=".5" />
+      <circle cx="600" cy="400" r="150" stroke="#18181B" strokeWidth="2" opacity=".3" />
+      <circle cx="600" cy="400" r="60" fill="#6366F1" opacity=".12" />
+      <path d="M600 80v120M600 600v120M280 400h120M800 400h120" stroke="#18181B" strokeWidth="2" />
+      <rect x="520" y="340" width="160" height="120" rx="8" fill="#fff" stroke="#D4D4D8" />
+      <path d="M560 380h80M560 410h60" stroke="#4F46E5" strokeWidth="3" strokeLinecap="round" />
+      <text x="600" y="700" textAnchor="middle" fill="#71717A" fontSize="22">
         {caption}
       </text>
     </svg>

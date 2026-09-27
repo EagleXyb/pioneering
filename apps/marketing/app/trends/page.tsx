@@ -1,3 +1,5 @@
+import type { Viewport } from 'next'
+
 // ============================================================
 // /trends 子路由 —— AI Trends 趋势报告
 //
@@ -19,6 +21,10 @@ export const metadata = {
   title: 'AI 发展趋势 · 2025-2026 趋势报告',
   description:
     '基于 Stanford HAI / McKinsey / a16z / Gartner / IDC 的最新数据，分析 2025–2026 AI 产业六大趋势与关键预测。',
+}
+
+export const viewport: Viewport = {
+  themeColor: '#161617',
 }
 
 export default function TrendsPage() {

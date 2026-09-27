@@ -19,7 +19,7 @@ export function AboutStory() {
               className="card"
               style={{ background: 'var(--ink)', color: '#fff', border: 'none', padding: 'var(--sp-5)' }}
             >
-              <div className="eyebrow" style={{ color: '#7FC4BB' }}>
+              <div className="eyebrow" style={{ color: '#A5B4FC' }}>
                 HOW WE WORK
               </div>
               <div className="h4 mt-2" style={{ color: '#fff' }}>

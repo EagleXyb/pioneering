@@ -1,5 +1,6 @@
-import Link from 'next/link'
 import { CASE_DETAIL } from '@/data/site/cases'
+import { Button } from '@/components/site/ui/Button'
+import { Card } from '@/components/site/ui/Card'
 
 // ============================================================
 // CaseDetail — 完整复盘（STAR 四卡 + 困难与调整 + 双入口），白底
@@ -21,27 +22,27 @@ export function CaseDetail() {
         </div>
         <div className="grid">
           {d.star.map((s) => (
-            <div key={s.tag} className="col-6 card">
+            <Card key={s.tag} className="col-6">
               <div className="tag mb-3">{s.tag}</div>
               <p className="body" style={{ fontSize: 15 }}>
                 {s.desc}
               </p>
-            </div>
+            </Card>
           ))}
         </div>
-        <div className="card mt-4" style={{ background: 'var(--paper)' }}>
+        <Card className="mt-4" style={{ background: 'var(--paper)' }}>
           <div className="h4 mb-2">{d.difficultyTitle}</div>
           <p className="body" style={{ fontSize: 15 }}>
             {d.difficulty}
           </p>
-        </div>
+        </Card>
         <div className="flex gap-3 wrap-f mt-6">
-          <Link href="/agent#try" className="btn btn-primary">
+          <Button href="/agent#try" variant="primary">
             用智能体复现这个分析 →
-          </Link>
-          <Link href="/cognition#concepts" className="btn btn-ghost">
+          </Button>
+          <Button href="/cognition#concepts" variant="ghost">
             方法论出处：约束重构
-          </Link>
+          </Button>
         </div>
       </div>
     </section>

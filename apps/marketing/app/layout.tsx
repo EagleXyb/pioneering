@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Noto_Sans_SC, Noto_Serif_SC } from 'next/font/google'
 import { BRAND_SITE } from '@/data/site/site'
 import { MotionProvider } from '@/components/animations/MotionProvider'
@@ -26,6 +26,13 @@ const notoSerifSC = Noto_Serif_SC({
 })
 
 // 默认 metadata = 认知×创新品牌站（(site) 路由组）；/trends 由自身 metadata 覆盖。
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#FAFAFA',
+}
+
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND_SITE.url),
   title: {

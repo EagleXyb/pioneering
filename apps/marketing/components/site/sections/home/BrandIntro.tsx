@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import { BRAND_INTRO } from '@/data/site/home'
+import { Button } from '@/components/site/ui/Button'
 
 // ============================================================
 // BrandIntro — 品牌定位速览（4/8 栏）
@@ -25,12 +25,12 @@ export function BrandIntro() {
             <p className="lead">{BRAND_INTRO.lead}</p>
             <p className="body mt-4">{BRAND_INTRO.body}</p>
             <div className="btn-row mt-4">
-              <Link href="/about" className="btn btn-ghost btn-sm">
+              <Button href="/about" variant="ghost" size="sm">
                 了解品牌故事
-              </Link>
-              <Link href="/cognition" className="btn btn-ghost btn-sm">
+              </Button>
+              <Button href="/cognition" variant="ghost" size="sm">
                 查看完整方法论
-              </Link>
+              </Button>
             </div>
           </div>
         </div>

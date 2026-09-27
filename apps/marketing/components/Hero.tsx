@@ -3,8 +3,8 @@
 // ============================================================
 // Hero — 趋势报告（/trends）Hero 区
 //
-// 与 OfficialHero 同构：badge + 大标题 + 副标题 + 描述 + 数据条。
-// 视觉：hero-glow 光斑背景；水平内边距走 --page-x 变量。
+// 结构：badge + 大标题 + 副标题 + 描述 + 数据条。
+// 视觉：中性近黑底，无光斑；水平内边距走 --page-x 变量。
 // ============================================================
 
 import { motion } from 'framer-motion'
@@ -14,7 +14,7 @@ import { heroStats } from '@/data/stats'
 export function Hero() {
   return (
     <section
-      className="hero-glow w-full flex flex-col items-center gap-6 animate-fade-in"
+      className="w-full flex flex-col items-center gap-6 animate-fade-in"
       style={{ padding: '100px var(--page-x) 60px' }}
     >
       {/* Badge */}

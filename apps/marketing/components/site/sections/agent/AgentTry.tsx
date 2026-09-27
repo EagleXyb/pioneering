@@ -1,5 +1,6 @@
 import { AGENT_TRY } from '@/data/site/agent'
 import { DEMO_MESSAGES } from '@/data/site/chat'
+import { TryComposer } from '@/components/site/forms/TryComposer'
 
 // ============================================================
 // AgentTry — #try 体验区（左：说明 + 开头示例；右：静态对话窗口）
@@ -47,13 +48,11 @@ export function AgentTry() {
                   </div>
                 ))}
               </div>
-              <div className="field mt-4">
-                <input type="text" placeholder="继续聊，或留下邮箱保存上下文…" aria-label="对话输入" />
-              </div>
-              <button type="button" className="btn btn-primary" style={{ width: '100%' }}>
-                继续 · 留下邮箱保存上下文
-              </button>
-              <div className="form-note">{AGENT_TRY.note}</div>
+              <TryComposer
+                placeholder="继续聊，或留下邮箱保存上下文…"
+                submitLabel="继续 · 留下邮箱保存上下文"
+                note={AGENT_TRY.note}
+              />
             </div>
           </div>
         </div>

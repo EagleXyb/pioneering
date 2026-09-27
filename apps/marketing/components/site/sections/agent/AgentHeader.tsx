@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import { AGENT_HEADER } from '@/data/site/agent'
+import { Button } from '@/components/site/ui/Button'
 
 // 智能体页首（左：标题与 CTA；右：深色真实对话片段卡）
 export function AgentHeader() {
@@ -22,12 +22,12 @@ export function AgentHeader() {
               {c.lead}
             </p>
             <div className="btn-row mt-6">
-              <a href="#try" className="btn btn-primary">
+              <Button href="#try" variant="primary">
                 免注册体验 3 轮
-              </a>
-              <a href="#capabilities" className="btn btn-ghost">
+              </Button>
+              <Button href="#capabilities" variant="ghost">
                 看它能做什么
-              </a>
+              </Button>
             </div>
           </div>
           <div className="col-4">
@@ -42,7 +42,7 @@ export function AgentHeader() {
               <div style={{ fontSize: 15, color: '#fff', lineHeight: 1.8 }}>
                 {c.quoteCard.answerParas[0]}
                 <br />
-                <span style={{ color: '#7FC4BB' }}>{c.quoteCard.source}</span>
+                <span style={{ color: '#A5B4FC' }}>{c.quoteCard.source}</span>
               </div>
             </div>
           </div>

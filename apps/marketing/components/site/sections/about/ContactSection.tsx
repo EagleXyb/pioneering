@@ -1,8 +1,9 @@
 import { ABOUT_CONTACT } from '@/data/site/about'
+import { ContactForm } from '@/components/site/forms/ContactForm'
 
 // ============================================================
-// ContactSection — 联系我们（左：说明 + 其他方式；右：静态演示表单）
-// 表单一期无后端：提交按钮 type=button，不产生任何请求。
+// ContactSection — 联系我们（左：说明 + 其他方式；右：四态表单）
+// 表单一期无后端：仅前端校验与模拟提交，不产生任何请求。
 // ============================================================
 
 export function ContactSection() {
@@ -28,32 +29,7 @@ export function ContactSection() {
             </div>
           </div>
           <div className="col-6">
-            <form className="card">
-              <div className="field">
-                <label>{c.form.name.label}</label>
-                <input type="text" placeholder={c.form.name.placeholder} />
-              </div>
-              <div className="field">
-                <label>{c.form.contact.label}</label>
-                <input type="text" placeholder={c.form.contact.placeholder} />
-              </div>
-              <div className="field">
-                <label>{c.form.type.label}</label>
-                <select>
-                  {c.form.type.options.map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>{c.form.note.label}</label>
-                <textarea placeholder={c.form.note.placeholder} />
-              </div>
-              <button type="button" className="btn btn-primary" style={{ width: '100%' }}>
-                {c.form.submit}
-              </button>
-              <div className="form-note">{c.form.noteText}</div>
-            </form>
+            <ContactForm form={c.form} />
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import { HERO } from '@/data/site/home'
+import { Button } from '@/components/site/ui/Button'
 
 // ============================================================
 // HomeHero — 首页渐变首屏（关键词行 + 双 CTA + 四项信任数据）
@@ -8,14 +8,19 @@ import { HERO } from '@/data/site/home'
 export function HomeHero() {
   return (
     <section className="hero">
+      {/* 极光流体背景：纯 CSS 色块漂移层，样式与降级见 brand.css 第 8 节 */}
+      <div className="hero-aurora" aria-hidden="true">
+        <span className="blob blob-a" />
+        <span className="blob blob-b" />
+        <span className="blob blob-c" />
+        <span className="blob blob-d" />
+      </div>
       <div className="wrap hero-in">
-        <div className="eyebrow" style={{ color: '#7FC4BB' }}>
-          {HERO.eyebrow}
-        </div>
+        <div className="eyebrow">{HERO.eyebrow}</div>
         <h1>
           {HERO.titleLines[0]}
           <br />
-          {HERO.titleLines[1]}
+          <span className="h1-muted">{HERO.titleLines[1]}</span>
         </h1>
         <p className="sub">{HERO.sub}</p>
         <div className="kw-row">
@@ -26,12 +31,12 @@ export function HomeHero() {
           ))}
         </div>
         <div className="btn-row mt-6">
-          <Link href="/agent#try" className="btn btn-primary">
+          <Button href="/agent#try" variant="primary">
             免费体验智能体
-          </Link>
-          <Link href="/cognition" className="btn btn-ghost">
+          </Button>
+          <Button href="/cognition" variant="ghost">
             了解认知理念
-          </Link>
+          </Button>
         </div>
         <div className="trust">
           {HERO.stats.map((s) => (

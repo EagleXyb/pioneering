@@ -1,6 +1,7 @@
-import Link from 'next/link'
 import { CORE_METHOD } from '@/data/site/home'
-import { Reveal } from '@/components/site/ui/Reveal'
+import { MethodLayers } from '@/components/site/ui/MethodLayers'
+import { Button } from '@/components/site/ui/Button'
+import { Card } from '@/components/site/ui/Card'
 
 // ============================================================
 // CoreMethod — 认知模型三层（左）+ 三大支柱卡（右），白底区块
@@ -15,46 +16,42 @@ export function CoreMethod() {
             <div className="eyebrow">{CORE_METHOD.eyebrow}</div>
             <h2 className="h2 mb-3">{CORE_METHOD.title}</h2>
             <p className="body mb-6">{CORE_METHOD.body}</p>
-            <div className="model">
-              {CORE_METHOD.layers.map((l, i) => (
-                <div key={l.badge}>
-                  <Reveal>
-                    <div className={`layer${l.on ? ' on' : ''}`}>
-                      <div className="lbadge">{l.badge}</div>
-                      <div>
-                        <div className="lt">{l.title}</div>
-                        <div className="ld">{l.desc}</div>
-                      </div>
-                    </div>
-                  </Reveal>
-                  {i < CORE_METHOD.layers.length - 1 && (
-                    <div className="arrow-down">↓</div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <MethodLayers layers={CORE_METHOD.layers} />
           </div>
           <div className="col-6">
-            <div className="card" style={{ background: 'var(--paper)', height: '100%' }}>
-              <div className="tag mb-3">三大支柱</div>
+            <Card
+              style={{
+                background: 'var(--paper)',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div className="tag mb-3" style={{ alignSelf: 'flex-start' }}>
+                三大支柱
+              </div>
               {CORE_METHOD.pillars.map((p, i) => (
                 <div key={p.title}>
-                  {i > 0 && <hr className="hr mt-3 mb-3" />}
-                  <div className={i === 0 ? 'h4 mt-2' : 'h4'}>{p.title}</div>
+                  {i > 0 && <hr className="hr" style={{ margin: '24px 0' }} />}
+                  <div className="h4">{p.title}</div>
                   <p className="body" style={{ fontSize: 15 }}>
                     {p.desc}
                   </p>
                 </div>
               ))}
-              <div className="btn-row mt-6">
-                <Link href="/cognition" className="btn btn-ink btn-sm">
+              {/* 等高卡中按钮沉底；paddingTop 保证堆叠（卡片不拉伸）时仍有 sp-6 间距 */}
+              <div
+                className="btn-row"
+                style={{ marginTop: 'auto', paddingTop: 'var(--sp-6)' }}
+              >
+                <Button href="/cognition" variant="ink" size="sm">
                   查看完整方法论
-                </Link>
-                <Link href="/agent#capabilities" className="btn btn-ghost btn-sm">
+                </Button>
+                <Button href="/agent#capabilities" variant="ghost" size="sm">
                   能力对应表
-                </Link>
+                </Button>
               </div>
-            </div>
+            </Card>
           </div>
         </div>
       </div>
