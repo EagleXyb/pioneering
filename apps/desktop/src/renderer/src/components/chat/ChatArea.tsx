@@ -161,9 +161,11 @@ export function ChatArea() {
           {/* 居中主体：「标题+标签+输入框」整体下移 20px（translate 不占布局空间）；
               推荐区仍按结构位置 pt-[116px]，视觉位置不变 */}
           <div
-            className="w-full flex flex-col items-center px-6"
+            className="w-full flex flex-col items-center"
             style={{
-              maxWidth: 'var(--chat-col-max)',
+              // 欢迎页与输入区/消息区共享同一自适应列宽令牌（随窗口宽度变化）
+              maxWidth: 'var(--chat-col-w)',
+              paddingInline: 'var(--chat-col-pad)',
               marginInline: 'auto',
               paddingTop: 0,
               paddingBottom: 0,
@@ -225,9 +227,9 @@ export function ChatArea() {
   // ============================================================
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Messages：与输入框同宽（由 --chat-col-max 令牌统一约束，既定 880px）并居中 */}
+      {/* Messages：与输入框同宽（由 --chat-col-w 自适应令牌统一约束）并居中 */}
       <div className="chat-messages-pane flex-1 overflow-hidden" ref={messagesPaneRef}>
-        <div className="mx-auto h-full w-full max-w-[var(--chat-col-max)] px-0">
+        <div className="mx-auto h-full w-full max-w-[var(--chat-col-w)] px-0">
           <MessageScrollerList
             messages={currentMessages}
             streamingContent={streamingContent}

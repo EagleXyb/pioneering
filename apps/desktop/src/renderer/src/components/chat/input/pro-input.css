@@ -8,8 +8,28 @@
    ============================================================ */
 
 :root {
-  /* 中间栏统一列宽令牌：内容展示区 / 输入区 / 欢迎页共用，既定 880px（不强制对齐 WorkBuddy） */
-  --chat-col-max: 880px;
+  /* ============================================================
+     中间栏统一列宽令牌：内容展示区 / 输入区 / 欢迎页共用。
+     对标 WorkBuddy 输入区（.composer: width:100% + max-width 上限 + margin:0 auto +
+     两侧留白）的「流式宽度」机制，本项目在此基础上把固定上限改为随窗口自适应：
+
+       --chat-col-min  下限：窄窗口下卡片仍可操作
+       --chat-col-max  上限：大屏下避免行长过宽影响阅读
+       --chat-col-w    实际列宽 = clamp(下限, 61vw, 上限)
+
+     61vw 的取值使 1440px 窗口 ≈ 880px（与既定内部标准一致，向后兼容）；
+     窗口越宽列宽越大，触及上限后不再增长，窗口变窄则平滑收缩。
+     采用视口单位 vw 而非媒体查询，可同时覆盖：
+       · 应用窗口尺寸变化（拖拽边框 / 最大化）
+       · 系统缩放与界面缩放比例变化（vw 随缩放后的视口同步）
+       · 中栏被三栏拖拽压窄的场景（由 .pro-input-inner 的 width:100% 兜底，不会溢出）
+     ============================================================ */
+  --chat-col-min: 560px;
+  --chat-col-max: 1040px;
+  --chat-col-w: clamp(var(--chat-col-min), 61vw, var(--chat-col-max));
+
+  /* 横向留白：随窗口宽度柔性变化（替代写死的 20px），窄屏收敛、大屏舒展 */
+  --chat-col-pad: clamp(16px, 1.5vw, 32px);
 }
 
 /* ---- 外层区域：仅提供内边距与主题变量作用域（不铺背景，沿用原容器底色）---- */
@@ -17,7 +37,8 @@
   container-type: inline-size;
   position: relative;
   width: 100%;
-  padding: 10px 20px 12px;
+  /* 横向留白随窗口自适应（--chat-col-pad），窄屏收敛避免挤压卡片 */
+  padding: 10px var(--chat-col-pad) 12px;
 
   /* 将 web 端变量映射到 desktop 端语义令牌，子元素自动继承并随主题切换 */
   --bg-card: var(--card);
@@ -35,7 +56,8 @@
 .pro-input-inner {
   position: relative;
   width: 100%;
-  max-width: var(--chat-col-max);
+  /* 宽度随窗口自适应：width:100% 保证窄中栏不溢出，max-width 上限约束大屏行长 */
+  max-width: var(--chat-col-w);
   margin: 0 auto;
 }
 
