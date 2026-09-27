@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 export function HitlToolConfirmDialog({ item }: { item: HitlItem }) {
   const resolve = useHitlStore((s) => s.resolve)
   const dismiss = useHitlStore((s) => s.dismiss)
+  const error = useHitlStore((s) => s.error)
   const [showEdit, setShowEdit] = useState(false)
   const [resolving, setResolving] = useState(false)
 
@@ -54,13 +55,16 @@ export function HitlToolConfirmDialog({ item }: { item: HitlItem }) {
         }
       }
     }
-    await resolve(true, null, modifiedArgs)
+    // 失败（未真正启动 resume）时回滚到可操作态，错误由 store.error 呈现
+    const ok = await resolve({ approved: true, modifiedArgs })
+    if (!ok) setResolving(false)
   }
 
   const handleReject = async () => {
     if (resolving) return
     setResolving(true)
-    await resolve(false, '用户拒绝了该工具调用')
+    const ok = await resolve({ approved: false, feedback: '用户拒绝了该工具调用' })
+    if (!ok) setResolving(false)
   }
 
   return (
@@ -126,6 +130,12 @@ export function HitlToolConfirmDialog({ item }: { item: HitlItem }) {
               </div>
             )}
           </div>
+        )}
+
+        {error && (
+          <p className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error}
+          </p>
         )}
 
         <DialogFooter className="!flex-row !justify-end !gap-2 sm:space-x-0">

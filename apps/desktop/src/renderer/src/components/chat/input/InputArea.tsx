@@ -101,6 +101,23 @@ export interface InputAreaSendOptions {
   model?: string
 }
 
+/**
+ * HITL 内联澄清条状态。
+ * 非空时输入框进入"澄清应答"语义：提交内容作为澄清回答回传 Agent，
+ * 而不是发起新的对话请求（对应设计文档 ClarifyingInputPanel 的落地形态）。
+ */
+export interface InputAreaHitlState {
+  kind: 'tool_confirm' | 'clarifying' | 'choice'
+  /** 澄清问题文本 */
+  question?: string
+  /** 兜底提示文案 */
+  message?: string
+  /** 当前项在队列中的序号（从 1 开始） */
+  index?: number
+  /** 队列总项数 */
+  total?: number
+}
+
 export interface InputAreaProps {
   /** 关联会话 ID（用于草稿键） */
   sessionId?: string | null
@@ -123,6 +140,12 @@ export interface InputAreaProps {
    * `+` 仅附件、仅 `↑` 发送，并禁用草稿持久化。
    */
   mode?: 'normal' | 'hitl'
+  /** HITL 待答复项（有值时渲染内联澄清条并接管提交语义） */
+  hitl?: InputAreaHitlState | null
+  /** 内联澄清条提交（自由文本回答） */
+  onHitlAnswer?: (text: string) => void
+  /** 跳过当前澄清问题（仅 clarifying/choice 生效） */
+  onHitlSkip?: () => void
 }
 
 const CHAR_LIMIT = 10000
@@ -243,7 +266,10 @@ export function InputArea({
   agentMode = false,
   onToggleAgent,
   isWelcome = false,
-  mode = 'normal'
+  mode = 'normal',
+  hitl = null,
+  onHitlAnswer,
+  onHitlSkip
 }: InputAreaProps) {
   const editorRef = useRef<FileAwareEditorHandle>(null)
   const [text, setText] = useState('')
@@ -257,6 +283,10 @@ export function InputArea({
 
   // ---- HITL 精简态（阶段三 3.4）----
   const hitlMode = mode === 'hitl'
+  // 工具审批必须走弹窗（approve/reject/modified_args），输入框仅禁用不再接管提交；
+  // 澄清/多选允许直接在输入框补充说明并发送。
+  const hitlAnswerable = !!hitl && hitl.kind !== 'tool_confirm'
+  const hitlLocked = !!hitl && hitl.kind === 'tool_confirm'
 
   // ---- 弹出层状态 ----
   const [slashOpen, setSlashOpen] = useState(false)
@@ -444,6 +474,20 @@ export function InputArea({
   // ---- 发送 ----
   const handleSend = useCallback(() => {
     const promptText = text.trim()
+
+    // HITL 内联澄清：输入框提交的是"澄清回答"，不发起新的对话请求。
+    // 这条分支是输入框 HITL 能力的关键——否则提交会落到 sendMessage，
+    // 与后端仍处于 interrupt 的 run 冲突。
+    if (hitlAnswerable) {
+      if (!promptText) return
+      onHitlAnswer?.(promptText)
+      setText('')
+      setAttachedImages([])
+      clearDraftRef.current?.()
+      editorRef.current?.focus()
+      return
+    }
+
     if (!promptText && attachedImages.length === 0) return
 
     const hasSlash = promptText.startsWith('/')
@@ -471,7 +515,7 @@ export function InputArea({
     setMentionTrigger(null)
     clearDraftRef.current?.()
     editorRef.current?.focus()
-  }, [text, attachedImages, selectedSkill, selectedFiles, model, onSend])
+  }, [text, attachedImages, selectedSkill, selectedFiles, model, onSend, hitlAnswerable, onHitlAnswer])
 
   // ---- 键盘导航 ----
   const handleKeyDown = useCallback(
@@ -582,7 +626,10 @@ export function InputArea({
   }, [text, computeTriggers])
 
   // ---- 渲染 ----
-  const canSend = (text.trim().length > 0 || attachedImages.length > 0) && !isOverLimit
+  // HITL 澄清态提交的是文本回答（不携带新附件），锁定时整体不可发送
+  const canSend = hitlAnswerable
+    ? text.trim().length > 0 && !isOverLimit
+    : (text.trim().length > 0 || attachedImages.length > 0) && !isOverLimit
 
   const setAgentMode = useChatStore((s) => s.setAgentMode)
   const handleToggleAgent = useCallback(() => {
@@ -619,6 +666,33 @@ export function InputArea({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* HITL 内联澄清条：展示 Agent 的问题 + 队列序号 + 跳过 */}
+          {hitl && (
+            <div className="pro-input-hitl-header">
+              <HelpCircle className="size-4 shrink-0 text-primary" />
+              <span className="pro-input-hitl-question">
+                {hitl.question || hitl.message || 'Agent 需要你补充信息后才能继续。'}
+              </span>
+              {!!hitl.index && (
+                <span className="pro-input-hitl-index">
+                  {hitl.index}
+                  {hitl.total ? `/${hitl.total}` : ''}
+                </span>
+              )}
+              {hitlAnswerable && onHitlSkip && (
+                <button
+                  type="button"
+                  className="pro-input-hitl-skip"
+                  onClick={onHitlSkip}
+                  aria-label="跳过该问题"
+                  title="跳过该问题，按现有信息继续"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
           {/* 状态行：运行时状态 + 选中技能 */}
           {(attachedImages.length > 0 || selectedSkill) && (
             <div className="pro-input-status-row">
@@ -649,8 +723,14 @@ export function InputArea({
               onPaste={handlePaste}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              placeholder="你想知道什么？@引用对话文件，/调用技能与指令"
-              disabled={disabled}
+              placeholder={
+                hitlLocked
+                  ? '请在弹窗中确认或拒绝该操作'
+                  : hitl
+                    ? '在此补充说明后发送，或在上方弹窗中选择…'
+                    : '你想知道什么？@引用对话文件，/调用技能与指令'
+              }
+              disabled={disabled || hitlLocked}
               maxHeight={200}
             />
           </div>
@@ -665,7 +745,7 @@ export function InputArea({
                       <button
                         type="button"
                         className="pro-input-more-btn"
-                        disabled={isStreaming}
+                        disabled={isStreaming || hitlLocked}
                       >
                         <Plus className="size-[18px]" />
                       </button>
@@ -778,13 +858,13 @@ export function InputArea({
                       type="button"
                       className="pro-input-send-btn"
                       onClick={handleSend}
-                      disabled={!canSend || disabled}
-                      aria-label="发送"
+                      disabled={!canSend || disabled || hitlLocked}
+                      aria-label={hitlAnswerable ? '提交澄清回答' : '发送'}
                     >
                       <ArrowUp size={18} strokeWidth={2.5} />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>发送 (Enter)</TooltipContent>
+                  <TooltipContent>{hitlAnswerable ? '提交澄清回答 (Enter)' : '发送 (Enter)'}</TooltipContent>
                 </Tooltip>
               )}
             </div>

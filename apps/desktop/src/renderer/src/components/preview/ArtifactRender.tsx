@@ -7,10 +7,13 @@
  *    阻断产物访问父页面 DOM / cookie / localStorage（Electron 下同样生效）。
  *  - code：带语法高亮的代码视图 —— 基于 lowlight（rehype-highlight 的同源实现）生成
  *    hljs-* 着色，复用 index.css 中 GitHub Light/Dark 风格配色；未识别语言自动降级纯文本。
+ *  - markdown：复用对话区 MarkdownRenderer，保证预览面板与消息体内的
+ *    Markdown 渲染（sanitize / SafeLink / 代码块）完全同源一致。
  */
 import { useMemo, type ReactNode } from 'react'
 import { createLowlight, common } from 'lowlight'
 import type { ArtifactType } from '@shared/types'
+import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer'
 import { MermaidRender } from './MermaidRender'
 
 // 严格 CSP：默认禁止任何外部资源，仅放行内联脚本/样式 + data:/blob: 的媒体资源
@@ -110,6 +113,17 @@ export function ArtifactRender({ type, content, language }: ArtifactRenderProps)
   // P2：mermaid 分支 —— 动态导入渲染矢量图，失败自动降级源码视图
   if (type === 'mermaid') {
     return <MermaidRender content={content} />
+  }
+
+  // markdown 分支：复用对话区统一渲染器（同一套 sanitize schema / SafeLink / 代码块）。
+  // 不传 messageId —— 产物来自文件系统，无源消息，ArtifactPanel 据此隐藏「跳转源消息」。
+  // 字号与助手消息正文一致（15px），保证预览与消息内观感统一。
+  if (type === 'markdown') {
+    return (
+      <div className="h-full min-h-0 w-full overflow-auto px-4 py-3 text-[15px]">
+        <MarkdownRenderer content={content} />
+      </div>
+    )
   }
 
   // iframe key 绑内容：内容变化即重建 iframe，避免上一产物的 DOM 状态残留

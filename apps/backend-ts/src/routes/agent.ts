@@ -534,6 +534,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             approved: dto.approved,
             feedback: dto.feedback ?? '',
             modifiedArgs: dto.modifiedArgs ?? undefined,
+            // 澄清回答透传给 clarify 节点（kind='clarifying' | 'choice'）
+            answer: dto.answer ?? undefined,
+            answerId: dto.answerId ?? undefined,
           })) {
             sseCount++
             reply.raw.write(`data: ${eventDict.data}\n\n`)

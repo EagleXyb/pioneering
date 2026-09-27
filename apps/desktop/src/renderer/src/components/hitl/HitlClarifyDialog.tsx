@@ -1,11 +1,14 @@
 // ============================================================
 // HitlClarifyDialog — HITL 澄清追问弹窗（图1）
-// 自由文本 input，发送 → resolve({ feedback })。一期后端无节点支撑，
-// 仅做前端就绪（kind='clarifying' 事件到达时可渲染）。
+// 自由文本 input，发送 → resolve({ answer })。后端 kind='clarifying' 事件到达时渲染。
+//
+// 阶段三补强：
+//   - "跳过"按钮接入 hitlStore.skip()（跳过本问、按现有信息继续执行）
+//   - resume 未真正启动时展示 store.error（不再静默失败）
 // ============================================================
 
 import { useState } from 'react'
-import { HelpCircle } from 'lucide-react'
+import { HelpCircle, SkipForward } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -19,18 +22,29 @@ import { useHitlStore, type HitlItem } from '@/stores/hitlStore'
 
 export function HitlClarifyDialog({ item }: { item: HitlItem }) {
   const resolve = useHitlStore((s) => s.resolve)
+  const skip = useHitlStore((s) => s.skip)
   const dismiss = useHitlStore((s) => s.dismiss)
+  const error = useHitlStore((s) => s.error)
   const [value, setValue] = useState('')
-  const [resolving, setResolving] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const close = () => {
-    if (!resolving) dismiss()
+    if (!busy) dismiss()
   }
 
   const handleSend = async () => {
-    if (resolving) return
-    setResolving(true)
-    await resolve(true, value.trim() || undefined)
+    if (busy) return
+    setBusy(true)
+    const ok = await resolve({ approved: true, answer: value.trim() || undefined })
+    // 失败时回滚到可编辑态，错误由 store.error 呈现
+    if (!ok) setBusy(false)
+  }
+
+  const handleSkip = async () => {
+    if (busy) return
+    setBusy(true)
+    const ok = await skip()
+    if (!ok) setBusy(false)
   }
 
   return (
@@ -66,16 +80,32 @@ export function HitlClarifyDialog({ item }: { item: HitlItem }) {
             }}
             placeholder="输入回复…"
             autoFocus
-            disabled={resolving}
+            disabled={busy}
           />
         </div>
 
+        {error && (
+          <p className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+
         <DialogFooter className="!flex-row !justify-end !gap-2 sm:space-x-0">
-          <Button variant="outline" size="sm" onClick={close} disabled={resolving} className="h-8 px-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleSkip()}
+            disabled={busy}
+            className="mr-auto h-8 px-3 text-muted-foreground"
+          >
+            <SkipForward className="mr-1 size-3.5" />
+            跳过
+          </Button>
+          <Button variant="outline" size="sm" onClick={close} disabled={busy} className="h-8 px-4">
             取消
           </Button>
-          <Button variant="default" size="sm" onClick={handleSend} disabled={resolving} className="h-8 px-4">
-            {resolving ? '发送中…' : '发送'}
+          <Button variant="default" size="sm" onClick={handleSend} disabled={busy} className="h-8 px-4">
+            {busy ? '发送中…' : '发送'}
           </Button>
         </DialogFooter>
       </DialogContent>

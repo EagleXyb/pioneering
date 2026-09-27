@@ -48,6 +48,10 @@ export {
   routeAfterMemoryQuery,
   makeSubagentNode,
   makeConsensusNode,
+  // 需求澄清（HITL clarifying）
+  makeClarifyNode,
+  assessClarificationNeed,
+  type ClarifyDecision,
 } from './nodes.js'
 
 // graph

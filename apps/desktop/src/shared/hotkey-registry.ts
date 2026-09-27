@@ -60,11 +60,11 @@ export const HOTKEY_DEFINITIONS: HotkeyDefinition[] = [
   },
   {
     id: 'toggle-right-panel',
-    label: '切换右侧产物面板',
+    label: '切换右侧功能面板',
     scope: 'renderer',
     allowEmpty: true,
     defaultBinding: 'Ctrl+B',
-    keywords: ['panel', '面板', '右侧', '产物']
+    keywords: ['panel', '面板', '右侧', '标签']
   },
   {
     id: 'toggle-fullscreen',

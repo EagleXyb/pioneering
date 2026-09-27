@@ -241,6 +241,29 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     event_log_max_size_mb: 10.0,
     evolution_report_interval: 100,
     enable_context_reduction: true,
+    // 需求澄清（HITL clarifying）——复用工具审批的 interrupt/resume/checkpointer/超时链路。
+    // 默认关闭：关闭时 perception 路由不产生 clarify 分叉，图拓扑与既有行为逐字节等价。
+    clarification: {
+      enabled: false,
+      // 澄清轮次上限（防无限追问，超限后按现有假设继续执行）
+      max_clarify_rounds: 2,
+      // 输入长度阈值：低于该字符数视为表达不充分（确定性信号）
+      min_input_chars: 10,
+      // 语义模糊短语（确定性信号，命中即视为需求不明确）
+      insufficient_patterns: [
+        '帮我弄一下',
+        '帮我搞一下',
+        '搞个东西',
+        '弄个东西',
+        '随便弄',
+        '你看着办',
+        'you know what i mean',
+      ],
+      // 澄清问题文案（LLM 不可用/未启用时的兜底）
+      question_template: '你的需求还不太明确，方便补充一下具体想做什么吗？',
+      // 澄清问题附带的候选选项（空数组 = 纯自由文本回答）
+      default_options: [] as Array<{ id: string; label: string }>,
+    },
   },
   feedback: {
     evolution_threshold: 0.6,

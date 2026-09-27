@@ -4,7 +4,7 @@
 // 展开状态（sidebarVisible = true）：
 //   [──灰侧栏(262px)──]
 //   灰色区：红绿灯避让 + toggle/搜索/筛选按钮
-//   右侧不渲染占位元素，让中栏 ChatHeader / 右栏 ContextPanel header
+//   右侧不渲染占位元素，让中栏 ChatHeader / 右栏 RightPanel 标签栏
 //          直接在白色卡片内自然显示，不被 TitleBar 覆盖
 //
 // 折叠状态（sidebarVisible = false）：

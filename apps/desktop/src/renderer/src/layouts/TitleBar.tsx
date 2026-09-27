@@ -120,7 +120,7 @@ export const TitleBar = memo(function TitleBar({
       className={cn(
         // 绝对定位在窗口顶部
         // macOS：只覆盖左侧区域（left-0 top-0，不设 right-0/inset-x-0），
-        //        右侧留给白色卡片的 ChatHeader/ContextPanel header 自然显示
+        //        右侧留给白色卡片的 ChatHeader / RightPanel 标签栏自然显示
         // Win/Linux：全宽（inset-x-0），包含菜单和窗口控制按钮
         'absolute top-0 z-20 flex items-center select-none h-[var(--titlebar-h)]',
         isMac ? 'left-0 bg-transparent pointer-events-none' : 'inset-x-0 bg-sidebar pointer-events-auto'

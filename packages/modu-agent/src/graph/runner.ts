@@ -938,7 +938,14 @@ export async function resume_sync(
   approved: boolean,
   feedback: string = '',
   traceId?: string | null,
-  options?: { timeout?: boolean },
+  options?: {
+    timeout?: boolean
+    modifiedArgs?: Record<string, Record<string, any>>
+    /** 澄清回答自由文本（kind='clarifying'；与 feedback 并存，语义更明确） */
+    answer?: string | null
+    /** 多选回答的选项 id（kind='choice'） */
+    answerId?: string | null
+  },
 ): Promise<Record<string, any>> {
   if (!traceId) {
     traceId = randomUUID()
@@ -953,6 +960,17 @@ export async function resume_sync(
   }
   if (options?.timeout === true) {
     resumePayload['timeout'] = true
+  }
+  // v1.2 §4.3 建议3：改参批准（modified_args），与 resume_stream 对齐
+  if (options?.modifiedArgs && Object.keys(options.modifiedArgs).length > 0) {
+    resumePayload['modified_args'] = options.modifiedArgs
+  }
+  // 澄清回答（clarify 节点消费）：自由文本 answer + 选项 id answer_id
+  if (options?.answer !== undefined && options?.answer !== null) {
+    resumePayload['answer'] = String(options.answer)
+  }
+  if (options?.answerId !== undefined && options?.answerId !== null) {
+    resumePayload['answer_id'] = String(options.answerId)
   }
 
   try {
@@ -1048,7 +1066,14 @@ export async function* resume_stream(
   approved: boolean,
   feedback: string = '',
   traceId?: string | null,
-  options?: { modifiedArgs?: Record<string, Record<string, any>>; timeout?: boolean },
+  options?: {
+    modifiedArgs?: Record<string, Record<string, any>>
+    timeout?: boolean
+    /** 澄清回答自由文本（kind='clarifying'） */
+    answer?: string | null
+    /** 多选回答的选项 id（kind='choice'） */
+    answerId?: string | null
+  },
 ): AsyncGenerator<Record<string, any>> {
   if (!traceId) {
     traceId = randomUUID()
@@ -1066,6 +1091,13 @@ export async function* resume_stream(
   // P9.4.3: 超时标记
   if (options?.timeout === true) {
     resumePayload['timeout'] = true
+  }
+  // 澄清回答（clarify 节点消费）：自由文本 answer + 选项 id answer_id
+  if (options?.answer !== undefined && options?.answer !== null) {
+    resumePayload['answer'] = String(options.answer)
+  }
+  if (options?.answerId !== undefined && options?.answerId !== null) {
+    resumePayload['answer_id'] = String(options.answerId)
   }
 
   const streamStart = performance.now()
@@ -1095,15 +1127,73 @@ export async function* resume_stream(
 }
 
 /**
+ * 支持 interrupt 暂停的节点名集合。
+ *   - human_review：敏感工具审批（kind='tool_confirm'）
+ *   - clarify：需求澄清追问（kind='clarifying'/'choice'）
+ * 新增 interrupt 节点时必须同步登记，否则 get_interrupt_state 会漏判暂停态。
+ */
+const INTERRUPT_NODE_NAMES = ['human_review', 'clarify'] as const
+
+/** 节点名 → 默认 kind（interrupt 载荷未显式声明 kind 时用于兜底） */
+const NODE_DEFAULT_KIND: Record<string, 'tool_confirm' | 'clarifying'> = {
+  human_review: 'tool_confirm',
+  clarify: 'clarifying',
+}
+
+/**
+ * 从 StateSnapshot.tasks[].interrupts[] 提取 interrupt() 的载荷。
+ *
+ * 为什么不能只读 state.values：LangGraph 暂停时 human_review/clarify 节点
+ * **没有返回**（interrupt() 挂起了执行），其返回值不会写入 channels，
+ * 因此 values['pending_tool_calls'] 在暂停期间通常是空的——前端恢复链路
+ * 只能拿到空载荷。interrupt 的权威来源是 checkpointer 中 pending task 的
+ * interrupts[].value（见 @langchain/langgraph PregelTaskDescription）。
+ */
+export function extractInterruptValue(state: Record<string, any> | null | undefined): Record<string, any> | null {
+  const tasks = Array.isArray(state?.['tasks']) ? (state!['tasks'] as Record<string, any>[]) : []
+  for (const task of tasks) {
+    const interrupts = Array.isArray(task?.['interrupts'])
+      ? (task['interrupts'] as Record<string, any>[])
+      : []
+    for (const item of interrupts) {
+      const value = item?.['value']
+      if (value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, any>
+      }
+    }
+  }
+  return null
+}
+
+/** 统一 kind 归一：载荷显式声明优先，其次按中断节点名推导 */
+function resolveInterruptKind(
+  rawKind: unknown,
+  nextNodes: string[],
+): 'tool_confirm' | 'clarifying' | 'choice' {
+  if (rawKind === 'tool_confirm' || rawKind === 'clarifying' || rawKind === 'choice') {
+    return rawKind
+  }
+  for (const node of nextNodes) {
+    const fallback = NODE_DEFAULT_KIND[node]
+    if (fallback) return fallback
+  }
+  return 'tool_confirm'
+}
+
+/**
  * P3-12.3.2: 查询指定 session 当前是否处于 interrupt 暂停状态。
  *
- * 用于调用者在决定是否调用 resume_sync 之前检查图状态。
+ * 用于调用者在决定是否调用 resume_sync 之前检查图状态，也是前端
+ * 「进页/重连恢复待答复项」的唯一数据源（GET /agent/state/:threadId）。
+ *
+ * 返回值语义（阶段三补强）：
+ *   - null：未暂停或无 checkpoint
+ *   - { kind, message, question, options, pending_tool_calls, tool_requires_approval, ... }
+ *     kind 供前端选择弹窗类型（工具审批 / 澄清追问 / 多选），
+ *     载荷优先取 checkpoint 中 pending task 的 interrupts[].value。
  *
  * @param graph ModuGraph 实例
  * @param sessionId 会话标识
- * @returns
- *   - null: 未暂停或无 checkpoint
- *   - dict: 暂停时的 interrupt payload（含 tool_calls / message 等）
  */
 export async function get_interrupt_state(
   graph: ModuGraph,
@@ -1123,23 +1213,39 @@ export async function get_interrupt_state(
     if (!nextNodes || nextNodes.length === 0) {
       return null
     }
-    // 检查是否为 human_review 节点的暂停
-    if (!nextNodes.includes('human_review')) {
+    // 检查是否为已登记的 interrupt 节点暂停
+    if (!nextNodes.some((n) => (INTERRUPT_NODE_NAMES as readonly string[]).includes(n))) {
       return null
     }
     // 从 state.values 提取 interrupt 上下文
     const values = (state.values ?? {}) as Record<string, any>
+    // 权威载荷：checkpoint 中 pending task 的 interrupts[].value
+    const snapshot = state as unknown as Record<string, any>
+    const interruptValue = extractInterruptValue(snapshot)
     // 从 state.metadata 读取 interrupt 创建时间（LangGraph StateSnapshot.metadata.created_at）
     // 用于 HITL 超时检查（对应 CODE_WIKI 9.4.3）
     const meta = (state.metadata ?? {}) as Record<string, any>
     const createdAt = meta['created_at'] ?? null
+
+    const kind = resolveInterruptKind(interruptValue?.['kind'] ?? values['interrupt_kind'], nextNodes)
+    const toolCalls = interruptValue?.['tool_calls'] ?? values['pending_tool_calls'] ?? []
+    // interrupt 载荷中的会话/用户/轨迹标识优先（空串视为未提供）
+    const payloadSessionId = String(interruptValue?.['session_id'] ?? '').trim()
+    const payloadTraceId = String(interruptValue?.['trace_id'] ?? '').trim()
+    const payloadUserId = String(interruptValue?.['user_id'] ?? '').trim()
+
     return {
-      session_id: sessionId,
+      session_id: payloadSessionId || sessionId,
+      kind,
+      message: interruptValue?.['message'] ?? values['approval_message'] ?? '',
+      question: interruptValue?.['question'] ?? values['clarification_question'] ?? undefined,
+      options: interruptValue?.['options'] ?? values['clarification_options'] ?? undefined,
       next_nodes: [...nextNodes],
-      pending_tool_calls: values['pending_tool_calls'] ?? [],
-      tool_requires_approval: values['tool_requires_approval'] ?? false,
-      trace_id: values['trace_id'] ?? '',
-      user_id: values['user_id'] ?? '',
+      pending_tool_calls: toolCalls,
+      tool_requires_approval:
+        kind === 'tool_confirm' ? true : Boolean(values['tool_requires_approval'] ?? false),
+      trace_id: payloadTraceId || values['trace_id'] || '',
+      user_id: payloadUserId || values['user_id'] || '',
       created_at: createdAt,
     }
   } catch (e: any) {

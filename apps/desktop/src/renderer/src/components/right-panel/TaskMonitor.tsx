@@ -12,12 +12,23 @@
 //     消息的 attachments（来自 SSE ARTIFACT_CREATED 事件）并显示
 // ============================================================
 
-import { useMemo, useState } from 'react'
-import { Check, ChevronRight, FileText, FolderOpen, FolderSymlink } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import {
+  Check,
+  ChevronRight,
+  Download,
+  Eye,
+  FileText,
+  FolderOpen,
+  FolderSymlink,
+  Loader2
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/stores/chatStore'
 import type { Attachment } from '@shared/types'
 import { fileApi } from '@/services/ipc'
+import { detectArtifactPreview, getFileExtension } from '@/lib/artifact-preview'
+import { useArtifactPreview } from '@/hooks/useArtifactPreview'
 
 interface TodoItem {
   id: string
@@ -101,33 +112,93 @@ function formatArtifactMeta(a: Attachment): string {
 
 function ArtifactItem({ artifact }: { artifact: Attachment }) {
   const meta = formatArtifactMeta(artifact)
-  const handleShowInFolder = (e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    if (artifact.filePath) {
-      fileApi.showInFolder(artifact.filePath).catch(() => {})
+  // 预览入口（每个卡片独立持有 loading / error，互不干扰）
+  const { preview, loadingPath, error } = useArtifactPreview()
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const filePath = artifact.filePath
+  const previewTarget = useMemo(
+    () => detectArtifactPreview(artifact.name, artifact.mediaType),
+    [artifact.name, artifact.mediaType]
+  )
+  // 可预览 = 类型受支持 且 有本地路径；否则卡片主行为退回「在 Finder 中定位」（原有能力不丢失）
+  const previewable = Boolean(filePath) && previewTarget !== null
+  const isLoading = loadingPath !== null
+  const hint = error ?? saveError
+
+  const handlePreview = useCallback(() => {
+    if (!previewable) return
+    void preview(artifact)
+  }, [previewable, preview, artifact])
+
+  const handleShowInFolder = useCallback(() => {
+    if (!filePath) return
+    void fileApi.showInFolder(filePath).catch(() => {})
+  }, [filePath])
+
+  const handleCardClick = useCallback(() => {
+    if (previewable) {
+      handlePreview()
+      return
     }
-  }
-  const showInFolderDisabled = !artifact.filePath
+    handleShowInFolder()
+  }, [previewable, handlePreview, handleShowInFolder])
+
+  const handleSaveAs = useCallback(async () => {
+    if (!filePath || !previewable) return
+    setSaveError(null)
+    setSaving(true)
+    try {
+      // 产物为本地文件：先读回内容，再经「另存为」写盘（FILE_READ / FILE_WRITE 均走既有安全校验）
+      const read = await fileApi.read(filePath)
+      if (!read.success || typeof read.content !== 'string') {
+        setSaveError('读取文件失败，无法另存为')
+        return
+      }
+      const ext = getFileExtension(artifact.name)
+      const result = await fileApi.saveDialog({
+        title: '另存为',
+        defaultPath: artifact.name,
+        filters: ext ? [{ name: `${ext.toUpperCase()} 文件`, extensions: [ext] }] : undefined
+      })
+      const target = result?.filePaths?.[0]
+      if (result?.canceled || !target) return
+      const written = await fileApi.write({ filePath: target, content: read.content })
+      if (!written.success) setSaveError('写入目标文件失败')
+    } catch {
+      setSaveError('另存为失败')
+    } finally {
+      setSaving(false)
+    }
+  }, [filePath, previewable, artifact.name])
+
+  const interactive = previewable || Boolean(filePath)
+
   return (
     <div
-      role={showInFolderDisabled ? undefined : 'button'}
-      tabIndex={showInFolderDisabled ? undefined : 0}
-      onClick={showInFolderDisabled ? undefined : handleShowInFolder}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={interactive ? handleCardClick : undefined}
       onKeyDown={
-        showInFolderDisabled
-          ? undefined
-          : (e) => {
-              if (e.key === 'Enter' || e.key === ' ') handleShowInFolder()
+        interactive
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleCardClick()
+              }
             }
+          : undefined
       }
-      title={artifact.filePath ? '点击在 Finder 中定位' : undefined}
+      title={previewable ? '点击预览文件内容' : filePath ? '点击在 Finder 中定位' : undefined}
       className={cn(
         'w-full flex items-start gap-3 p-3 rounded-lg bg-white/60 dark:bg-white/[0.03] border border-border/50 transition-colors',
-        !showInFolderDisabled && 'cursor-pointer hover:border-blue-500/40 hover:shadow-sm',
+        interactive && 'cursor-pointer hover:border-blue-500/40 hover:shadow-sm',
+        isLoading && 'opacity-70'
       )}
     >
       <div className="shrink-0 size-9 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-        <FileText size={18} />
+        {isLoading ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-[14px] font-medium text-foreground truncate">
@@ -138,22 +209,68 @@ function ArtifactItem({ artifact }: { artifact: Attachment }) {
             {meta}
           </div>
         )}
-        {artifact.filePath && (
+        {filePath && (
           <div className="mt-1 text-[11px] text-muted-foreground/60 truncate font-mono">
-            {artifact.filePath}
+            {filePath}
+          </div>
+        )}
+        {!previewable && filePath && (
+          <div className="mt-1 text-[11px] text-muted-foreground/60">
+            该类型暂不支持应用内预览
+          </div>
+        )}
+        {hint && (
+          <div className="mt-1 text-[11px] text-red-600 leading-relaxed break-words">
+            {hint}
           </div>
         )}
       </div>
-      {artifact.filePath && (
-        <button
-          type="button"
-          onClick={handleShowInFolder}
-          className="shrink-0 size-8 -mr-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-muted-foreground/70 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors"
-          title="在 Finder 中显示"
-        >
-          <FolderOpen size={16} />
-        </button>
-      )}
+      <div className="flex items-center gap-0.5 shrink-0 -mr-1">
+        {previewable && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              handlePreview()
+            }}
+            disabled={isLoading}
+            className="size-8 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-muted-foreground/70 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors disabled:opacity-50"
+            title="预览"
+            aria-label="预览"
+          >
+            <Eye size={16} />
+          </button>
+        )}
+        {previewable && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              void handleSaveAs()
+            }}
+            disabled={saving}
+            className="size-8 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-muted-foreground/70 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors disabled:opacity-50"
+            title="另存为"
+            aria-label="另存为"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+          </button>
+        )}
+        {filePath && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleShowInFolder()
+            }}
+            className="size-8 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-muted-foreground/70 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors"
+            title="在 Finder 中显示"
+            aria-label="在 Finder 中显示"
+          >
+            <FolderOpen size={16} />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -240,7 +357,7 @@ export function TaskMonitor({ todoItems = DEFAULT_TODO_ITEMS }: TaskMonitorProps
               <ArtifactItem key={a.id} artifact={a} />
             ))}
             <div className="pt-2 text-[11px] text-muted-foreground/60 leading-relaxed">
-              提示：点击卡片右侧「打开文件夹」图标可在 Finder 中定位文件。
+              提示：点击卡片可预览文件内容（支持 Markdown / HTML / SVG / 代码）；右侧图标可另存为或在 Finder 中定位。
             </div>
           </div>
         ) : (

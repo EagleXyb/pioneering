@@ -11,22 +11,31 @@
   /* ============================================================
      中间栏统一列宽令牌：内容展示区 / 输入区 / 欢迎页共用。
      对标 WorkBuddy 输入区（.composer: width:100% + max-width 上限 + margin:0 auto +
-     两侧留白）的「流式宽度」机制，本项目在此基础上把固定上限改为随窗口自适应：
+     两侧留白）的「流式宽度」机制，本项目把固定上限改为随窗口自适应：
 
-       --chat-col-min  下限：窄窗口下卡片仍可操作
-       --chat-col-max  上限：大屏下避免行长过宽影响阅读
-       --chat-col-w    实际列宽 = clamp(下限, 61vw, 上限)
+       --chat-col-min     下限 880px：保持内部既定标准，小窗口 / 面板收起时不收窄（零回归）
+       --chat-col-max     上限 1040px：大屏下避免行长过宽影响阅读
+       --chat-col-gutter  整窗预留 560px（左栏 262 + 卡片沟渠 + 右侧面板与视觉留白）
+       --chat-col-w       实际列宽 = clamp(下限, 100vw - 预留, 上限)
 
-     61vw 的取值使 1440px 窗口 ≈ 880px（与既定内部标准一致，向后兼容）；
-     窗口越宽列宽越大，触及上限后不再增长，窗口变窄则平滑收缩。
-     采用视口单位 vw 而非媒体查询，可同时覆盖：
-       · 应用窗口尺寸变化（拖拽边框 / 最大化）
-       · 系统缩放与界面缩放比例变化（vw 随缩放后的视口同步）
-       · 中栏被三栏拖拽压窄的场景（由 .pro-input-inner 的 width:100% 兜底，不会溢出）
+     映射行为（窗口宽 → 列宽）：
+       1024 ~ 1440 → 880px（取下限，与旧固定值一致，避免小窗口回归）
+       1440 ~ 1600 → 线性增长至 1040px（大屏利用更多空间）
+       ≥ 1600      → 1040px（取上限，保护行长可读性）
+
+     注意：三栏模式下中栏「实际可用宽度」通常小于本令牌，此时由
+     .pro-input-inner / 消息区 / 欢迎页的 width:100% 兜底，不会溢出。
+     采用视口单位 vw 而非媒体查询，可同时覆盖窗口尺寸变化、系统/界面缩放、
+     以及中栏被拖拽压窄三种场景。
      ============================================================ */
-  --chat-col-min: 560px;
+  --chat-col-min: 880px;
   --chat-col-max: 1040px;
-  --chat-col-w: clamp(var(--chat-col-min), 61vw, var(--chat-col-max));
+  --chat-col-gutter: 560px;
+  --chat-col-w: clamp(
+    var(--chat-col-min),
+    calc(100vw - var(--chat-col-gutter)),
+    var(--chat-col-max)
+  );
 
   /* 横向留白：随窗口宽度柔性变化（替代写死的 20px），窄屏收敛、大屏舒展 */
   --chat-col-pad: clamp(16px, 1.5vw, 32px);
@@ -132,6 +141,61 @@
 /* 图片缩略图条（desktop 特性）：与文本区域对齐的左右内边距 */
 .pro-input-attachments {
   padding: 0 16px 8px;
+}
+
+/* ============================================================
+   HITL 内联澄清条（阶段三 3.4）
+   展示 Agent 的澄清问题 + 队列序号 + 跳过；输入框提交语义切换为"澄清回答"
+   ============================================================ */
+.pro-input-hitl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 12px 6px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--primary) 24%, transparent);
+}
+
+.pro-input-hitl-question {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary, inherit);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.pro-input-hitl-index {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, inherit);
+  opacity: 0.75;
+}
+
+.pro-input-hitl-skip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, inherit);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.pro-input-hitl-skip:hover {
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--primary);
 }
 
 /* ============================================================
@@ -274,9 +338,25 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
+  /* 窄中栏防溢出：作为 flex 子项允许收缩（默认 min-width:auto 会锁死内容宽度，
+     长模型名在极窄中栏下会撑破工具栏并触发横向溢出） */
+  min-width: 0;
   transition:
     background var(--transition-fast),
     color var(--transition-fast);
+}
+
+/* 模型名文本：空间不足时省略号截断（宽屏不触发，视觉无变化） */
+.pro-input-model-btn > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 下拉箭头：不参与收缩，始终保持完整 */
+.pro-input-model-btn > svg {
+  flex: none;
 }
 
 .pro-input-model-btn:hover:not(:disabled) {

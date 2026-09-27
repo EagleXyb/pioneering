@@ -277,12 +277,17 @@ async function executeResume(run: AgentRun, request: ResumeRequest): Promise<voi
     const graph = await create_agent()
     const adapter = new AGUIStreamAdapter(traceId)
     logger.info(
-      'resume.start runId=%s session=%s approved=%s modified_args=%d',
-      run.runId, run.sessionId, request.approved, Object.keys(request.modifiedArgs ?? {}).length,
+      'resume.start runId=%s session=%s approved=%s modified_args=%d answer=%s',
+      run.runId, run.sessionId, request.approved,
+      Object.keys(request.modifiedArgs ?? {}).length,
+      request.answer ? 'yes' : 'no',
     )
     for await (const dict of adapter.transform_langgraph_events(
       resume_stream(graph, run.sessionId, request.approved, request.feedback ?? '', traceId, {
         modifiedArgs: request.modifiedArgs ?? undefined,
+        // 澄清回答透传给 clarify 节点（kind='clarifying' | 'choice'）
+        answer: request.answer ?? undefined,
+        answerId: request.answerId ?? undefined,
       }),
     )) {
       if (run.controller.signal.aborted) break
@@ -412,6 +417,11 @@ export async function getHitlState(threadId: string): Promise<HitlStateResponse>
   return {
     session_id: (state['session_id'] as string) ?? threadId,
     pending: true,
+    // kind：前端据此选择弹窗类型（工具审批 / 澄清追问 / 多选），避免靠布尔值猜测
+    kind: (state['kind'] as HitlStateResponse['kind']) ?? 'tool_confirm',
+    message: (state['message'] as string) ?? '',
+    question: (state['question'] as string) ?? undefined,
+    options: (state['options'] as HitlStateResponse['options']) ?? undefined,
     next_nodes: (state['next_nodes'] as string[]) ?? [],
     pending_tool_calls: (state['pending_tool_calls'] as Array<Record<string, unknown>>) ?? [],
     tool_requires_approval: (state['tool_requires_approval'] as boolean) ?? false,

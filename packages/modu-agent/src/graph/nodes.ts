@@ -1925,12 +1925,15 @@ export function makeHumanReviewNode(
 
     // 触发 interrupt 暂停图执行
     // interrupt(value) 返回由 Command(resume=...) 提供的恢复值
+    // kind 显式声明：前端据此选择弹窗类型，get_interrupt_state 也据此回填
+    // （不再依赖 tool_requires_approval 布尔值猜测）
     const resumePayload = interrupt({
+      kind: 'tool_confirm',
       tool_calls: pending,
       trace_id: state.trace_id ?? '',
       session_id: state.session_id ?? '',
       user_id: state.user_id ?? '',
-      message: 'Tool calls require human approval before execution',
+      message: 'Agent 请求执行以下操作，请确认是否批准。',
     }) as any
 
     // 解析 resume payload
@@ -2069,6 +2072,196 @@ export function routeAfterHumanReview(state: ModuAgentState): string {
     return 'finalize_response'
   }
   return 'tools'
+}
+
+// ============================================================
+// 需求澄清（HITL clarifying）——复用工具审批的 interrupt/resume 链路
+// ============================================================
+
+/** 澄清判定输入（确定性信号，无副作用、可单测） */
+export interface ClarifyDecision {
+  /** 是否需要向用户澄清 */
+  needed: boolean
+  /** 判定原因（日志与可观测用） */
+  reason: string
+  /** 澄清问题文本 */
+  question: string
+  /** 候选选项（空数组表示纯自由文本回答） */
+  options: Array<{ id: string; label: string }>
+}
+
+/** 从 state 提取用户本轮输入文本（感知层清洗结果优先） */
+function _extractUserInput(state: ModuAgentState): string {
+  const cleaned = (state.cleaned_text ?? '').trim()
+  if (cleaned) return cleaned
+  const prompt = String((state.input_data ?? {})['prompt'] ?? '').trim()
+  return prompt
+}
+
+/**
+ * 需求明确度检测（确定性信号）。
+ *
+ * 检测顺序（任一命中即需要澄清）：
+ *   1. 开关关闭 → 不澄清（保证 enabled=false 时行为与现状完全一致）
+ *   2. 已达 max_clarify_rounds → 不再追问（防无限追问死循环）
+ *   3. 输入过短（< min_input_chars）→ 表达不充分的强信号
+ *   4. 命中 insufficient_patterns（"帮我弄一下"等语义模糊短语）
+ *
+ * 说明：doc 12 方案中的 LLM 槽位缺失检测（clarity_score / missing_slots）需要
+ * 额外的 LLM 调用与槽位声明，属后续增强；本实现只覆盖零额外开销的确定性信号，
+ * 保证可测、可灰度、默认关闭时零行为变化。
+ *
+ * @param state 图状态
+ * @param cfg perception.clarification 配置块（缺省时读取全局配置）
+ */
+export function assessClarificationNeed(
+  state: ModuAgentState,
+  cfg?: Record<string, any> | null,
+): ClarifyDecision {
+  const conf = cfg ?? (getConfig().get('perception.clarification', {}) ?? {})
+  const question = String(conf['question_template'] ?? '你的需求还不太明确，方便补充一下具体想做什么吗？')
+  const options = Array.isArray(conf['default_options'])
+    ? (conf['default_options'] as Array<{ id: string; label: string }>)
+    : []
+
+  if (!conf['enabled']) {
+    return { needed: false, reason: 'disabled', question, options: [] }
+  }
+
+  const round = Number(state.clarification_round ?? 0)
+  const maxRounds = Number(conf['max_clarify_rounds'] ?? 2)
+  if (round >= maxRounds) {
+    return { needed: false, reason: 'round_limit_reached', question, options: [] }
+  }
+
+  const input = _extractUserInput(state)
+  if (!input) {
+    return { needed: false, reason: 'empty_input', question, options: [] }
+  }
+
+  const minChars = Number(conf['min_input_chars'] ?? 10)
+  if (input.length < minChars) {
+    return { needed: true, reason: 'input_too_short', question, options }
+  }
+
+  const patterns = Array.isArray(conf['insufficient_patterns'])
+    ? (conf['insufficient_patterns'] as string[])
+    : []
+  const lowered = input.toLowerCase()
+  const hit = patterns.find((p) => p && lowered.includes(String(p).toLowerCase()))
+  if (hit) {
+    return { needed: true, reason: `insufficient_pattern:${hit}`, question, options }
+  }
+
+  return { needed: false, reason: 'sufficient', question, options: [] }
+}
+
+/**
+ * 创建需求澄清节点工厂（对应 docs/code-wiki/12-需求澄清HITL机制实施方案.md 的 clarify 节点）。
+ *
+ * 节点行为：
+ *   1. 复用 assessClarificationNeed 判定（与路由同源，避免路由/节点判定不一致）
+ *   2. 需要澄清时调用 interrupt({ kind, question, options, ... }) 暂停图执行
+ *   3. 调用者通过 Command(resume={ answer | answer_id }) 恢复
+ *   4. 恢复后把回答写入 clarification_answers，并把澄清内容注入 messages，
+ *      使下游 agent 在"补充后的需求"上继续执行
+ *
+ * 参数：
+ *   @param config 可注入的 RuntimeConfig（测试用）；缺省走全局单例
+ *   @param llm    可选 LLM，用于生成更精准的澄清问题；为空时使用配置兜底文案
+ */
+export function makeClarifyNode(
+  config: any = null,
+  llm: any = null,
+): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
+  async function _clarifyNode(
+    state: ModuAgentState,
+  ): Promise<Partial<ModuAgentState>> {
+    const conf: Record<string, any> =
+      (config !== null && config !== undefined
+        ? config.get('perception.clarification', {})
+        : getConfig().get('perception.clarification', {})) ?? {}
+
+    const decision = assessClarificationNeed(state, conf)
+    if (!decision.needed) {
+      // 兜底：路由与节点判定不一致时（配置热变更）直接透传，避免死循环
+      return { needs_clarification: false }
+    }
+
+    // LLM 生成更精准的问题（可选）：失败/未启用时回退配置兜底文案
+    let question = decision.question
+    let options = decision.options
+    const useLlm = Boolean(conf['use_llm'] ?? false)
+    if (useLlm && llm && typeof llm.invoke === 'function') {
+      try {
+        const prompt =
+          '用户请求可能不够明确。请用一句中文向用户提出澄清问题（15-40 字），' +
+          '只输出问题本身，不要输出其它内容。\n\n用户请求：' +
+          _extractUserInput(state)
+        const res = await llm.invoke([new HumanMessage(prompt)])
+        const text = String((res as any)?.content ?? '').trim()
+        if (text) question = text
+      } catch (e: any) {
+        logger.warning('clarify.llm_failed fallback to template: %s', String(e?.message ?? e))
+        options = decision.options
+      }
+    }
+
+    logger.info(
+      'clarify.interrupt session=%s reason=%s round=%d',
+      String(state.session_id ?? ''), decision.reason, Number(state.clarification_round ?? 0),
+    )
+
+    // 暂停图执行，等待用户回答（interrupt 载荷 = 前端恢复所需的全部信息）
+    const resumePayload = interrupt({
+      kind: options.length > 0 ? 'choice' : 'clarifying',
+      question,
+      options,
+      session_id: state.session_id ?? '',
+      user_id: state.user_id ?? '',
+      trace_id: state.trace_id ?? '',
+      message: question,
+      reason: decision.reason,
+    }) as any
+
+    const answerPayload = (resumePayload ?? {}) as Record<string, any>
+    const answerText = String(answerPayload['answer'] ?? answerPayload['feedback'] ?? '').trim()
+    const answerId = String(answerPayload['answer_id'] ?? '').trim()
+    // 选项 id → 选项 label（便于注入人类可读的需求描述）
+    const matchedOption = options.find((o) => o.id === answerId)
+    const answerLabel = matchedOption?.label ?? ''
+
+    const answerRecord = {
+      question,
+      answer: answerText,
+      answer_id: answerId || null,
+      answer_label: answerLabel || null,
+      round: Number(state.clarification_round ?? 0) + 1,
+      reason: decision.reason,
+    }
+
+    // 把澄清结果注入消息流：下游 agent 基于"补充后的需求"继续执行
+    const injectionParts = [`澄清问题：${question}`]
+    if (answerLabel) injectionParts.push(`用户选择：${answerLabel}`)
+    if (answerText) injectionParts.push(`用户补充：${answerText}`)
+    const clarifiedMessage = injectionParts.join('\n')
+
+    const messages = Array.isArray(state.messages) ? (state.messages as BaseMessage[]) : []
+    const injectedMessages =
+      answerText || answerLabel ? [...messages, new HumanMessage(clarifiedMessage)] : messages
+
+    return {
+      needs_clarification: false,
+      clarification_answers: [...(state.clarification_answers ?? []), answerRecord],
+      clarification_round: Number(state.clarification_round ?? 0) + 1,
+      clarification_question: '',
+      clarification_options: [],
+      interrupt_kind: '',
+      messages: injectedMessages,
+    }
+  }
+
+  return _clarifyNode
 }
 
 // ============================================================

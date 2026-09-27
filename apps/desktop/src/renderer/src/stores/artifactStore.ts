@@ -1,66 +1,93 @@
 /**
- * 预览面板（Artifact）状态中枢 —— 与 web 端 artifactStore 逻辑一致，
- * 适配桌面端采用 Jotai（与 contextPanelVisibleAtom 同属 UI 状态层）。
+ * 预览面板（Artifact）状态中枢 —— 产物预览已纳入右侧面板标签模型，
+ * 本模块保留「产物 ⇄ 标签」的桥接与消息高亮信号。
  *
- * 关键字段：
- *  - activeArtifactAtom：当前正在预览的产物（null 表示不预览），
- *    其存在即决定右侧栏展示「预览面板」还是「任务流水线面板」。
- *  - highlightMessageIdAtom：临时高亮信号，由预览面板「跳转源消息」写入，
- *    被消息列表消费后清除，用于反向滚动定位 + 高亮对应消息。
+ * 多标签改造要点：
+ *  - activeArtifactAtom 由「可写单例」改为「派生自激活标签」：
+ *    仅当激活标签是产物标签时才有值，标签切换即自然驱动预览内容切换，
+ *    不再需要额外同步两份状态。
+ *  - openArtifactAtom 不再直接写单例，而是新增/激活一个产物标签
+ *    （同名产物复用同一标签，避免反复点击导致标签膨胀）。
+ *  - closeArtifactAtom 关闭当前产物标签，而非清空单例。
  */
 import { atom } from 'jotai'
-import { contextPanelVisibleAtom } from './atoms'
 import type { ArtifactType } from '@shared/types'
+import {
+  PREVIEW_TAB_PREFIX,
+  closeAllPreviewTabsAtom,
+  closeTabAtom,
+  openTabAtom,
+  previewTabId,
+  rightPanelActiveTabIdAtom,
+  rightPanelTabsAtom,
+  type ActiveArtifact
+} from './rightPanelStore'
 
-/** 可预览产物的来源类型：HTML / SVG 走 iframe，其余走纯文本 code 视图 */
-export type ArtifactKind = ArtifactType // 'html' | 'svg' | 'code'
+// 载荷类型统一从标签模型导出，保持既有 import 路径（'@/stores/artifactStore'）可用
+export type { ActiveArtifact, ArtifactKind } from './rightPanelStore'
 
-/** 当前正在预览的产物描述 */
-export interface ActiveArtifact {
-  /** 来源消息 id，用于「跳转源消息」反向联动 */
-  messageId: string
-  /** 预览类型 */
-  type: ArtifactKind
-  /** 预览内容（原始代码/标记） */
-  content: string
-  /** 代码语言（决定下载扩展名与标题） */
-  language: string
-  /** 打开时间戳，作为 iframe key 的一部分，内容变化时强制重建 */
-  openedAt: number
+/** 产物类型 → 默认标签标题（调用方未指定标题时使用） */
+const DEFAULT_PREVIEW_TITLE: Record<ArtifactType, string> = {
+  html: 'HTML 预览',
+  svg: 'SVG 预览',
+  mermaid: '图表预览',
+  markdown: 'Markdown 预览',
+  code: '代码预览'
+}
+
+/** 打开产物预览的入参：openedAt 由本模块补齐，title 用于标签栏展示 */
+export type OpenArtifactArg = Omit<ActiveArtifact, 'openedAt'> & {
+  /** 标签标题；缺省按产物类型取默认名（产物文件建议传文件名） */
+  title?: string
 }
 
 // ---- 底层状态 atom ----
-export const activeArtifactAtom = atom<ActiveArtifact | null>(null)
+
+/** 临时高亮信号：由产物预览「跳转源消息」写入，被消息列表消费后清除 */
 export const highlightMessageIdAtom = atom<string | null>(null)
+
+/** 当前激活标签为产物标签时返回其载荷，否则为 null */
+export const activeArtifactAtom = atom<ActiveArtifact | null>((get) => {
+  const activeId = get(rightPanelActiveTabIdAtom)
+  if (!activeId) return null
+  const tab = get(rightPanelTabsAtom).find((t) => t.id === activeId)
+  return tab?.kind === 'preview' ? tab.artifact ?? null : null
+})
 
 // ---- 派生动作（写动作集中管理，避免组件内散落 set 逻辑）----
 
-/** 打开预览：写入 activeArtifact 并清掉上一次的高亮信号；
- *  同时自动展开右侧栏（contextPanelVisibleAtom），与 web 端「点预览右侧即出现」一致。 */
-export const openArtifactAtom = atom(null, (get, set, arg: Omit<ActiveArtifact, 'openedAt'>) => {
-  set(activeArtifactAtom, { ...arg, openedAt: Date.now() })
+/** 打开产物预览：作为标签打开（同名复用），并展开面板 */
+export const openArtifactAtom = atom(null, (_get, set, arg: OpenArtifactArg) => {
+  const { title, ...rest } = arg
+  const resolvedTitle = title?.trim() || DEFAULT_PREVIEW_TITLE[rest.type] || '预览'
+  set(openTabAtom, {
+    id: previewTabId(resolvedTitle),
+    kind: 'preview',
+    title: resolvedTitle,
+    artifact: { ...rest, openedAt: Date.now() },
+    closable: true
+  })
   set(highlightMessageIdAtom, null)
-  set(contextPanelVisibleAtom, true)
 })
 
-/** 关闭预览：清空 activeArtifact 与高亮信号（右栏是否收起由用户控制，保持与 web 一致） */
+/** 关闭当前产物预览标签；激活的是任务标签时为空操作 */
 export const closeArtifactAtom = atom(null, (get, set) => {
-  set(activeArtifactAtom, null)
-  set(highlightMessageIdAtom, null)
+  const activeId = get(rightPanelActiveTabIdAtom)
+  if (activeId.startsWith(PREVIEW_TAB_PREFIX)) set(closeTabAtom, activeId)
 })
 
 /** 写入「跳转源消息」高亮信号 */
-export const highlightMessageAtom = atom(null, (get, set, messageId: string) => {
+export const highlightMessageAtom = atom(null, (_get, set, messageId: string) => {
   set(highlightMessageIdAtom, messageId)
 })
 
 /** 消费高亮信号（消息列表定位完成后调用） */
-export const clearHighlightAtom = atom(null, (get, set) => {
+export const clearHighlightAtom = atom(null, (_get, set) => {
   set(highlightMessageIdAtom, null)
 })
 
-/** 切换会话 / 模式时整体复位 */
-export const resetArtifactAtom = atom(null, (get, set) => {
-  set(activeArtifactAtom, null)
+/** 切换会话 / 模式时整体复位：关闭全部产物标签并清理高亮信号 */
+export const resetArtifactAtom = atom(null, (_get, set) => {
+  set(closeAllPreviewTabsAtom)
   set(highlightMessageIdAtom, null)
 })

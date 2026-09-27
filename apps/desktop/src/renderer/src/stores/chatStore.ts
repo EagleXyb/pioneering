@@ -42,6 +42,42 @@ const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
 export const DEFAULT_SESSION_TITLE = '新对话'
 
+// ============================================================
+// HITL 类型（阶段三收敛）
+// ============================================================
+
+/** HITL 答复入参（与 hitlStore.HitlResolveInput 结构对齐） */
+export interface HitlResumeInput {
+  approved: boolean
+  feedback?: string | null
+  modifiedArgs?: Record<string, Record<string, unknown>> | null
+  /** 澄清回答自由文本（kind='clarifying'） */
+  answer?: string | null
+  /** 多选回答的选项 id（kind='choice'） */
+  answerId?: string | null
+}
+
+/** resume 启动结果：ok=false 时 reason 可直接展示给用户 */
+export type HitlResumeResult = { ok: true } | { ok: false; reason: string }
+
+/** 重建暂停容器入参（进页/重连恢复） */
+export interface RestoreHitlPauseInput {
+  sessionId: string
+  kind: UserQuestionRequestPayload['kind']
+  message?: string
+  question?: string
+  toolCalls?: UserQuestionRequestPayload['tool_calls']
+}
+
+/**
+ * 当前会话是否处于 HITL 暂停待答复态（选择器）。
+ * 用法：`useChatStore(selectIsHitlPaused)`
+ */
+export const selectIsHitlPaused = (s: {
+  hitlPausedSessionId: string | null
+  currentSessionId: string | null
+}): boolean => !!s.hitlPausedSessionId && s.hitlPausedSessionId === s.currentSessionId
+
 /** 本地模式（IPC）携带的最大历史轮数（角色对，user+assistant 混计） */
 const IPC_HISTORY_MAX_MESSAGES = 20
 
@@ -90,8 +126,14 @@ export interface ChatState {
   // ===== HITL（阶段二 2.4）=====
   /** 当前待答复的暂停项（interrupt 暂停时由 USER_QUESTION_REQUEST 事件填充） */
   hitlPending: UserQuestionRequestPayload | null
-  /** 是否处于暂停待答复态（消息生命周期 streaming→paused→resuming→done） */
-  isHitlPaused: boolean
+  /**
+   * 处于"暂停待答复"态的会话 id（null = 无暂停）。
+   * 阶段三收敛：由布尔量改为会话标识，避免跨会话串线
+   * （在 B 会话回答 A 会话的暂停项）。
+   */
+  hitlPausedSessionId: string | null
+  /** 暂停的半截 assistant 消息 id（resume 续写定位 + 重连恢复重建用） */
+  hitlPausedMessageId: string | null
 
   /** UI 层 Agent 模式开关（true = 走 Agent 端点）；实际发送时以当前会话的 agentMode 为准 */
   agentMode: boolean
@@ -115,14 +157,26 @@ export interface ChatState {
   stopStreaming: () => void
   setAgentMode: (mode: boolean) => void
   // ===== HITL（阶段二 2.4）=====
-  /** 答复暂停项：resume 续写同一条 assistant 消息（approved/feedback/modified_args） */
-  resumeHitl: (
-    approved: boolean,
-    feedback?: string | null,
-    modifiedArgs?: Record<string, Record<string, unknown>> | null
+  /**
+   * 答复暂停项：resume 续写同一条 assistant 消息。
+   * 返回结果供调用方感知"未真正启动"（不再静默早退导致 UI 卡死）。
+   */
+  resumeHitl: (sessionId: string, input: HitlResumeInput) => Promise<HitlResumeResult>
+  /** 中止/拒绝暂停项（用户取消后收尾）；sessionId 缺省取当前会话 */
+  abortHitl: (
+    sessionId?: string,
+    reason?: 'user_cancel' | 'timeout' | 'reject'
   ) => Promise<void>
-  /** 中止/拒绝暂停项（用户取消后收尾） */
-  abortHitl: () => Promise<void>
+  /**
+   * 重建暂停容器（进页/重连恢复）：把后端仍在等待答复的项落成一条
+   * paused=true 的 assistant 消息，并写入暂停标记，使答复链路可用。
+   */
+  restoreHitlPause: (input: RestoreHitlPauseInput) => void
+  /**
+   * 暂停项已失效（后端超时自动拒绝 / checkpointer 丢失）时收尾：
+   * 追加说明文案、解除 paused 标记，并清空暂停状态。
+   */
+  finalizeHitlStale: (sessionId: string, reason: string) => void
   toggleMessageFeedback: (messageId: string, feedback: 'like' | 'dislike' | 'none') => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
   /** 分享会话；后端未就绪时返回 null，由 UI 降级 */
@@ -225,10 +279,11 @@ export function finalizeStreamingMessage(
 }
 
 /**
- * HITL 暂停收尾（阶段二 2.4）：
+ * HITL 暂停收尾（阶段二 2.4 / 阶段三收敛）：
  * 把暂停的半截 assistant 消息写入消息列表并标记 paused=true，进入"暂停待答复"态。
  * 与 finalizeStreamingMessage 不同：**保留 streamingMessageId**（= msgId），
- * 供 resume 续写时定位同一条 assistant 消息；也不清空 isHitlPaused。
+ * 供 resume 续写时定位同一条 assistant 消息；同时记录会话级暂停标记
+ * （hitlPausedSessionId / hitlPausedMessageId），供答复与恢复链路校验归属。
  */
 export function pauseStreamingMessage(
   state: ChatState,
@@ -240,7 +295,8 @@ export function pauseStreamingMessage(
   const idx = msgs.findIndex((m) => m.id === msgId)
   const base: Partial<ChatState> = {
     streamingMessageId: msgId,
-    isHitlPaused: true,
+    hitlPausedSessionId: sid,
+    hitlPausedMessageId: msgId,
     isStreaming: false,
     abortController: null
   }
@@ -267,6 +323,7 @@ function buildRunPausedPatch(st: ChatState, sid: string, msgId: string): Partial
     traceRootOrder: st.streamingTraceRootOrder,
     attachments: st.streamingAttachments.length ? st.streamingAttachments : undefined,
     paused: true,
+    pausedKind: st.hitlPending?.kind,
     timestamp: Date.now()
   }
 }
@@ -284,6 +341,7 @@ function buildHitlAbortedPatch(st: ChatState, sid: string, msgId: string): Parti
     traceRootOrder: st.streamingTraceRootOrder,
     attachments: st.streamingAttachments.length ? st.streamingAttachments : undefined,
     paused: false,
+    pausedKind: undefined,
     timestamp: Date.now()
   }
 }
@@ -297,7 +355,9 @@ function toHitlItem(p: UserQuestionRequestPayload): HitlItem {
     message: p.message,
     toolCalls: p.tool_calls,
     question: p.question,
-    options: p.options
+    options: p.options,
+    origin: 'live',
+    createdAt: Date.now()
   }
 }
 
@@ -347,7 +407,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   abortController: null,
   hitlPending: null,
-  isHitlPaused: false,
+  hitlPausedSessionId: null,
+  hitlPausedMessageId: null,
   agentMode: false,
   error: null,
 
@@ -542,12 +603,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       agentMode: isAgentSession(session)
     })
     const state = get()
-    if (!state.messages[sessionId]) {
-      state.loadMessages(sessionId)
-    }
+    const needLoad = !state.messages[sessionId]
     // 阶段四边界：关窗/刷新后重连，恢复该会话未答复的 HITL 暂停项
     // 云边双模：按会话 runtime 路由到对应 Transport（local→IPC / cloud→全局模式）
-    void useHitlStore.getState().recover(sessionId, session?.runtime)
+    // 阶段三修正：必须等消息加载完成后再恢复——loadMessages 会整体替换
+    // messages[sid]，若先重建暂停容器会被随后的加载结果覆盖。
+    void (async () => {
+      if (needLoad) {
+        await get().loadMessages(sessionId)
+      }
+      await useHitlStore.getState().recover(sessionId, session?.runtime)
+    })()
   },
 
   loadMessages: async (sessionId, append = false) => {
@@ -594,6 +660,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { currentSessionId, abortController, agentMode: globalAgentMode } = get()
     const images = (extra?.images ?? []) as AttachedImage[]
     const model = extra?.model?.trim()
+
+    // 阶段三守卫（P0）：会话处于 HITL 暂停待答复态时禁止发起新 run。
+    // 否则会覆盖 streamingMessageId、与后端未收敛的 interrupt 并存，
+    // 导致 pause/resume 状态机彻底错位（输入框是这个场景的主要触发入口）。
+    const pausedSessionId = get().hitlPausedSessionId
+    if (pausedSessionId && pausedSessionId === currentSessionId) {
+      set({
+        error: '当前会话正在等待你的答复，请先处理待确认项（或取消该操作）后再发送新消息。'
+      })
+      return
+    }
 
     if (abortController) {
       abortController.abort()
@@ -833,7 +910,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => finalizeStreamingMessage(s, _sessionId, assistantMsgId, abortedPatch))
         // 云边双模阶段 2：中止是终态，local 会话落库
         persistAssistant(abortedPatch)
-        set({ isHitlPaused: false, hitlPending: null })
+        set({ hitlPausedSessionId: null, hitlPausedMessageId: null, hitlPending: null })
         // 当前弹窗对应的暂停项已收敛，出队展示队列下一项（若有）
         useHitlStore.getState().dequeue()
       }
@@ -866,6 +943,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   stopStreaming: () => {
+    // 阶段三守卫（P0）：暂停态下"停止"应等价于"取消该待确认操作"。
+    // 统一走 hitlStore.dismiss()——它负责关窗、通知后端中止并出队下一项，
+    // 若只调 abortHitl 会留下悬空弹窗（后续批准必定失败）。
+    const { currentSessionId: _currentSessionId, hitlPausedSessionId } = get()
+    if (hitlPausedSessionId && hitlPausedSessionId === _currentSessionId) {
+      const hitl = useHitlStore.getState()
+      // 有展示项 → dismiss（关窗 + 中止 + 出队）；无展示项（恢复失败等）→ 直接中止收尾
+      if (hitl.currentItem) hitl.dismiss()
+      else void get().abortHitl(_currentSessionId)
+      return
+    }
+
     const {
       abortController,
       streamingMessageId,
@@ -955,11 +1044,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   //   - paused 消息保留 streamingMessageId（=assistantMsgId），本方法据此定位续写容器；
   //   - initialState 用暂停消息的 trace 树/工具调用/附件做种子，resume 续写而非重开节点；
   //   - 流结束（onDone/onError/onHitlAborted）由 hitlStore.dequeue() 出队下一个暂停项。
-  resumeHitl: async (approved, feedback = null, modifiedArgs = null) => {
-    const { currentSessionId, streamingMessageId, isHitlPaused } = get()
-    if (!isHitlPaused || !currentSessionId || !streamingMessageId) return
-    const _sessionId = currentSessionId
-    const assistantMsgId = streamingMessageId
+  resumeHitl: async (sessionId, input) => {
+    const { approved, feedback = null, modifiedArgs = null, answer = null, answerId = null } = input
+    const { hitlPausedSessionId, hitlPausedMessageId } = get()
+
+    // 前置校验：必须存在"该会话"的暂停容器。不满足时返回可展示原因，
+    // 由 hitlStore 回滚到 paused 并提示，而不是静默早退导致 UI 卡死。
+    if (!hitlPausedSessionId || hitlPausedSessionId !== sessionId) {
+      return { ok: false as const, reason: '该会话当前没有等待答复的操作，请刷新会话状态后重试。' }
+    }
+    if (!hitlPausedMessageId) {
+      return { ok: false as const, reason: '暂停消息已丢失（可能已重载会话），请重新发起请求。' }
+    }
+    const _sessionId = sessionId
+    const assistantMsgId = hitlPausedMessageId
 
     // 云边双模阶段 2：local 会话 resume 后的终态落本地库
     // （暂停半截消息按 HITL 约定不落库，resume 续写完成才聚合落库）
@@ -988,7 +1086,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const mySeq = ++streamSeq
     set({
-      isHitlPaused: false,
+      // 清理暂停标记：resume 流重新进入 streaming 生命周期，
+      // 若再次被 interrupt 会由 onRunPaused 重新写入
+      hitlPausedSessionId: null,
+      hitlPausedMessageId: null,
       isStreaming: true,
       hitlPending: null,
       abortController: null,
@@ -1076,34 +1177,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const abortedPatch = buildHitlAbortedPatch(st, _sessionId, assistantMsgId)
         set((s) => finalizeStreamingMessage(s, _sessionId, assistantMsgId, abortedPatch))
         persistResumeTerminal(abortedPatch)
-        set({ isHitlPaused: false, hitlPending: null })
+        set({ hitlPausedSessionId: null, hitlPausedMessageId: null, hitlPending: null })
         useHitlStore.getState().dequeue()
       }
     })
 
     // 云边双模阶段 2：HITL resume 按会话 runtime 路由（local→IPC / cloud→全局模式）
     const controller = getTransportForRuntime(session?.runtime).resume(
-      { sessionId: _sessionId, approved, feedback, modifiedArgs },
+      { sessionId: _sessionId, approved, feedback, modifiedArgs, answer, answerId },
       streamHandler
     )
     set({ abortController: controller })
+    return { ok: true as const }
   },
 
   /** 中止/拒绝 HITL 待答复项（用户取消/关闭弹窗后收尾） */
-  abortHitl: async () => {
-    const { currentSessionId, streamingMessageId } = get()
-    if (!currentSessionId) return
+  abortHitl: async (sessionId, reason = 'user_cancel') => {
+    const { currentSessionId, hitlPausedSessionId, hitlPausedMessageId, streamingMessageId } = get()
+    const sid = sessionId ?? hitlPausedSessionId ?? currentSessionId
+    if (!sid) return
+
+    // 中止进行中的 resume 流（若有）
     get().abortController?.abort()
+
     // 通知后端中止（best-effort；后端未就绪由 catch 忽略）
     // 云边双模阶段 2：HITL abort 按会话 runtime 路由（local→IPC / cloud→全局模式）
-    const session = get().sessions.find((s) => s.id === currentSessionId)
+    const session = get().sessions.find((s) => s.id === sid)
     try {
-      await getTransportForRuntime(session?.runtime).abort(currentSessionId, 'user_cancel')
+      await getTransportForRuntime(session?.runtime).abort(sid, reason)
     } catch {
       // 忽略：本地收尾即可
     }
-    const sid = currentSessionId
-    const msgId = streamingMessageId
+
+    // 暂停消息 id：优先使用会话级暂停标记（支持在非当前会话上中止）
+    const msgId = hitlPausedSessionId === sid ? hitlPausedMessageId : streamingMessageId
     if (msgId) {
       const st = get()
       const abortedPatch = buildHitlAbortedPatch(st, sid, msgId)
@@ -1119,8 +1226,77 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       }
     }
-    set({ isHitlPaused: false, hitlPending: null })
-    useHitlStore.getState().dequeue()
+    set({ hitlPausedSessionId: null, hitlPausedMessageId: null, hitlPending: null })
+  },
+
+  /**
+   * 重建暂停容器（进页/重连恢复）。
+   *
+   * 为什么需要：暂停的半截 assistant 消息按约定不落库，重进会话后消息列表里
+   * 没有对应容器，"续写同一条消息"与答复校验都会失败。此处按后端仍在等待的
+   * 暂停项补一条 paused 占位消息，使答复链路立即可用。
+   */
+  restoreHitlPause: (input) => {
+    const sid = input.sessionId
+    const msgs = get().messages[sid] ?? []
+    // 已有同会话的播放占位则不重复创建
+    const existingIdx = msgs.findIndex((m) => m.paused)
+    const msgId = existingIdx >= 0 ? msgs[existingIdx]!.id : `assistant-hitl-${sid}-${Date.now()}`
+    const placeholder: Message = {
+      id: msgId,
+      sessionId: sid,
+      role: 'assistant',
+      content: '',
+      createdAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      paused: true,
+      pausedKind: input.kind
+    }
+    const next = existingIdx >= 0
+      ? msgs.map((m, i) => (i === existingIdx ? { ...m, ...placeholder, content: m.content } : m))
+      : [...msgs, placeholder]
+
+    set({
+      messages: { ...get().messages, [sid]: next },
+      // 保留原消息 id 供 resume 定位；不改变当前会话（由调用方决定是否切换）
+      hitlPausedSessionId: sid,
+      hitlPausedMessageId: msgId,
+      streamingMessageId: msgId,
+      isStreaming: false,
+      abortController: null
+    })
+    // 同步种子内容，保证 resume 时 trace/content 有兜底来源
+    set((s) => ({
+      streamingContent: s.streamingContent || msgs.find((m) => m.id === msgId)?.content || '',
+      streamingTraceNodes: s.streamingTraceNodes,
+      streamingTraceRootOrder: s.streamingTraceRootOrder
+    }))
+  },
+
+  /**
+   * 暂停项失效收尾（后端超时自动拒绝 / checkpointer 丢失）：
+   * 追加说明文案、解除 paused 标记并清空暂停状态，避免 UI 永远停在"等待答复"。
+   */
+  finalizeHitlStale: (sessionId, reason) => {
+    const st = get()
+    const msgId = st.hitlPausedSessionId === sessionId ? st.hitlPausedMessageId : null
+    if (msgId) {
+      const list = st.messages[sessionId] ?? []
+      const idx = list.findIndex((m) => m.id === msgId)
+      if (idx !== -1) {
+        const prev = list[idx]!
+        const note = `[已失效] ${reason}`
+        const updated = [...list]
+        updated[idx] = {
+          ...prev,
+          content: prev.content ? `${prev.content}\n\n${note}` : note,
+          paused: false,
+          pausedKind: undefined
+        }
+        set({ messages: { ...st.messages, [sessionId]: updated } })
+      }
+    }
+    set({ hitlPausedSessionId: null, hitlPausedMessageId: null, hitlPending: null })
   },
 
   toggleMessageFeedback: async (messageId, feedback) => {
@@ -1248,6 +1424,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         cursors[id] = state.messagesNextCursor[id]
         hasMore[id] = state.messagesHasMore[id] ?? false
       }
+      // 阶段三：登出/切换账号时同步清空 HITL 暂停态，
+      // 避免上一个账号残留的待答复弹窗被新用户看到/误答
+      const clearHitl = {
+        hitlPending: null as UserQuestionRequestPayload | null,
+        hitlPausedSessionId: null as string | null,
+        hitlPausedMessageId: null as string | null
+      }
+      useHitlStore.getState().reset()
       return {
         sessions: state.sessions.filter((s) => s.runtime === 'local'),
         sessionsLoading: false,
@@ -1259,6 +1443,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isDraftNewSession: false,
         messages,
         messagesLoading: false,
+        ...clearHitl,
         messagesNextCursor: cursors,
         messagesHasMore: hasMore
       }

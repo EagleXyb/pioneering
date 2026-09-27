@@ -4,7 +4,7 @@
 //                      卡片间 1px 灰色沟渠，卡片四周 5px 灰色边距
 //                      使用 ResizablePanelGroup（始终渲染 2 个 Panel，
 //                      通过 collapse/expand 控显隐，避免拖拽 Bug）。
-//   覆盖模式 (< 断点)：中栏全宽，Sidebar / ContextPanel 转 Drawer 抽屉。
+//   覆盖模式 (< 断点)：中栏全宽，Sidebar / RightPanel 转 Drawer 抽屉。
 // 断点与窗口记忆按平台区分，保证各 OS 下的一致体验。
 //
 // 布局策略：
@@ -34,7 +34,7 @@ import { TopBarActions } from './TopBarActions'
 import { HeaderButton } from './HeaderButton'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { NAV_ITEMS } from '@/components/sidebar/SidebarNav'
-import { ContextPanel } from '@/components/context-panel/ContextPanel'
+import { RightPanel } from '@/components/right-panel/RightPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Drawer } from '@/components/layout/Drawer'
 import { useHotkeyEngine } from '@/hooks/useHotkeyEngine'
@@ -235,7 +235,7 @@ export function RootLayout() {
                 collapsedSize={0}
               >
                 <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden" style={{ borderRadius: 6 }}>
-                  <ContextPanel />
+                  <RightPanel />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -275,7 +275,7 @@ export function RootLayout() {
             <Sidebar />
           </Drawer>
           <Drawer open={contextPanelVisible} side="right" onClose={() => setContextPanelVisible(false)}>
-            <ContextPanel />
+            <RightPanel />
           </Drawer>
         </div>
       )}

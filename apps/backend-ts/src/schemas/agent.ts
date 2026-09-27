@@ -125,6 +125,9 @@ export const AgentResumeRequestSchema = z.object({
   feedback: z.string().nullable().optional(),
   // 改参批准：按 tool_call_id 覆盖原参数（v1.2 §4.3 建议3）
   modifiedArgs: z.record(z.record(z.unknown())).nullable().optional(),
+  // 需求澄清回答：自由文本 answer / 多选选项 id answerId（kind='clarifying' | 'choice'）
+  answer: z.string().nullable().optional(),
+  answerId: z.string().nullable().optional(),
 })
 export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>
 

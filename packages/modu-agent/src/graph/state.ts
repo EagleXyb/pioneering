@@ -100,6 +100,16 @@ export interface ModuAgentState {
   tool_requires_approval?: boolean
   approval_status?: string
   approval_feedback?: string
+  /** 中断类型：供前端选择弹窗（tool_confirm / clarifying / choice） */
+  interrupt_kind?: string
+  /** 中断提示文案（interrupt 载荷回填） */
+  approval_message?: string
+  // === 需求澄清（HITL clarifying）===
+  needs_clarification?: boolean
+  clarification_question?: string
+  clarification_options?: Array<Record<string, any>>
+  clarification_answers?: Array<Record<string, any>>
+  clarification_round?: number
 
   // === P3-12.3.1 多 Agent 协作 ===
   subtasks?: Array<Record<string, any>>
@@ -254,6 +264,22 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   tool_requires_approval: Annotation<boolean>(_lw(() => false)),
   approval_status: Annotation<string>(_lw(() => '')),
   approval_feedback: Annotation<string>(_lw(() => '')),
+  /** 中断类型：前端据此选择弹窗（工具审批 / 澄清追问 / 多选） */
+  interrupt_kind: Annotation<string>(_lw(() => '')),
+  /** 审批/澄清提示文案（interrupt 载荷回填，供 get_interrupt_state 透传） */
+  approval_message: Annotation<string>(_lw(() => '')),
+
+  // === 需求澄清（HITL clarifying，perception.clarification 开启时生效）===
+  /** 感知层判定：需求是否不明确、需要向用户澄清 */
+  needs_clarification: Annotation<boolean>(_lw(() => false)),
+  /** 待用户回答的澄清问题文本 */
+  clarification_question: Annotation<string>(_lw(() => '')),
+  /** 澄清问题附带的候选选项（可为空，表示纯自由文本回答） */
+  clarification_options: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
+  /** 用户已回答的澄清内容（自由文本或选项 id） */
+  clarification_answers: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
+  /** 已澄清轮次（用于 max_clarify_rounds 上限控制，防无限追问） */
+  clarification_round: Annotation<number>(_lw(() => 0)),
 
   // === P3-12.3.1 多 Agent 协作 ===
   subtasks: Annotation<Array<Record<string, any>>>(_lw<Array<Record<string, any>>>(() => [])),
@@ -447,6 +473,13 @@ export function makeInitialState(
     tool_requires_approval: false,
     approval_status: '',
     approval_feedback: '',
+    interrupt_kind: '',
+    approval_message: '',
+    needs_clarification: false,
+    clarification_question: '',
+    clarification_options: [],
+    clarification_answers: [],
+    clarification_round: 0,
     subtasks: [],
     subtask_results: {},
     consensus_result: null,
@@ -545,6 +578,16 @@ export interface HITLModeState {
   tool_requires_approval?: boolean
   approval_status?: string
   approval_feedback?: string
+  /** 中断类型（tool_confirm / clarifying / choice） */
+  interrupt_kind?: string
+  /** 中断提示文案 */
+  approval_message?: string
+  /** 需求澄清：是否需要向用户追问 */
+  needs_clarification?: boolean
+  clarification_question?: string
+  clarification_options?: Array<Record<string, any>>
+  clarification_answers?: Array<Record<string, any>>
+  clarification_round?: number
 }
 
 /** 多 Agent 协作模式专属状态。 */

@@ -158,6 +158,22 @@ export async function build_checkpointer(
   if (_sharedMemoryCheckpointer === null) {
     _sharedMemoryCheckpointer = new MemorySaver()
     logger.info('Built shared MemorySaver checkpointer (singleton)')
+    // 能力边界显式告警：HITL 暂停态（interrupt 载荷 + 待答复项）只存在于本进程内存。
+    // 进程重启 / 多实例部署后 GET /agent/state 将返回 pending=false，
+    // 前端无法恢复待答复项（表现为"暂停项已失效"）。生产环境请改用 sqlite 检查点。
+    try {
+      const hitlOn = Boolean(getConfig().get('tools.human_in_loop.enabled', false))
+      const clarifyOn = Boolean(getConfig().get('perception.clarification.enabled', false))
+      if (hitlOn || clarifyOn) {
+        logger.warning(
+          'HITL/clarification enabled with in-memory checkpointer: ' +
+          'interrupt state is lost on process restart and cannot be shared across instances. ' +
+          'Set memory.checkpointer_type="sqlite" for durable pause/resume.',
+        )
+      }
+    } catch {
+      // 配置不可读时忽略告警，不影响图构建
+    }
   }
   return _sharedMemoryCheckpointer
 }

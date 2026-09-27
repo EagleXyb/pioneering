@@ -27,6 +27,8 @@ import {
   makeAgentNode,
   makeConsensusNode,
   makeFeedbackNode,
+  assessClarificationNeed,
+  makeClarifyNode,
   makeHumanReviewNode,
   makeMemoryQueryNode,
   makeMemoryUpdateNode,
@@ -436,6 +438,24 @@ export function buildModuGraph(
   const feedbackNode = orchestrator ? makeFeedbackNode(orchestrator) : null
   // P3-12.3.2: 人工审批节点（HITL 开启时插入 agent → tools 之间）
   const humanReviewNode = hitlEnabled ? makeHumanReviewNode() : null
+  // 需求澄清节点（perception.clarification.enabled=true 时插入
+  // perception → memory_query 之间）。默认关闭 → 不挂节点、路由不分叉，行为零变化。
+  let clarifyEnabled = false
+  try {
+    clarifyEnabled = Boolean(getConfig().get('perception.clarification.enabled', false))
+  } catch {
+    clarifyEnabled = false
+  }
+  const clarifyNode = clarifyEnabled ? makeClarifyNode() : null
+  // 感知后路由包装：仅在节点确实挂载时才允许路由到 clarify，
+  // 避免"路由返回未注册目标"导致的图运行时错误（闭包传递，无模块级可变状态）
+  const perceptionRouter = clarifyNode
+    ? (state: ModuAgentState): string => {
+        const base = routeAfterPerception(state)
+        if (base !== 'memory_query') return base
+        return assessClarificationNeed(state).needed ? 'clarify' : 'memory_query'
+      }
+    : routeAfterPerception
   // P3-12.3.1: 多 Agent 协作节点（multi_agent 开启时替代单 agent 路径）
   let supervisorNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
   let subagentNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
@@ -496,6 +516,10 @@ export function buildModuGraph(
   if (humanReviewNode) {
     graph.addNode('human_review', humanReviewNode)
   }
+  // 需求澄清节点接入图（默认关闭）
+  if (clarifyNode) {
+    graph.addNode('clarify', clarifyNode)
+  }
   // P3-12.3.1: 多 Agent 协作节点接入图
   if (supervisorNode) {
     graph.addNode('supervisor', supervisorNode)
@@ -512,15 +536,21 @@ export function buildModuGraph(
   // 添加边
   graph.addEdge(START, 'perception')
 
-  // 感知后条件路由：熔断 → response，正常 → memory_query
+  // 感知后条件路由：熔断 → response，需澄清 → clarify，正常 → memory_query
   graph.addConditionalEdges(
     'perception',
-    routeAfterPerception,
+    perceptionRouter,
     {
       memory_query: 'memory_query',
       __end__: 'finalize_response',
+      // 澄清节点未挂载时不注册该目标（LangGraph 要求目标必须存在）
+      ...(clarifyNode ? { clarify: 'clarify' } : {}),
     },
   )
+  // 澄清完成后回到正常路径（补充后的需求进入记忆查询 → agent）
+  if (clarifyNode) {
+    graph.addEdge('clarify', 'memory_query')
+  }
 
   // 记忆查询后进入 agent / supervisor / planner
   // v1.2 #6: 组合模式（plan_execute + multi_agent）下，plan_execute 优先，task_type=delegation 步骤路由到 supervisor
@@ -685,6 +715,11 @@ export function buildModuGraph(
     let baseLimit = effectiveIterations * 3 + 15
     if (humanReviewNode) {
       baseLimit += 2  // 为 human_review 节点预留递归预算
+    }
+    if (clarifyNode) {
+      // 澄清节点 + 每轮澄清的往返预算（最多 max_clarify_rounds 轮）
+      const maxRounds = Number(config.get('perception.clarification.max_clarify_rounds', 2))
+      baseLimit += 2 + Math.max(0, maxRounds) * 2
     }
     if (supervisorNode) {
       baseLimit += 4  // 为 supervisor + subagent + consensus 预留递归预算

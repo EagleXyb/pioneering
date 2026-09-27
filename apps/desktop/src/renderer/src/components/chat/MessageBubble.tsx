@@ -1,6 +1,6 @@
 import { useState, memo, useRef, useEffect } from 'react'
 import { useSetAtom } from 'jotai'
-import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share } from 'lucide-react'
+import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share, HelpCircle, ShieldCheck, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -38,6 +38,31 @@ interface MessageBubbleProps {
   /** M2: trace 树（流式期间用实时快照，历史消息用 message.traceNodes/traceRootOrder） */
   streamingTraceNodes?: Record<string, TraceNode>
   streamingTraceRootOrder?: string[]
+}
+
+/** HITL 暂停徽标：让用户看到"这条消息正在等待确认/补充"，而非空白气泡 */
+function HitlPausedBadge({ kind }: { kind?: ChatMessage['pausedKind'] }) {
+  const { Icon, text } = (() => {
+    switch (kind) {
+      case 'tool_confirm':
+        return { Icon: ShieldCheck, text: '等待你确认该操作' }
+      case 'choice':
+        return { Icon: ListChecks, text: '等待你选择' }
+      case 'clarifying':
+      default:
+        return { Icon: HelpCircle, text: '等待你补充信息' }
+    }
+  })()
+  return (
+    <div
+      className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary"
+      role="status"
+      aria-live="polite"
+    >
+      <Icon className="size-3.5" />
+      {text}
+    </div>
+  )
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -113,6 +138,9 @@ export const MessageBubble = memo(function MessageBubble({
   // T04：Message 作为消息行布局外壳，承担对齐 + 内容容器的组合（头像已隐藏）
   <Message align={align}>
       <MessageContent>
+        {/* HITL 暂停徽标：暂停的半截消息不落库、内容可能为空，
+            徽标保证用户能看到"正在等待答复"而不是空白气泡 */}
+        {isAssistant && message.paused && <HitlPausedBadge kind={message.pausedKind} />}
         {useTrace && isAssistant ? (
           traceNodes && traceRootOrder ? (
             <AgentTimeline

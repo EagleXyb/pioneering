@@ -182,6 +182,10 @@ export interface ResumeAgentOptions {
   feedback?: string
   /** 改参批准：按 tool_call_id 覆盖原参数（v1.2 §4.3 建议3） */
   modifiedArgs?: Record<string, Record<string, any>>
+  /** 需求澄清回答：自由文本（kind='clarifying'） */
+  answer?: string
+  /** 需求澄清回答：多选选项 id（kind='choice'） */
+  answerId?: string
   traceId?: string
 }
 
@@ -195,19 +199,21 @@ export interface ResumeAgentOptions {
 export async function* streamAgentResume(
   opts: ResumeAgentOptions,
 ): AsyncGenerator<Record<string, string>> {
-  const { sessionId, userId, approved, feedback, modifiedArgs, traceId } = opts
+  const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId } = opts
   const trace = traceId ?? randomUUID()
   const graph = await create_agent()
 
   const adapter = new AGUIStreamAdapter(trace)
   logger.info(
-    'resume.start trace_id=%s session_id=%s approved=%s modified_args=%d',
-    trace, sessionId, approved, Object.keys(modifiedArgs ?? {}).length,
+    'resume.start trace_id=%s session_id=%s approved=%s modified_args=%d answer=%s',
+    trace, sessionId, approved, Object.keys(modifiedArgs ?? {}).length, answer ? 'yes' : 'no',
   )
 
   for await (const eventDict of adapter.transform_langgraph_events(
     resume_stream(graph, sessionId, approved, feedback ?? '', trace, {
       modifiedArgs,
+      answer,
+      answerId,
     }),
   )) {
     yield eventDict
@@ -237,6 +243,11 @@ export async function getPendingAgentState(
   }
   return {
     session_id: state['session_id'] ?? sessionId,
+    // kind：前端据此选择弹窗类型（工具审批 / 澄清追问 / 多选），避免靠布尔值猜测
+    kind: state['kind'] ?? 'tool_confirm',
+    message: state['message'] ?? '',
+    question: state['question'] ?? undefined,
+    options: state['options'] ?? undefined,
     next_nodes: state['next_nodes'] ?? [],
     pending_tool_calls: state['pending_tool_calls'] ?? [],
     tool_requires_approval: state['tool_requires_approval'] ?? false,

@@ -15,7 +15,10 @@ export const isFullscreenAtom = atom(false)
 
 // 面板显隐
 export const sidebarVisibleAtom = atom(true)
-export const contextPanelVisibleAtom = atom(false)
+// 右栏显隐已并入 rightPanelStore 的标签模型（多标签容器）；
+// 此处保持同名导出，使既有消费方（RootLayout / TopBarActions / useHotkeyEngine /
+// usePanelToggle）无需改动 import 路径即可继续工作。
+export { rightPanelVisibleAtom as contextPanelVisibleAtom } from './rightPanelStore'
 
 // 设置弹框开关
 export const settingsOpenAtom = atom(false)

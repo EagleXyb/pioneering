@@ -22,7 +22,8 @@ import { InputArea, type InputAreaSendOptions } from './input/InputArea'
 import { AgentStatus } from './ChatStatus'
 // P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
 import { ImageLightbox } from './ImageLightbox'
-import { useChatStore } from '../../stores/chatStore'
+import { selectIsHitlPaused, useChatStore } from '../../stores/chatStore'
+import { useHitlStore } from '@/stores/hitlStore'
 import { useFeatureFlag } from '@/lib/feature-flags'
 import type { Message } from '@shared/types'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
@@ -51,8 +52,15 @@ export function ChatArea() {
   const loadMoreMessages = useChatStore((s) => s.loadMoreMessages)
   const messagesHasMore = useChatStore((s) => s.messagesHasMore)
   const messagesLoading = useChatStore((s) => s.messagesLoading)
-  // 阶段三 3.4：HITL 暂停态输入区切精简态
-  const isHitlPaused = useChatStore((s) => s.isHitlPaused)
+  // 阶段三 3.4：HITL 暂停态输入区切精简态（按会话判定，避免跨会话串线）
+  const isHitlPaused = useChatStore(selectIsHitlPaused)
+  // HITL 待答复项（仅当前会话）：用于内联澄清条与输入框提交语义切换
+  const hitlItem = useHitlStore((s) =>
+    s.currentItem && s.currentItem.sessionId === currentSessionId ? s.currentItem : null
+  )
+  const hitlQueueLength = useHitlStore((s) => s.pendingQueue.length)
+  const resolveHitl = useHitlStore((s) => s.resolve)
+  const skipHitl = useHitlStore((s) => s.skip)
 
   // T09：dev-only 压测开关
   const devStress = useFeatureFlag('devStressMessages')
@@ -110,6 +118,33 @@ export function ChatArea() {
     },
     [sendMessage]
   )
+
+  // ===== HITL 内联澄清（阶段三 3.4）=====
+  // 待答复项映射为 InputArea 的展示契约：澄清/多选可内联回答，工具审批由弹窗处理
+  const hitlTotal = hitlItem ? 1 + hitlQueueLength : 0
+  const hitlInput = useMemo(
+    () =>
+      hitlItem
+        ? {
+            kind: hitlItem.kind,
+            question: hitlItem.question,
+            message: hitlItem.message,
+            index: hitlTotal > 1 ? 1 : undefined,
+            total: hitlTotal > 1 ? hitlTotal : undefined
+          }
+        : null,
+    [hitlItem, hitlTotal]
+  )
+  // 内联提交：文本作为澄清回答回传（同时写入 feedback，兼容只读 feedback 的后端）
+  const handleHitlAnswer = useCallback(
+    (text: string) => {
+      void resolveHitl({ approved: true, answer: text, feedback: text })
+    },
+    [resolveHitl]
+  )
+  const handleHitlSkip = useCallback(() => {
+    void skipHitl()
+  }, [skipHitl])
 
   // 是否显示欢迎引导页（无消息且非流式状态）
   const showWelcome = currentMessages.length === 0 && !isStreaming && !streamingContent
@@ -173,8 +208,14 @@ export function ChatArea() {
               marginBottom: -50
             }}
           >
+            {/* 层叠修复（欢迎页按钮点不动）：
+                本区块固定 height 259 容纳不下「标题 + 输入框」（实际约需 278px），
+                输入卡片底部工具栏（+ / 模型 / 发送）会溢出盒外，落入下方推荐区容器
+                （marginTop -16 使其从 243 起，paddingTop 80 的透明空白区无 pointer-events 隔离）
+                的层叠范围，被其拦截点击（视觉可见但点不动）。
+                本区块与推荐区同为 flex item，z-index 对其直接生效，提升后即可修复。 */}
             <div
-              className="w-full flex flex-col items-center gap-6 translate-y-[40px]"
+              className="w-full flex flex-col items-center gap-6 translate-y-[40px] relative z-10"
               style={{ height: 259, paddingTop: 0, paddingBottom: 25 }}
             >
               <WelcomeScreenTop onFeatureChange={setWelcomeFeature} />
@@ -190,6 +231,9 @@ export function ChatArea() {
                   onToggleAgent={() => setAgentMode(!agentMode)}
                   isWelcome={true}
                   mode={isHitlPaused ? 'hitl' : 'normal'}
+                  hitl={hitlInput}
+                  onHitlAnswer={handleHitlAnswer}
+                  onHitlSkip={handleHitlSkip}
                 />
               </div>
             </div>
@@ -264,6 +308,9 @@ export function ChatArea() {
         onToggleAgent={() => setAgentMode(!agentMode)}
         isWelcome={false}
         mode={isHitlPaused ? 'hitl' : 'normal'}
+        hitl={hitlInput}
+        onHitlAnswer={handleHitlAnswer}
+        onHitlSkip={handleHitlSkip}
       />
 
       {/* P1：图片放大预览 Lightbox（Portal 挂载，关闭时不渲染任何 DOM） */}

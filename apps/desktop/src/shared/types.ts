@@ -70,8 +70,8 @@ export interface UpdateSessionRequest {
 // ---- 消息 ----
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
-/** 预览面板产物类型：HTML / SVG 走沙箱 iframe，Mermaid 走矢量图渲染，其余走纯文本 code 视图 */
-export type ArtifactType = 'html' | 'svg' | 'code' | 'mermaid'
+/** 预览面板产物类型：HTML / SVG 走沙箱 iframe，Mermaid 走矢量图渲染，Markdown 复用对话区渲染器，其余走纯文本 code 视图 */
+export type ArtifactType = 'html' | 'svg' | 'code' | 'mermaid' | 'markdown'
 
 export interface ChatMessage {
   id: string
@@ -254,6 +254,8 @@ export interface Message extends ChatMessage {
   attachments?: Attachment[]
   /** HITL：该条 assistant 消息是否处于暂停待答复状态（interrupt 的 run 不落库空消息） */
   paused?: boolean
+  /** HITL：暂停类型（决定徽标文案：等待确认 / 等待补充信息 / 等待选择） */
+  pausedKind?: UserQuestionRequestPayload['kind']
 }
 
 /** 用户消息的附件图片（与渲染端 ImageAttachment 结构兼容） */
@@ -357,13 +359,17 @@ export interface UserQuestionRequestPayload {
   options?: Array<{ id: string; label: string }>
 }
 
-/** POST /agent/resume 请求体（对应 Command(resume) 载荷：approved/feedback/modified_args） */
+/** POST /agent/resume 请求体（对应 Command(resume) 载荷：approved/feedback/modified_args/answer） */
 export interface ResumeRequest {
   sessionId: string
   approved: boolean
   feedback?: string | null
   /** 改参批准：按 tool_call_id 覆盖原参数 */
   modifiedArgs?: Record<string, Record<string, unknown>> | null
+  /** 澄清回答自由文本（kind='clarifying'） */
+  answer?: string | null
+  /** 多选回答的选项 id（kind='choice'） */
+  answerId?: string | null
 }
 
 /** POST /agent/abort 请求体 */
@@ -378,6 +384,14 @@ export interface HitlStateResponse {
   pending: boolean
   /** 超时自动拒绝后为 true，前端据此收尾 */
   expired?: boolean
+  /** 暂停项类型：前端据此选择弹窗（不再靠 tool_requires_approval 猜测） */
+  kind?: UserQuestionRequestPayload['kind']
+  /** 提示文案（interrupt 载荷透传） */
+  message?: string
+  /** kind='clarifying' 时的澄清问题 */
+  question?: string
+  /** kind='choice' 时的选项 */
+  options?: Array<{ id: string; label: string }>
   next_nodes?: string[]
   pending_tool_calls?: Array<Record<string, unknown>>
   tool_requires_approval?: boolean

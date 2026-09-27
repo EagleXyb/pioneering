@@ -1,11 +1,14 @@
 // ============================================================
 // HitlChoiceDialog — HITL 多选确认弹窗（图2）
 // RadioGroup 单选（一期）或多选，选项来自 item.options，确认 → resolve()。
-// 一期后端无节点支撑，仅做前端就绪（kind='choice' 事件到达时可渲染）。
+//
+// 阶段三补强：
+//   - 回答以 answerId（选项 id）回传，语义与工具审批 feedback 解耦
+//   - "跳过"接入 hitlStore.skip()；resume 失败时展示 store.error
 // ============================================================
 
 import { useState } from 'react'
-import { ListChecks } from 'lucide-react'
+import { ListChecks, SkipForward } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -19,21 +22,31 @@ import { useHitlStore, type HitlItem } from '@/stores/hitlStore'
 
 export function HitlChoiceDialog({ item }: { item: HitlItem }) {
   const resolve = useHitlStore((s) => s.resolve)
+  const skip = useHitlStore((s) => s.skip)
   const dismiss = useHitlStore((s) => s.dismiss)
+  const error = useHitlStore((s) => s.error)
   const [value, setValue] = useState<string>(item.options?.[0]?.id ?? '')
-  const [resolving, setResolving] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const options = item.options ?? []
 
   const close = () => {
-    if (!resolving) dismiss()
+    if (!busy) dismiss()
   }
 
   const handleConfirm = async () => {
-    if (resolving) return
-    setResolving(true)
-    // 单选：把所选 id 作为 feedback 回传；后续多选可扩展为逗号分隔
-    await resolve(true, value || undefined)
+    if (busy) return
+    setBusy(true)
+    // 选项 id 作为 answerId 回传（自由文本补充走 HitlClarifyDialog / 内联澄清条）
+    const ok = await resolve({ approved: true, answerId: value || undefined })
+    if (!ok) setBusy(false)
+  }
+
+  const handleSkip = async () => {
+    if (busy) return
+    setBusy(true)
+    const ok = await skip()
+    if (!ok) setBusy(false)
   }
 
   return (
@@ -50,7 +63,7 @@ export function HitlChoiceDialog({ item }: { item: HitlItem }) {
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-          {item.message || item.question || 'Agent 需要你从以下选项中选择一个。'}
+          {item.question || item.message || 'Agent 需要你从以下选项中选择一个。'}
         </p>
 
         <RadioGroup value={value} onValueChange={setValue} className="mb-5 gap-2">
@@ -65,20 +78,41 @@ export function HitlChoiceDialog({ item }: { item: HitlItem }) {
               </Label>
             </div>
           ))}
+          {options.length === 0 && (
+            <p className="rounded-md border border-dashed border-input px-3 py-2 text-xs text-muted-foreground">
+              暂无可选项，可在输入框直接补充说明后发送。
+            </p>
+          )}
         </RadioGroup>
 
+        {error && (
+          <p className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+
         <DialogFooter className="!flex-row !justify-end !gap-2 sm:space-x-0">
-          <Button variant="outline" size="sm" onClick={close} disabled={resolving} className="h-8 px-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleSkip()}
+            disabled={busy}
+            className="mr-auto h-8 px-3 text-muted-foreground"
+          >
+            <SkipForward className="mr-1 size-3.5" />
+            跳过
+          </Button>
+          <Button variant="outline" size="sm" onClick={close} disabled={busy} className="h-8 px-4">
             取消
           </Button>
           <Button
             variant="default"
             size="sm"
             onClick={handleConfirm}
-            disabled={resolving || !value}
+            disabled={busy || !value}
             className="h-8 px-4"
           >
-            {resolving ? '确认中…' : '确认'}
+            {busy ? '确认中…' : '确认'}
           </Button>
         </DialogFooter>
       </DialogContent>
