@@ -36,7 +36,8 @@ export function AgentPricing() {
                 <ul className="mt-4">
                   {p.features.map((f) => (
                     <li key={f} className="body" style={{ fontSize: 15, padding: '4px 0' }}>
-                      ✓ {f}
+                      <span aria-hidden="true">✓ </span>
+                      {f}
                     </li>
                   ))}
                 </ul>

@@ -15,8 +15,9 @@ export function CogHeader() {
             </p>
           </div>
           <div className="col-4 flex items-c">
-            <Button href="#" variant="ink">
-              {COG_HEADER.pdfCta}
+            {/* PDF 资源尚未提供：disabled 态明示即将上线，避免 # 死链 */}
+            <Button variant="ink" disabled>
+              {COG_HEADER.pdfCta}（即将上线）
             </Button>
           </div>
         </div>

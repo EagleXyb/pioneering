@@ -31,7 +31,7 @@ export function PredictionsSection() {
           return (
             <motion.div
               key={p.num}
-              className="card flex items-center gap-5 py-6 px-7 max-sm:flex-wrap"
+              className="trends-card flex items-center gap-5 py-6 px-7 max-sm:flex-wrap"
               {...fadeUp(i * 0.1)}
             >
               <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-accent-soft shrink-0">

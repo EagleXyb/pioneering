@@ -13,7 +13,7 @@ export function Testimonials() {
           <h2 className="h2" style={{ color: '#fff' }}>
             {TESTIMONIALS.title}
           </h2>
-          <p className="small mt-2" style={{ color: 'rgba(255,255,255,.6)' }}>
+          <p className="small mt-2" style={{ color: 'rgba(255,255,255,.75)' }}>
             {TESTIMONIALS.sub}
           </p>
         </div>

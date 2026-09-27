@@ -44,19 +44,16 @@ export const CORE_METHOD = {
       badge: '01',
       title: '看见 SEE',
       desc: '觉察自己正在用什么框架看问题，识别隐含假设与偏误。',
-      on: false,
     },
     {
       badge: '02',
       title: '理解 UNDERSTAND',
       desc: '把问题拆成可操作的结构，找到真正的约束条件。',
-      on: true,
     },
     {
       badge: '03',
       title: '重构 REFRAME',
       desc: '改变问题的提法，让原本对立的条件重新组合。',
-      on: false,
     },
   ],
   pillars: [

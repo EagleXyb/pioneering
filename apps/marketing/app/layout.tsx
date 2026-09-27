@@ -1,27 +1,14 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Noto_Sans_SC, Noto_Serif_SC } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import { BRAND_SITE } from '@/data/site/site'
 import { MotionProvider } from '@/components/animations/MotionProvider'
 import './globals.css'
 
+// 仅拉丁字体走 next/font；中文使用系统字体栈（PingFang SC / 微软雅黑 /
+// Songti SC 等，见 brand.css），消除构建期对 Google CJK 字体的外网依赖。
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
-  display: 'swap',
-})
-
-const notoSansSC = Noto_Sans_SC({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
-  variable: '--font-noto-sans-sc',
-  display: 'swap',
-})
-
-// 衬线标题字体（原型：Songti SC / Noto Serif SC，600 为标题字重，400 为引文字重）
-const notoSerifSC = Noto_Serif_SC({
-  subsets: ['latin'],
-  weight: ['400', '600'],
-  variable: '--font-noto-serif-sc',
   display: 'swap',
 })
 
@@ -62,10 +49,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html
-      lang="zh-CN"
-      className={`${inter.variable} ${notoSansSC.variable} ${notoSerifSC.variable}`}
-    >
+    <html lang="zh-CN" className={inter.variable}>
       <body>
         <MotionProvider>{children}</MotionProvider>
       </body>

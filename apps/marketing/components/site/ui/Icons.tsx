@@ -20,15 +20,6 @@ export function LogoMark({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
   )
 }
 
-export function SearchIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="7" cy="7" r="5" stroke="#52525B" strokeWidth="1.5" />
-      <path d="M11 11l4 4" stroke="#52525B" strokeWidth="1.5" />
-    </svg>
-  )
-}
-
 export function BurgerIcon() {
   return (
     <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true">

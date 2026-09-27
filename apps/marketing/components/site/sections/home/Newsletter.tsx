@@ -7,7 +7,7 @@ import { NewsletterForm } from '@/components/site/forms/NewsletterForm'
 
 export function Newsletter() {
   return (
-    <section className="sec-md">
+    <section id="newsletter" className="sec-md">
       <div className="wrap">
         <div
           className="card newsletter-card"

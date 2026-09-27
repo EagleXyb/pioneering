@@ -5,21 +5,19 @@
 // - hover：可上浮卡（.card.card-hover）
 // - flat：无框透明轻容器（.card-flat，P1 去卡片化试点）
 // - link：透明白卡，hover 轻底色 + 标题变青瓷（.card.card-link）
-// - quiet：静默卡（.card.card-quiet）
 // - 传 href 时整卡可点：站内路径渲染 next/link，# 锚点或外链渲染 <a>
 // ============================================================
 
 import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 
-type CardVariant = 'default' | 'hover' | 'flat' | 'link' | 'quiet'
+type CardVariant = 'default' | 'hover' | 'flat' | 'link'
 
 const CLASS_MAP: Record<CardVariant, string> = {
   default: 'card',
   hover: 'card card-hover',
   flat: 'card-flat',
   link: 'card card-link',
-  quiet: 'card card-quiet',
 }
 
 interface CardProps {

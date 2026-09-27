@@ -17,7 +17,7 @@ export function ArticleDetail() {
           <div className="col-8">
             <article className="article">
               <div className="tag mb-3">{a.tag}</div>
-              <h1 className="h2 mb-3">{a.title}</h1>
+              <h2 className="h2 mb-3">{a.title}</h2>
               <div className="meta mb-6">{a.meta}</div>
               <p>
                 有十年决策经验的人，大脑会形成一套高效的模式识别。这本来是优势——
@@ -35,12 +35,12 @@ export function ArticleDetail() {
                   检查我的一个决定 →
                 </Button>
               </div>
-              <h3>三个可识别的信号</h3>
+              <h3 id="signals">三个可识别的信号</h3>
               <p>
                 第一，你开始用「一直如此」作为理由。第二，你发现自己很少主动去找反对证据。
                 第三，你对新信息的第一反应是解释它为什么不重要。
               </p>
-              <h3>一个立即能用的动作</h3>
+              <h3 id="action">一个立即能用的动作</h3>
               <p>
                 在下一次重要判断前，写下这句话并回答它：
                 <span className="ink font-medium">“如果这个决定是错的，最可能是因为什么？”</span>
@@ -71,7 +71,7 @@ export function ArticleDetail() {
                   {a.author.note}
                 </p>
                 <div className="btn-row mt-3">
-                  <Button href="#" variant="ink" size="sm">
+                  <Button href="/#newsletter" variant="ink" size="sm">
                     订阅 newsletter
                   </Button>
                   <Button href="/insights" variant="ghost" size="sm">
@@ -85,8 +85,8 @@ export function ArticleDetail() {
             <div className="toc">
               <div className="h4 mb-3">本文目录</div>
               {a.toc.map((t) => (
-                <a key={t} href="#article">
-                  {t}
+                <a key={t.id} href={`#${t.id}`}>
+                  {t.label}
                 </a>
               ))}
             </div>

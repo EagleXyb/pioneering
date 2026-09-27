@@ -46,7 +46,7 @@ export function TryComposer({
   if (status === 'success') {
     return (
       <>
-        <div className="form-success">
+        <div className="form-success" role="status">
           已收到你的内容。当前为演示环境，不会真实保存对话上下文或发送邮件；正式上线后此处将接入智能体。
         </div>
         <div className="form-note">{note}</div>
@@ -69,7 +69,11 @@ export function TryComposer({
             if (error) setError('')
           }}
         />
-        {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
+          </div>
+        )}
       </div>
       <Button
         type="submit"

@@ -13,8 +13,6 @@ export interface DemoMessage {
 export const FAB_TITLE = '认知陪练'
 export const FAB_SUBTITLE = '基于你的方法论知识库 · 免注册 3 轮'
 export const FAB_AVATAR = '知'
-export const FAB_PLACEHOLDER = '继续聊，或留下邮箱保存上下文…'
-export const FAB_HINT = '已免注册使用 2 / 3 轮 · 留下邮箱可保存你的项目上下文'
 
 export const DEMO_MESSAGES: DemoMessage[] = [
   {

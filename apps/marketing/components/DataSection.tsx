@@ -20,7 +20,7 @@ export function DataSection() {
         {metrics.map((m, i) => (
           <motion.div
             key={m.headline}
-            className="card flex flex-col gap-5 p-8"
+            className="trends-card flex flex-col gap-5 p-8"
             {...fadeUp(i * 0.1)}
           >
             <div className="text-sm text-text-muted tracking-[2px]">

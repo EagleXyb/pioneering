@@ -1,14 +1,15 @@
 // ============================================================
 // site · 认知×创新 品牌站全局常量（对应 docs/site 原型 V1.0）
-//
-// 注意：url 暂用 IA 文档的 example.com 占位，上线前替换为正式域名。
 // ============================================================
 
 export const BRAND_SITE = {
   name: '知境 COGNILAB',
   tagline: '不替你下判断，让你看清自己是怎么下判断的。',
-  /** TODO 上线前替换为正式域名（IA 定稿沿用单域名） */
-  url: 'https://example.com',
+  /**
+   * 正式域名：metadataBase / canonical / sitemap / robots / 结构化数据共用。
+   * 预发/正式环境通过 NEXT_PUBLIC_SITE_URL 覆盖（不带尾斜杠）。
+   */
+  url: (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://cognilab.com').replace(/\/$/, ''),
   locale: 'zh_CN',
 } as const
 

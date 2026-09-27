@@ -42,7 +42,7 @@ export function NewsletterForm({
 
   if (status === 'success') {
     return (
-      <div className="form-success nl-feedback">
+      <div className="form-success nl-feedback" role="status">
         订阅请求已收到。当前为演示环境，不会真实发送邮件；正式上线后此处将接入订阅服务。
       </div>
     )
@@ -72,7 +72,11 @@ export function NewsletterForm({
         </Button>
       </form>
       <div className="nl-feedback" aria-live="polite">
-        {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
+          </div>
+        )}
       </div>
       <div className="small mt-2">{note}</div>
     </>

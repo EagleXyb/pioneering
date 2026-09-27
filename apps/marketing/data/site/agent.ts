@@ -96,7 +96,7 @@ export const AGENT_PRICING = {
       badge: null as string | null,
       title: '免费体验',
       price: '¥0',
-      desc: '每轮 3 次对话 · 无需注册',
+      desc: '3 轮对话体验 · 无需注册',
       features: ['基础方法论问答', '知识溯源查看'],
       cta: '了解更多',
       featured: false,

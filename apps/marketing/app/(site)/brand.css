@@ -17,7 +17,6 @@
   --white:      #FFFFFF;
   --celadon:    #4F46E5;  /* indigo-600（hue 277）：唯一强调色 */
   --celadon-l:  #EEF2FF;  /* indigo-50：强调色浅底 */
-  --amber:      #C08A3E;  /* 已停用（tag-amber 已转中性），保留避免外部引用报错 */
   --error:      #DC2626;  /* red-600 */
   --error-l:    #FEF2F2;  /* red-50 */
   --line:       #E4E4E7;  /* zinc-200 */
@@ -66,9 +65,10 @@
   --nav-glass-scrolled: rgba(255, 255, 255, .50);
   --nav-blur: blur(12px);
 
-  /* 字体（next/font 变量优先，系统衬线兜底） */
-  --sans: var(--font-inter), "IBM Plex Sans", var(--font-noto-sans-sc), "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
-  --serif: "Songti SC", var(--font-noto-serif-sc), "Noto Serif SC", "Source Han Serif SC", Georgia, "Times New Roman", serif;
+  /* 字体：拉丁走 Inter（next/font），中文走系统字体（Apple 平台 PingFang SC /
+     Songti SC，Windows 微软雅黑 / 宋体，均无需网络加载） */
+  --sans: var(--font-inter), "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Songti SC", "STSong", "SimSun", "Noto Serif SC", "Source Han Serif SC", Georgia, "Times New Roman", serif;
 
   /* 断点地图（@media 不支持 var()，仅作文档约束，新增断点必须复用下列档位）：
      ≤1000px 平板档：导航收纳为汉堡 + 字阶/间距同步收敛；
@@ -537,13 +537,6 @@ body.mmenu-on .mcta { display: none; }
   transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease, background .2s ease;
 }
 .brand-site .card-hover:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
-.brand-site .card-quiet {
-  background: transparent;
-  border-color: var(--line);
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
-}
 .brand-site .tag {
   display: inline-block;
   font-size: 0.75rem;
@@ -571,7 +564,6 @@ body.mmenu-on .mcta { display: none; }
 
 /* 数据块 */
 .brand-site .stat-num { font-size: var(--fs-40); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.brand-site .stat-unit { font-size: var(--fs-14); color: var(--graphite); margin-left: 4px; }
 .brand-site .stat-label { font-size: var(--fs-14); color: var(--graphite); margin-top: 8px; }
 
 /* ---------- 8. 首页首屏（极光流体浅底区） ----------
@@ -731,25 +723,9 @@ body.mmenu-on .mcta { display: none; }
 }
 .brand-site .who { display: flex; align-items: center; gap: 12px; margin-top: var(--sp-3); }
 .brand-site .who .n { font-weight: 600; font-size: 0.9375rem; }
-.brand-site .who .r { font-size: var(--fs-13); color: rgba(255, 255, 255, .62); }
-.brand-site .glass-sm .who .r { color: var(--graphite-l); }
-.brand-site .glass-sm { background: rgba(255, 255, 255, .04); }
-
-/* 纸感证言卡（内页用） */
-.brand-site .tcard {
-  background: var(--white);
-  border: 1px solid transparent;
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  padding: var(--sp-4);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-.brand-site .tcard .q { font-family: var(--serif); font-size: 1.0625rem; line-height: 1.7; flex: 1; }
-.brand-site .tcard .avatar { background: var(--celadon-l); color: var(--celadon); border: none; }
-.brand-site .tcard .who .n { color: var(--ink); }
-.brand-site .tcard .who .r { color: var(--graphite-l); }
+.brand-site .who .r { font-size: var(--fs-13); color: rgba(255, 255, 255, .78); }
+.brand-site .glass-sm .who .r { color: rgba(255, 255, 255, .72); }
+.brand-site .glass-sm { background: rgba(255, 255, 255, .08); }
 
 /* ---------- 10. 悬浮智能体入口 ---------- */
 .brand-site .fab {
@@ -799,25 +775,32 @@ body.mmenu-on .mcta { display: none; }
   margin-bottom: 10px;
 }
 .brand-site .msg.me { background: var(--celadon); color: #fff; border-color: transparent; margin-left: 32px; }
+/* 依据来源：仅为引用注释，不可点击，不做链接化外观 */
 .brand-site .msg .src {
   display: inline-block;
   margin-top: 8px;
   font-size: 0.75rem;
-  color: var(--celadon);
-  border-bottom: 1px dashed var(--celadon);
-  cursor: pointer;
+  color: var(--graphite-l);
 }
-.brand-site .msg.me .src { color: rgba(255, 255, 255, .85); border-bottom-color: rgba(255, 255, 255, .5); }
+.brand-site .msg.me .src { color: rgba(255, 255, 255, .85); }
 .brand-site .fab-foot { padding: var(--sp-3); border-top: 1px solid var(--line); }
-.brand-site .fab-foot input {
-  width: 100%;
-  height: 44px;
-  border: 1px solid var(--line-2);
-  border-radius: 4px;
-  padding: 0 14px;
-  font-size: var(--fs-14);
-  font-family: inherit;
+/* 演示面板底部：真实跳转体验页的胶囊链接（替代原先无行为的输入框） */
+.brand-site .fab-go {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--celadon);
+  color: #fff;
+  font-size: var(--fs-15);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background .18s ease;
 }
+.brand-site .fab-go:hover { background: #4338CA; }
+.brand-site .fab-go:active { background: #3730A3; }
 .brand-site .fab-hint { font-size: 0.75rem; color: var(--graphite-l); margin-top: 8px; text-align: center; }
 @media (max-width: 768px) {
   .brand-site .fab { right: 16px; bottom: 84px; }
@@ -917,6 +900,10 @@ body.mmenu-on .mcta { display: none; }
 /* 移动端页脚链接补足 44px 触控热区（桌面鼠标场景保持紧凑） */
 @media (max-width: 900px) {
   .brand-site .foot a { display: inline-block; padding: 8px 0; margin: -8px 0; }
+}
+/* ≤768px 底部固定 CTA 条（56px + 安全区）会遮挡页脚内容，预留等高高+呼吸距 */
+@media (max-width: 768px) {
+  .brand-site .foot { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ---------- 14. 表单 ---------- */

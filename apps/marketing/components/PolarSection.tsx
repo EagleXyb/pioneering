@@ -20,7 +20,7 @@ export function PolarSection() {
         {polars.map((p, i) => (
           <motion.div
             key={p.flag}
-            className="card flex flex-col gap-4 p-8"
+            className="trends-card flex flex-col gap-4 p-8"
             {...fadeUp(i * 0.1)}
           >
             <div className="text-lg font-bold text-text-primary">{p.flag}</div>

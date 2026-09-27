@@ -18,7 +18,9 @@ export function Topics() {
                 <p className="body" style={{ fontSize: 15 }}>
                   {t.desc}
                 </p>
-                <div className="small mt-3">下载专题合集 →</div>
+                <div className="small mt-3">
+                  <span className="tag tag-line">合集整理中，即将上线</span>
+                </div>
               </div>
             </Reveal>
           ))}

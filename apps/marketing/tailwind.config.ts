@@ -12,7 +12,6 @@ export default {
         bg: '#161617',
         card: '#1F1F21',
         'card-border': 'rgba(255,255,255,0.09)',
-        'card-hover': '#2A2A2C',
         accent: {
           DEFAULT: '#0A84FF',
           soft: 'rgba(10,132,255,0.14)',
@@ -39,16 +38,13 @@ export default {
       fontFamily: {
         sans: [
           'var(--font-inter)',
-          'var(--font-noto-sans-sc)',
           'system-ui',
           '-apple-system',
           "'PingFang SC'",
+          "'Hiragino Sans GB'",
           "'Microsoft YaHei'",
           'sans-serif',
         ],
-      },
-      boxShadow: {
-        glow: '0 0 40px rgba(10,132,255,0.25)',
       },
       maxWidth: {
         page: '1440px',

@@ -15,7 +15,7 @@ import type { Trend } from '@/data/trends'
 function TrendCard({ num, title, desc, badge, index }: Trend & { index: number }) {
   return (
     <motion.div
-      className="card flex flex-col gap-4 p-7"
+      className="trends-card flex flex-col gap-4 p-7"
       {...fadeUp(index * 0.06)}
     >
       <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-soft">

@@ -11,8 +11,17 @@
   html {
     @apply bg-bg text-text-primary font-sans antialiased;
     scroll-behavior: smooth;
+    /* 锚点定位预留吸顶导航高度（品牌站 68px / trends 72px）+ 呼吸距，
+       避免 #try/#model 等锚点跳转后标题被导航遮挡（两套体系共用本文件） */
+    scroll-padding-top: 84px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  @media (max-width: 768px) {
+    html {
+      scroll-padding-top: 76px;
+    }
   }
 
   body {
@@ -85,8 +94,9 @@
     padding: 80px var(--page-x);
   }
 
-  /* 统一卡片：所有卡片网格共用，附带 hover 反馈 */
-  .card {
+  /* /trends 深色体系专用卡片（.trends- 前缀，避免与品牌站 .brand-site .card 碰撞：
+     该规则拍平 @layer 后曾以全局 .card:hover 泄漏到品牌站全部卡片） */
+  .trends-card {
     @apply rounded-2xl bg-card border border-card-border;
     transition:
       border-color 0.2s ease,
@@ -94,7 +104,7 @@
       box-shadow 0.2s ease;
   }
 
-  .card:hover {
+  .trends-card:hover {
     border-color: rgba(10, 132, 255, 0.45);
     transform: translateY(-2px);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);

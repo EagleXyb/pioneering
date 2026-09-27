@@ -141,6 +141,51 @@ export function SiteNav() {
     hoverTimer.current = setTimeout(() => setOpenHref(null), HOVER_CLOSE_DELAY)
   }
 
+  // 面板通过 portal 挂在 header 之外，Tab 顺序与触发器断裂；
+  // 用方向键/Home/End 在面板链接间循环，Tab 越过边界时回收焦点到触发器。
+  const getPanelLinks = () =>
+    Array.from(
+      panelRef.current?.querySelectorAll<HTMLAnchorElement>('.mega-item, .mega-cta') ??
+        [],
+    )
+
+  const focusFirstPanelLink = () => {
+    setTimeout(() => getPanelLinks()[0]?.focus(), 0)
+  }
+
+  const closeAndFocusTrigger = () => {
+    const href = openHref
+    setOpenHref(null)
+    requestAnimationFrame(() => {
+      if (href) triggerRefs.current[href]?.focus()
+    })
+  }
+
+  const onPanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const links = getPanelLinks()
+    if (links.length === 0) return
+    const idx = links.indexOf(document.activeElement as HTMLAnchorElement)
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault()
+      links[(idx + 1) % links.length].focus()
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault()
+      links[(idx - 1 + links.length) % links.length].focus()
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      links[0].focus()
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      links[links.length - 1].focus()
+    } else if (
+      e.key === 'Tab' &&
+      ((e.shiftKey && idx <= 0) || (!e.shiftKey && idx === links.length - 1))
+    ) {
+      e.preventDefault()
+      closeAndFocusTrigger()
+    }
+  }
+
   const activeItem: BrandNavItem | undefined =
     openHref != null
       ? BRAND_NAV.find((n) => n.kind === 'menu' && n.href === openHref)
@@ -201,9 +246,12 @@ export function SiteNav() {
                 onMouseEnter={() => {
                   if (canHover()) openWithHover(item.href)
                 }}
-                onClick={() =>
-                  setOpenHref((cur) => (cur === item.href ? null : item.href))
-                }
+                onClick={() => {
+                  const willOpen = openHref !== item.href
+                  setOpenHref(willOpen ? item.href : null)
+                  // 键盘/点击展开时把焦点移入面板第一项（hover 展开不走这里）
+                  if (willOpen) focusFirstPanelLink()
+                }}
               >
                 {item.label}
                 <ChevronDown
@@ -270,6 +318,7 @@ export function SiteNav() {
                 className="mega"
                 role="region"
                 aria-label={`${activeItem.label}菜单`}
+                onKeyDown={onPanelKeyDown}
                 onMouseEnter={() => {
                   if (canHover()) cancelHoverClose()
                 }}
