@@ -281,7 +281,10 @@ export class PersistentEventLog {
             await this._rotateLog()
           }
         }
-        const event_dict = {
+        // P0（T-03）：落盘 payload。
+        // 审计事件的关键语义（event_type / decision / details）位于 payload，
+        // 若仅落 metadata 则审计日志缺少决策依据。二进制载荷（Uint8Array）不落 JSON 行。
+        const event_dict: Record<string, any> = {
           event_id: event.event_id,
           timestamp: event.timestamp.toISOString(),
           trace_id: event.trace_id,
@@ -292,6 +295,10 @@ export class PersistentEventLog {
           priority: event.priority,
           metadata: event.metadata,
           schema_version: event.schema_version,
+        }
+        const payload: any = event.payload
+        if (payload !== undefined && payload !== null && !(payload instanceof Uint8Array)) {
+          event_dict['payload'] = payload
         }
         const line = JSON.stringify(event_dict) + '\n'
         await appendFile(this._log_file_path, line, 'utf-8')
@@ -343,4 +350,106 @@ export function override_event_bus(event_bus: EventBus): { restore: () => void }
       _event_bus = old
     },
   }
+}
+
+// ============================================================
+// 持久化事件日志 boot（P0 T-03）
+// ============================================================
+//
+// 背景：`PersistentEventLog` 实现完整，但全仓从未实例化 → 审计事件无处落盘。
+// 本函数由 create_agent 调用，按 `event_bus.*` 配置启动持久化日志。
+//
+// 硬约束（默认行为零变化）：
+//   - 仅当 `event_bus.log_file_path` 非空时启动；默认 `''` → 不创建文件、不订阅。
+//   - 启动失败仅告警并降级（审计为旁路，不影响主流程）。
+//   - 进程内幂等：重复调用返回同一实例。
+
+let _persistent_event_log: PersistentEventLog | null = null
+
+/** 获取当前持久化事件日志实例（未启动时为 null）。 */
+export function get_persistent_event_log(): PersistentEventLog | null {
+  return _persistent_event_log
+}
+
+/**
+ * 按配置启动持久化事件日志。
+ *
+ * 消费的配置键：
+ *   - event_bus.log_file_path（空字符串 = 不启动）
+ *   - event_bus.log_max_file_size_mb
+ *   - event_bus.log_domains（null = 全部 domain；['security'] 可仅落审计事件）
+ *   - event_bus.event_ttl_ms
+ *
+ * @param config    运行时配置（null 时不启动）
+ * @param event_bus 事件总线（默认全局单例）
+ * @returns 已启动的实例；未启动返回 null
+ */
+export async function start_persistent_event_log_from_config(
+  config?: { get: (key: string, defaultValue?: any) => any } | null,
+  event_bus?: EventBus | null,
+): Promise<PersistentEventLog | null> {
+  if (_persistent_event_log !== null) {
+    return _persistent_event_log
+  }
+  if (!config) {
+    return null
+  }
+
+  let logFilePath = ''
+  let maxFileSizeMb = 10.0
+  let domains: string[] | null = null
+  let eventTtlMs = 0
+  try {
+    logFilePath = String(config.get('event_bus.log_file_path', '') ?? '')
+    maxFileSizeMb = Number(config.get('event_bus.log_max_file_size_mb', 10.0)) || 10.0
+    const rawDomains = config.get('event_bus.log_domains', null)
+    domains = Array.isArray(rawDomains) ? rawDomains.map(String) : null
+    eventTtlMs = Number(config.get('event_bus.event_ttl_ms', 0)) || 0
+  } catch (e: any) {
+    logger.warning('read event_bus config failed: %s', String(e?.message ?? e))
+    return null
+  }
+
+  if (!logFilePath) {
+    logger.debug('event_bus.log_file_path empty, PersistentEventLog not started (no-op)')
+    return null
+  }
+
+  const bus = event_bus ?? get_event_bus()
+  const log = new PersistentEventLog({
+    log_file_path: logFilePath,
+    max_file_size_mb: maxFileSizeMb,
+    domains,
+    event_ttl_ms: eventTtlMs,
+  })
+  try {
+    await log.start(bus)
+    _persistent_event_log = log
+    logger.info(
+      'PersistentEventLog started via boot: path=%s domains=%s',
+      logFilePath, domains ? domains.join(',') : '(all)',
+    )
+    return log
+  } catch (e: any) {
+    logger.warning('PersistentEventLog start failed, audit persistence disabled: %s', String(e?.message ?? e))
+    return null
+  }
+}
+
+/** 停止并清空持久化事件日志（测试清理 / 优雅停机用）。 */
+export async function stop_persistent_event_log(): Promise<void> {
+  const log = _persistent_event_log
+  _persistent_event_log = null
+  if (log) {
+    try {
+      await log.stop()
+    } catch (e: any) {
+      logger.warning('PersistentEventLog stop failed: %s', String(e?.message ?? e))
+    }
+  }
+}
+
+/** 仅重置引用，不停止（测试清理用）。 */
+export function reset_persistent_event_log(): void {
+  _persistent_event_log = null
 }

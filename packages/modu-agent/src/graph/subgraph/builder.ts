@@ -15,6 +15,9 @@ import { END, START, StateGraph, type CompiledStateGraph } from '@langchain/lang
 import { ToolNode } from '@langchain/langgraph/prebuilt'
 
 import { SubAgentStateAnnotation, type SubAgentState } from './states.js'
+// P2（T-14）: 子 Agent 角色提示词收敛为可注册模板（注册表优先，未接线时回退内置模板）。
+import { renderPromptWithFallback } from '../../reasoning/prompt-registry.js'
+import { SUBAGENT_PROMPT_TEMPLATES } from '../prompt-templates.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.subgraph.builder] ${msg}`, ...args),
@@ -23,26 +26,19 @@ const logger = {
   debug: (msg: string, ...args: any[]) => console.debug(`[graph.subgraph.builder] ${msg}`, ...args),
 }
 
-// 子 Agent 默认系统提示词模板（按 task_type 区分）
-const _SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
-  research:
-    'You are a Research Agent. Your task is to investigate and gather information ' +
-    'about the given topic. Provide thorough, factual findings.',
-  coding:
-    'You are a Code Agent. Your task is to write, analyze, or review code ' +
-    'for the given requirement. Provide clear, correct implementations.',
-  review:
-    'You are a Review Agent. Your task is to review and evaluate the given content ' +
-    'for quality, correctness, and completeness. Provide constructive feedback.',
-  default:
-    'You are a specialized Agent. Complete the assigned subtask accurately and concisely.',
-}
+// 子 Agent 默认系统提示词模板（按 task_type 区分）。
+//
+// P2（T-14）: 字面量已迁至 `graph/prompt-templates.ts` 并注册为 `subagent.<taskType>`
+// PromptTemplate（单一事实源）；本模块仅保留"取模板 → 注册表渲染"的读取逻辑。
 
 /**
  * 根据 task_type 获取系统提示词。
  *
  * P1 外置：当未传入 customPrompt 时，优先从配置 `agents.<task_type>.prompt`
- * 读取覆盖模板；配置缺失/关闭时才回退到内置硬编码模板。
+ * 读取覆盖模板；配置缺失/关闭时才回退到内置模板。
+ *
+ * P2（T-14）: 内置模板经 Prompt 注册表渲染 —— 宿主可 `registerPrompt`（或
+ * `getRegistry().registerPrompt`）注册同 id 模板以替换角色提示词，**不改内核源码**。
  *
  * 行为等价性：customPrompt 优先级不变；不传 config（或 config 中无
  * `agents.<task_type>.prompt`）时，返回结果与改造前完全一致。
@@ -66,7 +62,16 @@ export function _getSystemPrompt(
       return configured
     }
   }
-  return _SYSTEM_PROMPT_TEMPLATES[taskType] || _SYSTEM_PROMPT_TEMPLATES.default
+  // 注：`SUBAGENT_PROMPT_TEMPLATES` 以**角色名**为键（research/coding/review/default），
+  // 其 `PromptTemplate.id` 为 `subagent.<role>`；此处按角色回退到 default。
+  //
+  // 用 `hasOwnProperty` 而非 `in` / 直接下标：taskType 来自 LLM 输出或意图识别，
+  // 理论上可能是 `'toString'` 等原型链属性名，直接下标会取到非模板值
+  // （迁移前 `taskType in _SYSTEM_PROMPT_TEMPLATES` 亦有此隐患，此处顺带加固）。
+  const fallback = Object.prototype.hasOwnProperty.call(SUBAGENT_PROMPT_TEMPLATES, taskType)
+    ? SUBAGENT_PROMPT_TEMPLATES[taskType]
+    : SUBAGENT_PROMPT_TEMPLATES.default
+  return renderPromptWithFallback(fallback.id, {}, fallback)
 }
 
 /** 子图内 ReAct 路由：有 tool_calls → sub_tools，无 → sub_finalize。 */

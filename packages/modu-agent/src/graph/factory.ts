@@ -33,6 +33,8 @@ import { loadMarkdownDocs } from '../config/markdown-loader.js'
 import { MarkdownPromptAggregator, type MarkdownBudget } from '../config/markdown-prompt-aggregator.js'
 import { CalculatorTool, DateTimeTool, DocWriterTool, SearchTool } from '../tools/index.js'
 import { build_chat_model } from './adapters/llm-adapter.js'
+// P1（T-12）: 内置 LLM provider 工厂注册（provider 可注册化）
+import { registerBuiltinLLMProviders } from './adapters/llm-adapter.js'
 import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
 import { wrap_chat_model_as_modu } from './adapters/modu-llm-adapter.js'
 import { apply_llm_retry } from './adapters/retry.js'
@@ -46,6 +48,33 @@ import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
 import { ObservationDistiller } from './adapters/observation-distiller.js'
 // P1-4: 四层 Prompt 解耦架构
 import { PromptComposer } from '../reasoning/prompt-composer.js'
+// P0（T-01）：观测统一 boot（接线 3 个零调用函数 + 5 个死配置键）
+import { boot_observability } from '../observability/boot.js'
+// P0（T-02）：LLM token 用量埋点（通用适配层）
+import { apply_llm_metrics } from './adapters/llm-metrics.js'
+// P0（T-08）：模型路由桥接（ModuLLM → LangChain Runnable）
+import { unwrap_modu_llm } from './adapters/modu-llm-adapter.js'
+// P0（T-03）：审计落盘（持久化事件日志）
+import { start_persistent_event_log_from_config } from '../orchestration/communication/message-bus.js'
+// P0（T-06）：激活 memory.default_strategy
+import { registerMemoryStrategyFromConfig, registerBaseStoreMemoryStrategy } from '../memory/memory-strategy.js'
+// P1（T-11）: 记忆策略统一契约类型（用于记忆策略解析器签名）
+import type { MemoryStrategy } from '../core/interfaces/memory-strategy.js'
+// P1（T-10 / T-10b）: 三层护栏策略规则注册（判定层；执行层不变）
+import {
+  registerDefaultPolicyRules,
+  createModuLlmJudgeCallback,
+} from '../perception/security/policy-rules.js'
+// P3（T-23）: 内置感知处理器注册（修复"感知处理器从未注册"，默认关闭）
+import { registerBuiltinPerceptionProcessors } from '../perception/builtin-processors.js'
+// P0（T-07）：领域装配器接线
+import { registerDomainsFromMarkdown } from '../reasoning/domain-adapters.js'
+// P2（T-14）：Prompt 注册表 —— 内置模板注册 + 注册表优先渲染
+import type { PromptTemplate } from '../core/interfaces/prompt.js'
+import { renderPromptWithFallback } from '../reasoning/prompt-registry.js'
+import { registerBuiltinPrompts } from './prompt-templates.js'
+// P2（T-15）：上下文策略 —— 内置默认策略注册
+import { registerBuiltinContextStrategies } from './context-strategies.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[factory] ${msg}`, ...args),
@@ -112,6 +141,19 @@ DOCUMENT GENERATION RULES (CRITICAL — applies when user asks to generate/creat
     The ENTIRE final response text must be written in the SAME language as the user's message (Chinese if the user wrote in Chinese). The template labels above (文档位置 / 核心内容速览) are Chinese on purpose — keep them as-is; only the [filename] and the bullet contents change.
 27. The doc_writer tool's summary parameter should contain a brief description of the document content for artifact tracking.
 28. For multi-step document generation tasks (search → organize → write → output), ensure ALL steps are completed before producing the final response. Do not stop after only searching or only writing.`
+
+/**
+ * P2（T-14）: 默认防幻觉 prompt 的**可注册视图**。
+ *
+ * 字面量仍以 `_DEFAULT_ANTI_HALLUCINATION_PROMPT` 为唯一事实源（避免搬运超长多语言
+ * 文本引入字符漂移），此处仅将其包装为 `PromptTemplate` 并在装配层注册。
+ * 宿主可 `getRegistry().registerPrompt({ id: 'agent.default_system', ... })` 覆盖。
+ */
+const _DEFAULT_SYSTEM_PROMPT_TEMPLATE: PromptTemplate = {
+  id: 'agent.default_system',
+  version: '1.0.0',
+  messages: [{ role: 'system', content: _DEFAULT_ANTI_HALLUCINATION_PROMPT }],
+}
 
 /**
  * 构建检查点保存器。
@@ -456,6 +498,81 @@ export async function create_agent(
     runtimeConfig = getConfig()
   }
 
+  // P0（T-01）：观测统一 boot。
+  // 严格按 observability.{logging.structured,tracing.enabled,metrics.enabled} 门控
+  // （三项默认均 false）→ 默认调用链为 no-op，行为零变化。
+  try {
+    await boot_observability(runtimeConfig)
+  } catch (e: any) {
+    logger.warning('[P0-T01] observability boot failed: %s', String(e?.message ?? e))
+  }
+
+  // P0（T-06）：激活 memory.default_strategy（此前声明但无 get() 消费点）。
+  // 默认 'cache' → 注册 InMemoryShortTermMemory；未知策略仅记录 debug 并跳过。
+  try {
+    registerMemoryStrategyFromConfig(getRegistry(), runtimeConfig)
+  } catch (e: any) {
+    logger.warning('[P0-T06] memory strategy registration failed: %s', String(e?.message ?? e))
+  }
+
+  // P0（T-03）：审计落盘。
+  // 仅当 event_bus.log_file_path 非空时启动 PersistentEventLog；
+  // 默认空字符串 → 不创建文件、不订阅（与改造前行为一致）。
+  try {
+    await start_persistent_event_log_from_config(runtimeConfig)
+  } catch (e: any) {
+    logger.warning('[P0-T03] persistent event log boot failed: %s', String(e?.message ?? e))
+  }
+
+  // P1（T-12）：注册内置 LLM provider 工厂（幂等；宿主已注册同 id 者优先，不被覆盖）。
+  // 使 provider 成为可注册扩展点：宿主 `registry.registerLLMProvider(...)` 即可替换
+  // provider 实现而**不改内核源码**；未注册时 build_chat_model 亦会按需兜底，
+  // 故默认路径行为零变化。
+  try {
+    registerBuiltinLLMProviders(getRegistry())
+  } catch (e: any) {
+    logger.warning('[P1-T12] builtin LLM provider registration failed: %s', String(e?.message ?? e))
+  }
+
+  // P3（T-23）：内置感知处理器注册（修复 §0.1 #12「感知处理器从未注册」）。
+  // 受 `perception.builtin_processors.enabled`（**默认 false**）门控 →
+  // 默认调用链为 no-op，`perception_result` 仍恒为 null（默认行为零变化）；
+  // 宿主显式开启后，`perception.routing.*`、`block_on_injection`/`block_on_pii`
+  // 路由阻断与 P0-T04 的两个审计发布点才真正可达。
+  try {
+    const perceptionCount = registerBuiltinPerceptionProcessors(getRegistry(), runtimeConfig)
+    if (perceptionCount > 0) {
+      logger.info('[P3-T23] builtin perception processors registered: %d', perceptionCount)
+    }
+  } catch (e: any) {
+    logger.warning('[P3-T23] builtin perception processor registration failed: %s', String(e?.message ?? e))
+  }
+
+  // P2（T-14 / T-15）：提示词与上下文策略注册（幂等）。
+  //   - `registerBuiltinPrompts()` 注册 planner/subagent/doc_gen 等内置模板；
+  //   - `agent.default_system` 由本模块的字面量包装后注册（见上方模板常量）；
+  //   - `registerBuiltinContextStrategies()` 注册默认上下文策略
+  //     （= 迁移前 agentNode 6 段内联注入的声明式等价物）。
+  // 三者均"注册即等价"：未注册时调用点亦会回退内置实现，默认路径行为零变化。
+  // 语义统一为"只填补缺失"：宿主**事先**注册的同 id 条目不会被本装配步骤覆盖
+  // （否则"注册即替换"在"宿主先注册 → create_agent"的真实启动序列下失效）。
+  try {
+    const promptCount = registerBuiltinPrompts()
+    // `agent.default_system` 同样只"填补缺失"：`ComponentRegistry.registerPrompt`
+    // 是覆盖语义（宿主显式注册即权威），而装配层不得覆盖宿主已注册的同 id 模板，
+    // 否则每次 create_agent 都会把宿主的默认 system prompt 悄悄改回内置版本。
+    if (!getRegistry().getPrompt(_DEFAULT_SYSTEM_PROMPT_TEMPLATE.id)) {
+      getRegistry().registerPrompt(_DEFAULT_SYSTEM_PROMPT_TEMPLATE)
+    }
+    const strategyCount = registerBuiltinContextStrategies(getRegistry())
+    logger.info(
+      '[P2-T14/T15] prompts registered: %d (+agent.default_system), context strategies: %d',
+      promptCount, strategyCount,
+    )
+  } catch (e: any) {
+    logger.warning('[P2-T14/T15] prompt/context registration failed: %s', String(e?.message ?? e))
+  }
+
   let configurable: Record<string, any> = {}
   if (config && 'configurable' in config) {
     configurable = (config as any).configurable
@@ -530,6 +647,19 @@ export async function create_agent(
   // P2-8: 为 LLM 应用重试（指数退避，仅重试瞬时网络异常）
   boundLlm = apply_llm_retry(boundLlm, runtimeConfig)
 
+  // P0（T-02）：LLM token 用量埋点。
+  // 位置：通用适配层（不改 graph/nodes.ts，保持观测埋点低侵入）。
+  // 门控：observability.metrics.enabled（默认 false）→ 原样返回，零改动、零开销。
+  try {
+    boundLlm = apply_llm_metrics(
+      boundLlm,
+      runtimeConfig,
+      (provider ?? runtimeConfig.get('llm.default_provider', 'deepseek')) as string,
+    )
+  } catch (e: any) {
+    logger.warning('[P0-T02] apply_llm_metrics failed, using unwrapped LLM: %s', String(e?.message ?? e))
+  }
+
   // 检查点保存器
   const checkpointerType =
     configurable['checkpointer_type'] ??
@@ -542,9 +672,40 @@ export async function create_agent(
     runtimeConfig.get('memory.store_type', 'chroma')
   const store = build_store(storeType)
 
+  // P1（T-11）：记忆策略接线。
+  // 把主链路真在用的 BaseStore 路径注册为可替换策略（宿主 registerMemoryStrategy
+  // 即可替换记忆后端而不改内核源码），并把 `resolveMemoryStrategy` 作为解析器
+  // 注入 memory 节点 → 使注册表真正位于主链路上（而非"注册了没人用"）。
+  // 默认行为：无策略命中时节点回退 store 直连，与改造前逐字段等价。
+  let memoryStrategyResolver: ((taskType?: string) => MemoryStrategy | undefined) | null = null
+  try {
+    registerBaseStoreMemoryStrategy(getRegistry(), store)
+    const registry = getRegistry()
+    memoryStrategyResolver = (taskType?: string) => {
+      try {
+        return registry.resolveMemoryStrategy(taskType)
+      } catch (e: any) {
+        logger.warning('[P1-T11] resolveMemoryStrategy failed: %s', String(e?.message ?? e))
+        return undefined
+      }
+    }
+    logger.info(
+      '[P1-T11] memory strategies registered: %s (default=%s)',
+      registry.listMemoryStrategies().join(',') || '(none)',
+      registry.getDefaultMemoryStrategyId() ?? '(none)',
+    )
+  } catch (e: any) {
+    logger.warning('[P1-T11] memory strategy wiring failed, using store direct path: %s', String(e?.message ?? e))
+    memoryStrategyResolver = null
+  }
+
   // 系统提示词（P0-优化: 宿主未传入时使用默认防幻觉 prompt 作为底线约束）
+  // P2（T-14）: 经 Prompt 注册表渲染 `agent.default_system`（宿主可注册同 id 模板覆盖）；
+  // 未注册时回退本模块字面量模板 → 字符与迁移前完全一致。
   let effectiveSystemPrompt =
-    configurable['system_prompt'] ?? systemPrompt ?? _DEFAULT_ANTI_HALLUCINATION_PROMPT
+    configurable['system_prompt'] ??
+    systemPrompt ??
+    renderPromptWithFallback('agent.default_system', {}, _DEFAULT_SYSTEM_PROMPT_TEMPLATE)
 
   // P1: 聚合已注册 Skill 的提示片段（gated by skills.enabled；无 Skill 时返回原提示）
   if (runtimeConfig.get('skills.enabled', false)) {
@@ -589,6 +750,20 @@ export async function create_agent(
       )
     } catch (e: any) {
       logger.warning('[P1] Markdown prompt injection failed, using base prompt: %s', String(e))
+    }
+  }
+
+  // P0（T-07）：领域装配器接线。
+  // 修复「registerDomainsFromMarkdown 全仓零调用」：扫描 config/domains/*.md
+  // 并注册进 DOMAIN_ADAPTERS 注册表，供 PromptComposer 的 domain 层消费。
+  // gated by react_optimization.prompt_composer.enabled（domain 层唯一消费方）；
+  // 目录不存在或无 .md 文件时为 0 条注册（DOMAIN_ADAPTERS 保持为空，等价现状）。
+  if (runtimeConfig.get('react_optimization.prompt_composer.enabled', false)) {
+    try {
+      const domainCount = registerDomainsFromMarkdown({})
+      logger.info('[P0-T07] registerDomainsFromMarkdown: %d domain(s) registered', domainCount)
+    } catch (e: any) {
+      logger.warning('[P0-T07] domain assembly failed: %s', String(e?.message ?? e))
     }
   }
 
@@ -638,6 +813,24 @@ export async function create_agent(
   )
   const graphJudgeLlm = consensusStrategy === 'llm_judge' ? judgeLlm : null
 
+  // P1（T-10 / T-10b）：注册三层护栏策略规则。
+  // 边界（D-18）：只"登记判定规则"，执行层保持不变
+  //   （tool → interrupt 链路；output → output-guard-node；input → routeAfterPerception）。
+  // 是否**消费**策略判定由 `policy.engine.enabled`（默认 false）门控 ——
+  // 默认路径下 human_review 节点仍直调 decideToolApprovals，行为逐字段不变。
+  try {
+    const judgeCallback = judgeLlm !== null ? createModuLlmJudgeCallback(judgeLlm) : null
+    registerDefaultPolicyRules(getRegistry(), runtimeConfig, { llmJudge: judgeCallback })
+    logger.info(
+      '[P1-T10] policy rules registered: %s (engine.enabled=%s, llm_judge=%s)',
+      getRegistry().listPolicyRules().join(',') || '(none)',
+      runtimeConfig.get('policy.engine.enabled', false),
+      judgeCallback !== null ? 'wired' : 'config-only',
+    )
+  } catch (e: any) {
+    logger.warning('[P1-T10] policy rule registration failed: %s', String(e?.message ?? e))
+  }
+
   // P0-1: 构造复杂度评估器
   // gated by react_optimization.complexity_assessment.enabled（默认 false，零风险）
   // 启用时复用主流程 LLM 的 ModuLLM 视图，避免额外连接池
@@ -676,6 +869,57 @@ export async function create_agent(
     logger.warning('[P0-3] ObservationDistiller init failed, using null: %s', String(e))
   }
 
+  // P0（T-08）：模型路由接入。
+  // 修复「_build_llm_router 全仓零调用」：在 create_agent 内真正构造 LLMRouter，
+  // 并在 llm.router.enabled=true 时按 state.task_type（state.ts:159/370，perception 节点写入）
+  // 解析出对应的路由模型（已绑定工具）注入 agentNode。
+  // 默认 enabled=false → PassthroughLLMRouter 且不注入 resolver → 行为与改造前逐字节一致。
+  let llmRouteResolver: ((state: any) => any | null) | null = null
+  try {
+    const routeProvider = (provider ?? runtimeConfig.get('llm.default_provider', 'deepseek')) as string
+    const mainModuLlm = _build_modu_llm(llm, routeProvider)
+    const llmRouter = _build_llm_router(mainModuLlm, runtimeConfig)
+    if (runtimeConfig.get('llm.router.enabled', false)) {
+      const routableTools = tools
+      // 复查修正（性能）：router.route() 每次都会触发 routeTable 工厂 → build_chat_model()
+      // 新建 ChatOpenAI（含 env 解析）。按 provider:model 缓存"已绑定工具 + retry + metrics"
+      // 的就绪实例，避免 ReAct 每轮重建模型。
+      // 复查修正（一致性）：主链路 boundLlm 依次经过 apply_llm_retry + apply_llm_metrics，
+      // 路由模型此前两者皆缺（网络异常不重试、metrics 开启时不计量），此处补齐，
+      // 使路由路径与默认路径的包装语义一致。
+      const routedReadyCache = new Map<string, any>()
+      llmRouteResolver = (state: any) => {
+        try {
+          const routed = llmRouter.route({
+            taskType: (state?.task_type ?? undefined) as string | undefined,
+            sessionId: state?.session_id ?? undefined,
+          })
+          const lc = unwrap_modu_llm(routed)
+          // 路由结果即主 LLM（或无法桥接）→ 返回 null，沿用默认 LLM
+          if (!lc || lc === llm) return null
+          const cacheKey = `${routed.provider}:${routed.model}`
+          let ready = routedReadyCache.get(cacheKey)
+          if (ready === undefined) {
+            ready = routableTools.length > 0 && typeof lc.bindTools === 'function'
+              ? lc.bindTools(routableTools)
+              : lc
+            ready = apply_llm_retry(ready, runtimeConfig)
+            ready = apply_llm_metrics(ready, runtimeConfig, routed.provider)
+            routedReadyCache.set(cacheKey, ready)
+          }
+          return ready
+        } catch (e: any) {
+          logger.warning('[P0-T08] route resolve failed, using default LLM: %s', String(e?.message ?? e))
+          return null
+        }
+      }
+      logger.info('[P0-T08] LLMRouter enabled: per-task_type model routing active')
+    }
+  } catch (e: any) {
+    logger.warning('[P0-T08] LLM router setup failed, routing disabled: %s', String(e?.message ?? e))
+    llmRouteResolver = null
+  }
+
   // 构建并编译图
   const compiled = buildModuGraph(
     tools,
@@ -694,6 +938,8 @@ export async function create_agent(
     llm,   // P4: 未绑定工具的原始 LLM，供 Planner 节点使用（规划阶段禁止工具）
     complexityAssessor,  // P0-1: 复杂度评估器
     observationDistiller, // P0-3: Observation 蒸馏器
+    llmRouteResolver,    // P0-T08: 模型路由解析器（null=不路由，行为不变）
+    memoryStrategyResolver, // P1-T11: 记忆策略解析器（null=store 直连，行为不变）
   )
   logger.info(
     'create_agent plan_execute: configurable=%j plan_execute_enabled=%s',

@@ -11,6 +11,8 @@
 // - 输入质量评估：启发式规则
 import { BasePerception } from '../../core/interfaces/perception.js'
 import { SecurityGuard } from '../security/guard.js'
+// P0（T-04）: 安全审计事件发布（输入护栏命中：注入 / PII）
+import { publish_security_audit_event_sync } from '../security/audit.js'
 
 // ---------------------------------------------------------------------------
 // 敏感词分级模式（对应问题 4：细粒度分级 + 词边界匹配）
@@ -234,6 +236,37 @@ export class TextPreprocessor extends BasePerception {
     if (this._securityGuard) {
       securityResult = this._securityGuard.detectAll(sanitizedText, finalSensitivity)
       securityScore = securityResult.security_score ?? 1.0
+      // P0（T-04）: 审计事件 —— 输入护栏命中即审计（检测到即记录，决策为 audit）。
+      // 默认不阻断（block_on_injection/block_on_pii 均 false），故 decision='audit'；
+      // 补上 12 类审计事件中 prompt_injection_blocked / pii_detected 的发布者。
+      // 审计为旁路：异常静默，不影响感知结果。
+      try {
+        const injection = (securityResult['injection'] ?? {}) as Record<string, any>
+        const pii = (securityResult['pii'] ?? {}) as Record<string, any>
+        if (injection['detected'] === true) {
+          publish_security_audit_event_sync({
+            eventType: 'prompt_injection_blocked',
+            decision: 'audit',
+            details: {
+              risk_level: injection['risk_level'] ?? 0,
+              matched_patterns: (injection['matched_patterns'] ?? []).slice(0, 5),
+              security_score: securityScore,
+            },
+          })
+        }
+        if (pii['detected'] === true) {
+          publish_security_audit_event_sync({
+            eventType: 'pii_detected',
+            decision: 'audit',
+            details: {
+              types: pii['types'] ?? [],
+              security_score: securityScore,
+            },
+          })
+        }
+      } catch {
+        // 审计旁路，忽略
+      }
     }
 
     // 6. 输入质量评估

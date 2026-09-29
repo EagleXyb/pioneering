@@ -19,6 +19,47 @@ export type {
   LLMRouteContext,
   LLMRouter,
 } from './interfaces/llm.js'
+// P1（T-12）: LLM provider 注册表契约
+export type {
+  LLMProviderConfig,
+  LLMProviderSpec,
+  LLMProviderFactory,
+} from './interfaces/llm-provider.js'
+// P1（T-11）: 记忆策略统一契约
+export type {
+  MemoryItem,
+  MemoryStrategy,
+  MemoryRecallContext,
+  MemoryPersistContext,
+} from './interfaces/memory-strategy.js'
+// P1（T-10）: 统一策略引擎契约 + 默认/空实现
+export type {
+  PolicyStage,
+  PolicySubject,
+  PolicyContext,
+  PolicyEffect,
+  PolicyDecision,
+  PolicyRule,
+  PolicyEngine,
+  ToolApprovalDetail,
+} from './interfaces/policy.js'
+export { DefaultPolicyEngine, NoopPolicyEngine } from './policy-engine.js'
+// P2（T-14）: Prompt 注册表契约
+export type {
+  PromptRole,
+  PromptMessage,
+  PromptTemplate,
+  PromptRegistry,
+} from './interfaces/prompt.js'
+// P2（T-15）: 上下文策略契约
+export type {
+  ContextPlacement,
+  ContextFragmentOutput,
+  ContextRuntime,
+  ContextFragment,
+  ContextStrategy,
+  ContextRegistry,
+} from './interfaces/context.js'
 export {
   ComponentRegistry,
   getRegistry,

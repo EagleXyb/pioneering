@@ -28,10 +28,15 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 
 import { getConfig } from '../config/runtime-config.js'
 import { getRegistry } from '../core/registry.js'
-import {
-  buildPerceptionEventMetadata,
-  extractPerceptionContext,
-} from '../perception/index.js'
+// P1（T-11）: 记忆策略统一契约（可选注入；未注入时走 store 直连，行为不变）
+import type { MemoryStrategy } from '../core/interfaces/memory-strategy.js'
+// P2（T-15）: 上下文策略统一契约 + 构建器（可选注入；未注册时回退内置默认策略，行为不变）
+import type { ContextStrategy } from '../core/interfaces/context.js'
+import { applyContextFragments } from '../reasoning/context-builder.js'
+import { getDefaultAgentContextStrategy } from './context-strategies.js'
+// 注：`extractPerceptionContext` 的消费点已随 T-15 迁至
+// `graph/context-strategies.ts`（`ctx.perception` 片段），故此处不再导入。
+import { buildPerceptionEventMetadata } from '../perception/index.js'
 import {
   runPerceptionPipeline,
   runPerceptionPipelineAsync,
@@ -70,9 +75,14 @@ import {
   filterToolsByTaskTypeAndIntent,
 } from '../tools/tool-registry.js'
 // P2-1: 写操作 + 敏感数据安全防护
+// P0（T-09）: 审批判定收敛为单一入口 decideToolApprovals（取代原内联 _toolRequiresApproval）
 import {
-  checkGuardrailsForToolCalls,
+  decideToolApprovals,
+  type DecideToolApprovalsOptions,
+  type ToolApprovalDecision,
 } from '../tools/tool-guardrails.js'
+// P0（T-04）: 安全审计事件发布（此前 12 类事件仅 1 类有发布者）
+import { publish_security_audit_event_sync } from '../perception/security/audit.js'
 // P2-3: 动态工具编排
 import {
   parseToolCalls,
@@ -311,19 +321,45 @@ export function memoryQueryNode(
 /**
  * 创建带 Store 的记忆查询节点。
  *
+ * P1（T-11）：新增可选 `resolveStrategy` —— 当它返回策略时走
+ * `MemoryStrategy.recall`，否则回退到 `store` 直连（与改造前逐字段等价）。
+ * 未传该参数（如既有测试直接调用 `makeMemoryQueryNode(store)`）时行为完全不变。
+ *
  * @param store LangGraph BaseStore 实例（null 时退化为无查询）
+ * @param resolveStrategy 记忆策略解析器（按 `state.task_type` 解析；可选）
  * @returns 记忆查询节点函数
  */
 export function makeMemoryQueryNode(
   store: any,
+  resolveStrategy?: ((taskType?: string) => MemoryStrategy | undefined) | null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
   async function _memoryQueryNode(
     state: ModuAgentState,
   ): Promise<Partial<ModuAgentState>> {
     const userId = state.user_id ?? ''
     const cleanedText = state.cleaned_text ?? ''
+    const taskType = state.task_type ?? undefined
 
     const knowledge: Array<Record<string, any>> = []
+
+    // P1（T-11）：策略优先（可替换记忆后端）；未解析到策略 → 回退 store 直连
+    const strategy = resolveStrategy ? resolveStrategy(taskType) : undefined
+    if (strategy) {
+      try {
+        const items = await strategy.recall(cleanedText, {
+          userId,
+          taskType,
+          sessionId: state.session_id ?? undefined,
+        })
+        for (const item of items) {
+          // `value` 为存储原始记录（BaseStore 路径），与改造前 `knowledge.push(item.value)` 等价
+          knowledge.push(item.value ?? { content: item.content })
+        }
+      } catch (e) {
+        logger.warning('Store search error: %s', String(e))
+      }
+      return { knowledge }
+    }
 
     if (store && cleanedText) {
       try {
@@ -366,14 +402,21 @@ export function memoryUpdateNode(
  *
  * 替代 coordinator.py 中 fire-and-forget 的记忆更新，
  * 将记忆更新接入图结构，确保更新可观测、异常可追踪。
+ *
+ * P1（T-11）：新增可选 `resolveStrategy` —— 当它返回策略时经
+ * `MemoryStrategy.persist` 写入，否则回退 `store.put` 直连（逐字段等价）。
  */
 export function makeMemoryUpdateNode(
   store: any,
+  resolveStrategy?: ((taskType?: string) => MemoryStrategy | undefined) | null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
   async function _memoryUpdateNode(
     state: ModuAgentState,
   ): Promise<Partial<ModuAgentState>> {
-    if (store === null || store === undefined) {
+    const taskType = state.task_type ?? undefined
+    const strategy = resolveStrategy ? resolveStrategy(taskType) : undefined
+
+    if (!strategy && (store === null || store === undefined)) {
       return { memory_update_status: 'skipped_no_store' }
     }
 
@@ -418,17 +461,27 @@ export function makeMemoryUpdateNode(
       if (historyParts.length > 0) {
         const historyText = historyParts.join('\n')
         const key = `${sessionId}_${Math.floor(Date.now() / 1000)}`
+        const payload = {
+          content: historyText,
+          session_id: sessionId,
+          message_count: messages.length,
+          timestamp: Math.floor(Date.now() / 1000),
+        }
 
-        await store.put(
-          [userId, 'history'],
-          key,
-          {
-            content: historyText,
-            session_id: sessionId,
-            message_count: messages.length,
-            timestamp: Math.floor(Date.now() / 1000),
-          },
-        )
+        // P1（T-11）：策略优先；未解析到策略 → 回退 store 直连（写入 payload 逐字段一致）
+        if (strategy) {
+          const { content, ...metadata } = payload
+          await strategy.persist(
+            [{ id: key, content, metadata }],
+            { userId, sessionId, taskType },
+          )
+        } else {
+          await store.put(
+            [userId, 'history'],
+            key,
+            payload,
+          )
+        }
         return { memory_update_status: 'success', memory_update_key: key }
       }
     } catch (e) {
@@ -466,6 +519,19 @@ export function routeAfterPerception(state: ModuAgentState): string {
       sensitivityLevel,
       sensitivityThreshold,
     )
+    // P0（T-04）: 审计事件 —— 敏感度熔断（补上 sensitivity_circuit_breaker 的发布者）
+    try {
+      publish_security_audit_event_sync({
+        eventType: 'sensitivity_circuit_breaker',
+        decision: 'deny',
+        sessionId: state.session_id ?? '',
+        userId: state.user_id ?? '',
+        traceId: state.trace_id ?? '',
+        details: { sensitivity_level: sensitivityLevel, threshold: sensitivityThreshold },
+      })
+    } catch {
+      // 审计旁路，忽略
+    }
     return '__end__'
   }
 
@@ -865,6 +931,28 @@ export function docFinalAnswerNode(state: ModuAgentState): Partial<ModuAgentStat
 // ============================================================
 
 /**
+ * P2（T-15）: 解析上下文策略。
+ *
+ * 宿主经 `registry.registerContextStrategy(...)` 注册的策略优先；
+ * 未注册 / 解析异常时返回 `undefined`，由调用方回退
+ * `getDefaultAgentContextStrategy()`（= 迁移前 6 段内联注入的等价物）
+ * → 默认行为零变化。
+ */
+function _resolveAgentContextStrategy(taskType?: string | null): ContextStrategy | undefined {
+  try {
+    // `context.registry.enabled=false` → 单点回滚：始终使用内置默认策略
+    // （= 迁移前 6 段内联注入的等价物），忽略宿主注册的策略。
+    if (!getConfig().get('context.registry.enabled', true)) {
+      return undefined
+    }
+    return getRegistry().resolveContextStrategy(taskType ?? undefined)
+  } catch (e: any) {
+    logger.warning('[P2-T15] resolveContextStrategy failed: %s', String(e?.message ?? e))
+    return undefined
+  }
+}
+
+/**
  * 创建 agent 节点函数。
  *
  * 使用绑定了工具的 LLM（boundLlm）进行推理，
@@ -888,6 +976,10 @@ export function makeAgentNode(
   terminationEngine: AdaptiveTerminationEngine | null = null,
   // P2-2: Few-shot 动态示例选择器（null 时从配置读取，默认不启用）
   fewShotSelector: any | null = null,
+  // P0（T-08）: 模型路由解析器（null 时不路由，行为与改造前逐字节一致）。
+  // 由 create_agent 在 llm.router.enabled=true 时注入：按 state.task_type 解析出
+  // 已绑定工具的 LangChain Runnable；返回 null 表示沿用默认 LLM。
+  llmRouteResolver: ((state: ModuAgentState) => any | null) | null = null,
 ): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
   // 获取原始 LLM 用于动态调整温度
   const _originalLlm = (boundLlm as any)._llm ?? boundLlm
@@ -963,106 +1055,28 @@ export function makeAgentNode(
       messages.unshift(new SystemMessage({ content: effectiveSystemPrompt }))
     }
 
-    // 注入感知上下文（对应 coordinator.py 中 context["perception"] 注入）
-    const perceptionResult = state.perception_result
-    if (perceptionResult) {
-      const perceptionCtx = extractPerceptionContext(perceptionResult)
-      if (perceptionCtx && Object.keys(perceptionCtx).length > 0) {
-        const ctxMsg = new SystemMessage({
-          content: `Perception context: ${JSON.stringify(perceptionCtx)}`,
-        })
-        const insertIdx = effectiveSystemPrompt ? 1 : 0
-        messages.splice(insertIdx, 0, ctxMsg)
-      }
-    }
+    // P2（T-15）: 上下文注入收敛为可注册的 `ContextStrategy`。
+    //
+    // 迁移前此处为 6 段过程式 `splice`/`push`（感知/任务类型/知识/Observation/
+    // Few-shot/plan 步骤）。现由 `graph/context-strategies.ts` 声明片段
+    // （位置 + 优先级 + 锚点偏移），本行统一执行；片段顺序与插入偏移**复刻**原行为，
+    // 字符等价由 `tests/reasoning/context-builder.test.ts` 锁定。
+    //
+    // `anchorIndex` 复刻迁移前 `insertIdx = effectiveSystemPrompt ? 1 : 0` 的语义。
+    // 宿主可 `registry.registerContextStrategy(...)` 替换上下文组装方式（不改本文件）。
+    const agentContextStrategy =
+      _resolveAgentContextStrategy(state.task_type) ?? getDefaultAgentContextStrategy()
+    await applyContextFragments(
+      messages,
+      state,
+      {
+        anchorIndex: effectiveSystemPrompt ? 1 : 0,
+        planContextInjector,
+        fewShotSelector,
+      },
+      agentContextStrategy,
+    )
 
-    // 注入任务类型上下文（文档生成任务专用强提醒）
-    if (state.task_type === 'document_generation') {
-      const docGenCtx = new SystemMessage({
-        content:
-          `TASK TYPE: document_generation\n\n` +
-          `This is a DOCUMENT GENERATION task. You MUST:\n` +
-          `1. First gather necessary information (e.g., call search_engine, datetime as needed)\n` +
-          `2. Then organize the information into a well-structured Markdown document\n` +
-          `3. Call the doc_writer tool with auto_name=true, a descriptive title, and the full Markdown content\n` +
-          `4. After doc_writer succeeds, produce a final response following the document delivery format\n` +
-          `Do NOT end the conversation without calling doc_writer. The doc_writer tool is your document output channel.\n\n` +
-          `LANGUAGE: All narration, thinking, and the final answer MUST be in the same language as the user's message. ` +
-          `If the user speaks Chinese, think and answer in Chinese — do NOT use English for intermediate narration.\n` +
-          `FINAL ANSWER: Keep it clean and concise. Do NOT repeat intermediate reasoning in the final answer.`,
-      })
-      const insertIdx = effectiveSystemPrompt ? 1 : 0
-      messages.splice(insertIdx + 1, 0, docGenCtx)
-    }
-
-    // 注入长期知识
-    const knowledge = state.knowledge ?? []
-    if (knowledge.length > 0) {
-      const knowledgeText = knowledge
-        .filter((item) => item && typeof item === 'object')
-        .map((item) => item['content'] ?? '')
-        .join('\n')
-      if (knowledgeText) {
-        messages.splice(
-          effectiveSystemPrompt ? 1 : 0,
-          0,
-          new SystemMessage({ content: `Relevant knowledge from memory:\n${knowledgeText}` }),
-        )
-      }
-    }
-
-    // P0-3: 注入 Observation 蒸馏历史（仅当 observation_history 非空时）
-    // 提供工具结果的精简摘要，辅助 LLM 在长会话中保持上下文
-    // P1-1: 异常条目追加 enhancement 引导文本（若存在）
-    const observationHistory = state.observation_history ?? []
-    if (observationHistory.length > 0) {
-      const recentObs = observationHistory.slice(-5) // 仅保留最近 5 条，控制 token
-      const obsText = recentObs
-        .map((o, idx) => {
-          const summary = o['summary'] ?? ''
-          const metrics = o['key_metrics'] ? ` | metrics: ${JSON.stringify(o['key_metrics'])}` : ''
-          const count = o['records_count'] !== undefined ? ` | count: ${o['records_count']}` : ''
-          // P1-1: error 状态且存在 enhancement 时，附加引导文本
-          const enhancement = o['enhancement']
-            ? `\n   ⚠️ ${o['enhancement']}`
-            : ''
-          return `[${idx}] ${o['tool'] ?? 'unknown'} (${o['status'] ?? 'success'}): ${summary}${count}${metrics}${enhancement}`
-        })
-        .join('\n')
-      if (obsText) {
-        messages.push(new SystemMessage({
-          content: `Recent observations (distilled summaries):\n${obsText}`,
-        }))
-      }
-    }
-
-    // P2-2: Few-shot 动态示例注入（gated by react_optimization.few_shot.enabled）
-    // 示例库为空时静默跳过（零侵入），有示例时作为 SystemMessage 注入
-    // 对应 R-11 策略①：空库返回空字符串，不影响现有流程
-    if (fewShotSelector) {
-      try {
-        const _query = state.cleaned_text ?? ''
-        const fewShotPrompt = await fewShotSelector.selectAndFormat(_query)
-        if (fewShotPrompt) {
-          messages.push(new SystemMessage({ content: fewShotPrompt }))
-        }
-      } catch (e: any) {
-        logger.warning('[P2-2] Few-shot selection failed, skipping: %s', String(e?.message ?? e))
-      }
-    }
-
-    // P4 Plan-and-Execute：注入当前步骤上下文（仅 plan_execute 模式传入注入器时生效，
-    // 默认 null 时行为与原逻辑完全一致）
-    if (planContextInjector) {
-      try {
-        const stepMsg = planContextInjector(state)
-        if (stepMsg) {
-          messages.push(stepMsg)
-        }
-      } catch (e) {
-        logger.warning('planContextInjector failed, continuing without step context: %s', String(e))
-      }
-    }
 
     if (messages.length === 0) {
       return { response: '' }
@@ -1134,10 +1148,30 @@ export function makeAgentNode(
 
     let response: any
     let target: any = boundLlm
+
+    // P0（T-08）: 模型路由。
+    // 仅当 create_agent 注入了 llmRouteResolver（llm.router.enabled=true）时生效；
+    // 解析失败/返回 null 时沿用默认 LLM，保证默认路径行为零变化。
+    if (llmRouteResolver) {
+      try {
+        const routed = llmRouteResolver(state)
+        if (routed) {
+          target = routed
+        }
+      } catch (e: any) {
+        logger.warning(
+          'LLM route resolve failed, using default LLM: %s',
+          String(e?.message ?? e),
+        )
+        target = boundLlm
+      }
+    }
+
     if (needCustomTemp) {
       // 克隆 LLM 并设置温度
+      const baseForTemp = target
       try {
-        target = boundLlm.bind({ temperature: effectiveTemperature })
+        target = baseForTemp.bind({ temperature: effectiveTemperature })
       } catch (e: any) {
         // 如果 bind 不支持 temperature，直接使用原 LLM（记录原因，便于排查）
         logger.warning(
@@ -1145,7 +1179,7 @@ export function makeAgentNode(
           effectiveTemperature,
           String(e?.message ?? e),
         )
-        target = boundLlm
+        target = baseForTemp
       }
     }
     response = await _invokeWithTimeout(
@@ -1779,52 +1813,94 @@ export async function publishToolEvents(
 // ============================================================
 // P3-12.3.2 Human-in-the-loop 节点
 // ============================================================
+//
+// P0（T-09）：工具审批判定已收敛为单一入口
+// `tools/tool-guardrails.ts` 的 `decideToolApprovals()`：
+//   1. guardrail 命中          → 需审批（source='guardrail'）
+//   2. 工具名在 sensitive_tools → 需审批（source='sensitive_list'）
+//   3. 工具自身 requiresApprovalFor → 需审批（source='tool_policy'）
+// 判定顺序与结果与迁移前内联实现逐条一致。
 
 /**
- * P3-12.3.2: 检测工具是否需要人工审批。
+ * P0（T-04 复查修正）：`tool_approval_required` 审计事件去重表。
  *
- * 判定逻辑（任一命中即视为需要审批）：
- *   1. 工具名在 sensitiveTools 配置列表中
- *   2. 工具实例的 requiresApprovalFor(args, context) 返回 true
- *      （对应文档 §2.5 建议6 / §4.3 建议4：动态敏感性检测）
- *      - 默认实现回退到 requiresApproval() 静态判定，保持向后兼容
- *      - HttpRequestTool / FileOpsTool 等覆写为参数级判定
- *
- * v1.2 §4.3 建议4 修复：原实现仅调用静态 requiresApproval()，未传入 args/context，
- * 导致 requiresApprovalFor 接口虽已定义但运行时永不命中。现修正为优先调用
- * requiresApprovalFor(args, context)，让参数级判定真正生效。
- *
- * @param toolName       工具名
- * @param registry       组件注册表
- * @param sensitiveTools 配置的敏感工具名列表
- * @param args           工具调用参数（用于动态敏感性判定）
- * @param context        调用上下文（含 user_id / session_id 等）
+ * LangGraph 的 interrupt 语义：resume 时节点从头重执行，interrupt 之前的
+ * 发布代码会执行两次。本表以上述键去重（详见 makeHumanReviewNode 内注释）。
+ * 有界（防长进程内存增长），容量上限 4096 条。
  */
-function _toolRequiresApproval(
-  toolName: string,
-  registry: any,
-  sensitiveTools: string[],
-  args?: Record<string, any>,
-  context?: Record<string, any>,
-): boolean {
-  if (sensitiveTools.includes(toolName)) {
-    return true
+const _approvalRequiredAuditKeys = new Map<string, true>()
+
+/** 仅测试用：清空去重表（复用 `_reset_tool_rate_limiter_for_test` 的范式）。 */
+export function _reset_approval_required_audit_for_test(): void {
+  _approvalRequiredAuditKeys.clear()
+}
+
+/**
+ * P1（T-10）：经统一策略引擎判定工具审批。
+ *
+ * 判定内核**不重写**：`ToolApprovalPolicyRule` 委派 `decideToolApprovals`，
+ * 因此其 `details` 与直调结果逐字段一致。
+ * 任何异常/形状不符均降级为直调（保证 `policy.engine.enabled=true` 不会引入行为漂移）。
+ *
+ * @param toolCalls   tool_calls 数组
+ * @param opts        判定选项（与直调 `decideToolApprovals` 共用）
+ */
+async function _decideToolApprovalsViaPolicy(
+  toolCalls: Array<Record<string, any>>,
+  opts: DecideToolApprovalsOptions,
+): Promise<ToolApprovalDecision[]> {
+  try {
+    const engine = getRegistry().getPolicyEngine()
+    const decision = await engine.decide(
+      'tool',
+      { kind: 'tool', toolCalls },
+      {
+        userId: opts.approvalContext?.['user_id'] ?? '',
+        sessionId: opts.approvalContext?.['session_id'] ?? '',
+        traceId: opts.approvalContext?.['trace_id'] ?? '',
+        registry: opts.registry,
+        sensitiveTools: opts.sensitiveTools,
+        guardrailsEnabled: opts.guardrailsEnabled,
+        guardrailDryRun: opts.guardrailDryRun,
+      },
+    )
+    const details = decision.details
+    if (Array.isArray(details) && details.length === toolCalls.length) {
+      return details as ToolApprovalDecision[]
+    }
+    logger.warning(
+      '[P1-T10] policy engine returned unexpected details (len=%s, expected=%d), falling back',
+      Array.isArray(details) ? details.length : 'n/a',
+      toolCalls.length,
+    )
+  } catch (e: any) {
+    logger.warning(
+      '[P1-T10] policy engine decide failed, falling back to decideToolApprovals: %s',
+      String(e?.message ?? e),
+    )
   }
-  if (registry !== null && registry !== undefined) {
-    const moduTool = registry.getTool(toolName)
-    if (moduTool) {
-      try {
-        // 优先调用动态敏感性判定（默认实现回退到 requiresApproval）
-        return Boolean(
-          moduTool.requiresApprovalFor(args ?? {}, context ?? {}),
-        )
-      } catch {
-        // 工具方法异常时不阻断流程，按不需要审批处理
-        return false
-      }
+  return decideToolApprovals(toolCalls, opts)
+}
+
+/** 计算去重键并判断本次是否应发布（首次 true，重复 false）。导出仅供测试。 */
+export function _shouldPublishApprovalRequired(state: ModuAgentState, pending: any[]): boolean {
+  const key = [
+    state.session_id ?? '',
+    state.trace_id ?? '',
+    String((state.messages ?? []).length),
+    pending.map((tc) => String(tc['name'] ?? '') + ':' + String(tc['id'] ?? '')).sort().join(','),
+  ].join('|')
+  if (_approvalRequiredAuditKeys.has(key)) {
+    return false
+  }
+  _approvalRequiredAuditKeys.set(key, true)
+  if (_approvalRequiredAuditKeys.size > 4096) {
+    const oldest = _approvalRequiredAuditKeys.keys().next().value
+    if (oldest !== undefined) {
+      _approvalRequiredAuditKeys.delete(oldest)
     }
   }
-  return false
+  return true
 }
 
 /**
@@ -1883,35 +1959,40 @@ export function makeHumanReviewNode(
     }
 
     // P2-1: guardrail 检查（gated by react_optimization.action_guardrails.enabled）
-    // guardrail 命中→直接加入 pending（强审批），未命中→走原有 _toolRequiresApproval 逻辑
-    // 对应 R-10 策略③：与 requiresApprovalFor 合并判定
+    // P0（T-09）: 合并判定收敛为单一入口 decideToolApprovals()（tools/tool-guardrails.ts）。
+    // 判定顺序与结果与迁移前内联实现逐条一致：
+    //   guardrail 命中 → 敏感工具列表 → 工具 requiresApprovalFor
     let guardrailsEnabled = false
     let guardrailDryRun = false
+    let policyEngineEnabled = false
     try {
       const _cfg = config !== null && config !== undefined ? config : getConfig()
       guardrailsEnabled = _cfg.get('react_optimization.action_guardrails.enabled', false)
       guardrailDryRun = _cfg.get('react_optimization.action_guardrails.dry_run_enabled', true)
+      // P1（T-10）: 策略引擎门控（默认 false → 直接走 decideToolApprovals，行为不变）
+      policyEngineEnabled = _cfg.get('policy.engine.enabled', false)
     } catch {
       // 配置读取异常时降级到原逻辑
     }
 
-    const guardrailHits = guardrailsEnabled
-      ? checkGuardrailsForToolCalls(toolCalls, guardrailDryRun)
-      : []
-    const guardrailHitIds = new Set(
-      guardrailHits.map((h) => h.toolCall['id'] ?? ''),
-    )
+    const approvalOpts: DecideToolApprovalsOptions = {
+      guardrailsEnabled,
+      guardrailDryRun,
+      sensitiveTools,
+      registry: reg,
+      approvalContext: hitlContext,
+    }
 
+    // P1（T-10）：策略引擎优先（gated by policy.engine.enabled）。
+    // 判定内核仍是 decideToolApprovals（由 ToolApprovalPolicyRule 委派），
+    // 故两条路径逐工具逐字段一致（等价矩阵见 tests/graph/policy-hitl-equivalence.test.ts）。
+    const approvalDecisions: ToolApprovalDecision[] = policyEngineEnabled
+      ? await _decideToolApprovalsViaPolicy(toolCalls, approvalOpts)
+      : decideToolApprovals(toolCalls, approvalOpts)
     const pending = toolCalls.filter((tc: Record<string, any>) => {
-      // guardrail 命中直接加入 pending
-      if (guardrailHitIds.has(tc['id'] ?? '')) {
-        return true
-      }
-      // 未命中走原有 _toolRequiresApproval 逻辑
-      return _toolRequiresApproval(
-        tc['name'] ?? '', reg, sensitiveTools,
-        tc['args'] ?? {}, hitlContext,
-      )
+      const id = String(tc['id'] ?? '')
+      const decision = approvalDecisions.find((d) => d.toolCallId === id)
+      return decision?.requiresApproval === true
     })
 
     if (pending.length === 0) {
@@ -1920,6 +2001,34 @@ export function makeHumanReviewNode(
         approval_status: 'not_required',
         tool_requires_approval: false,
         pending_tool_calls: [],
+      }
+    }
+
+    // P0（T-04）: 审计事件 —— 审批请求。
+    // 12 类审计事件中 tool_approval_required 此前无发布者，此处补上。
+    // 审计为旁路：异常仅 debug，不影响审批流程。
+    //
+    // 复查修正（去重）：LangGraph 的 interrupt 语义是 resume 时**节点从头重执行**，
+    // interrupt() 之前的代码（含本发布块）会执行两次；不去重会导致同一审批在
+    // 审计日志中出现两条 tool_approval_required。以
+    // session + trace + messages.length + call id 集合 为键去重：
+    //   - resume 重执行时 state 未变 → 同键跳过；
+    //   - 同会话的新审批请求因 messages 增长（新增 AIMessage/ToolMessage）→ 异键正常发布。
+    if (_shouldPublishApprovalRequired(state, pending)) {
+      try {
+        for (const tc of pending) {
+          publish_security_audit_event_sync({
+            eventType: 'tool_approval_required',
+            decision: 'audit',
+            sessionId: state.session_id ?? '',
+            userId: state.user_id ?? '',
+            traceId: state.trace_id ?? '',
+            toolName: String(tc['name'] ?? ''),
+            details: { call_id: String(tc['id'] ?? '') },
+          })
+        }
+      } catch (e: any) {
+        logger.debug('[audit] publish tool_approval_required failed: %s', String(e?.message ?? e))
       }
     }
 
@@ -1960,6 +2069,32 @@ export function makeHumanReviewNode(
       approved = false
       feedback = ''
       isTimeout = false
+    }
+
+    // P0（T-04）: 审计事件 —— 审批结果（approved / rejected）。
+    // 补上 12 类审计事件中 tool_approval_approved / tool_approval_rejected 的发布者。
+    try {
+      const approvalEventType = approved
+        ? ('tool_approval_approved' as const)
+        : ('tool_approval_rejected' as const)
+      for (const tc of pending) {
+        publish_security_audit_event_sync({
+          eventType: approvalEventType,
+          decision: approved ? 'allow' : 'deny',
+          sessionId: state.session_id ?? '',
+          userId: state.user_id ?? '',
+          traceId: state.trace_id ?? '',
+          toolName: String(tc['name'] ?? ''),
+          details: {
+            call_id: String(tc['id'] ?? ''),
+            feedback,
+            timeout: isTimeout,
+            modified_args: approved && modifiedArgs ? Object.keys(modifiedArgs) : [],
+          },
+        })
+      }
+    } catch (e: any) {
+      logger.debug('[audit] publish approval result failed: %s', String(e?.message ?? e))
     }
 
     if (approved) {

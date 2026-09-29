@@ -6,6 +6,8 @@ import { EvolutionSignalCollector } from '../feedback/evolution-signal.js'
 import { FeedbackLoop } from '../feedback/loop-controller.js'
 import { QualityMonitor } from '../feedback/quality-monitor.js'
 import { ParameterTuneStrategy } from './parameter-tune.js'
+// P0（T-02）: 指标埋点（进化触发计数）
+import { get_metrics_registry } from '../observability/metrics.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[evolution-orchestrator] ${msg}`, ...args),
@@ -197,6 +199,13 @@ export class EvolutionOrchestrator {
             sessionId ?? 'unknown',
             evolutionAction['reasons'] ?? [],
           )
+          // P0（T-02）: 指标埋点 —— 进化触发计数（此前 record_evolution 零消费者）。
+          // metrics 未启用时 record_* 内部直接 return（no-op）。
+          try {
+            get_metrics_registry().record_evolution()
+          } catch (e) {
+            logger.debug('record_evolution failed: %s', String(e))
+          }
         }
       } catch (e) {
         logger.error('Evolution adjustment failed: %s', String(e))

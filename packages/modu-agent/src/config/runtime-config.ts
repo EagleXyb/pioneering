@@ -33,7 +33,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     // 防止 provider 挂起时主 ReAct 循环无限阻塞（recursionLimit 无法救单步挂起）。
     request_timeout_ms: 0,
     max_reasoning_iterations: 3,
-    max_format_retries: 2,
+    // 注：原 `max_format_retries` 为**声明冗余**（全仓零消费，已被原生 function
+    //     calling 语义取代，见 graph/graph.ts 的历史注释），故在 P3 T-22 中删除
+    //     （对应目标 G-2「配置无悬挂」+ §9 D-06「接线或删除」口径）。
     retry: {
       max_attempts: 2,
     },
@@ -191,7 +193,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     //     故在 P0 清理中移除（见文档 4.4）。
   },
   event_bus: {
-    max_log_size: 1000,
+    // 注：原 `max_log_size` 为**声明冗余**（无内存事件环形缓冲实现：`EventBus`
+    //     仅有订阅表，不保留事件历史；`PersistentEventLog` 的容量由
+    //     `log_max_file_size_mb` 承担），故在 P3 T-22 中删除（G-2 / D-06）。
     // 事件 TTL（毫秒），0 表示不启用（对应文档 §2.2 建议5）
     // 启用后 PersistentEventLog 会丢弃超过 TTL 的事件，避免日志无限累积
     event_ttl_ms: 0,
@@ -203,7 +207,15 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     log_domains: null,
   },
   perception: {
+    // P3（T-23）：内置感知处理器注册开关（修复 §0.1 #12「感知处理器从未注册」）。
+    // 消费点：perception/builtin-processors.ts（由 graph/factory.ts 装配层调用）。
+    // 默认 **false**：保持"管线为空、perception_result 为 null"的既有默认行为
+    // （开启会改变默认运行行为 → 属宿主/场景包显式 opt-in）。
+    builtin_processors: {
+      enabled: false,
+    },
     default_processor: 'text_preprocessor',
+    // 消费点：perception/builtin-processors.ts（TextPreprocessor 的 maxLength）
     max_length: 2048,
     sensitivity_threshold: 5,
     routing: {
@@ -219,6 +231,13 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       enable_guard: true,
       block_on_injection: false,
       block_on_pii: false,
+      // P0（T-05）：输出护栏（密钥/内网 IP/敏感 PII 脱敏）。
+      // 消费点：graph/graph.ts 中 finalize_response 节点的输出护栏包装器
+      //        （perception/security/output-guard-node.ts）。
+      // 默认关闭：不包装节点，response 文本逐字节不变（等价现状）。
+      sanitize_output: {
+        enabled: false,
+      },
       // LLM-based Prompt 注入二次校验（对应文档 §2.5 建议1）
       // 默认关闭：启用后会对关键词检测未命中（risk_level=0）的输入
       // 调用 LLM 做语义级二次校验，增加延迟但提升对抗绕过能力
@@ -290,6 +309,46 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     logging: {
       structured: false,
       level: 'INFO',
+    },
+  },
+  // P1（T-10）：统一策略引擎（权限底座）。
+  // 消费点：graph/factory.ts（注册策略规则）、graph/nodes.ts（tool 阶段判定）。
+  // 默认关闭：关闭时 human_review 节点直接调用 decideToolApprovals（等价现状）。
+  policy: {
+    engine: {
+      enabled: false,
+    },
+  },
+  // P2（T-13）：图拓扑声明化（GraphSpec）。
+  // 消费点：graph/graph.ts（composeDefaultGraph / resolveGraphProfile）、
+  //         graph/spec.ts（buildFromSpec 中"宿主注册的节点/边声明"门控）。
+  // 默认 true：注册表为空时行为零变化；置 false 可整体忽略宿主图扩展声明（回滚手段）。
+  graph: {
+    spec: {
+      enabled: true,
+      // P3（T-20）：画像扩展开关（场景包注入，键名自定义）。
+      // 消费点：graph/graph.ts 的 resolveGraphProfile → GraphProfile.extra；
+      //         供宿主注册的 NodeSpec / EdgeSpec 经 profileFlag() 读取。
+      // 默认 {} → 所有扩展开关取 false → 默认路径行为零变化。
+      extra: {},
+    },
+  },
+  // P2（T-14）：Prompt 注册表。
+  // 消费点：reasoning/prompt-registry.ts（renderPromptWithFallback）。
+  // 默认 true（等价重构：渲染结果与迁移前逐字节一致）；
+  // 置 false → 始终使用内置模板对象（忽略宿主注册的覆盖模板），单点回滚。
+  prompt: {
+    registry: {
+      enabled: true,
+    },
+  },
+  // P2（T-15）：上下文策略注册表。
+  // 消费点：graph/nodes.ts（_resolveAgentContextStrategy）。
+  // 默认 true（等价重构：默认策略 = 迁移前 6 段内联注入）；
+  // 置 false → 始终使用内置默认策略（忽略宿主注册的策略），单点回滚。
+  context: {
+    registry: {
+      enabled: true,
     },
   },
   mcp: {

@@ -87,10 +87,15 @@ export async function publish_security_audit_event(ctx: AuditContext): Promise<v
       details: ctx.details ?? {},
     }
 
+    // 修复（P0 T-04 发现的缺陷）：AgentEvent 构造函数校验 session_id 非空
+    // （protocol.ts:137-139），此前传空字符串会抛 `session_id is required`，
+    // 被本函数 try/catch 捕获后**静默丢弃事件** —— 导致审计事件在无会话上下文时
+    // 全部丢失（含唯一既有发布者 rate-limiter 的 tool_rate_limited）。
+    // 与 user_id 的既有约定保持一致，使用 'unknown' 作为哨兵值。
     const event = new AgentEvent({
       domain: EventDomain.SECURITY,
       action,
-      session_id: ctx.sessionId || '',
+      session_id: ctx.sessionId || 'unknown',
       user_id: ctx.userId || 'unknown',
       trace_id: ctx.traceId || '',
       payload,

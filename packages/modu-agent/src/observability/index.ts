@@ -47,3 +47,10 @@ export {
   stop_prometheus_server,
   reset_exporters,
 } from './exporters.js'
+
+// boot（P0 T-01：统一 boot 入口）
+export {
+  boot_observability,
+  reset_observability_boot,
+  type ObservabilityBootResult,
+} from './boot.js'

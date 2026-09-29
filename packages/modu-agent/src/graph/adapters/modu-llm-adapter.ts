@@ -303,3 +303,25 @@ export function wrap_chat_model_as_modu(
 ): ModuLLM {
   return new ModuLLMAdapter(llm, provider, llm?.model ?? '')
 }
+
+/**
+ * P0（T-08）：从 ModuLLM 实例取回底层 LangChain Runnable/ChatModel。
+ *
+ * 用途：LLMRouter.route() 返回 ModuLLM，而 LangGraph 节点消费 LangChain Runnable
+ * （需要 bind/invoke 语义与 AIMessage 返回值）。此函数提供两者的桥接。
+ *
+ * 说明：仅对由 `wrap_chat_model_as_modu` / `ModuLLMAdapter` 产生的实例有效；
+ * 其他 ModuLLM 实现（如宿主自定义）返回 null，由调用方降级到默认 LLM。
+ *
+ * @param llm ModuLLM 实例
+ * @returns 底层 LangChain 实例；不可得时返回 null
+ */
+export function unwrap_modu_llm(llm: ModuLLM | null | undefined): any | null {
+  if (!llm) return null
+  // 复查修正：优先走公共 getter `underlying`（ModuLLMAdapter 的既有契约，见类定义），
+  // 私有字段 `_llm` 仅作旧实例降级 —— 避免私有字段重命名导致路由桥接静默失效。
+  const viaGetter = (llm as any).underlying
+  if (viaGetter !== undefined && viaGetter !== null) return viaGetter
+  const inner = (llm as any)._llm
+  return inner ?? null
+}

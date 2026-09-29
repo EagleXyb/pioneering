@@ -21,6 +21,23 @@ export {
   type CostEventContext,
 } from './llm/cost-tracker.js'
 
+// P2（T-14）: Prompt 注册表（提示词可注册）
+export {
+  DefaultPromptRegistry,
+  getPromptRegistry,
+  setPromptRegistry,
+  resetPromptRegistry,
+  renderPromptWithFallback,
+  renderTemplateContent,
+} from './prompt-registry.js'
+
+// P2（T-15）: 上下文构建器（上下文可注册）
+export {
+  DEFAULT_AGENT_CONTEXT_STRATEGY_ID,
+  applyContextFragments,
+  listFragmentIds,
+} from './context-builder.js'
+
 // P1-4: 四层 Prompt 解耦架构
 export { PromptComposer, type PromptComposerInput } from './prompt-composer.js'
 export {

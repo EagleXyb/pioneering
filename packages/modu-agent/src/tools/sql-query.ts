@@ -13,6 +13,8 @@
 // 注：Python 版依赖 sqlite3 标准库；TS 版动态导入 better-sqlite3（需安装），
 // 未安装时返回 HTTP_003 等价的依赖缺失错误。
 import { BaseTool } from '../core/interfaces/action.js'
+// P0（T-04）: 安全审计事件发布（SQL 注入拦截）
+import { publish_security_audit_event_sync } from '../perception/security/audit.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[sql-query] ${msg}`, ...args),
@@ -211,6 +213,13 @@ export class SqlQueryTool extends BaseTool {
     const [isValid, errorMsg] = this._validateQuery(query)
     if (!isValid) {
       logger.warning('SqlQuery rejected: %s', errorMsg)
+      // P0（T-04）: 审计事件 —— SQL 注入拦截（补上 sql_injection_blocked 的发布者）
+      publish_security_audit_event_sync({
+        eventType: 'sql_injection_blocked',
+        decision: 'deny',
+        toolName: 'sql_query',
+        details: { reason: errorMsg, query_preview: query.slice(0, 120) },
+      })
       return {
         status: 'error',
         error_code: 'SQL_001',

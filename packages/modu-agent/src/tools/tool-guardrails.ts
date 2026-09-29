@@ -13,7 +13,7 @@
 //   在 human_review 节点内部集成（合并判定），避免新增独立节点破坏图拓扑（R-10 策略③）
 //   guardrail 优先于 requiresApprovalFor 判定
 
-import { getToolCapability } from './tool-registry.js'
+import { getToolCapability, isExplicitlyConfirmRequired } from './tool-registry.js'
 
 /**
  * Guardrail 规则类型。
@@ -206,8 +206,17 @@ export function checkGuardrail(
 
   // 第二层：回退到 TOOL_CAPABILITY_MATRIX.requires_confirmation 静态标注
   // （对应 R-10 策略①：guardrail 仅对 requires_confirmation=true 的工具生效）
+  //
+  // P1 复查修正：**排除自动派生条目**（`derived: true`）。
+  // P0 T-06 的 `ensureToolCapability` 会为所有未登记工具（MCP / Skill / 宿主自定义）
+  // 派生 `requires_confirmation: true` 的保守条目。若此处采信派生条目，
+  // 则 `action_guardrails.enabled=true` 时**所有第三方工具都会被判为需审批** ——
+  // 既与工具自身契约冲突（如 MCP 工具 `requiresApproval()` 返回 false），
+  // 也相对 T-06 之前（能力未知 → 不命中回退）产生行为漂移。
+  // 派生条目仅表明"能力未知"，不代表"需要审批"；宿主如需让某工具参与本判定，
+  // 应显式调用 `registerToolCapability`。
   const cap = getToolCapability(toolName)
-  if (cap?.requires_confirmation === true) {
+  if (isExplicitlyConfirmRequired(cap)) {
     return {
       hit: true,
       rule: {
@@ -266,4 +275,144 @@ export function checkGuardrailsForToolCalls(
     }
   }
   return hits
+}
+
+// ============================================================
+// P0（T-09）：审批判定单一入口（为 P1 的 PolicyEngine 铺路）
+// ============================================================
+//
+// 背景：审批判定此前散落两处 —— graph/nodes.ts 的 `_toolRequiresApproval` 内联函数
+// 与各工具的 requiresApprovalFor 实现。本模块将"guardrail 命中 + 敏感工具列表
+// + 工具自身策略"的合并判定收敛为**单一纯函数入口**，供 human_review 节点调用，
+// P1 阶段只需把本函数包装为 PolicyRule，无需再改动节点。
+//
+// 行为等价：判定顺序与结果与迁移前逐条一致
+//   （guardrail 命中 → 敏感工具列表 → 工具 requiresApprovalFor）。
+
+/**
+ * 工具是否需要人工审批（静态 + 动态判定）。
+ *
+ * 迁移自 graph/nodes.ts 的 `_toolRequiresApproval`，行为逐条等价：
+ *   1. 工具名在 sensitiveTools 列表中 → true
+ *   2. registry 中工具实例的 requiresApprovalFor(args, context) → true
+ *   3. 工具方法抛异常 → false（不阻断流程）
+ *
+ * @param toolName       工具名
+ * @param registry       组件注册表
+ * @param sensitiveTools 配置的敏感工具名列表
+ * @param args           工具调用参数
+ * @param context        调用上下文（含 user_id / session_id / trace_id）
+ */
+export function toolRequiresApproval(
+  toolName: string,
+  registry: any,
+  sensitiveTools: string[],
+  args?: Record<string, any>,
+  context?: Record<string, any>,
+): boolean {
+  if (sensitiveTools.includes(toolName)) {
+    return true
+  }
+  if (registry !== null && registry !== undefined) {
+    const moduTool = registry.getTool(toolName)
+    if (moduTool) {
+      try {
+        return Boolean(moduTool.requiresApprovalFor(args ?? {}, context ?? {}))
+      } catch {
+        // 工具方法异常时不阻断流程，按不需要审批处理
+        return false
+      }
+    }
+  }
+  return false
+}
+
+/** 审批判定来源（用于审计与调试）。 */
+export type ToolApprovalSource = 'guardrail' | 'sensitive_list' | 'tool_policy' | 'none'
+
+/** 单个工具调用的审批判定结果。 */
+export interface ToolApprovalDecision {
+  toolCallId: string
+  toolName: string
+  requiresApproval: boolean
+  source: ToolApprovalSource
+  /** guardrail 命中时的规则 id */
+  ruleId?: string
+}
+
+export interface DecideToolApprovalsOptions {
+  /** 是否启用 guardrail（react_optimization.action_guardrails.enabled） */
+  guardrailsEnabled: boolean
+  /** 是否 dry_run 预检（react_optimization.action_guardrails.dry_run_enabled） */
+  guardrailDryRun: boolean
+  /** 配置的敏感工具名列表（tools.human_in_loop.sensitive_tools） */
+  sensitiveTools: string[]
+  /** 组件注册表 */
+  registry: any
+  /** 审批上下文（user_id / session_id / trace_id） */
+  approvalContext: Record<string, any>
+}
+
+/**
+ * P0（T-09）：guardrail + requiresApproval 合并判定（单一纯函数入口）。
+ *
+ * 判定顺序（与迁移前 human_review 内联实现一致）：
+ *   1. guardrail 命中 → 需审批（强审批，source='guardrail'）
+ *   2. 工具名在 sensitive_tools 列表 → 需审批（source='sensitive_list'）
+ *   3. 工具自身 requiresApprovalFor → 需审批（source='tool_policy'）
+ *   4. 否则无需审批（source='none'）
+ *
+ * @param toolCalls tool_calls 数组（每项含 name/args/id）
+ * @param opts      判定选项
+ * @returns 与 toolCalls 等长的判定结果数组（顺序一致）
+ */
+export function decideToolApprovals(
+  toolCalls: Array<Record<string, any>>,
+  opts: DecideToolApprovalsOptions,
+): ToolApprovalDecision[] {
+  const guardrailHits = opts.guardrailsEnabled
+    ? checkGuardrailsForToolCalls(toolCalls, opts.guardrailDryRun)
+    : []
+  const hitByCallId = new Map<string, string | undefined>()
+  for (const h of guardrailHits) {
+    hitByCallId.set(String(h.toolCall['id'] ?? ''), h.guardrailResult.rule?.rule_id)
+  }
+
+  const decisions: ToolApprovalDecision[] = []
+  for (const tc of toolCalls) {
+    const id = String(tc['id'] ?? '')
+    const name = String(tc['name'] ?? '')
+
+    if (hitByCallId.has(id)) {
+      decisions.push({
+        toolCallId: id,
+        toolName: name,
+        requiresApproval: true,
+        source: 'guardrail',
+        ruleId: hitByCallId.get(id),
+      })
+      continue
+    }
+
+    if (opts.sensitiveTools.includes(name)) {
+      decisions.push({
+        toolCallId: id,
+        toolName: name,
+        requiresApproval: true,
+        source: 'sensitive_list',
+      })
+      continue
+    }
+
+    const required = toolRequiresApproval(
+      name, opts.registry, [], tc['args'] ?? {}, opts.approvalContext,
+    )
+    decisions.push({
+      toolCallId: id,
+      toolName: name,
+      requiresApproval: required,
+      source: required ? 'tool_policy' : 'none',
+    })
+  }
+  return decisions
 }

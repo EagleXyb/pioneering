@@ -27,6 +27,9 @@ let _prometheus_lock = false
  * Args:
  *   endpoint: OTLP gRPC endpoint（如 "http://localhost:4317"）
  *   service_name: 服务名（用于日志，实际 service.name 在 TracerProvider 初始化时设置）
+ *   sampling_rate: 采样率 0~1（可选）。仅在需要自建 TracerProvider 时生效，
+ *                 对应配置键 observability.tracing.sampling_rate；
+ *                 未提供（undefined）时保持 SDK 默认采样行为（等价原实现）。
  *
  * Returns:
  *   true=配置成功，false=配置失败或已配置
@@ -34,6 +37,7 @@ let _prometheus_lock = false
 export async function configure_otlp_exporter(
   endpoint: string,
   service_name: string = 'modu-agent',
+  sampling_rate?: number | null,
 ): Promise<boolean> {
   if (!endpoint) {
     logger.debug('configure_otlp_exporter: endpoint empty, skipping')
@@ -90,7 +94,22 @@ export async function configure_otlp_exporter(
         // 可能 tracing 未启用或 provider 是默认 ProxyTracerProvider
         // 尝试创建一个新的 TracerProvider
         const resource = Resource.create({ 'service.name': service_name })
-        const newProvider = new TracerProvider({ resource })
+        // 采样率（observability.tracing.sampling_rate）：
+        // 仅在显式提供且 SDK 暴露 TraceIdRatioBasedSampler 时生效，否则用 SDK 默认采样。
+        const providerOpts: Record<string, any> = { resource }
+        if (typeof sampling_rate === 'number' && sampling_rate >= 0 && sampling_rate <= 1) {
+          // TraceIdRatioBasedSampler 在部分 SDK 版本的类型声明中缺失，运行时存在 → 宽松取用
+          const RatioSampler = (sdkTrace as any).TraceIdRatioBasedSampler
+            ?? (sdkTrace as any).default?.TraceIdRatioBasedSampler
+          if (typeof RatioSampler === 'function') {
+            try {
+              providerOpts['sampler'] = new RatioSampler(sampling_rate)
+            } catch {
+              // 采样器构造失败 → 忽略，回落 SDK 默认
+            }
+          }
+        }
+        const newProvider = new TracerProvider(providerOpts)
         try {
           otelApi.trace.setTracerProvider(newProvider)
         } catch {
@@ -123,8 +142,9 @@ export async function configure_otlp_exporter(
 
       _otlp_configured = true
       logger.info(
-        'OTLP exporter configured: endpoint=%s service=%s',
+        'OTLP exporter configured: endpoint=%s service=%s sampling_rate=%s',
         endpoint, service_name,
+        typeof sampling_rate === 'number' ? String(sampling_rate) : '(sdk default)',
       )
       return true
     } catch (e) {

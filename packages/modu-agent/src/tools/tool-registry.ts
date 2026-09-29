@@ -42,6 +42,21 @@ export interface ToolCapability {
   requires_confirmation?: boolean
   /** 降级链：本工具不可用时可尝试的同类工具（仅作为 prompt 建议，不自动执行） */
   fallback_chain?: string[]
+  /**
+   * 是否为"自动派生"条目（由 P0 T-06 的 `ensureToolCapability` 生成）。
+   *
+   * 派生条目的定位是**让第三方工具"能力已知"**（供 `filterToolsByTaskType` 的
+   * task_type 覆盖判断与可观测性使用），其 `requires_confirmation: true`
+   * 是"未知时的保守标注"，**不代表该工具真的需要审批**。
+   *
+   * 因此派生条目**不得参与**以下判定（否则会把"保守标注"泄漏为"强制行为"，
+   * 造成相对 T-06 之前的行为漂移）：
+   *   - `tools/tool-guardrails.ts` 的 guardrail 第二层回退（→ 强制审批）
+   *   - `graph/adapters/tool-orchestrator.ts` 的 `hasDependency`（→ 强制串行）
+   *
+   * 需要参与判定的宿主工具，应显式调用 `registerToolCapability`。
+   */
+  derived?: boolean
 }
 
 /**
@@ -150,6 +165,64 @@ export function registerToolCapability(capability: ToolCapability): void {
  */
 export function getToolCapability(name: string): ToolCapability | null {
   return TOOL_CAPABILITY_MATRIX[name] ?? null
+}
+
+/**
+ * P0（T-06）：工具能力矩阵随注册自动同步。
+ *
+ * 背景：`TOOL_CAPABILITY_MATRIX` 仅硬编码 7 个内置工具，MCP / Skill 等第三方工具
+ * 不在此表中 → 默认"能力未知"，需宿主手动调用 registerToolCapability（此前 src/ 零调用）。
+ * 本函数在 `ComponentRegistry.registerTool` 内被调用，为未登记工具自动派生能力条目。
+ *
+ * 保守默认（风险 R-07 缓解）：
+ *   - 自动派生条目一律 `requires_confirmation: true`（未知时的最保守标注）；
+ *   - `task_types` 取 `['default']`（不参与 research/coding 的 task_type 细筛，
+ *     与"未登记"时的过滤结果等价）；
+ *   - **绝不覆盖已存在的条目**（内置 7 项与显式 registerToolCapability 结果优先）。
+ *
+ * ⚠️ 派生条目标记为 `derived: true`，**不参与审批与依赖判定**
+ * （见 {@link ToolCapability.derived}）。
+ *
+ * 为什么：若让派生条目参与 `checkGuardrail` 的第二层回退，则
+ * `react_optimization.action_guardrails.enabled=true` 时**所有** MCP / Skill /
+ * 宿主自定义工具都会因"派生标注 requires_confirmation=true"被判为需审批 ——
+ * 这与工具自身契约冲突（如 `mcp-tool-adapter.ts:209` 的 `requiresApproval()` 返回 false），
+ * 且相对 T-06 之前（能力未知 → 不命中回退）是**行为漂移**。
+ * 同理，`tool-orchestrator.hasDependency` 若采信派生标注，会把任意两个第三方
+ * 工具判为"有依赖"而强制串行。
+ *
+ * @param toolName 工具名
+ * @returns 是否新增了自动派生条目
+ */
+export function ensureToolCapability(toolName: string): boolean {
+  if (!toolName) return false
+  if (TOOL_CAPABILITY_MATRIX[toolName] !== undefined) {
+    // 已登记（内置或显式注册）→ 不覆盖
+    return false
+  }
+  TOOL_CAPABILITY_MATRIX[toolName] = {
+    name: toolName,
+    task_types: ['default'],
+    requires_confirmation: true,
+    // 标记为派生：仅供 task_type 覆盖判断与可观测性，不参与审批/依赖判定
+    derived: true,
+  }
+  return true
+}
+
+/**
+ * 判断能力条目是否"可参与审批/依赖判定"。
+ *
+ * 供 `checkGuardrail` 与 `hasDependency` 共用，避免两处判定逻辑各自解释
+ * `derived` 语义而产生分歧（单一事实源）。
+ *
+ * @param cap 能力条目（可为 null）
+ * @returns 该条目的 `requires_confirmation` 是否可作为判定依据
+ */
+export function isExplicitlyConfirmRequired(cap: ToolCapability | null): boolean {
+  return cap !== null && cap !== undefined
+    && cap.requires_confirmation === true
+    && cap.derived !== true
 }
 
 /**

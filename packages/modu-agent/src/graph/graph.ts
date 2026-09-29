@@ -17,12 +17,24 @@
 //   - max_iterations 由 LangGraph recursionLimit 配置
 //   - max_format_retries 由原生 function calling 消除
 import type { StructuredTool } from '@langchain/core/tools'
-import { END, START, StateGraph, type CompiledStateGraph } from '@langchain/langgraph'
+import type { CompiledStateGraph } from '@langchain/langgraph'
 import { ToolNode } from '@langchain/langgraph/prebuilt'
 import type { RunnableConfig } from '@langchain/core/runnables'
 
 import { getConfig } from '../config/runtime-config.js'
-import { ModuAgentStateAnnotation, type ModuAgentState } from './state.js'
+import type { ModuAgentState } from './state.js'
+// P2（T-13）: 图拓扑声明化（GraphSpec）—— `buildModuGraph` 成为
+// `buildFromSpec(composeDefaultGraph(profile), deps)` 的兼容包装。
+import {
+  buildFromSpec,
+  type EdgeSpec,
+  type GraphProfile,
+  type GraphSpec,
+  type ModuGraphDeps,
+  type NodeSpec,
+} from './spec.js'
+// P0（T-05）: 输出护栏节点包装器（接线此前为零调用的 sanitizeOutput/detectOutputSensitive）
+import { makeOutputGuardNode } from '../perception/security/output-guard-node.js'
 import {
   makeAgentNode,
   makeConsensusNode,
@@ -35,8 +47,6 @@ import {
   makePerceptionNode,
   makeSubagentNode,
   makeToolResultProcessor,
-  memoryQueryNode,
-  memoryUpdateNode,
   perceptionNode,
   responseNode,
   routeAfterAgent,
@@ -65,6 +75,8 @@ import {
   stepDispatch,
 } from './plan-execute/index.js'
 import { getRegistry } from '../core/registry.js'
+// P1（T-11）: 记忆策略统一契约（可选注入；null 时 memory 节点走 store 直连，行为不变）
+import type { MemoryStrategy } from '../core/interfaces/memory-strategy.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph] ${msg}`, ...args),
@@ -316,35 +328,27 @@ export class ModuGraph implements ModuGraphInterface {
 /**
  * 构建 ModuAgent LangGraph。
  *
+ * P2（T-13）起本函数为**兼容包装**：
+ *   `buildModuGraph(...) === buildFromSpec(composeDefaultGraph(profile), deps)`
+ * 14 个位置参数签名与行为保持不变（§4.1.5 兼容硬约束）。
+ *
  * @param tools LangChain StructuredTool 列表（通过 buildLangchainTools() 构建）
  * @param llm ChatModel 实例（通过 buildChatModel() 构建，已绑定工具）
  * @param checkpointer 检查点保存器（null=不持久化，MemorySaver=内存持久化）
  * @param store 长期记忆存储（null=跳过长期记忆查询）
  * @param systemPrompt 系统提示词（可选）
- * @param recursionLimit 递归限制（默认 = maxIterations * 3 + 7，见下方计算）
+ * @param recursionLimit 递归限制（null=按配置动态计算，见 computeRecursionLimit）
  * @param orchestrator EvolutionOrchestrator 实例（null=跳过反馈评估）
  * @param hitlEnabled P3-12.3.2 是否启用人工审批节点；null 时从配置读取
  * @param multiAgentEnabled P3-12.3.1 是否启用多 Agent 协作；null 时从配置读取
  * @param judgeLlm P3-12.3.1 LLM 裁决器（仅 llm_judge 共识策略需要）
  * @param planExecuteEnabled P4 是否启用 Plan-and-Execute 模式；null 时从配置读取
- * @param rawLlm P4 未绑定工具的原始 LLM（Planner 节点专用，规划阶段禁止工具）；
- *               null 时回退使用 llm 参数（若其已绑定工具，Planner 提示词仍约束其输出纯 JSON）
+ * @param rawLlm P4 未绑定工具的原始 LLM（Planner 节点专用，规划阶段禁止工具）
+ * @param complexityAssessor P0-1 复杂度评估器（null=不启用）
+ * @param observationDistiller P0-3 Observation 蒸馏器（null=不启用）
+ * @param llmRouteResolver P0（T-08）模型路由解析器（null=不路由）
+ * @param memoryStrategyResolver P1（T-11）记忆策略解析器（null=store 直连）
  * @returns 编译后的 StateGraph
- *
- * 图结构（multi_agent 关闭，HITL 关闭）：
- *   START → perception → routeAfterPerception
- *                             ├─ memory_query → agent → routeAfterAgent
- *                             │                                    ├─ tools → tool_processor → agent
- *                             │                                    └─ response → feedback → memory_update → END
- *                             └─ response → feedback → memory_update → END (熔断)
- *
- * 图结构（multi_agent 开启，P3-12.3.1）：
- *   START → perception → routeAfterPerception
- *                             ├─ memory_query → routeAfterMemoryQuery
- *                             │                    ├─ supervisor → routeFromSupervisor (Send × N)
- *                             │                    │                ├─ subagent_run → consensus → response
- *                             │                    └─ agent (multi_agent 关闭时)
- *                             └─ response (熔断)
  */
 export function buildModuGraph(
   tools: StructuredTool[],
@@ -363,43 +367,111 @@ export function buildModuGraph(
   complexityAssessor: ComplexityAssessor | null = null,
   // P0-3: Observation 蒸馏器（null 时不启用蒸馏，等价原行为）
   observationDistiller: ObservationDistiller | null = null,
+  // P0（T-08）: 模型路由解析器（null 时不启用模型路由，行为与改造前逐字节一致）
+  llmRouteResolver: ((state: ModuAgentState) => any | null) | null = null,
+  // P1（T-11）: 记忆策略解析器（null 时 memory 节点走 store 直连，行为与改造前一致）
+  memoryStrategyResolver: ((taskType?: string) => MemoryStrategy | undefined) | null = null,
 ): CompiledStateGraph<any, any> {
-  // LLM 已经在 factory 中绑定了工具，此处直接使用
-  const boundLlm = llm
+  const profile = resolveGraphProfile({
+    hitlEnabled,
+    multiAgentEnabled,
+    planExecuteEnabled,
+    orchestrator,
+    complexityAssessor,
+    observationDistiller,
+  })
+  const deps: ModuGraphDeps = {
+    tools,
+    llm,
+    checkpointer,
+    store,
+    systemPrompt,
+    recursionLimit,
+    orchestrator,
+    judgeLlm,
+    rawLlm,
+    complexityAssessor,
+    observationDistiller,
+    llmRouteResolver,
+    memoryStrategyResolver,
+    profile,
+    runtimeConfig: getConfig(),
+  }
 
-  // 读取 HITL 配置（P3-12.3.2）
+  const compiled = buildFromSpec(composeDefaultGraph(profile), deps)
+
+  logger.info(
+    'ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d hitl=%s multi_agent=%s plan_execute=%s',
+    tools.length,
+    checkpointer ? checkpointer.constructor?.name : 'None',
+    store ? store.constructor?.name : 'None',
+    (compiled as any).recursionLimit,
+    profile.hitlEnabled ? 'enabled' : 'disabled',
+    profile.multiAgentEnabled ? 'enabled' : 'disabled',
+    profile.planExecuteEnabled ? 'enabled' : 'disabled',
+  )
+
+  return compiled
+}
+
+/**
+ * 解析图模式画像（P2/T-13，含原 T-10c「HITL 拓扑声明化」）。
+ *
+ * 取代改造前 `buildModuGraph` 内的 4 个布尔分支与散落的配置读取：
+ *   参数显式传入（非 null）优先，否则读配置；配置读取异常时取安全默认（false）。
+ *
+ * 默认行为零变化：全部开关默认 false（与 `DEFAULT_CONFIG` 一致）。
+ */
+export function resolveGraphProfile(args: {
+  hitlEnabled?: boolean | null
+  multiAgentEnabled?: boolean | null
+  planExecuteEnabled?: boolean | null
+  orchestrator?: any
+  complexityAssessor?: any
+  observationDistiller?: any
+  /** P3（T-20）：场景包注入的扩展开关（显式传参优先） */
+  extra?: Record<string, boolean> | null
+}): GraphProfile {
+  const readBool = (key: string, dflt: boolean): boolean => {
+    try {
+      return Boolean(getConfig().get(key, dflt))
+    } catch {
+      return dflt
+    }
+  }
+
+  // P3（T-20）：画像扩展开关落地。
+  // 单一事实源为配置 `graph.spec.extra`（场景包可注入）；显式传参优先。
+  // 默认 `{}` → `profileFlag()` 一律返回 dflt(false) → 默认路径行为零变化。
+  const readExtra = (): Record<string, boolean> => {
+    try {
+      const raw = getConfig().get('graph.spec.extra', {}) as Record<string, unknown>
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+      const out: Record<string, boolean> = {}
+      for (const [k, v] of Object.entries(raw)) {
+        if (v !== null && v !== undefined) out[k] = Boolean(v)
+      }
+      return out
+    } catch {
+      return {}
+    }
+  }
+
+  let hitlEnabled = args.hitlEnabled ?? null
   if (hitlEnabled === null) {
-    try {
-      hitlEnabled = Boolean(getConfig().get('tools.human_in_loop.enabled', false))
-    } catch {
-      hitlEnabled = false
-    }
+    hitlEnabled = readBool('tools.human_in_loop.enabled', false)
   }
-
-  // 读取多 Agent 配置（P3-12.3.1）
+  let multiAgentEnabled = args.multiAgentEnabled ?? null
   if (multiAgentEnabled === null) {
-    try {
-      multiAgentEnabled = Boolean(getConfig().get('orchestration.multi_agent.enabled', false))
-    } catch {
-      multiAgentEnabled = false
-    }
+    multiAgentEnabled = readBool('orchestration.multi_agent.enabled', false)
   }
-
-  // 读取 Plan-and-Execute 配置（P4）
+  let planExecuteEnabled = args.planExecuteEnabled ?? null
   if (planExecuteEnabled === null) {
-    try {
-      planExecuteEnabled = Boolean(getConfig().get('plan_execute.enabled', false))
-    } catch {
-      planExecuteEnabled = false
-    }
+    planExecuteEnabled = readBool('plan_execute.enabled', false)
   }
 
   // v1.2 #6: 解除 plan_execute 与 multi_agent 互斥（对应文档 §4.1 建议6）
   // 允许组合模式：plan_execute 模式下 task_type=delegation 的步骤路由到 supervisor 节点
-  // - plan_execute 优先：memory_query → planner → step_dispatch
-  // - task_type=delegation 步骤：step_dispatch → supervisor → subagent_run → consensus → step_finalize
-  // - task_type=reasoning/tool_use 步骤：step_dispatch → agent → step_finalize
-  // - 纯 multi_agent 模式（plan_execute 关闭）：memory_query → supervisor → ... → response
   if (multiAgentEnabled && planExecuteEnabled) {
     logger.info(
       'Both multi_agent and plan_execute enabled (combined mode): ' +
@@ -407,401 +479,323 @@ export function buildModuGraph(
     )
   }
 
-  // 创建图
-  // 注：LangGraph JS 的 StateGraph 类型系统无法追踪 builder 模式中通过 addNode
-  // 注册的节点名，addEdge/addConditionalEdges 的字符串参数仅接受 "__start__"|"__end__"。
-  // 此处使用 any 绕过此限制（运行时行为正确，与 Python 版一致）。
-  const graph: any = new StateGraph(ModuAgentStateAnnotation)
+  return {
+    hitlEnabled: Boolean(hitlEnabled),
+    multiAgentEnabled: Boolean(multiAgentEnabled),
+    planExecuteEnabled: Boolean(planExecuteEnabled),
+    clarifyEnabled: readBool('perception.clarification.enabled', false),
+    complexityAssessmentEnabled: args.complexityAssessor != null,
+    observationDistillationEnabled: args.observationDistiller != null,
+    outputGuardEnabled: readBool('perception.security.sanitize_output.enabled', false),
+    feedbackEnabled: args.orchestrator != null,
+    fewShotEnabled: readBool('react_optimization.few_shot.enabled', false),
+    // P3（T-20）：扩展开关（参数优先，否则读 graph.spec.extra）
+    extra: args.extra ?? readExtra(),
+  }
+}
 
-  // 创建节点函数
-  // P4: plan_execute 模式下为 agent 节点注入步骤上下文（默认 null 时行为不变）
-  // P2-2: few_shot 启用时注入 DynamicFewShotSelector（默认 null 时行为不变）
-  let _fewShotSelector: any = null
-  try {
-    if (getConfig().get('react_optimization.few_shot.enabled', false)) {
-      // 使用内存示例库（生产环境可替换为 ChromaExampleStore）
-      const store = new InMemoryExampleStore()
-      _fewShotSelector = DynamicFewShotSelector.fromConfig(store)
-    }
-  } catch (e: any) {
-    logger.warning('[P2-2] Few-shot selector init failed, skipping: %s', String(e?.message ?? e))
-  }
-  const agentNode = planExecuteEnabled
-    ? makeAgentNode(boundLlm, systemPrompt, 0.5, 0.3, makePlanContextInjector(), null, null, _fewShotSelector)
-    : makeAgentNode(boundLlm, systemPrompt, 0.5, 0.3, null, null, null, _fewShotSelector)
-  const memoryNode = store ? makeMemoryQueryNode(store) : null
-  // P0-3: 创建记忆更新节点（带 Store 时写入长期记忆，否则跳过）
-  const memoryUpdate = store ? makeMemoryUpdateNode(store) : memoryUpdateNode
-  // P0-3: 传入 Observation 蒸馏器（null 时等价原行为）
-  const toolResultProcessor = makeToolResultProcessor(observationDistiller)
-  // P0-1: 创建反馈评估节点（有 orchestrator 时评估，否则跳过）
-  const feedbackNode = orchestrator ? makeFeedbackNode(orchestrator) : null
-  // P3-12.3.2: 人工审批节点（HITL 开启时插入 agent → tools 之间）
-  const humanReviewNode = hitlEnabled ? makeHumanReviewNode() : null
-  // 需求澄清节点（perception.clarification.enabled=true 时插入
-  // perception → memory_query 之间）。默认关闭 → 不挂节点、路由不分叉，行为零变化。
-  let clarifyEnabled = false
-  try {
-    clarifyEnabled = Boolean(getConfig().get('perception.clarification.enabled', false))
-  } catch {
-    clarifyEnabled = false
-  }
-  const clarifyNode = clarifyEnabled ? makeClarifyNode() : null
+/**
+ * 默认图拓扑声明（对应改造前 `buildModuGraph` 的 addNode/addEdge 序列）。
+ *
+ * 顺序约定（与改造前逐条对应，快照测试锁定）：
+ *   - 节点：perception → memory_query → agent → tools → tool_processor →
+ *     finalize_response → doc_gen_enforce → doc_final_answer → [feedback] →
+ *     memory_update → [human_review] → [clarify] → [supervisor, subagent_run, consensus] →
+ *     [planner, step_dispatch, step_finalize]
+ *   - 边：见 `EdgeSpec` 声明顺序。
+ *
+ * 宿主扩展：另经 `registry.registerNode/registerEdge/registerSubgraph` 追加
+ * （见 `buildFromSpec`）。默认 spec **不含** `subgraphs` → 扩展子图仅在宿主显式
+ * 注册时参与装配，默认拓扑与行为零变化。
+ */
+export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
   // 感知后路由包装：仅在节点确实挂载时才允许路由到 clarify，
   // 避免"路由返回未注册目标"导致的图运行时错误（闭包传递，无模块级可变状态）
-  const perceptionRouter = clarifyNode
+  const perceptionRouter = profile.clarifyEnabled
     ? (state: ModuAgentState): string => {
         const base = routeAfterPerception(state)
         if (base !== 'memory_query') return base
         return assessClarificationNeed(state).needed ? 'clarify' : 'memory_query'
       }
     : routeAfterPerception
-  // P3-12.3.1: 多 Agent 协作节点（multi_agent 开启时替代单 agent 路径）
-  let supervisorNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
-  let subagentNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
-  let consensusNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
-  if (multiAgentEnabled) {
-    // v1.4 §4.4 建议1：传入 plannerLlm 启用 LLM 驱动任务拆分
-    //   use_llm_decompose 配置默认开启，plannerLlm 为空时自动 fallback 到规则化拆分
-    const supervisorPlannerLlm = rawLlm ?? boundLlm
-    supervisorNode = make_supervisor_node(null, null, supervisorPlannerLlm)
-    // v1.4 §4.4 建议2：传入 tools 启用子 Agent 工具能力
-    // 子 Agent 按 task_type 过滤工具（research→search/http，coding→calculator/code_executor）
-    subagentNode = makeSubagentNode(boundLlm, systemPrompt, tools)
-    consensusNode = makeConsensusNode(null, judgeLlm)
-  }
 
-  // P4 Plan-and-Execute 节点（plan_execute 开启时挂载）
-  let plannerNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
-  let stepDispatchNodeFn: ((state: ModuAgentState) => Partial<ModuAgentState>) | null = null
-  let stepFinalizeNode: ((state: ModuAgentState) => Promise<Partial<ModuAgentState>>) | null = null
-  if (planExecuteEnabled) {
-    // Planner 使用未绑定工具的原始 LLM（规划阶段禁止工具）；
-    // rawLlm 为空时回退 boundLlm（提示词约束其输出纯 JSON，不产生 tool_calls）
-    const plannerLlm = rawLlm ?? boundLlm
-    plannerNode = makePlannerNode(plannerLlm, getRegistry())
-    stepDispatchNodeFn = makeStepDispatchNode()
-    stepFinalizeNode = makeStepFinalizeNode()
-  }
-
-  // 添加节点
-  // P0-1: complexityAssessor 非空时使用带复杂度评估的感知节点，否则等价原行为
-  const perceptionNodeFn = complexityAssessor
-    ? makePerceptionNode(complexityAssessor)
-    : perceptionNode
-  graph.addNode('perception', perceptionNodeFn)
-
-  if (memoryNode) {
-    graph.addNode('memory_query', memoryNode)
-  } else {
-    // 无 Store 时使用空查询节点
-    graph.addNode('memory_query', memoryQueryNode)
-  }
-
-  graph.addNode('agent', agentNode)
-  graph.addNode('tools', tools.length > 0 ? new ToolNode(tools) : _noopToolsNode)
-  graph.addNode('tool_processor', toolResultProcessor)
-  graph.addNode('finalize_response', responseNode)
-  // 文档生成强制节点：检测到 doc_writer 未调用时注入提醒并回退到 agent
-  graph.addNode('doc_gen_enforce', docGenEnforceNode)
-  // 文档生成最终回复节点：doc_writer 成功后注入终答提醒（仅一次），回退到 agent 补写正文
-  graph.addNode('doc_final_answer', docFinalAnswerNode)
-  // P0-1: 反馈评估节点接入图
-  if (feedbackNode) {
-    graph.addNode('feedback', feedbackNode)
-  }
-  // P0-3: 记忆更新节点接入图
-  graph.addNode('memory_update', memoryUpdate)
-  // P3-12.3.2: 人工审批节点接入图
-  if (humanReviewNode) {
-    graph.addNode('human_review', humanReviewNode)
-  }
-  // 需求澄清节点接入图（默认关闭）
-  if (clarifyNode) {
-    graph.addNode('clarify', clarifyNode)
-  }
-  // P3-12.3.1: 多 Agent 协作节点接入图
-  if (supervisorNode) {
-    graph.addNode('supervisor', supervisorNode)
-    graph.addNode('subagent_run', subagentNode!)
-    graph.addNode('consensus', consensusNode!)
-  }
-  // P4: Plan-and-Execute 节点接入图
-  if (plannerNode) {
-    graph.addNode('planner', plannerNode)
-    graph.addNode('step_dispatch', stepDispatchNodeFn!)
-    graph.addNode('step_finalize', stepFinalizeNode!)
-  }
-
-  // 添加边
-  graph.addEdge(START, 'perception')
-
-  // 感知后条件路由：熔断 → response，需澄清 → clarify，正常 → memory_query
-  graph.addConditionalEdges(
-    'perception',
-    perceptionRouter,
+  const nodes: NodeSpec[] = [
+    // P0-1: complexityAssessor 非空时使用带复杂度评估的感知节点，否则等价原行为
     {
-      memory_query: 'memory_query',
-      __end__: 'finalize_response',
-      // 澄清节点未挂载时不注册该目标（LangGraph 要求目标必须存在）
-      ...(clarifyNode ? { clarify: 'clarify' } : {}),
+      name: 'perception',
+      factory: (deps) => (deps.complexityAssessor
+        ? makePerceptionNode(deps.complexityAssessor)
+        : perceptionNode),
     },
-  )
-  // 澄清完成后回到正常路径（补充后的需求进入记忆查询 → agent）
-  if (clarifyNode) {
-    graph.addEdge('clarify', 'memory_query')
-  }
+    // P1（T-11）工厂版本恒非空：无 store 且无策略时返回空 knowledge（等价既有 memoryQueryNode）
+    {
+      name: 'memory_query',
+      factory: (deps) => makeMemoryQueryNode(deps.store, deps.memoryStrategyResolver),
+    },
+    {
+      name: 'agent',
+      factory: (deps) => makeAgentNode(
+        deps.llm,
+        deps.systemPrompt,
+        0.5,
+        0.3,
+        // P4: plan_execute 模式下注入步骤上下文（默认 null 时行为不变）
+        deps.profile.planExecuteEnabled ? makePlanContextInjector() : null,
+        null,
+        null,
+        // P2-2: few_shot 启用时注入 DynamicFewShotSelector（默认 null 时行为不变）。
+        // 门控统一由 `GraphProfile.fewShotEnabled` 承载（T-13 声明化），
+        // 与 `createFewShotSelector()` 内部读取的是同一个配置键 → 行为等价。
+        deps.profile.fewShotEnabled ? createFewShotSelector() : null,
+        // P0（T-08）: 模型路由解析器（null 时行为不变）
+        deps.llmRouteResolver,
+      ),
+    },
+    {
+      name: 'tools',
+      // `deps.tools` 由 buildModuGraph 保证为数组；直接调用 buildFromSpec 的宿主
+      // 可能省略该字段，故显式兜底（等价于"空工具集"分支）。
+      factory: (deps) => ((deps.tools ?? []).length > 0
+        ? new ToolNode(deps.tools)
+        : _noopToolsNode),
+    },
+    {
+      name: 'tool_processor',
+      factory: (deps) => makeToolResultProcessor(deps.observationDistiller),
+    },
+    // P0（T-05）: 输出护栏（PII / 密钥 / 内网 IP 脱敏）。
+    // 门控 perception.security.sanitize_output.enabled（默认 false）→ 默认直接使用原节点，
+    // response 文本逐字节不变（等价现状）。
+    {
+      name: 'finalize_response',
+      factory: (deps) => (deps.profile.outputGuardEnabled
+        ? makeOutputGuardNode(responseNode)
+        : responseNode),
+    },
+    { name: 'doc_gen_enforce', factory: () => docGenEnforceNode },
+    { name: 'doc_final_answer', factory: () => docFinalAnswerNode },
+    // P0-1: 反馈评估节点（有 orchestrator 时评估，否则跳过）
+    {
+      name: 'feedback',
+      factory: (deps) => makeFeedbackNode(deps.orchestrator),
+      when: (p) => p.feedbackEnabled,
+    },
+    // P0-3: 记忆更新节点
+    {
+      name: 'memory_update',
+      factory: (deps) => makeMemoryUpdateNode(deps.store, deps.memoryStrategyResolver),
+    },
+    // P3-12.3.2: 人工审批节点（HITL 开启时插入 agent → tools 之间）
+    {
+      name: 'human_review',
+      factory: () => makeHumanReviewNode(),
+      when: (p) => p.hitlEnabled,
+    },
+    // 需求澄清节点（perception.clarification.enabled=true 时插入）
+    {
+      name: 'clarify',
+      factory: () => makeClarifyNode(),
+      when: (p) => p.clarifyEnabled,
+    },
+    // P3-12.3.1: 多 Agent 协作节点
+    {
+      name: 'supervisor',
+      factory: (deps) => make_supervisor_node(null, null, deps.rawLlm ?? deps.llm),
+      when: (p) => p.multiAgentEnabled,
+    },
+    {
+      name: 'subagent_run',
+      factory: (deps) => makeSubagentNode(deps.llm, deps.systemPrompt, deps.tools),
+      when: (p) => p.multiAgentEnabled,
+    },
+    {
+      name: 'consensus',
+      factory: (deps) => makeConsensusNode(null, deps.judgeLlm),
+      when: (p) => p.multiAgentEnabled,
+    },
+    // P4: Plan-and-Execute 节点（Planner 使用未绑定工具的原始 LLM）
+    {
+      name: 'planner',
+      factory: (deps) => makePlannerNode(deps.rawLlm ?? deps.llm, getRegistry()),
+      when: (p) => p.planExecuteEnabled,
+    },
+    {
+      name: 'step_dispatch',
+      factory: () => makeStepDispatchNode(),
+      when: (p) => p.planExecuteEnabled,
+    },
+    {
+      name: 'step_finalize',
+      factory: () => makeStepFinalizeNode(),
+      when: (p) => p.planExecuteEnabled,
+    },
+  ]
+
+  const edges: EdgeSpec[] = [
+    { from: 'START', to: 'perception' },
+    // 感知后条件路由：熔断 → finalize_response，需澄清 → clarify，正常 → memory_query
+    {
+      from: 'perception',
+      to: {
+        router: perceptionRouter,
+        targets: (has) => ({
+          memory_query: 'memory_query',
+          __end__: 'finalize_response',
+          // 澄清节点未挂载时不注册该目标（LangGraph 要求目标必须存在）
+          ...(has('clarify') ? { clarify: 'clarify' } : {}),
+        }),
+      },
+    },
+    // 澄清完成后回到正常路径（补充后的需求进入记忆查询 → agent）
+    { from: 'clarify', to: 'memory_query', when: (p) => p.clarifyEnabled },
+  ]
 
   // 记忆查询后进入 agent / supervisor / planner
-  // v1.2 #6: 组合模式（plan_execute + multi_agent）下，plan_execute 优先，task_type=delegation 步骤路由到 supervisor
-  if (plannerNode) {
-    // P4: memory_query → planner → step_dispatch 执行循环
-    graph.addConditionalEdges(
-      'memory_query',
-      routeAfterMemoryQuery,
-      { agent: 'agent', planner: 'planner' },
-    )
-    // planner 后路由：plan 就绪 → step_dispatch；解析失败 → response（降级直答）
-    graph.addConditionalEdges(
-      'planner',
-      routeAfterPlan,
-      { step_dispatch: 'step_dispatch', response: 'finalize_response' },
-    )
-    // step_dispatch 路由目标：
-    //   - agent（task_type=reasoning/tool_use 或单步就绪）
-    //   - supervisor（task_type=delegation，组合模式）
-    //   - response（全部完成）
-    //   - planner（重规划）
-    //   - Send[]（DAG 并行分发）
-    const stepDispatchTargets: Record<string, string> = {
-      agent: 'agent',
-      response: 'finalize_response',
-      planner: 'planner',
-    }
-    if (supervisorNode) {
-      stepDispatchTargets['supervisor'] = 'supervisor'
-    }
-    graph.addConditionalEdges(
-      'step_dispatch',
-      stepDispatch,
-      stepDispatchTargets,
-    )
-    // step_finalize：单步收尾后回到 step_dispatch 推进游标
-    graph.addEdge('step_finalize', 'step_dispatch')
+  // v1.2 #6: 组合模式（plan_execute + multi_agent）下 plan_execute 优先
+  edges.push({
+    from: 'memory_query',
+    to: { router: routeAfterMemoryQuery, targets: { agent: 'agent', planner: 'planner' } },
+    when: (p) => p.planExecuteEnabled,
+  })
+  edges.push({
+    from: 'memory_query',
+    to: { router: routeAfterMemoryQuery, targets: { agent: 'agent', supervisor: 'supervisor' } },
+    when: (p) => !p.planExecuteEnabled && p.multiAgentEnabled,
+  })
+  edges.push({
+    from: 'memory_query',
+    to: 'agent',
+    when: (p) => !p.planExecuteEnabled && !p.multiAgentEnabled,
+  })
 
-    // v1.2 #6: 组合模式下 supervisor → subagent_run → consensus → step_finalize
-    if (supervisorNode) {
-      graph.addConditionalEdges(
-        'supervisor',
-        route_from_supervisor,
-        ['subagent_run'],
-      )
-      graph.addEdge('subagent_run', 'consensus')
-      // 组合模式：consensus → step_finalize（回到 plan_execute 循环）
-      graph.addEdge('consensus', 'step_finalize')
-    }
-  } else if (supervisorNode) {
-    // 纯 multi_agent 模式：memory_query → supervisor → subagent_run → consensus → response
-    graph.addConditionalEdges(
-      'memory_query',
-      routeAfterMemoryQuery,
-      { agent: 'agent', supervisor: 'supervisor' },
-    )
-    graph.addConditionalEdges(
-      'supervisor',
-      route_from_supervisor,
-      ['subagent_run'],
-    )
-    graph.addEdge('subagent_run', 'consensus')
-    // 纯 multi_agent 模式：consensus → response（进入响应阶段）
-    graph.addEdge('consensus', 'finalize_response')
-  } else {
-    graph.addEdge('memory_query', 'agent')
-  }
+  // P4 Plan-and-Execute 主循环
+  edges.push({
+    from: 'planner',
+    to: {
+      router: routeAfterPlan,
+      targets: { step_dispatch: 'step_dispatch', response: 'finalize_response' },
+    },
+    when: (p) => p.planExecuteEnabled,
+  })
+  edges.push({
+    from: 'step_dispatch',
+    to: {
+      router: stepDispatch,
+      targets: (has) => ({
+        agent: 'agent',
+        response: 'finalize_response',
+        planner: 'planner',
+        ...(has('supervisor') ? { supervisor: 'supervisor' } : {}),
+      }),
+    },
+    when: (p) => p.planExecuteEnabled,
+  })
+  edges.push({
+    from: 'step_finalize',
+    to: 'step_dispatch',
+    when: (p) => p.planExecuteEnabled,
+  })
 
   // Agent 后条件路由：
-  // - HITL 关闭: 有 tool_calls → tools，无 tool_calls → response（原行为）
-  // - HITL 开启: 有 tool_calls → human_review，无 tool_calls → response（P3-12.3.2）
-  // Agent 后条件路由的目标映射。
-  // P4: plan_execute 模式下 routeAfterAgent 可能返回 'step_finalize'（当前步骤完成）。
-  const agentRouteTargets: Record<string, string> = humanReviewNode
-    ? { tools: 'human_review', __end__: 'finalize_response' }
-    : { tools: 'tools', __end__: 'finalize_response' }
-  if (stepFinalizeNode) {
-    agentRouteTargets['step_finalize'] = 'step_finalize'
-  }
-  // 文档生成强制回退路由
-  agentRouteTargets['doc_gen_enforce'] = 'doc_gen_enforce'
-  // 文档生成最终回复提醒路由（doc_writer 成功后补写终答正文）
-  agentRouteTargets['doc_final_answer'] = 'doc_final_answer'
+  // - HITL 关闭: 有 tool_calls → tools，无 tool_calls → finalize_response（原行为）
+  // - HITL 开启: 有 tool_calls → human_review，无 tool_calls → finalize_response
+  edges.push({
+    from: 'agent',
+    to: {
+      router: routeAfterAgent,
+      targets: (has) => ({
+        tools: has('human_review') ? 'human_review' : 'tools',
+        __end__: 'finalize_response',
+        // P4: plan_execute 模式下 routeAfterAgent 可能返回 'step_finalize'（当前步骤完成）
+        ...(has('step_finalize') ? { step_finalize: 'step_finalize' } : {}),
+        // 文档生成强制回退路由
+        doc_gen_enforce: 'doc_gen_enforce',
+        // 文档生成最终回复提醒路由（doc_writer 成功后补写终答正文）
+        doc_final_answer: 'doc_final_answer',
+      }),
+    },
+  })
+  // human_review 后条件路由：通过 → tools，拒绝/错误 → finalize_response
+  edges.push({
+    from: 'human_review',
+    to: {
+      router: routeAfterHumanReview,
+      targets: { tools: 'tools', finalize_response: 'finalize_response' },
+    },
+    when: (p) => p.hitlEnabled,
+  })
 
-  if (humanReviewNode) {
-    graph.addConditionalEdges(
-      'agent',
-      routeAfterAgent,
-      agentRouteTargets,
-    )
-    // human_review 后条件路由：通过 → tools，拒绝/错误 → finalize_response
-    graph.addConditionalEdges(
-      'human_review',
-      routeAfterHumanReview,
-      {
-        tools: 'tools',
-        finalize_response: 'finalize_response',
-      },
-    )
-  } else {
-    graph.addConditionalEdges(
-      'agent',
-      routeAfterAgent,
-      agentRouteTargets,
-    )
-  }
+  // 组合模式（plan_execute + multi_agent）: supervisor → subagent_run → consensus → step_finalize
+  edges.push({
+    from: 'supervisor',
+    to: { router: route_from_supervisor, targets: ['subagent_run'] },
+    when: (p) => p.multiAgentEnabled,
+  })
+  edges.push({
+    from: 'subagent_run',
+    to: 'consensus',
+    when: (p) => p.multiAgentEnabled,
+  })
+  edges.push({
+    from: 'consensus',
+    to: 'step_finalize',
+    when: (p) => p.multiAgentEnabled && p.planExecuteEnabled,
+  })
+  // 纯 multi_agent 模式：consensus → finalize_response（进入响应阶段）
+  edges.push({
+    from: 'consensus',
+    to: 'finalize_response',
+    when: (p) => p.multiAgentEnabled && !p.planExecuteEnabled,
+  })
 
   // 工具执行后处理结果，再回到 agent（ReAct 循环）
-  graph.addEdge('tools', 'tool_processor')
-  graph.addEdge('tool_processor', 'agent')
+  edges.push({ from: 'tools', to: 'tool_processor' })
+  edges.push({ from: 'tool_processor', to: 'agent' })
   // 文档生成强制回退：注入提醒后回到 agent 继续推理
-  graph.addEdge('doc_gen_enforce', 'agent')
+  edges.push({ from: 'doc_gen_enforce', to: 'agent' })
   // 文档生成最终回复：注入终答提醒后回到 agent 输出正文
-  graph.addEdge('doc_final_answer', 'agent')
+  edges.push({ from: 'doc_final_answer', to: 'agent' })
 
-  // P0-1/P0-3: response → feedback → memory_update → END
-  if (feedbackNode) {
-    graph.addEdge('finalize_response', 'feedback')
-    graph.addEdge('feedback', 'memory_update')
-  } else {
-    // 无 orchestrator 时直接 response → memory_update
-    graph.addEdge('finalize_response', 'memory_update')
-  }
-  graph.addEdge('memory_update', END)
+  // P0-1/P0-3: finalize_response → [feedback] → memory_update → END
+  edges.push({
+    from: 'finalize_response',
+    to: 'feedback',
+    when: (p) => p.feedbackEnabled,
+  })
+  edges.push({
+    from: 'feedback',
+    to: 'memory_update',
+    when: (p) => p.feedbackEnabled,
+  })
+  edges.push({
+    from: 'finalize_response',
+    to: 'memory_update',
+    when: (p) => !p.feedbackEnabled,
+  })
+  edges.push({ from: 'memory_update', to: 'END' })
 
-  // 编译图
-  const compileKwargs: Record<string, any> = {}
-  if (checkpointer) {
-    compileKwargs['checkpointer'] = checkpointer
-  }
-  if (store) {
-    compileKwargs['store'] = store
-  }
+  return { nodes, edges }
+}
 
-  const compiled = graph.compile(compileKwargs)
-
-  // 设置递归限制（对应 max_iterations）
-  const compiledAny = compiled as any
-  if (recursionLimit) {
-    compiledAny.recursionLimit = recursionLimit
-  } else {
-    // 默认递归预算计算：
-    //   每轮 ReAct 循环实际 3 个节点：agent → tools → tool_processor
-    //   固定开销：perception + memory_query + 终答 agent + finalize_response + memory_update/feedback ≈ 7 节点
-    //
-    // P0-修复(2026-08-08): 调整预算公式以支持文档生成等多工具调用场景：
-    //   - 基础轮次预算从 maxIterations*3 调整为 (maxIterations+2)*3，额外预留 2 轮工具调用预算
-    //     （文档生成典型流程：datetime + 多次搜索 + doc_writer，远超 maxIterations=3）
-    //   - 固定开销从 +12 提高到 +15，为 doc_gen_enforce 强制节点预留预算（最多 2 次 × 2 步 + 1 余量）
-    //   - 这样 maxIterations=3 时 baseLimit = 5*3 + 15 = 30，可容纳约 7 轮工具调用 + 8 固定开销
-    //
-    // 历史问题：
-    //   - 旧公式 maxIterations*3+12 在 maxIterations=3 时为 21，仅能容纳 5 轮 ReAct
-    //   - 文档生成等任务需要 6-7 轮工具调用（datetime + 5次搜索 + doc_writer），
-    //     加上 doc_gen_enforce 强制回退（最多 2 次 × 2 步），21 步不够用
-    // P3-12.3.2: HITL 开启时额外加 2（human_review + 路由开销）
-    // P3-12.3.1: multi_agent 开启时额外加 4（supervisor + subagent_run + consensus + 路由开销）
-    const config = getConfig()
-    const maxIterations = config.get('llm.max_reasoning_iterations', 3)
-    // 额外预留 2 轮工具调用预算，支持文档生成等多步任务
-    const effectiveIterations = maxIterations + 2
-    let baseLimit = effectiveIterations * 3 + 15
-    if (humanReviewNode) {
-      baseLimit += 2  // 为 human_review 节点预留递归预算
+/**
+ * P2-2: 构造 Few-shot 选择器（gated by `react_optimization.few_shot.enabled`）。
+ *
+ * 从 `buildModuGraph` 迁入（T-13）；异常时返回 null（等价改造前的 warning + skip）。
+ */
+export function createFewShotSelector(): any {
+  try {
+    if (getConfig().get('react_optimization.few_shot.enabled', false)) {
+      // 使用内存示例库（生产环境可替换为 ChromaExampleStore）
+      const store = new InMemoryExampleStore()
+      return DynamicFewShotSelector.fromConfig(store)
     }
-    if (clarifyNode) {
-      // 澄清节点 + 每轮澄清的往返预算（最多 max_clarify_rounds 轮）
-      const maxRounds = Number(config.get('perception.clarification.max_clarify_rounds', 2))
-      baseLimit += 2 + Math.max(0, maxRounds) * 2
-    }
-    if (supervisorNode) {
-      baseLimit += 4  // 为 supervisor + subagent + consensus 预留递归预算
-    }
-    if (planExecuteEnabled) {
-      // 递归预算动态计算（对应文档 §2.3 建议5）：
-      //   旧版粗放估算：maxSteps * (maxIterations * 3 + 2) 假设每步最多 ReAct maxIterations 轮
-      //   新版按 plan 中各步骤的 estimated_iterations 动态累加：
-      //     - 若 plan 已生成且步骤含 estimated_iterations 字段，按 sum(estimated_iterations) 计算
-      //     - 否则回退到旧版上限估算（保持向后兼容）
-      //   每步节点消耗：agent + tools + tool_processor + step_finalize = 4 个节点
-      //   外加 planner/step_dispatch 与重规划预算
-      const maxSteps = Number(config.get('plan_execute.max_steps', 10))
-      const maxReplans = Number(config.get('plan_execute.max_replans', 2))
-
-      // 尝试读取已持久化的 plan 估算总迭代数（动态计算路径）
-      const estimatedTotalIters = _estimatePlanTotalIterations(config, maxSteps, maxIterations)
-
-      // 每步固定开销：4 节点 * iterations + step_finalize 1 节点
-      const stepBudget = estimatedTotalIters * 4 + maxSteps * 1
-      // planner + step_dispatch + 重规划预算
-      const plannerBudget = (maxReplans + 1) * 2 + 2
-      baseLimit += stepBudget + plannerBudget
-    }
-    compiledAny.recursionLimit = baseLimit
+  } catch (e: any) {
+    logger.warning('[P2-2] Few-shot selector init failed, skipping: %s', String(e?.message ?? e))
   }
-
-  logger.info(
-    'ModuAgent LangGraph built: tools=%d checkpointer=%s store=%s recursion_limit=%d hitl=%s multi_agent=%s plan_execute=%s',
-    tools.length,
-    checkpointer ? checkpointer.constructor?.name : 'None',
-    store ? store.constructor?.name : 'None',
-    compiledAny.recursionLimit,
-    humanReviewNode ? 'enabled' : 'disabled',
-    supervisorNode ? 'enabled' : 'disabled',
-    plannerNode ? 'enabled' : 'disabled',
-  )
-
-  return compiled
+  return null
 }
 
 /** 空工具节点（无工具时使用）。 */
 function _noopToolsNode(_state: ModuAgentState): Partial<ModuAgentState> {
   return {}
-}
-
-/**
- * 估算 plan 总迭代数（对应文档 §2.3 建议5：递归预算动态计算）。
- *
- * 策略：
- *   1. 若 runtimeConfig 中缓存了已生成的 plan（key: 'plan_execute._cached_plan'），
- *      且步骤含 estimated_iterations 字段，则按 sum(estimated_iterations) 计算
- *   2. 否则回退到旧版上限估算：maxSteps * maxIterations
- *
- * 注意：plan 在运行时由 planner 节点生成，buildModuGraph 阶段通常无 plan；
- *       此函数主要供后续按需重建图时使用，多数场景仍走回退路径。
- *       业务层如需精确预算，可在 planner 后调用 graph.recalculateRecursionLimit()。
- */
-function _estimatePlanTotalIterations(
-  config: ReturnType<typeof getConfig>,
-  maxSteps: number,
-  maxIterations: number,
-): number {
-  // 尝试读取已缓存 plan（由 planner 节点写入 runtimeConfig）
-  const cachedPlan = config.get('plan_execute._cached_plan', null) as Array<Record<string, any>> | null
-  if (Array.isArray(cachedPlan) && cachedPlan.length > 0) {
-    let total = 0
-    let hasEstimate = false
-    for (const step of cachedPlan) {
-      const est = step?.['estimated_iterations']
-      if (typeof est === 'number' && est > 0) {
-        total += est
-        hasEstimate = true
-      } else {
-        // 单步无估算时按 maxIterations 兜底
-        total += maxIterations
-      }
-    }
-    if (hasEstimate) {
-      return total
-    }
-  }
-  // 回退：上限估算（每步最多 maxIterations 轮）
-  return maxSteps * maxIterations
 }

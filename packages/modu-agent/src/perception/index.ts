@@ -92,6 +92,13 @@ export {
   runPerceptionPipelineAsync,
 } from './pipeline.js'
 
+// P3（T-23）: 内置感知处理器注册（修复"感知处理器从未注册"）
+export {
+  BUILTIN_PERCEPTION_PROCESSOR_NAME,
+  BUILTIN_PERCEPTION_PROCESSORS_ENABLED_KEY,
+  registerBuiltinPerceptionProcessors,
+} from './builtin-processors.js'
+
 // 融合器（fusion.ts）
 export { PerceptionFusion } from './fusion.js'
 

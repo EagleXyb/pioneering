@@ -8,6 +8,14 @@
 //   - 调用路径 _invokeJudgeLlm 仅通过 ModuLLM.invoke 消费，不再分支 areason/ainvoke
 
 import type { LLMMessage, ModuLLM } from '../core/interfaces/llm.js'
+// P3（T-21）：Judge 提示词迁入内置模板唯一事实源 + 经 Prompt 注册表渲染
+// （宿主可 `registerPrompt('feedback.quality_judge_system' | '..._user')` 替换，
+//   不改内核源码；未注册/回滚时回退内置模板对象，输出与迁移前逐字节一致）。
+import { renderPromptWithFallback } from '../reasoning/prompt-registry.js'
+import {
+  FEEDBACK_QUALITY_JUDGE_SYSTEM_TEMPLATE,
+  FEEDBACK_QUALITY_JUDGE_USER_TEMPLATE,
+} from '../graph/prompt-templates.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[quality-monitor] ${msg}`, ...args),
@@ -46,12 +54,19 @@ export class QualityMonitor {
     '调用失败', '执行失败', '操作失败', '请求失败', '工具错误',
   ]
 
-  // LLM Judge system prompt（输出 JSON）
+  /**
+   * LLM Judge system prompt（输出 JSON）。
+   *
+   * P3（T-21）：字面量已迁至 `graph/prompt-templates.ts` 的
+   * `feedback.quality_judge_system`（唯一事实源）；本 `public static` 字段保留为
+   * **兼容视图**（派生自模板 → 字符与迁移前逐字节一致）。
+   *
+   * ⚠️ 该视图反映**内置模板**，**不**反映宿主经 Prompt 注册表注册的覆盖版本 ——
+   * 实际发给 LLM 的 system 消息由 `_invokeJudgeLlm` 经 `renderPromptWithFallback`
+   * 渲染得到。外部若需"当前生效的 Judge system prompt"，应读取注册表渲染结果。
+   */
   static readonly _JUDGE_SYSTEM_PROMPT =
-    '你是一个严格的回复质量评估器。请从相关性、完整性、准确性、置信度、' +
-    '工具调用成功率五个维度评估 Agent 回复质量，输出 0.00-1.00 之间的分数（保留 2 位小数）。' +
-    '若回复未涉及工具调用，tool_success 默认为 1.0。' +
-    '仅输出一个合法 JSON 对象，不要包含任何额外文字、Markdown 代码块或解释。'
+    FEEDBACK_QUALITY_JUDGE_SYSTEM_TEMPLATE.messages[0].content
 
   // 从 LLM 输出中提取 JSON 的正则（容忍 ```json ... ``` 包裹）
   static readonly _JSON_PATTERN = /\{[^{}]*\}/
@@ -317,8 +332,14 @@ export class QualityMonitor {
       response.slice(0, 4000),
     )
 
+    // P3（T-21）：经注册表渲染（宿主可替换；未注册时回退内置模板 → 字符等价）
+    const systemContent = renderPromptWithFallback(
+      FEEDBACK_QUALITY_JUDGE_SYSTEM_TEMPLATE.id,
+      {},
+      FEEDBACK_QUALITY_JUDGE_SYSTEM_TEMPLATE,
+    )
     const messages: LLMMessage[] = [
-      { role: 'system', content: QualityMonitor._JUDGE_SYSTEM_PROMPT },
+      { role: 'system', content: systemContent },
       { role: 'user', content: userContent },
     ]
 
@@ -330,21 +351,17 @@ export class QualityMonitor {
     return result.content
   }
 
-  /** 构建 LLM Judge user prompt。 */
+  /**
+   * 构建 LLM Judge user prompt。
+   *
+   * P3（T-21）：字面量迁至 `graph/prompt-templates.ts` 的 `feedback.quality_judge_user`，
+   * 经 Prompt 注册表渲染（`{{prompt}}` / `{{response}}`）；渲染结果与迁移前逐字节一致。
+   */
   private _formatJudgeUserPrompt(prompt: string, response: string): string {
-    return (
-      `【用户问题】\n${prompt}\n\n` +
-      `【Agent 回复】\n${response}\n\n` +
-      `【评估维度】\n` +
-      `1. relevance（相关性）：回复是否切题、与问题相关\n` +
-      `2. completeness（完整性）：回复是否完整回答了问题的各个方面\n` +
-      `3. accuracy（准确性）：回复中的事实信息是否准确无误\n` +
-      `4. confidence（置信度）：回复表达是否明确、是否避免不必要的模糊\n` +
-      `5. tool_success（工具调用成功率）：基于回复判断工具调用是否成功\n\n` +
-      `【输出格式】\n` +
-      `{"relevance": 0.85, "completeness": 0.80, "accuracy": 0.90, ` +
-      `"confidence": 0.85, "tool_success": 1.0, "overall": 0.87, ` +
-      `"reasoning": "简短说明"}`
+    return renderPromptWithFallback(
+      FEEDBACK_QUALITY_JUDGE_USER_TEMPLATE.id,
+      { prompt, response },
+      FEEDBACK_QUALITY_JUDGE_USER_TEMPLATE,
     )
   }
 

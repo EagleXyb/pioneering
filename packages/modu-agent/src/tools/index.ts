@@ -13,9 +13,11 @@ export { DocWriterTool } from './doc-writer.js'
 export { CodeExecutorTool } from './code-executor.js'
 export { SqlQueryTool } from './sql-query.js'
 // P1-5: 工具能力矩阵 + 意图路由
+// P0（T-06）: ensureToolCapability —— 能力矩阵随 registerTool 自动同步（保守默认）
 export {
   TOOL_CAPABILITY_MATRIX,
   registerToolCapability,
+  ensureToolCapability,
   getToolCapability,
   filterToolsByTaskType,
   filterToolsByIntent,
@@ -23,11 +25,17 @@ export {
   type ToolCapability,
 } from './tool-registry.js'
 // P2-1: 写操作 + 敏感数据安全防护
+// P0（T-09）: 审批判定单一入口（toolRequiresApproval / decideToolApprovals）
 export {
   ACTION_GUARDRAILS,
   registerGuardrailRule,
   checkGuardrail,
   checkGuardrailsForToolCalls,
+  toolRequiresApproval,
+  decideToolApprovals,
   type GuardrailRule,
   type GuardrailCheckResult,
+  type ToolApprovalDecision,
+  type ToolApprovalSource,
+  type DecideToolApprovalsOptions,
 } from './tool-guardrails.js'

@@ -26,9 +26,14 @@ const logger = {
 function _resolvePipeline(config: RuntimeConfig, inputType: string): string[] {
   const routing = config.get('perception.routing', {}) as Record<string, any>
   const pipelineConfig = (routing[inputType] ?? {}) as Record<string, any>
-  let pipeline: string[] = pipelineConfig['pipeline'] ?? ['text_preprocessor']
+  // P3（T-22）：兜底感知器改为读 `perception.default_processor`（单一事实源）。
+  // 该键此前**零消费**（硬编码 'text_preprocessor' 与 DEFAULT_CONFIG 值恰好相同，
+  // 故长期未被发现）；接线后默认路径行为逐字节不变，仅使宿主可配置兜底感知器。
+  const configured = config.get('perception.default_processor', 'text_preprocessor') as string
+  const defaultProcessor = configured || 'text_preprocessor'
+  let pipeline: string[] = pipelineConfig['pipeline'] ?? [defaultProcessor]
   if (!pipeline || pipeline.length === 0) {
-    pipeline = ['text_preprocessor']
+    pipeline = [defaultProcessor]
   }
   return pipeline
 }

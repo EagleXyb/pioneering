@@ -17,6 +17,7 @@ import type { ComponentRegistry } from '../../core/registry.js'
 import { getRegistry } from '../../core/registry.js'
 import { with_tool_retry } from './retry.js'
 import { get_tool_rate_limiter } from './rate-limiter.js'
+import { get_metrics_registry } from '../../observability/metrics.js'
 import {
   computeCacheKey,
   getToolResultCache,
@@ -207,6 +208,25 @@ function _formatToolResult(result: Record<string, any>, toolName: string): strin
 }
 
 /**
+ * 从工具返回的 JSON 字符串中解析调用状态（用于指标打标）。
+ *
+ * 约定：`{status:'error', error_code:'XXX'}` → 'XXX'；其余（含非 JSON/纯文本）→ 'success'。
+ *
+ * @param json 工具返回的 JSON 字符串
+ */
+function _toolResultStatus(json: string): string {
+  try {
+    const parsed = JSON.parse(json)
+    if (parsed && typeof parsed === 'object' && parsed['status'] === 'error') {
+      return String(parsed['error_code'] || 'error')
+    }
+  } catch {
+    // 非 JSON 结果（如纯文本）→ 视为 success
+  }
+  return 'success'
+}
+
+/**
  * 将 ModuAgent BaseTool 包装为 LangChain StructuredTool。
  *
  * ModuAgent BaseTool 接口：
@@ -303,6 +323,42 @@ export function wrap_modu_tool(
   let wrappedFunc = func
   if (config) {
     wrappedFunc = with_tool_retry(func, toolName, config)
+  }
+
+  // P0（T-02）: 工具调用指标埋点。
+  // 位置：复用本 adapter 的通用中间件层（与限流/缓存/重试同级），不污染 graph/nodes.ts。
+  // 顺序：最外层包装 → 一次工具调用记一条（内层重试的多次尝试不重复计数）。
+  // 门控：observability.metrics.enabled=true 才启用；默认 false → 零改动、零开销。
+  let metricsEnabled = false
+  if (config) {
+    try {
+      metricsEnabled = Boolean(config.get('observability.metrics.enabled', false))
+    } catch {
+      metricsEnabled = false
+    }
+  }
+  if (metricsEnabled) {
+    const retryWrapped = wrappedFunc
+    wrappedFunc = async function _invokeWithMetrics(input: Record<string, any>): Promise<string> {
+      const started = Date.now()
+      let status = 'success'
+      try {
+        const out = await retryWrapped(input)
+        status = _toolResultStatus(out)
+        return out
+      } catch (e: any) {
+        status = 'exception'
+        throw e
+      } finally {
+        try {
+          get_metrics_registry().record_tool_call(
+            toolName, status, '', (Date.now() - started) / 1000,
+          )
+        } catch (e: any) {
+          logger.debug("record_tool_call failed for '%s': %s", toolName, String(e?.message ?? e))
+        }
+      }
+    }
   }
 
   return new DynamicStructuredTool({

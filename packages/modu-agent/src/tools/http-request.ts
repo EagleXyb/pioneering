@@ -15,6 +15,8 @@ import { promises as dns } from 'dns'
 import http from 'http'
 import https from 'https'
 import { BaseTool } from '../core/interfaces/action.js'
+// P0（T-04）: 安全审计事件发布（SSRF 拦截）
+import { publish_security_audit_event_sync } from '../perception/security/audit.js'
 import { inject_trace_context } from '../observability/trace-context.js'
 
 const logger = {
@@ -319,6 +321,13 @@ export class HttpRequestTool extends BaseTool {
     const isIpLiteral = _ipv4ToInt(bareHost) !== null || bareHost.includes(':')
     if (isIpLiteral) {
       if (this._isPrivateIp(bareHost)) {
+        // P0（T-04）: 审计事件 —— SSRF 拦截（补上 ssrf_blocked 的发布者）
+        publish_security_audit_event_sync({
+          eventType: 'ssrf_blocked',
+          decision: 'deny',
+          toolName: 'http_request',
+          details: { host: bareHost, reason: 'private ip literal' },
+        })
         return [false, `Private IP not allowed: ${bareHost}`, null]
       }
       return [true, '', bareHost]
@@ -331,6 +340,13 @@ export class HttpRequestTool extends BaseTool {
     }
     for (const ipStr of ips) {
       if (this._isPrivateIp(ipStr)) {
+        // P0（T-04）: 审计事件 —— DNS 解析到内网地址的 SSRF 拦截
+        publish_security_audit_event_sync({
+          eventType: 'ssrf_blocked',
+          decision: 'deny',
+          toolName: 'http_request',
+          details: { host: bareHost, resolved_ip: ipStr, reason: 'resolved to private ip' },
+        })
         return [false, `Host resolves to private IP ${ipStr} (SSRF protection): ${bareHost}`, null]
       }
     }

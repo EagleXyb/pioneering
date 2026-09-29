@@ -12,6 +12,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { BaseTool } from '../core/interfaces/action.js'
+// P0（T-04）: 安全审计事件发布（路径穿越拦截）
+import { publish_security_audit_event_sync } from '../perception/security/audit.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[file-ops] ${msg}`, ...args),
@@ -197,6 +199,14 @@ export class FileOpsTool extends BaseTool {
     try {
       fullPath = this._validatePath(relPath)
     } catch (e) {
+      // P0（T-04）: 审计事件 —— 路径穿越拦截（补上 12 类事件中 path_traversal_blocked 的发布者）。
+      // 审计为旁路：发布失败不影响返回结果。
+      publish_security_audit_event_sync({
+        eventType: 'path_traversal_blocked',
+        decision: 'deny',
+        toolName: 'file_ops',
+        details: { op, path: relPath, reason: String(e) },
+      })
       return {
         status: 'error',
         error_code: 'FILE_002',

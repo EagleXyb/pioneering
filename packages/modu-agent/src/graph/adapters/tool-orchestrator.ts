@@ -18,7 +18,7 @@
 //   LangGraph Send API 的并行分发需在 graph.ts 中接入，
 //   本模块仅提供分组策略与执行计划。
 
-import { getToolCapability } from '../../tools/tool-registry.js'
+import { getToolCapability, isExplicitlyConfirmRequired } from '../../tools/tool-registry.js'
 
 /**
  * 工具调用项（从 AIMessage.tool_calls 解析）。
@@ -70,9 +70,14 @@ export function hasDependency(a: ToolCallItem, b: ToolCallItem): boolean {
   if (a.name === b.name) return true
 
   // 写操作工具之间：可能存在隐式数据依赖，保守串行
+  //
+  // P1 复查修正：**排除自动派生条目**（同 `checkGuardrail` 的修正理由）。
+  // P0 T-06 为所有未登记工具派生了 `requires_confirmation: true` 的保守条目；
+  // 若此处采信，则任意两个第三方（MCP / Skill）工具都会被判为"有依赖"而强制串行，
+  // 与 T-06 之前（能力未知 → 不视为写操作）的编排结果不一致。
   const capA = getToolCapability(a.name)
   const capB = getToolCapability(b.name)
-  if (capA?.requires_confirmation && capB?.requires_confirmation) {
+  if (isExplicitlyConfirmRequired(capA) && isExplicitlyConfirmRequired(capB)) {
     return true
   }
 

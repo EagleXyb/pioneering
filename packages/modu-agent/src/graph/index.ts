@@ -55,7 +55,33 @@ export {
 } from './nodes.js'
 
 // graph
-export { ModuGraph, buildModuGraph, type ModuGraphInterface } from './graph.js'
+export {
+  ModuGraph,
+  buildModuGraph,
+  composeDefaultGraph,
+  resolveGraphProfile,
+  createFewShotSelector,
+  type ModuGraphInterface,
+} from './graph.js'
+
+// P2（T-13）: 图拓扑声明化（GraphSpec）
+// P3（T-20）: 扩展开关读取（profileFlag）与扩展子图声明（SubgraphSpec）
+export {
+  buildFromSpec,
+  computeRecursionLimit,
+  describeGraphSpec,
+  estimatePlanTotalIterations,
+  profileFlag,
+  type EdgeSpec,
+  type EdgeTargets,
+  type GraphProfile,
+  type GraphSpec,
+  type GraphSpecSnapshot,
+  type ModuGraphDeps,
+  type NodePredicate,
+  type NodeSpec,
+  type SubgraphSpec,
+} from './spec.js'
 
 // factory
 export {
@@ -91,3 +117,24 @@ export * from './subgraph/index.js'
 
 // plan-execute（P4 子包统一导出）
 export * from './plan-execute/index.js'
+
+// P2（T-14）: 内置 Prompt 模板（可注册扩展点）
+export {
+  PLANNER_PROMPT_TEMPLATE,
+  PLANNER_COMPACT_PROMPT_TEMPLATE,
+  SUBAGENT_PROMPT_TEMPLATES,
+  SUBAGENT_DEFAULT_TEMPLATE_ID,
+  DOC_GEN_TASK_PROMPT_TEMPLATE,
+  BUILTIN_PROMPT_TEMPLATES,
+  registerBuiltinPrompts,
+  listBuiltinPromptIds,
+} from './prompt-templates.js'
+
+// P2（T-15）: 内置上下文策略（可注册扩展点）
+export {
+  DEFAULT_AGENT_CONTEXT_FRAGMENTS,
+  DefaultAgentContextStrategy,
+  getDefaultAgentContextStrategy,
+  resetDefaultAgentContextStrategy,
+  registerBuiltinContextStrategies,
+} from './context-strategies.js'

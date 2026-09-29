@@ -11,3 +11,18 @@ export {
   type AuditEventType,
   type AuditContext,
 } from './audit.js'
+// P0（T-05）: 输出护栏节点包装器（接线 detectOutputSensitive / sanitizeOutput）
+export { makeOutputGuardNode } from './output-guard-node.js'
+// P1（T-10 / T-10b）: 三层护栏策略规则（判定层；执行层保持不变）
+export {
+  ToolApprovalPolicyRule,
+  InputGuardPolicyRule,
+  OutputGuardPolicyRule,
+  registerDefaultPolicyRules,
+  createModuLlmJudgeCallback,
+  DEFAULT_POLICY_RULE_IDS,
+  type LLMJudgeCallback,
+  type InputGuardPolicyRuleOptions,
+  type OutputGuardPolicyRuleOptions,
+  type RegisterDefaultPolicyRulesOptions,
+} from './policy-rules.js'

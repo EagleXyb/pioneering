@@ -14,6 +14,8 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { BaseTool } from '../core/interfaces/action.js'
+// P0（T-04）: 安全审计事件发布（代码校验拦截）
+import { publish_security_audit_event_sync } from '../perception/security/audit.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -257,6 +259,13 @@ export class CodeExecutorTool extends BaseTool {
     const [isValid, errorMsg] = _validateCode(code)
     if (!isValid) {
       logger.warning('CodeExecutor rejected code: %s', errorMsg)
+      // P0（T-04）: 审计事件 —— 代码校验拦截（补上 code_validation_blocked 的发布者）
+      publish_security_audit_event_sync({
+        eventType: 'code_validation_blocked',
+        decision: 'deny',
+        toolName: 'code_executor',
+        details: { reason: errorMsg },
+      })
       return {
         status: 'error',
         error_code: 'CODE_002',

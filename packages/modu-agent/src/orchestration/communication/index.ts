@@ -8,6 +8,13 @@
 //   - 新增跨进程 EventBus 适配器接口（EventBusBackend / create_distributed_event_bus）
 export { EventBus, PersistentEventLog, Subscription, get_event_bus, reset_event_bus, override_event_bus } from './message-bus.js'
 export type { EventHandler, PersistentEventLogOptions } from './message-bus.js'
+// P0（T-03）: 审计落盘 —— PersistentEventLog 按配置 boot
+export {
+  get_persistent_event_log,
+  start_persistent_event_log_from_config,
+  stop_persistent_event_log,
+  reset_persistent_event_log,
+} from './message-bus.js'
 export {
   EventBusBackend,
   create_distributed_event_bus,

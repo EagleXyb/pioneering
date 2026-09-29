@@ -10,6 +10,12 @@ import { createHash } from 'crypto'
 import { get_event_bus } from '../communication/message-bus.js'
 import { AgentEvent, EventAction, EventDomain, EventPriority } from '../communication/protocol.js'
 import type { LLMMessage, ModuLLM } from '../../core/interfaces/llm.js'
+// P0（T-02）: 指标埋点（共识失败计数）
+import { get_metrics_registry } from '../../observability/metrics.js'
+// P3（T-21）：Judge 提示词迁入内置模板唯一事实源 + 经 Prompt 注册表渲染
+// （占位符由单花括号 `{task}` 统一为 `{{task}}`；渲染结果与迁移前逐字节一致）。
+import { renderPromptWithFallback } from '../../reasoning/prompt-registry.js'
+import { ORCHESTRATION_CONSENSUS_JUDGE_TEMPLATE } from '../../graph/prompt-templates.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[consensus] ${msg}`, ...args),
@@ -198,10 +204,11 @@ export class WeightedAggregateStrategy extends ConsensusStrategy {
 // ============================================================
 
 export class LLMJudgeStrategy extends ConsensusStrategy {
-  private static readonly _JUDGE_PROMPT =
-    'You are an impartial judge. Select the best answer from candidates.\n' +
-    'Task: {task}\nCandidates:\n{candidates}\n' +
-    'Respond with ONLY JSON: {"winner": <index>, "reason": "<brief>"}'
+  // P3（T-21）：Judge 提示词字面量已**唯一**迁至 `graph/prompt-templates.ts` 的
+  // `orchestration.consensus_judge`（模板变量 `{{task}}` / `{{candidates}}`）。
+  // 此处不再保留派生副本 —— 本字段为 `private`，迁移后已无引用者，保留会形成
+  // "第二来源"死代码（且注释中的"兼容视图"说法不成立：private 无对外兼容价值）。
+  // 实际渲染见下方 `aggregate()` 中的 `renderPromptWithFallback(...)`。
 
   /**
    * judge LLM 最大重试次数（对应文档 §4.4 建议10）。
@@ -232,9 +239,12 @@ export class LLMJudgeStrategy extends ConsensusStrategy {
     const candidates = results
       .map((r, i) => `[${i}] ${stableStringify(r.output ?? r)}`)
       .join('\n')
-    const prompt = LLMJudgeStrategy._JUDGE_PROMPT
-      .replace('{task}', this._task || 'general task')
-      .replace('{candidates}', candidates)
+    // P3（T-21）：经注册表渲染（宿主可替换；未注册时回退内置模板 → 字符等价）
+    const prompt = renderPromptWithFallback(
+      ORCHESTRATION_CONSENSUS_JUDGE_TEMPLATE.id,
+      { task: this._task || 'general task', candidates },
+      ORCHESTRATION_CONSENSUS_JUDGE_TEMPLATE,
+    )
 
     // v1.4 §4.4 建议10：judge LLM 失败时重试 1 次
     let lastError: string = ''
@@ -447,6 +457,13 @@ export class ConsensusPattern {
       logger.info('Consensus failure event published (trace_id=%s): %s', trace_id, reason)
     } catch (e) {
       logger.warning('Failed to publish consensus failure event: %s', String(e))
+    }
+    // P0（T-02）: 指标埋点 —— 共识失败计数（此前 record_consensus_failure 零消费者）。
+    // metrics 未启用时 record_* 内部直接 return（no-op）。
+    try {
+      get_metrics_registry().record_consensus_failure()
+    } catch (e) {
+      logger.debug('record_consensus_failure failed: %s', String(e))
     }
   }
 

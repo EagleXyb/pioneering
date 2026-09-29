@@ -14,6 +14,7 @@ import {
 import {
   CAPABILITY_REGISTRY,
   UNDECLARED_CONSUMED_KEYS,
+  DECLARED_UNCONSUMED_KEYS,
   listCapabilities,
   listEnabledKeys,
   capabilityStatus,
@@ -148,6 +149,22 @@ describe('capability-registry.ts 配置能力注册表', () => {
     expect(UNDECLARED_CONSUMED_KEYS).not.toContain('plan_execute.planner_max_tokens')
     expect(UNDECLARED_CONSUMED_KEYS).not.toContain('plan_execute.step_retry.default_max_attempts')
     expect(UNDECLARED_CONSUMED_KEYS).not.toContain('plan_execute.step_retry.default_base_delay')
+  })
+
+  it('DECLARED_UNCONSUMED_KEYS 基线：T-22 已处置的 3 键不得回退', () => {
+    // 「已声明未消费」的完整审计见 tests/config/config-consumption-audit.test.ts（L7 载体）。
+    // 此处仅锁定 T-22 的 3 项处置结果（防回退）：
+    //   ① llm.max_format_retries  → 零消费，已删除
+    //   ② event_bus.max_log_size  → 零消费，已删除
+    //   ③ perception.default_processor → 已接线（perception/pipeline.ts）
+    expect(Array.isArray(DECLARED_UNCONSUMED_KEYS)).toBe(true)
+    for (const k of [
+      'llm.max_format_retries',
+      'event_bus.max_log_size',
+      'perception.default_processor',
+    ]) {
+      expect(DECLARED_UNCONSUMED_KEYS).not.toContain(k)
+    }
   })
 
   it('CAPABILITY_REGISTRY 中 planned 项不含真实实现路径', () => {

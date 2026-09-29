@@ -8,12 +8,14 @@
 //   - 工具清单标注 [realtime] 标签（来自 BaseTool.providesRealtimeData()），辅助 LLM 判断 requires_tool
 //   - 部分重规划：上下文段含已完成步骤摘要，引导 LLM 仅重新生成失败步骤及后续步骤
 
+// P2（T-14）: 提示词收敛为可注册模板（注册表优先，未接线时回退内置模板对象）。
+// 模板字面量已迁至 `graph/prompt-templates.ts`（单一事实源，含 PLAN_STEP_* 数值插值），
+// 渲染结果与迁移前逐字节一致（见 tests/reasoning/prompt-registry.test.ts）。
+import { renderPromptWithFallback } from '../../reasoning/prompt-registry.js'
 import {
-  PLAN_STEP_DESCRIPTION_MAX_CHARS,
-  PLAN_STEP_EXPECTED_OUTPUT_MAX_CHARS,
-  PLAN_STEP_TITLE_MAX_CHARS,
-  PLAN_STEP_VERIFICATION_HINT_MAX_CHARS,
-} from './types.js'
+  PLANNER_COMPACT_PROMPT_TEMPLATE,
+  PLANNER_PROMPT_TEMPLATE,
+} from '../prompt-templates.js'
 
 /** 工具清单条目截断长度（字符）。 */
 const _TOOL_DESC_MAX_CHARS = 200
@@ -65,45 +67,13 @@ export function buildPlannerSystemPrompt(
     ? `\n\nPrevious attempt failed. Adjust the plan to avoid the failure:\n${replanContext}\n`
     : ''
 
-  return `You are a planning module of an AI agent. Your job is to decompose the user's goal into an ordered, executable, verifiable sequence of steps.
-
-Available tools (you may reference them in step descriptions, but you MUST NOT call them yourself):
-${toolCatalogText}
-
-Tools tagged [realtime] provide external/real-time data (search_engine, datetime, http_request, etc.). For steps needing such data, set requires_tool=true and reference the tool in the description.
-
-Rules:
-1. Produce at most ${maxSteps} steps, ordered by execution sequence.
-2. Each step must be self-contained: a clear title and a concrete description telling the executor WHAT to do (the executor decides HOW).
-3. Output STRICT JSON only, matching this schema (no markdown fences, no extra text):
-{
-  "goal": "<restated user goal>",
-  "steps": [
-    {
-      "step_id": "step_1",
-      "title": "<short step title>",
-      "description": "<concrete instruction for the executor>",
-      "depends_on": ["step_0"],
-      "status": "pending",
-      "requires_tool": false,
-      "expected_output": "<what the step should produce, e.g. 'Beijing weather text with temperature/condition/wind'>",
-      "verification_hint": "<how to verify the output, e.g. 'output must contain numeric temperature in -50~60 range'>",
-      "task_type": "tool_use"
-    }
-  ]
-}
-4. step_id must follow the pattern step_<N> starting from step_1. depends_on is optional.
-5. Do NOT include any reasoning, commentary, or explanation outside the JSON object.
-6. requires_tool (boolean, default false): Set to true if this step requires external/real-time data (e.g. weather, news, stock prices, current date/time, API data, database queries). For such steps, name the specific tool to use in the description (e.g. "Call search_engine to fetch ..."). The executor MUST call a tool for requires_tool=true steps and is forbidden from fabricating data. Set to false for pure reasoning/summarization/formatting steps.
-7. expected_output (string, optional but recommended, <= ${PLAN_STEP_EXPECTED_OUTPUT_MAX_CHARS} chars): Describe what a successful step should produce. This helps the executor verify its output.
-8. verification_hint (string, optional, <= ${PLAN_STEP_VERIFICATION_HINT_MAX_CHARS} chars): A concrete check the executor can apply to validate the output (e.g. "must contain a numeric temperature", "must list at least 3 items").
-9. task_type (enum, optional, default "tool_use"): One of "reasoning" (pure reasoning/summarization/formatting, no tools), "tool_use" (default, requires tool calls for external data), "delegation" (delegate to a sub-agent for complex subtasks — only use when multi-agent mode is enabled).
-10. CRITICAL — title and description content constraints (violations will cause the plan to be rejected):
-   - title MUST be a short natural-language phrase (<= ${PLAN_STEP_TITLE_MAX_CHARS} characters), NOT a JSON object or a nested plan.
-   - description MUST be a concrete natural-language sentence (1-3 sentences, <= ${PLAN_STEP_DESCRIPTION_MAX_CHARS} characters, <= 10 lines), NOT a JSON object, NOT a nested plan, and MUST NOT contain plan-schema field names like "goal", "steps", "step_id", "depends_on".
-   - NEVER embed a plan object, a step object, or any JSON structure inside title or description. If you feel the urge to write a plan inside a description, STOP — that is wrong; write a single sentence instruction instead.
-   - Example of CORRECT description: "Call search_engine to fetch the latest AI Agent development news from the past 30 days, then summarize the top 5 trends."
-   - Example of WRONG description: '{"goal": "...", "steps": [...]}' (this is a nested plan, not an instruction).${replanSection}`
+  // P2（T-14）: 经 Prompt 注册表渲染（宿主可注册同 id 模板替换），
+  // 未接线/未注册时回退内置模板对象 → 与迁移前逐字节一致。
+  return renderPromptWithFallback(
+    'plan_execute.planner',
+    { toolCatalogText, maxSteps, replanSection },
+    PLANNER_PROMPT_TEMPLATE,
+  )
 }
 
 /**
@@ -128,29 +98,12 @@ export function buildPlannerSystemPromptCompact(
     ? `\n\nPrevious attempt failed. Adjust the plan to avoid the failure:\n${replanContext}\n`
     : ''
 
-  return `You are a planning module of an AI agent. Decompose the user's goal into a SHORT plan.
-
-Available tools (reference in descriptions, do NOT call them yourself):
-${toolCatalogText}
-
-CRITICAL RULES (previous attempt FAILED — follow strictly):
-1. Produce AT MOST ${maxSteps} steps. Fewer is better. Aim for 3-5 steps.
-2. Each step title: <= ${PLAN_STEP_TITLE_MAX_CHARS} chars, natural language, NO JSON.
-3. Each step description: 1-2 SHORT sentences, <= ${PLAN_STEP_DESCRIPTION_MAX_CHARS} chars, <= 5 lines, natural language only.
-4. NEVER embed JSON, plan objects, or nested structures in title/description.
-5. Output STRICT JSON only (no markdown, no commentary):
-{
-  "goal": "<restated user goal>",
-  "steps": [
-    {"step_id": "step_1", "title": "<short title>", "description": "<one sentence instruction>", "status": "pending", "requires_tool": false, "expected_output": "<expected output>", "task_type": "tool_use"}
-  ]
-}
-6. requires_tool: true if the step needs external/real-time data (use [realtime]-tagged tools).
-7. expected_output: short description of what success looks like (optional but recommended).
-8. task_type: "reasoning" | "tool_use" | "delegation" (default "tool_use").
-
-GOOD example description: "Call search_engine to fetch AI Agent trends from the last 30 days."
-BAD example description (FORBIDDEN): {"goal": "...", "steps": [...]}${replanSection}`
+  // P2（T-14）: 同上，经 Prompt 注册表渲染。
+  return renderPromptWithFallback(
+    'plan_execute.planner.compact',
+    { toolCatalogText, maxSteps, replanSection },
+    PLANNER_COMPACT_PROMPT_TEMPLATE,
+  )
 }
 
 /**
