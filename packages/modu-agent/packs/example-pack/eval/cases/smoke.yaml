@@ -1,0 +1,9 @@
+version: 1
+cases:
+  - id: ex_smoke_1
+    category: core
+    source: synthetic
+    tags:
+      - example
+    input: 请用一句话说明研究综述的作用
+    ground_truth: 研究综述

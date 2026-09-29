@@ -74,6 +74,13 @@ export class DefaultPromptRegistry implements PromptRegistry {
     return this._templates.has(id)
   }
 
+  /** P3-B：移除已注册模板；不存在返回 false。 */
+  unregister(id: string): boolean {
+    const existed = this._templates.delete(id)
+    if (existed) logger.info('Unregistered prompt template: %s', id)
+    return existed
+  }
+
   render(id: string, vars: Record<string, unknown> = {}): string {
     const tpl = this._templates.get(id)
     if (tpl === undefined) {

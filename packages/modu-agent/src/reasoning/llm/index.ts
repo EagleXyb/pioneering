@@ -1,15 +1,8 @@
 // 对应 Python: components/reasoning/llm/__init__.py
 // LLM 推理器模块
 //
-// 统一 LLM 接口改造（对应文档 §2.1）：
-//   - BaseLLMReasoner 已实现 ModuLLM 接口，但标记 @deprecated，
-//     新代码应通过 ModuLLM 接口或 ModuLLMAdapter 消费 LLM
-//   - 新增 router / cost-tracker 模块导出
-export { BaseLLMReasoner } from './base-llm.js'
-export { DeepSeekLLMReasoner } from './deepseek.js'
-export { GLMLLMReasoner } from './glm.js'
-export { GPTLLMReasoner } from './gpt.js'
-export { QwenLLMReasoner } from './qwen.js'
+// P3-D（D-16）：自研 BaseLLMReasoner 家族（base/deepseek/glm/gpt/qwen）已删除
+//   —— 无任何消费方，统一走 ModuLLM 接口 + LangChain 适配层。
 // LLM 模型路由器（RuleBasedLLMRouter / PassthroughLLMRouter）
 export {
   RuleBasedLLMRouter,

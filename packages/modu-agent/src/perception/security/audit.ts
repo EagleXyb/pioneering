@@ -35,6 +35,8 @@ export type AuditEventType =
   | 'tool_rate_limited'           // 工具限流触发
   | 'output_sensitive_blocked'    // 输出敏感信息拦截
   | 'sensitivity_circuit_breaker' // 敏感度熔断
+  | 'input_policy_denied'         // P3-C: PolicyEngine input 阶段拒绝
+  | 'output_policy_denied'        // P3-C: PolicyEngine output 阶段拒绝
 
 /**
  * 审计事件上下文。

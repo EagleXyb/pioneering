@@ -1,0 +1,8 @@
+version: 1
+datasets:
+  smoke:
+    description: 示例场景包冒烟数据集
+    sources:
+      - file: cases/smoke.yaml
+    sample:
+      strategy: all

@@ -20,8 +20,10 @@
 // 擦除、不构成运行时环，故不计入 —— `graph/spec.ts ↔ core/registry.ts` 正是此类
 // （见 `graph/spec.ts` 顶部"循环依赖说明"）。
 //
-// 注：`src/kernel/` 与 `packs/` 当前**尚不存在**（P3 从零新建），故 B-1/B-3/B-4
-// 目前为"真空成立"。本测试的价值在于：一旦 P3 落地，任何越界会**立即**被 CI 拦下。
+// 注（P3-B 起更新）：`src/kernel/` 装配层与 `packs/` 目录约定**已落地**：
+//   - kernel 位于 src/kernel（scenario-host / scenario-loader）；
+//   - 首个示例场景包位于 packs/example-pack（纯声明资产，无代码文件）。
+// B-1/B-3/B-4 已由"真空成立"转为真实检查。
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -230,7 +232,8 @@ describe('P3-T24 层边界（L6 载体）', () => {
 
   it('B-4 场景包不得 import 内核源码（只能经 ScenarioHost）', () => {
     // 场景包位于 `packs/`（**不**在 `src/` 内），故须独立扫描其导入说明符。
-    // 当前无 `packs/` 目录 → 真空成立；一旦创建即生效。
+    // P3-B 起 packs/ 已存在（示例包为纯声明资产）；代码型入口（entry.js）一旦
+    // 加入即受本检查约束。
     const packFiles: string[] = []
     for (const dir of PACK_DIR_CANDIDATES) {
       for (const f of collectTsFiles(dir)) packFiles.push(f)
@@ -292,9 +295,10 @@ describe('P3-T24 层边界（L6 载体）', () => {
     expect(cycles).toEqual([])
   })
 
-  it('B-4 补充：packs/ 目录探测（当前未创建，创建后 B-4 开始生效）', () => {
+  it('B-4 补充：packs/ 目录探测（P3-B 起包内 packs/ 已存在）', () => {
     const existing = PACK_DIR_CANDIDATES.filter((d) => fs.existsSync(d))
-    // 记录性断言：T-17a（目录约定）落地后此处置为 true，B-4 由真空转为实检。
-    expect(Array.isArray(existing)).toBe(true)
+    // 包内 packs/（含示例场景包）必须存在
+    expect(existing).toContain(path.join(PKG_ROOT, 'packs'))
+    expect(fs.existsSync(path.join(PKG_ROOT, 'packs', 'example-pack', 'pack.yaml'))).toBe(true)
   })
 })

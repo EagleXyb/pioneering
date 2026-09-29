@@ -89,6 +89,20 @@ export interface MetricContext {
   outputMetrics?: Record<string, number>
 }
 
+/**
+ * 自定义（场景注册）指标契约（P3-D：指标实现可注册，无需改 evals 源码）。
+ */
+export interface CustomMetric {
+  /** 指标 key（须在 thresholds.yaml 中声明阈值/权重后方可参与 gate/聚合） */
+  key: string
+  /** 归属层（仅用于分层聚合） */
+  category: MetricCategory
+  /**
+   * 计算指标；返回 null 表示"本用例不适用"（聚合自动排除）。
+   */
+  compute(ctx: MetricContext): number | null
+}
+
 // ---------- 评测结果与报告 ----------
 
 /** 单用例评测结果。 */

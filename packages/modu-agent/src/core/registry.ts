@@ -557,11 +557,130 @@ export class ComponentRegistry {
     return [...this._subgraphs]
   }
 
-  /** 清空图拓扑扩展声明（测试清理/热替换用）。 */
+  // P3-D：默认边的受控裁剪登记
+  private _edgeRemovals: Array<{ from: string; to?: string }> = []
+
+  /**
+   * 登记移除默认/已注册边（P3-D：受控覆盖）。
+   *
+   * 匹配规则：`from` 相等 且（`to` 省略=该 from 的全部边；否则目标字符串相等，
+   * 条件边以 '(conditional)' 命中）。重复登记幂等。
+   */
+  registerEdgeRemoval(removal: { from: string; to?: string }): void {
+    if (!removal?.from) throw new TypeError('edge removal.from must be non-empty')
+    const dup = this._edgeRemovals.some(
+      (r) => r.from === removal.from && r.to === removal.to,
+    )
+    if (!dup) this._edgeRemovals.push({ from: removal.from, to: removal.to })
+  }
+
+  /** 撤销一条边移除登记；不存在返回 false。 */
+  unregisterEdgeRemoval(removal: { from: string; to?: string }): boolean {
+    const before = this._edgeRemovals.length
+    this._edgeRemovals = this._edgeRemovals.filter(
+      (r) => !(r.from === removal.from && r.to === removal.to),
+    )
+    return this._edgeRemovals.length < before
+  }
+
+  /** 列出边移除登记（供 buildFromSpec 消费）。 */
+  listEdgeRemovals(): Array<{ from: string; to?: string }> {
+    return [...this._edgeRemovals]
+  }
+
+  /** 清空图拓扑扩展声明与边移除登记（测试清理/热替换用）。 */
   clearGraphSpecs(): void {
     this._nodeSpecs = []
     this._edgeSpecs = []
     this._subgraphs = []
+    this._edgeRemovals = []
+  }
+
+  // ------------------------------------------------------------------
+  // P3-B：卸载/移除原语（供 kernel ScenarioHost 做作用域回滚）
+  // ------------------------------------------------------------------
+
+  /** 移除已注册工具；不存在返回 false。 */
+  unregisterTool(name: string): boolean {
+    const existed = this._tools.delete(name)
+    if (existed) logger.info('Unregistered tool: %s', name)
+    return existed
+  }
+
+  /** 移除已注册 LLM provider；不存在返回 false。 */
+  unregisterLLMProvider(id: string): boolean {
+    const existed = this._llmProviders.delete(id)
+    if (existed) logger.info('Unregistered LLM provider: %s', id)
+    return existed
+  }
+
+  /** 移除记忆策略；若被移除者是默认策略则默认回到剩余首个策略（无则 null）。 */
+  unregisterMemoryStrategy(id: string): boolean {
+    const existed = this._memoryStrategies.delete(id)
+    if (!existed) return false
+    if (this._defaultMemoryStrategyId === id) {
+      this._defaultMemoryStrategyId = this._memoryStrategies.values().next().value?.id ?? null
+    }
+    logger.info('Unregistered memory strategy: %s', id)
+    return true
+  }
+
+  /** 移除策略规则；已构造引擎同步摘除（引擎实现不支持时安全跳过）。 */
+  unregisterPolicyRule(id: string): boolean {
+    const existed = this._policyRules.delete(id)
+    if (!existed) return false
+    const engineAny = this._policyEngine as any
+    if (engineAny && typeof engineAny.remove === 'function') {
+      engineAny.remove(id)
+    }
+    logger.info('Unregistered policy rule: %s', id)
+    return true
+  }
+
+  /** 移除上下文策略；默认策略处理同记忆策略。 */
+  unregisterContextStrategy(id: string): boolean {
+    const existed = this._contextStrategies.delete(id)
+    if (!existed) return false
+    if (this._defaultContextStrategyId === id) {
+      this._defaultContextStrategyId = this._contextStrategies.values().next().value?.id ?? null
+    }
+    logger.info('Unregistered context strategy: %s', id)
+    return true
+  }
+
+  /** 按名移除已注册节点声明；不存在返回 false。 */
+  removeNodeSpec(name: string): boolean {
+    const before = this._nodeSpecs.length
+    this._nodeSpecs = this._nodeSpecs.filter((s) => s.name !== name)
+    const removed = this._nodeSpecs.length < before
+    if (removed) logger.info('Removed node spec: %s', name)
+    return removed
+  }
+
+  /** 按名移除已注册子图声明；不存在返回 false。 */
+  removeSubgraph(name: string): boolean {
+    const before = this._subgraphs.length
+    this._subgraphs = this._subgraphs.filter((s) => s.name !== name)
+    const removed = this._subgraphs.length < before
+    if (removed) logger.info('Removed subgraph spec: %s', name)
+    return removed
+  }
+
+  /**
+   * 移除已注册边声明。
+   * 匹配规则：`from` 相等 且（`to` 省略或目标相等；条件边以 `to='(conditional)'` 命中）。
+   */
+  removeEdgeSpec(from: string, to?: string): boolean {
+    const before = this._edgeSpecs.length
+    this._edgeSpecs = this._edgeSpecs.filter((e) => {
+      if (e.from !== from) return true
+      if (to === undefined) return false
+      const target = typeof e.to === 'string' ? e.to : '(conditional)'
+      return target !== to
+    })
+    const removed = this._edgeSpecs.length < before
+    if (removed) logger.info('Removed edge spec: %s→%s', from, to ?? '*')
+    return removed
   }
 
   // ------------------------------------------------------------------

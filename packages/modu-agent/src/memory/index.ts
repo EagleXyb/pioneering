@@ -18,11 +18,3 @@ export {
   type BaseStoreMemoryStrategyOptions,
 } from './base-store-strategy.js'
 export { ChromaLongTermMemory } from './chroma.js'
-export {
-  ObservationMemory,
-  createEmptyMemory,
-  formatMemoryContextAsContent,
-  type ObservationEntry,
-  type MemoryStore,
-  type MemoryContext,
-} from './observation-memory.js'

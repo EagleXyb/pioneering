@@ -61,6 +61,13 @@ export function getDomainAdapter(domain: string | null | undefined): DomainAdapt
   return DOMAIN_ADAPTERS[domain] ?? null
 }
 
+/** P3-B：移除已注册领域适配器；不存在返回 false。 */
+export function unregisterDomainAdapter(domain: string): boolean {
+  if (!domain || !(domain in DOMAIN_ADAPTERS)) return false
+  delete DOMAIN_ADAPTERS[domain]
+  return true
+}
+
 /**
  * 将领域适配器渲染为 prompt 片段。
  *

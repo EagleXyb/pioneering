@@ -1,0 +1,5 @@
+rules:
+  - rule_id: example_doc_writer_approval
+    tool_name: doc_writer
+    description: Example pack - doc_writer invocations require approval
+    dry_run_supported: true

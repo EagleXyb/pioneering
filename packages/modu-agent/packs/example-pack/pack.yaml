@@ -1,0 +1,12 @@
+name: example-pack
+version: 0.1.0
+description: 示例场景包（领域知识 + Prompt + 护栏 + SOP + 评估口径）
+capabilities:
+  - domain
+  - prompt
+  - guardrail
+  - sop
+  - eval
+config_profile:
+  graph_spec_extra:
+    example_pack_enabled: true

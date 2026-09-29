@@ -7,8 +7,16 @@
 //   - StepResult 明确 started_at 写入语义
 import { z } from 'zod'
 
-/** 步骤类型（决定 step_dispatch 路由去向）。 */
-export type PlanStepTaskType = 'reasoning' | 'tool_use' | 'delegation'
+// P3-C: 步骤类型字典（默认 reasoning/tool_use/delegation；场景包可追加）
+import { isRegisteredPlanTaskType } from '../../orchestration/sop-registry.js'
+
+/**
+ * 步骤类型（决定 step_dispatch 路由去向）。
+ *
+ * 默认三类：reasoning / tool_use / delegation；场景包经 SOP 字典追加的自定义类型
+ * 同样合法（默认路由到 agent 执行）。
+ */
+export type PlanStepTaskType = 'reasoning' | 'tool_use' | 'delegation' | (string & {})
 
 /** 步骤级重试策略（step_finalize 失败时按此重试，仍失败再触发 replan）。 */
 export interface StepRetryPolicy {
@@ -90,7 +98,13 @@ export const PlanStepSchema = z.object({
   expected_output: z.string().max(PLAN_STEP_EXPECTED_OUTPUT_MAX_CHARS).optional(),
   verification_hint: z.string().max(PLAN_STEP_VERIFICATION_HINT_MAX_CHARS).optional(),
   retry_policy: StepRetryPolicySchema.optional(),
-  task_type: z.enum(['reasoning', 'tool_use', 'delegation']).optional(),
+  // P3-C: 步骤类型经 SOP 字典动态校验（取代写死 zod enum）
+  task_type: z
+    .string()
+    .refine((t) => isRegisteredPlanTaskType(t), {
+      message: 'task_type must be registered in SOP registry (default: reasoning/tool_use/delegation)',
+    })
+    .optional(),
 })
 
 export const PlanSchema = z.object({

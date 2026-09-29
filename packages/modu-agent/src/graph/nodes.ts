@@ -83,6 +83,8 @@ import {
 } from '../tools/tool-guardrails.js'
 // P0（T-04）: 安全审计事件发布（此前 12 类事件仅 1 类有发布者）
 import { publish_security_audit_event_sync } from '../perception/security/audit.js'
+// P3-C: 输入策略消费（PolicyEngine input 阶段；gated，fail-open）
+import { applyInputPolicy } from '../perception/security/policy-consumers.js'
 // P2-3: 动态工具编排
 import {
   parseToolCalls,
@@ -294,6 +296,22 @@ export function makePerceptionNode(
           String(e?.message ?? e),
         )
       }
+    }
+
+    // P3-C: 输入策略（PolicyEngine input 阶段）。
+    // 仅 policy.engine.enabled=true 时生效；deny → 熔断字段，由 routeAfterPerception 短路。
+    const policyState: Record<string, any> = {
+      ...state,
+      task_type: result.task_type ?? state.task_type ?? null,
+    }
+    const inputPolicy = await applyInputPolicy(result.cleaned_text ?? prompt, policyState)
+    if (inputPolicy.denied) {
+      result.error_code = 'POLICY_INPUT_DENIED'
+      result.error_message = inputPolicy.reason ?? 'input denied by policy engine'
+      logger.warning(
+        '[P3-C] Input denied by policy engine: %s (session=%s)',
+        result.error_message, state.session_id ?? '',
+      )
     }
 
     return result
@@ -510,6 +528,27 @@ export function makeMemoryUpdateNode(
  */
 export function routeAfterPerception(state: ModuAgentState): string {
   const config = getConfig()
+
+  // P3-C: PolicyEngine input 阶段拒绝 → 熔断（短路到 finalize_response 输出错误）
+  if (state.error_code === 'POLICY_INPUT_DENIED') {
+    logger.warning(
+      'Input policy circuit breaker: %s',
+      state.error_message ?? '(no reason)',
+    )
+    try {
+      publish_security_audit_event_sync({
+        eventType: 'input_policy_denied',
+        decision: 'deny',
+        sessionId: state.session_id ?? '',
+        userId: state.user_id ?? '',
+        traceId: state.trace_id ?? '',
+        details: { reason: state.error_message ?? '' },
+      })
+    } catch {
+      // 审计旁路，忽略
+    }
+    return '__end__'
+  }
 
   const sensitivityThreshold = config.get('perception.sensitivity_threshold', 5)
   const sensitivityLevel = state.sensitivity_level ?? 0

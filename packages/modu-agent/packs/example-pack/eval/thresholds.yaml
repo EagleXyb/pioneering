@@ -1,0 +1,12 @@
+version: 1
+metrics:
+  output_relevance:
+    category: output
+    weight: 0.40
+    threshold: 0.7
+    gate: block
+  system_task_success:
+    category: system
+    weight: 0.60
+    threshold: 0.8
+    gate: block

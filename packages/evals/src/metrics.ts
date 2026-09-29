@@ -13,7 +13,13 @@
 // ============================================================
 
 import { QualityMonitor } from '@pioneering/modu-agent'
-import type { AgentRunResult, EvalCase, MetricContext, ToolCallRecord } from './types.js'
+import type {
+  AgentRunResult,
+  CustomMetric,
+  EvalCase,
+  MetricContext,
+  ToolCallRecord,
+} from './types.js'
 
 // ============================================================
 // 工具调用辅助
@@ -257,4 +263,52 @@ export function toToolCallRecord(raw: Record<string, any>): ToolCallRecord {
     executionTimeMs: typeof raw.execution_time === 'number' ? raw.execution_time : undefined,
     error: raw.error ?? raw.error_message ?? null,
   }
+}
+
+// ============================================================
+// 自定义指标注册（P3-D：指标实现注册点）
+// ============================================================
+
+/**
+ * 自定义指标注册中心。
+ *
+ * 场景包（或宿主）在评测前 `register` 指标实现；runner 在标准三层指标之后
+ * 调用它们；阈值/权重/gate 仍由 thresholds.yaml 单一事实源声明。
+ */
+export class CustomMetricRegistry {
+  private _metrics: Map<string, CustomMetric> = new Map()
+
+  register(metric: CustomMetric): void {
+    if (!metric?.key) throw new TypeError('CustomMetric.key must be non-empty')
+    this._metrics.set(metric.key, metric)
+  }
+
+  unregister(key: string): boolean {
+    return this._metrics.delete(key)
+  }
+
+  get(key: string): CustomMetric | undefined {
+    return this._metrics.get(key)
+  }
+
+  list(): CustomMetric[] {
+    return [...this._metrics.values()]
+  }
+
+  clear(): void {
+    this._metrics.clear()
+  }
+}
+
+let _customMetricRegistry: CustomMetricRegistry | null = null
+
+/** 获取全局 CustomMetricRegistry 单例。 */
+export function getCustomMetricRegistry(): CustomMetricRegistry {
+  if (_customMetricRegistry === null) _customMetricRegistry = new CustomMetricRegistry()
+  return _customMetricRegistry
+}
+
+/** 重置全局 CustomMetricRegistry（测试隔离用）。 */
+export function resetCustomMetricRegistry(): void {
+  _customMetricRegistry = null
 }

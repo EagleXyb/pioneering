@@ -16,7 +16,10 @@
 
 import { QualityMonitor } from '@pioneering/modu-agent'
 import { computeDelta, aggregate, loadBaseline, pruneReports, saveReport } from './report.js'
-import { createMetricGroups } from './metrics.js'
+import {
+  createMetricGroups,
+  type CustomMetricRegistry,
+} from './metrics.js'
 import type { CaseExecutor } from './agent-executor.js'
 import type {
   AgentRunResult,
@@ -50,6 +53,8 @@ export interface RunnerOptions {
   outputDir?: string | null
   /** 是否计算 baseline delta（默认按 global.report.baseline）。 */
   withBaseline?: boolean
+  /** P3-D：自定义指标注册中心（空=仅标准三层指标）。 */
+  customMetrics?: CustomMetricRegistry | null
 }
 
 /** runDataset 的返回：报告 + 单用例明细（evolution-bridge 消费）。 */
@@ -121,6 +126,7 @@ export class EvaluationRunner {
     evalCase: EvalDataset['cases'][number],
     executor: CaseExecutor,
     judge: QualityMonitor,
+    customMetrics?: CustomMetricRegistry | null,
   ): Promise<EvalCaseResult> {
     const timeoutMs = this.cfg.runner?.timeout_ms ?? 120_000
     const retries = this.cfg.runner?.retries ?? 1
@@ -158,6 +164,21 @@ export class EvaluationRunner {
       ...outputMetrics,
       ...processMetrics,
       ...systemMetrics,
+    }
+
+    // ---- P3-D：自定义注册指标（逐项隔离；null=不适用） ----
+    if (customMetrics) {
+      for (const metric of customMetrics.list()) {
+        try {
+          const value = metric.compute({ evalCase, agentRun, outputMetrics })
+          if (value !== null && value !== undefined) metrics[metric.key] = value
+        } catch (e: any) {
+          logger.warning(
+            "custom metric '%s' compute failed, skipped: %s",
+            metric.key, String(e?.message ?? e),
+          )
+        }
+      }
     }
 
     // ---- 单用例 pass 判定：block 指标低于阈值即 fail ----
@@ -215,7 +236,9 @@ export class EvaluationRunner {
         if (idx >= dataset.cases.length) break
         const evalCase = dataset.cases[idx]
         try {
-          results[idx] = await this.evalCase(evalCase, executor, judge)
+          results[idx] = await this.evalCase(
+            evalCase, executor, judge, options.customMetrics ?? null,
+          )
         } catch (e) {
           // 引擎级兜底：任何意外异常都转成失败用例（评测永不中断）
           logger.error(`用例 ${evalCase.id} 评测异常: ${String(e)}`)

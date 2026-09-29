@@ -46,6 +46,8 @@ export interface PromptRegistry {
   register(tpl: PromptTemplate): void
   get(id: string): PromptTemplate | undefined
   has(id: string): boolean
+  /** P3-B：移除已注册模板（可选原语，供场景包卸载）。 */
+  unregister?(id: string): boolean
   /**
    * 渲染指定 id 的模板；模板不存在时返回空字符串（调用方须据此回退）。
    *

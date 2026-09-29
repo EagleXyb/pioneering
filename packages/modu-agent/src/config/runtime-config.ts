@@ -39,14 +39,8 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     retry: {
       max_attempts: 2,
     },
-    // 统一 LLM 接口层连接池配置（对应文档 §2.1 连接池显式化建议）
-    // 仅作用于 BaseLLMReasoner 自研 fetch 路径；LangChain ChatOpenAI 路径由 openai SDK 内部管理
-    connection_pool: {
-      enabled: false,           // 默认关闭，保持 undici 默认行为；启用后使用显式 Agent
-      max_connections: 100,     // undici Agent maxConnections（每主机连接上限）
-      keep_alive_timeout: 4000, // undici Agent keepAliveTimeout（毫秒）
-      keep_alive_max_timeout: 300000,
-    },
+    // P3-D（D-16）：connection_pool 仅作用于已删除的 BaseLLMReasoner 自研 fetch
+    // 路径，ChatOpenAI 路径由 SDK 内部管理连接 → 配置块随之删除。
     // 统一 LLM 接口层成本核算开关（对应文档 §2.1 成本核算建议）
     // 启用后 invoke() 会发布 EventDomain.LLM + EventAction.COST 事件
     cost_tracking: {
@@ -109,7 +103,6 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     max_replans: 2,
     planner_temperature: 0.2,
     continue_on_failure: false,
-    compact_completed_steps: false,
     step_summary_max_chars: 500,
     // 补齐此前「已消费未声明」的键（否则 YAML 校验无法覆盖这些键的类型安全）
     // 消费点：graph/plan-execute/planner.ts（planner_max_tokens）
@@ -248,18 +241,6 @@ export const DEFAULT_CONFIG: Record<string, any> = {
         risk_threshold: 1,
       },
     },
-    deep_parsing: {
-      enable: true,
-      enable_intent: true,
-      enable_quality: false,
-      enable_local_ner: true,
-      enable_local_sentiment: true,
-      spacy_model: null,
-    },
-    event_log_path: 'logs/perception_events.jsonl',
-    event_log_max_size_mb: 10.0,
-    evolution_report_interval: 100,
-    enable_context_reduction: true,
     // 需求澄清（HITL clarifying）——复用工具审批的 interrupt/resume/checkpointer/超时链路。
     // 默认关闭：关闭时 perception 路由不产生 clarify 分叉，图拓扑与既有行为逐字节等价。
     clarification: {

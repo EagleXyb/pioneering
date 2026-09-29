@@ -177,7 +177,6 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDescriptor[] = [
       'plan_execute.max_replans',
       'plan_execute.planner_temperature',
       'plan_execute.continue_on_failure',
-      'plan_execute.compact_completed_steps',
       'plan_execute.step_summary_max_chars',
       // 以下键此前为"已消费但 DEFAULT_CONFIG 未声明"，现已补齐到 DEFAULT_CONFIG
       'plan_execute.planner_max_tokens',
@@ -371,37 +370,16 @@ export const UNDECLARED_CONSUMED_KEYS: readonly string[] = []
  * 的 `newDanglingKeys` 断言会失败。清单中已不再悬挂的键会被 `staleBaselineKeys`
  * 断言检出，必须同步移除（防止清单腐化，使 L7 门禁长期有效）。
  *
- * 基线构成（T-22 首批处置 3 项 + T-23 处置 1 项，故由实测 13 项收敛为 10 项）：
- *   - 待**单独决策**（6 项，`LLMParser` 语义解析族）：`perception.deep_parsing.*`
- *     对应 `LLMParser` 构造参数（intent / quality / local NER / local sentiment /
- *     spacy_model 及其总开关），而 `LLMParser` 依赖 `LLMAdapter` 注入，**不在
- *     T-23 范围**（T-23 只注册纯本地 `TextPreprocessor`）→ 待后续"语义解析是否
- *     默认启用"决策后再接线或删除（涉及每轮额外 LLM 调用成本，需独立评审）。
- *   - 待**单独决策**（3 项，感知事件日志 / 上下文压缩）：`perception.event_log_path`、
- *     `perception.event_log_max_size_mb`、`perception.enable_context_reduction`
- *     均为**未实现能力**的配置面（源码零读取，且无对应实现模块）。
- *   - 待**单独决策**（1 项）：`plan_execute.compact_completed_steps`
- *     为「压缩已完成步骤」的未实现开关（源码零读取；`PLANNER_COMPACT_*` 模板由
- *     **重试**触发，与本键无关）→ 需「接线压缩逻辑」或「删除该键」，不属 P3 范围。
- *     该键同时被注册表 `configKeys` 声称已消费 —— 本审计正是通过「注册表方向」
- *     交叉校验发现此点（`registryKeysUnconsumed`）。
- *   - 已处置（**不在**本清单，作为回归哨兵）：
- *       `llm.max_format_retries`、`event_bus.max_log_size` → 零消费，已删除（D-06）；
- *       `perception.default_processor` → 已接线（`perception/pipeline.ts` `_resolvePipeline`）；
- *       `perception.max_length` → 已接线（`perception/builtin-processors.ts`，T-23）。
+ * 处置记录（P3-B 起由 10 项收敛为 0）：
+ *   - `perception.deep_parsing.*`（6 项）：`LLMParser` 未注册、键零消费，
+ *     已随 DEFAULT_CONFIG 删除；若未来启用语义解析，应在接线时重新声明。
+ *   - `perception.event_log_path` / `.event_log_max_size_mb` /
+ *     `.enable_context_reduction` / `plan_execute.compact_completed_steps`：
+ *     未实现能力的配置面，已删除（D-06）。
+ *   - 历史回归哨兵：`llm.max_format_retries`、`event_bus.max_log_size` 已删；
+ *     `perception.default_processor`、`perception.max_length` 已接线。
  */
-export const DECLARED_UNCONSUMED_KEYS: readonly string[] = [
-  'perception.deep_parsing.enable',
-  'perception.deep_parsing.enable_intent',
-  'perception.deep_parsing.enable_local_ner',
-  'perception.deep_parsing.enable_local_sentiment',
-  'perception.deep_parsing.enable_quality',
-  'perception.deep_parsing.spacy_model',
-  'perception.enable_context_reduction',
-  'perception.event_log_max_size_mb',
-  'perception.event_log_path',
-  'plan_execute.compact_completed_steps',
-]
+export const DECLARED_UNCONSUMED_KEYS: readonly string[] = []
 
 /** 配置键「声明 ↔ 消费」一致性审计结果（G-2 / L7）。 */
 export interface ConfigConsumptionAudit {

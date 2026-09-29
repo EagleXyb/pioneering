@@ -123,6 +123,19 @@ export function registerGuardrailRule(rule: GuardrailRule): void {
   }
 }
 
+/** P3-B：按 rule_id 查询规则（只读；不存在返回 null）。 */
+export function peekGuardrailRule(ruleId: string): GuardrailRule | null {
+  return ACTION_GUARDRAILS.find((r) => r.rule_id === ruleId) ?? null
+}
+
+/** P3-B：按 rule_id 移除 guardrail 规则；不存在返回 false。 */
+export function unregisterGuardrailRule(ruleId: string): boolean {
+  const idx = ACTION_GUARDRAILS.findIndex((r) => r.rule_id === ruleId)
+  if (idx < 0) return false
+  ACTION_GUARDRAILS.splice(idx, 1)
+  return true
+}
+
 /**
  * 检查单个参数条件是否匹配。
  *

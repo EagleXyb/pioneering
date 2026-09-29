@@ -35,6 +35,11 @@ import {
 } from './spec.js'
 // P0（T-05）: 输出护栏节点包装器（接线此前为零调用的 sanitizeOutput/detectOutputSensitive）
 import { makeOutputGuardNode } from '../perception/security/output-guard-node.js'
+// P3-C: PolicyEngine output 阶段消费（gated）
+import {
+  makeOutputPolicyNode,
+  policyEngineEnabled,
+} from '../perception/security/policy-consumers.js'
 import {
   makeAgentNode,
   makeConsensusNode,
@@ -47,7 +52,6 @@ import {
   makePerceptionNode,
   makeSubagentNode,
   makeToolResultProcessor,
-  perceptionNode,
   responseNode,
   routeAfterAgent,
   routeAfterHumanReview,
@@ -520,12 +524,11 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
     : routeAfterPerception
 
   const nodes: NodeSpec[] = [
-    // P0-1: complexityAssessor 非空时使用带复杂度评估的感知节点，否则等价原行为
+    // P0-1/P3-C: complexityAssessor 非空时带复杂度评估；makePerceptionNode 同时
+    // 在 policy.engine.enabled 时消费 PolicyEngine input 阶段（默认关闭→行为零变化）。
     {
       name: 'perception',
-      factory: (deps) => (deps.complexityAssessor
-        ? makePerceptionNode(deps.complexityAssessor)
-        : perceptionNode),
+      factory: (deps) => makePerceptionNode(deps.complexityAssessor),
     },
     // P1（T-11）工厂版本恒非空：无 store 且无策略时返回空 knowledge（等价既有 memoryQueryNode）
     {
@@ -566,11 +569,16 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
     // P0（T-05）: 输出护栏（PII / 密钥 / 内网 IP 脱敏）。
     // 门控 perception.security.sanitize_output.enabled（默认 false）→ 默认直接使用原节点，
     // response 文本逐字节不变（等价现状）。
+    // P3-C: policy.engine.enabled=true 时外层再套 PolicyEngine output 判定
+    //  （deny→拦截 / sanitizedText→替换）；两开关默认全 false → 零变化。
     {
       name: 'finalize_response',
-      factory: (deps) => (deps.profile.outputGuardEnabled
-        ? makeOutputGuardNode(responseNode)
-        : responseNode),
+      factory: (deps) => {
+        let node: any = responseNode
+        if (deps.profile.outputGuardEnabled) node = makeOutputGuardNode(node)
+        if (policyEngineEnabled()) node = makeOutputPolicyNode(node)
+        return node
+      },
     },
     { name: 'doc_gen_enforce', factory: () => docGenEnforceNode },
     { name: 'doc_final_answer', factory: () => docFinalAnswerNode },

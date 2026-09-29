@@ -30,6 +30,8 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 
 import { getConfig } from '../../config/runtime-config.js'
 import type { ModuAgentState } from '../state.js'
+// P3-C: SOP 角色字典（取代写死 _DEFAULT_TASK_TYPES）
+import { listSopRoles } from '../../orchestration/sop-registry.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.subgraph.supervisor] ${msg}`, ...args),
@@ -50,10 +52,10 @@ const _DEFAULT_TASK_TYPES = ['research', 'coding', 'review']
  */
 const _LLM_DECOMPOSE_PROMPT =
   'You are a task decomposition agent. Break down the user\'s goal into a JSON array of subtasks.\n' +
-  'Each subtask: {"task_type": "research|coding|review|default", "description": "<specific subtask>", "depends_on": ["<task_id>")}]}\n' +
+  'Each subtask: {"task_type": "<one of the allowed roles>", "description": "<specific subtask>", "depends_on": ["<task_id>"]}\n' +
   'Rules:\n' +
   '- At most {max_subagents} subtasks\n' +
-  '- task_type must be one of: research, coding, review, default\n' +
+  '- task_type must be one of: {allowed_roles}\n' +
   '- depends_on lists task_ids that must complete before this one starts (empty array = no deps)\n' +
   '- Each description must be specific and actionable\n' +
   'Respond with ONLY the JSON array, no prose.\n' +
@@ -77,7 +79,8 @@ export function decompose_task(
   maxSubagents: number = 5,
   taskTypes?: string[] | null,
 ): Array<Record<string, any>> {
-  let types = taskTypes || _DEFAULT_TASK_TYPES
+  // P3-C: 未显式传入角色集合时读 SOP 角色字典（默认 = 内置 research/coding/review）
+  let types = taskTypes || listSopRoles()
   // 限制子任务数不超过 max_subagents
   types = types.slice(0, maxSubagents)
 
@@ -141,6 +144,7 @@ export async function decompose_task_with_llm(
 
   const prompt = _LLM_DECOMPOSE_PROMPT
     .replace('{max_subagents}', String(maxSubagents))
+    .replace('{allowed_roles}', listSopRoles().join(', '))
     .replace('{goal}', goal)
 
   try {

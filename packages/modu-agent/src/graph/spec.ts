@@ -128,6 +128,14 @@ export interface NodeSpec {
   factory: (deps: ModuGraphDeps) => any
   /** 条件注册（返回 false 时不挂载该节点） */
   when?: (profile: GraphProfile, deps: ModuGraphDeps) => boolean
+  /**
+   * P3-D：受控覆盖。
+   *
+   * 与内置/已启用节点同名时：
+   *   - false（默认）→ 扩展跳过并告警（内置优先）；
+   *   - true → 以本声明替换同名节点（场景包显式承担语义变更）。
+   */
+  override?: boolean
 }
 
 /** 边声明（`to` 为字符串 = 静态边；为对象 = 条件边）。 */
@@ -272,6 +280,16 @@ export function buildFromSpec(spec: GraphSpec, deps: ModuGraphDeps): CompiledSta
   for (const node of _listRegistered<NodeSpec>('listNodeSpecs')) {
     if (!node || !node.name) continue
     if (enabledNodeNames.has(node.name)) {
+      if (node.override === true) {
+        // P3-D：受控覆盖 —— 替换同名已启用节点（内置/先前声明）
+        const idx = resolvedNodes.findIndex((s) => s.name === node.name)
+        if (idx >= 0) {
+          if (!_safeHas(profile, profileDeps, node.when)) continue
+          resolvedNodes[idx] = node
+          logger.info('registered node spec %s overrides existing node', node.name)
+        }
+        continue
+      }
       logger.warning('registered node spec %s conflicts with built-in node, skipped', node.name)
       continue
     }
@@ -335,7 +353,18 @@ export function buildFromSpec(spec: GraphSpec, deps: ModuGraphDeps): CompiledSta
     graph.addNode(node.name, node.factory(deps))
   }
 
-  const edgeSpecs: EdgeSpec[] = [...spec.edges, ..._listRegistered<EdgeSpec>('listEdgeSpecs')]
+  let edgeSpecs: EdgeSpec[] = [...spec.edges, ..._listRegistered<EdgeSpec>('listEdgeSpecs')]
+
+  // P3-D：受控裁剪 —— 按 registry 登记的 removals 过滤边（from 相等；to 省略=全部）
+  const edgeRemovals = _listRegistered<{ from: string; to?: string }>('listEdgeRemovals')
+  if (edgeRemovals.length > 0) {
+    edgeSpecs = edgeSpecs.filter((e) => {
+      const target = typeof e.to === 'string' ? e.to : '(conditional)'
+      return !edgeRemovals.some(
+        (r) => r.from === e.from && (r.to === undefined || r.to === target),
+      )
+    })
+  }
   let staticEdgeCount = 0
   let conditionalEdgeCount = 0
   for (const edge of edgeSpecs) {

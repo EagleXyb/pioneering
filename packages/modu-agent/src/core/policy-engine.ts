@@ -65,10 +65,15 @@ export class DefaultPolicyEngine implements PolicyEngine {
       .filter((r) => r.stage === stage)
       .sort((a, b) => (a.priority ?? DEFAULT_PRIORITY) - (b.priority ?? DEFAULT_PRIORITY))
 
+    // 记录最后一个携带改写文本（sanitizedText）的 allow 决策：
+    // 全部规则放行时仍需把"允许但须改写"的结果透传给消费方（P3-C）。
+    let allowWithOverride: PolicyDecision | null = null
+
     for (const rule of rules) {
       try {
         const decision = await rule.evaluate(subject, ctx)
         if (!decision || decision.effect === 'allow') {
+          if (decision?.sanitizedText !== undefined) allowWithOverride = decision
           continue
         }
         // 命中即短路（deny / require_approval）
@@ -82,6 +87,9 @@ export class DefaultPolicyEngine implements PolicyEngine {
       }
     }
 
+    if (allowWithOverride) {
+      return { ...allowWithOverride, ruleId: allowWithOverride.ruleId ?? 'default_allow' }
+    }
     return { ...ALLOW }
   }
 }

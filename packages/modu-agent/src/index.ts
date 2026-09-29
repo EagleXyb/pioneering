@@ -57,3 +57,6 @@ export * from './orchestration/index.js'
 
 // skills
 export * from './skills/index.js'
+
+// kernel（P3-B：场景包装配层）
+export * from './kernel/index.js'

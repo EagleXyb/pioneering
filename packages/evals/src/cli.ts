@@ -10,7 +10,8 @@
 //         报告 JSON 路径输出到 stdout（CI 上传 artifact 用）。
 // ============================================================
 
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
+import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import {
   EVALS_ROOT,
@@ -53,6 +54,7 @@ function usage(): void {
 用法:
   node dist/cli.js datasets                    列出已注册数据集
   node dist/cli.js run --dataset <name>        跑数据集评测（如 smoke/full/dev）
+  node dist/cli.js run --pack <name|path>      跑场景包评测（加载 packs/<name>/eval）
   node dist/cli.js gate --gate <name>          跑门禁（如 ci/release），按退出码对接 CI
 
 选项:
@@ -61,17 +63,46 @@ function usage(): void {
   --quiet             精简输出`)
 }
 
+/**
+ * 解析场景包目录：已存在路径直接用；否则按 <modu-agent>/packs/<name> 解析。
+ */
+function resolvePackDir(pack: string): string {
+  if (fs.existsSync(pack) && fs.statSync(pack).isDirectory()) return resolve(pack)
+  const candidates = [
+    resolve(EVALS_ROOT, '../modu-agent/packs', pack),
+    resolve(EVALS_ROOT, '../../packs', pack),
+  ]
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c
+  }
+  throw new Error(`scenario pack not found: ${pack}（tried: ${candidates.join(', ')}）`)
+}
+
 /** 执行单个数据集评测（组装真实 Agent 执行器 + judge）。 */
 async function runDataset(
   datasetName: string,
   globalPath?: string,
   save = true,
+  packDir?: string | null,
 ): Promise<EvalReport> {
   const globalCfg = loadGlobalConfig(globalPath)
-  const thresholds = loadThresholds()
-  const registry = loadDatasetRegistry()
-  const preprocessing = loadPreprocessing()
-  const dataset = buildDataset(registry, datasetName, preprocessing)
+
+  // 场景包：口径全部从 <packDir>/eval 加载（thresholds/datasets 随包分发）
+  let thresholds
+  let dataset
+  if (packDir) {
+    const evalDir = resolve(packDir, 'eval')
+    thresholds = loadThresholds(resolve(evalDir, 'thresholds.yaml'))
+    const registry = loadDatasetRegistry(resolve(evalDir, 'datasets.yaml'))
+    // 场景包可不提供 preprocessing.yaml：使用空预处理（仅 trim 默认行为）
+    const pp = { version: 1, preprocessing: {} }
+    dataset = buildDataset(registry, datasetName, pp as any, evalDir)
+  } else {
+    thresholds = loadThresholds()
+    const registry = loadDatasetRegistry()
+    const preprocessing = loadPreprocessing()
+    dataset = buildDataset(registry, datasetName, preprocessing)
+  }
 
   const runTag = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
   const bundle = await createDefaultExecutor(globalCfg, runTag)
@@ -123,9 +154,13 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (command === 'run') {
+    // --pack：场景包评测（口径随包；默认数据集名 smoke，可用 --dataset 覆盖）
+    const packArg = typeof args['pack'] === 'string' ? args['pack'] : null
+    const packDir = packArg ? resolvePackDir(packArg) : null
     const datasetName = typeof args['dataset'] === 'string' ? args['dataset'] : 'smoke'
-    const report = await runDataset(datasetName, globalPath, save)
-    console.info(`\n===== 评测摘要 [${datasetName}] =====`)
+    const report = await runDataset(datasetName, globalPath, save, packDir)
+    const label = packDir ? `${datasetName} @ ${basename(packDir)}` : datasetName
+    console.info(`\n===== 评测摘要 [${label}] =====`)
     console.info(`runId:        ${report.runId}`)
     console.info(`通过率:       ${report.passCount}/${report.caseCount} (${(report.casePassRate * 100).toFixed(1)}%)`)
     console.info(`总分:         ${report.overallScore.toFixed(4)}`)
