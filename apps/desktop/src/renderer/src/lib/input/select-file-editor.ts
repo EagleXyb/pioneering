@@ -98,11 +98,6 @@ export function serializeEditorDocument(
     .join('')
 }
 
-/** 文档 -> 纯文本（用于 Token 估算 / 光标定位，使用 @{} 内联形式）。 */
-export function editorDocumentToPlainText(document: EditorDocumentNode[]): string {
-  return serializeEditorDocument(document, { inlineTokens: true })
-}
-
 // ---- 反序列化（文本 -> 模型）----
 export interface DeserializedEditorState {
   document: EditorDocumentNode[]
@@ -145,102 +140,6 @@ export function deserializeEditorState(
   }
 
   return { document, files }
-}
-
-// ---- 文件选择管理 ----
-export function addFilesToSelection(
-  currentFiles: SelectedFileItem[],
-  filePaths: string[]
-): SelectedFileItem[] {
-  const result = [...currentFiles]
-  const seen = new Set(result.map((f) => f.path))
-  for (const path of filePaths) {
-    if (seen.has(path)) continue
-    seen.add(path)
-    result.push({ id: path, path, name: basename(path) })
-  }
-  return result
-}
-
-export function ensureSelectedFile(
-  currentFiles: SelectedFileItem[],
-  filePath: string
-): SelectedFileItem[] {
-  if (currentFiles.some((f) => f.path === filePath)) return currentFiles
-  return [...currentFiles, { id: filePath, path: filePath, name: basename(filePath) }]
-}
-
-export function removeSelectedFile(
-  currentFiles: SelectedFileItem[],
-  filePath: string
-): SelectedFileItem[] {
-  return currentFiles.filter((f) => f.path !== filePath)
-}
-
-// ---- 引用节点管理 ----
-export function removeReferenceNode(
-  document: EditorDocumentNode[],
-  nodeId: string
-): EditorDocumentNode[] {
-  return document.filter((n) => n.id !== nodeId)
-}
-
-export function replaceEditorRange(
-  document: EditorDocumentNode[],
-  start: number,
-  end: number,
-  replacement: EditorDocumentNode[]
-): EditorDocumentNode[] {
-  // 将文档按纯文本偏移量展开后替换 [start,end) 区间，再重新拼合
-  const plain = editorDocumentToPlainText(document)
-  const before = plain.slice(0, start)
-  const after = plain.slice(end)
-  const beforeDoc = deserializeEditorState(before).document
-  const afterDoc = deserializeEditorState(after).document
-  return [...beforeDoc, ...replacement, ...afterDoc]
-}
-
-export function normalizeSelectionToFileBoundaries(
-  document: EditorDocumentNode[],
-  start: number,
-  end: number
-): { start: number; end: number } {
-  const plain = editorDocumentToPlainText(document)
-  // 向两端扩展到不切断文件/插件 token
-  const expandLeft = (pos: number): number => {
-    let p = pos
-    while (p > 0 && plain[p - 1] !== ' ' && !plain.startsWith('@{', p - 1) && !plain.startsWith('<select', p - 1)) {
-      p--
-    }
-    return p
-  }
-  const expandRight = (pos: number): number => {
-    let p = pos
-    while (p < plain.length && plain[p] !== ' ' && !plain.startsWith('@{', p) && !plain.startsWith('<select', p)) {
-      p++
-    }
-    return p
-  }
-  return { start: expandLeft(start), end: expandRight(end) }
-}
-
-export function documentHasFileReferences(document: EditorDocumentNode[], fileId?: string): boolean {
-  return document.some((n) => n.type === 'file' && (fileId ? n.fileId === fileId : true))
-}
-
-// ---- 合并策略（按路径去重）----
-export function mergeSelectedFiles(
-  a: SelectedFileItem[],
-  b: SelectedFileItem[]
-): SelectedFileItem[] {
-  const seen = new Set<string>()
-  const result: SelectedFileItem[] = []
-  for (const f of [...a, ...b]) {
-    if (seen.has(f.path)) continue
-    seen.add(f.path)
-    result.push(f)
-  }
-  return result
 }
 
 /** 构建发送给后端的文本：文件转 <select-file>，插件展开为 prompt。 */

@@ -21,7 +21,6 @@ export enum IpcChannel {
   WINDOW_DRAG_END = 'window:drag-end',
 
   // 应用信息
-  APP_GET_VERSION = 'app:getVersion',
   APP_GET_PLATFORM = 'app:getPlatform',
   APP_QUIT = 'app:quit',
   APP_CHECK_UPDATE = 'app:checkUpdate',
@@ -43,7 +42,6 @@ export enum IpcChannel {
   FILE_SAVE_DIALOG = 'file:saveDialog',
   FILE_READ = 'file:read',
   FILE_WRITE = 'file:write',
-  FILE_GET_PATH = 'file:getPath',
   // 在系统文件管理器中显示指定路径（会话数据目录等）
   FILE_SHOW_IN_FOLDER = 'file:showInFolder',
 
@@ -52,7 +50,6 @@ export enum IpcChannel {
 
   // 剪贴板
   CLIPBOARD_WRITE = 'clipboard:write',
-  CLIPBOARD_READ = 'clipboard:read',
 
   // 外部链接
   SHELL_OPEN_EXTERNAL = 'shell:openExternal',
@@ -90,21 +87,7 @@ export enum IpcChannel {
   // electron-store，主进程启动 Agent 前解密注入 process.env。
   SECURE_KEY_LIST = 'secureKey:list',
   SECURE_KEY_SET = 'secureKey:set',
-  SECURE_KEY_DELETE = 'secureKey:delete',
-
-  // ---- 本地上传（云边双模阶段 2：userData/uploads）----
-  UPLOAD_SAVE = 'upload:save',
-  UPLOAD_LIST = 'upload:list',
-  UPLOAD_DELETE = 'upload:delete',
-
-  // 健康检查
-  PING = 'ping'
-}
-
-// ---- Window 控制 ----
-export interface WindowState {
-  isMaximized: boolean
-  isFullscreen: boolean
+  SECURE_KEY_DELETE = 'secureKey:delete'
 }
 
 // ---- 文件对话框 ----
@@ -144,13 +127,6 @@ export interface FileWriteRequest {
   filePath: string
   content: string
   encoding?: BufferEncoding
-}
-
-export type UserDataPath = 'home' | 'appData' | 'userData' | 'desktop' | 'documents' | 'downloads'
-
-// ---- Store 持久化 ----
-export interface StoreValue {
-  [key: string]: unknown
 }
 
 // ---- Agent 本地运行时（云边双模阶段 1）----
@@ -260,34 +236,6 @@ export interface SecureKeySetRequest {
 }
 
 export interface SecureKeySetResult {
-  ok: boolean
-  error?: string
-}
-
-// ---- 本地上传（云边双模阶段 2）----
-
-export interface UploadSaveRequest {
-  fileName: string
-  /** 文件内容（base64，不含 data: 前缀） */
-  base64: string
-}
-
-export interface UploadInfo {
-  id: string
-  fileName: string
-  /** 绝对路径（userData/uploads 下） */
-  path: string
-  size: number
-  createdAt: string
-}
-
-export interface UploadSaveResult {
-  ok: boolean
-  upload?: UploadInfo
-  error?: string
-}
-
-export interface UploadDeleteResult {
   ok: boolean
   error?: string
 }

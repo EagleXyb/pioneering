@@ -32,13 +32,3 @@ export function defaultExpandedForNode(node: TraceNode | undefined): boolean {
  * 应调用 traceNodeExpandedAtom.remove(nodeId) 防止内存泄漏。
  */
 export const traceNodeExpandedAtom = atomFamily((_nodeId: string) => atom<boolean>(true))
-
-/** 全局折叠/展开触发（写 only）：批量设置多个节点的展开状态 */
-export const traceSetExpandedBatchAtom = atom(
-  null,
-  (_get, set, args: { expanded: boolean; nodeIds: string[] }) => {
-    for (const id of args.nodeIds) {
-      set(traceNodeExpandedAtom(id), args.expanded)
-    }
-  }
-)

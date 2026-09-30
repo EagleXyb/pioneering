@@ -8,8 +8,7 @@ import type {
   FileDialogResult,
   FileReadResult,
   FileWriteRequest,
-  NotificationOptions,
-  UserDataPath
+  NotificationOptions
 } from '@shared/ipc-channels'
 import { normalizePlatform } from '@shared/types'
 
@@ -70,7 +69,6 @@ export const windowApi = {
 
 // ---- 应用信息 ----
 export const appApi = {
-  getVersion: () => getApi()?.app.getVersion() ?? Promise.resolve('0.0.0'),
   getPlatform: () => getApi()?.app.getPlatform() ?? Promise.resolve(normalizePlatform(process.platform)),
   quit: () => getApi()?.app.quit(),
   checkUpdate: () => getApi()?.app.checkUpdate() ?? Promise.resolve('0.0.0'),
@@ -93,7 +91,6 @@ export const fileApi = {
     getApi()?.file.read(filePath) ?? Promise.resolve({ success: false, error: 'IPC not available' }),
   write: (req: FileWriteRequest) =>
     getApi()?.file.write(req) ?? Promise.resolve({ success: false, error: 'IPC not available' }),
-  getPath: (name: UserDataPath) => getApi()?.file.getPath(name) ?? Promise.resolve(''),
   /** 在系统文件管理器中显示路径（无参 = 打开 userData 目录） */
   showInFolder: (filePath?: string) =>
     getApi()?.file.showInFolder(filePath) ?? Promise.resolve(false)
@@ -106,8 +103,7 @@ export const notificationApi = {
 
 // ---- 剪贴板 ----
 export const clipboardApi = {
-  write: (text: string) => getApi()?.clipboard.write(text),
-  read: () => getApi()?.clipboard.read() ?? Promise.resolve('')
+  write: (text: string) => getApi()?.clipboard.write(text)
 }
 
 // ---- 外部链接 ----
@@ -120,9 +116,4 @@ export const storeApi = {
   get: <T = unknown>(key: string) => getApi()?.store.get(key) as Promise<T | undefined> | undefined,
   set: (key: string, value: unknown) => getApi()?.store.set(key, value) ?? Promise.resolve(false),
   delete: (key: string) => getApi()?.store.delete(key) ?? Promise.resolve(false)
-}
-
-// ---- 健康检查 ----
-export const healthApi = {
-  ping: () => getApi()?.health.ping() ?? Promise.resolve('pong')
 }

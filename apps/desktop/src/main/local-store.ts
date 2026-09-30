@@ -465,9 +465,3 @@ export function getLocalChatStore(dbPath: string): LocalChatStore | null {
   }
 }
 
-/** 仅供测试重置单例 */
-export function resetLocalChatStoreForTest(): void {
-  _store?.close()
-  _store = null
-  _openError = null
-}

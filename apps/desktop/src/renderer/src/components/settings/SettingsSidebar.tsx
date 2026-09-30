@@ -4,7 +4,7 @@
 //   - 230px 宽，#f2f2f2 背景，padding 20px×12px
 //   - 33px 高导航项，4px 圆角，灰色 hover 与激活态
 //   - dividerAfter=true 的分类之后渲染 1px #e6e6e6 分隔线（左右缩进 12px，上下 8px）
-//   不再渲染任何分组小标题（settingsGroups 机制保留为兼容层）。
+//   不再渲染任何分组小标题（settingsGroups 机制已删除）。
 // ============================================================
 
 import { useAtom } from 'jotai'

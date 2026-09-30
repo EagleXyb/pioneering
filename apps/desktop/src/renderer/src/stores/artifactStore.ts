@@ -14,7 +14,6 @@ import { atom } from 'jotai'
 import type { ArtifactType } from '@shared/types'
 import {
   PREVIEW_TAB_PREFIX,
-  closeAllPreviewTabsAtom,
   closeTabAtom,
   openTabAtom,
   previewTabId,
@@ -83,11 +82,5 @@ export const highlightMessageAtom = atom(null, (_get, set, messageId: string) =>
 
 /** 消费高亮信号（消息列表定位完成后调用） */
 export const clearHighlightAtom = atom(null, (_get, set) => {
-  set(highlightMessageIdAtom, null)
-})
-
-/** 切换会话 / 模式时整体复位：关闭全部产物标签并清理高亮信号 */
-export const resetArtifactAtom = atom(null, (_get, set) => {
-  set(closeAllPreviewTabsAtom)
   set(highlightMessageIdAtom, null)
 })

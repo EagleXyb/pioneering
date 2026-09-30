@@ -73,15 +73,6 @@ export const rightPanelTabsAtom = atom<RightPanelTab[]>([TASK_TABS.monitor])
 /** 当前激活标签 id；空串表示无标签（显示空态） */
 export const rightPanelActiveTabIdAtom = atom<string>(TASK_TABS.monitor.id)
 
-// ---- 派生状态 ----
-
-/** 当前激活标签（无标签时为 null） */
-export const rightPanelActiveTabAtom = atom<RightPanelTab | null>((get) => {
-  const activeId = get(rightPanelActiveTabIdAtom)
-  if (!activeId) return null
-  return get(rightPanelTabsAtom).find((t) => t.id === activeId) ?? null
-})
-
 // ---- 写动作 ----
 
 /** 打开标签：已存在则仅激活（不重复追加），并展开面板 */
@@ -114,16 +105,6 @@ export const closeTabAtom = atom(null, (get, set, tabId: string) => {
   if (get(rightPanelActiveTabIdAtom) !== tabId) return
   const fallback = next[idx] ?? next[idx - 1] ?? null
   set(rightPanelActiveTabIdAtom, fallback?.id ?? '')
-})
-
-/** 关闭全部产物预览标签，保留任务类标签（切换会话等场景复位用） */
-export const closeAllPreviewTabsAtom = atom(null, (get, set) => {
-  const next = get(rightPanelTabsAtom).filter((t) => t.kind !== 'preview')
-  set(rightPanelTabsAtom, next)
-  const activeId = get(rightPanelActiveTabIdAtom)
-  if (!next.some((t) => t.id === activeId)) {
-    set(rightPanelActiveTabIdAtom, next[0]?.id ?? '')
-  }
 })
 
 /** 收起面板（保留标签，仅隐藏） */

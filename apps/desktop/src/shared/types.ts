@@ -124,17 +124,6 @@ export interface SendMessageRequest {
   messageId?: string
 }
 
-// ---- SSE 流式响应 ----
-export interface SSEChunk {
-  type: 'content' | 'done' | 'error' | 'meta'
-  content?: string
-  messageId?: string
-  sessionId?: string
-  model?: string
-  tokenCount?: number
-  error?: string
-}
-
 // ---- Agent ----
 export interface AgentSession {
   id: string
@@ -154,13 +143,6 @@ export interface CreateAgentSessionRequest {
   model?: string
   systemPrompt?: string
   tools?: string[]
-}
-
-export interface AgentExecuteRequest {
-  sessionId?: string
-  instruction: string
-  agentType?: string
-  stream?: boolean
 }
 
 /** 后端工具执行明细（对应 app/schemas/agent.ToolExecutionDetail） */
@@ -284,26 +266,6 @@ export interface Attachment {
   size?: number
 }
 
-export interface AgentStep {
-  id: string
-  description: string
-  toolName?: string
-  status: 'pending' | 'running' | 'completed' | 'error'
-  result?: string
-  startTime?: number
-  endTime?: number
-}
-
-export interface AgentExecution {
-  id: string
-  instruction: string
-  steps: AgentStep[]
-  status: 'idle' | 'running' | 'completed' | 'error'
-  error?: string
-  createdAt: number
-  updatedAt: number
-}
-
 export interface OpenFile {
   id: string
   name: string
@@ -318,13 +280,6 @@ export interface ApiResponse<T = unknown> {
   code: number
   data: T
   message: string
-}
-
-export interface PaginatedData<T> {
-  items: T[]
-  total: number
-  page: number
-  pageSize: number
 }
 
 // ---- 平台 ----

@@ -16,15 +16,9 @@ const HOTKEYS_STORE_KEY = 'hotkeys'
 export class HotkeyManager {
   private store: Store
   private conflicts: string[] = []
-  /** toggle-main-window 动作回调（由 ipc-handlers 注入：聚焦/显示主窗口） */
-  private onMainWindowToggle: (() => void) | null = null
 
   constructor(store: Store) {
     this.store = store
-  }
-
-  setMainWindowToggleHandler(handler: () => void): void {
-    this.onMainWindowToggle = handler
   }
 
   /** 读取持久化覆盖表（SOT） */

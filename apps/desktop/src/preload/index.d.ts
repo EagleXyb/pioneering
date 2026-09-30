@@ -6,7 +6,6 @@
 import type {
   FileDialogOptions,
   FileWriteRequest,
-  UserDataPath,
   AgentEventEnvelope,
   LocalSessionListRequest,
   LocalSessionListResult,
@@ -21,10 +20,6 @@ import type {
   SecureKeyListResult,
   SecureKeySetRequest,
   SecureKeySetResult,
-  UploadSaveRequest,
-  UploadSaveResult,
-  UploadInfo,
-  UploadDeleteResult,
   HotkeyOverrides,
   HotkeyApplyResult
 } from '../shared/ipc-channels'
@@ -58,7 +53,6 @@ declare global {
   }
 
   interface AppApi {
-    getVersion: () => Promise<string>
     getPlatform: () => Promise<string>
     quit: () => Promise<void>
     checkUpdate: () => Promise<string>
@@ -73,7 +67,6 @@ declare global {
     saveDialog: (options: FileDialogOptions) => Promise<{ canceled: boolean; filePaths: string[] }>
     read: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
     write: (req: FileWriteRequest) => Promise<{ success: boolean; error?: string }>
-    getPath: (name: UserDataPath) => Promise<string>
     /** 在系统文件管理器中显示路径；不传参时打开 userData 目录 */
     showInFolder: (filePath?: string) => Promise<boolean>
   }
@@ -84,7 +77,6 @@ declare global {
 
   interface ClipboardApi {
     write: (text: string) => Promise<void>
-    read: () => Promise<string>
   }
 
   interface ShellApi {
@@ -95,10 +87,6 @@ declare global {
     get: <T = unknown>(key: string) => Promise<T | undefined>
     set: (key: string, value: unknown) => Promise<boolean>
     delete: (key: string) => Promise<boolean>
-  }
-
-  interface HealthApi {
-    ping: () => Promise<string>
   }
 
   /** Agent 本地运行时（云边双模阶段 1）：与 preload agentApi 一一对应 */
@@ -143,13 +131,6 @@ declare global {
     delete: (name: string) => Promise<LocalDaoResult>
   }
 
-  /** 本地上传（云边双模阶段 2）：与 preload uploadApi 一一对应 */
-  interface UploadApi {
-    save: (req: UploadSaveRequest) => Promise<UploadSaveResult>
-    list: () => Promise<UploadInfo[]>
-    delete: (id: string) => Promise<UploadDeleteResult>
-  }
-
   /** 快捷键治理：与 preload hotkeysApi 一一对应（浏览器模式由 electron-mock 降级桩兜底） */
   interface HotkeysApi {
     get: () => Promise<HotkeyApplyResult>
@@ -165,11 +146,9 @@ declare global {
     clipboard: ClipboardApi
     shell: ShellApi
     store: StoreApi
-    health: HealthApi
     agent: AgentApi
     localChat: LocalChatApi
     secureKeys: SecureKeyApi
-    upload: UploadApi
     hotkeys: HotkeysApi
   }
 

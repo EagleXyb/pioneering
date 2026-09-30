@@ -32,20 +32,3 @@ export function getDroppedLocalPaths(dataTransfer: DataTransfer | null): string[
   }
   return paths
 }
-
-/** 内部文件拖拽 MIME（用于会话内文件引用拖拽识别）。 */
-export const INTERNAL_FILE_DRAG_MIME = 'application/x-opencowork-file-refs'
-
-/** 从内部拖拽 MIME 中读取文件路径列表。 */
-export function getDraggedFilePaths(dataTransfer: DataTransfer | null): string[] {
-  if (!dataTransfer || !dataTransfer.getData) return []
-  const raw = dataTransfer.getData(INTERNAL_FILE_DRAG_MIME)
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) return parsed.filter((p): p is string => typeof p === 'string')
-  } catch {
-    /* ignore */
-  }
-  return []
-}

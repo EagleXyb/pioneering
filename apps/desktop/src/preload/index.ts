@@ -4,7 +4,6 @@ import type {
   FileDialogOptions,
   FileWriteRequest,
   NotificationOptions,
-  UserDataPath,
   AgentEventEnvelope,
   LocalSessionListRequest,
   LocalSessionListResult,
@@ -19,10 +18,6 @@ import type {
   SecureKeyListResult,
   SecureKeySetRequest,
   SecureKeySetResult,
-  UploadSaveRequest,
-  UploadSaveResult,
-  UploadInfo,
-  UploadDeleteResult,
   HotkeyOverrides,
   HotkeyApplyResult
 } from '../shared/ipc-channels'
@@ -62,7 +57,6 @@ const windowApi = {
 }
 
 const appApi = {
-  getVersion: () => ipcRenderer.invoke(IpcChannel.APP_GET_VERSION),
   getPlatform: () => ipcRenderer.invoke(IpcChannel.APP_GET_PLATFORM),
   quit: () => ipcRenderer.invoke(IpcChannel.APP_QUIT),
   checkUpdate: () => ipcRenderer.invoke(IpcChannel.APP_CHECK_UPDATE),
@@ -83,7 +77,6 @@ const fileApi = {
   saveDialog: (options: FileDialogOptions) => ipcRenderer.invoke(IpcChannel.FILE_SAVE_DIALOG, options),
   read: (filePath: string) => ipcRenderer.invoke(IpcChannel.FILE_READ, filePath),
   write: (req: FileWriteRequest) => ipcRenderer.invoke(IpcChannel.FILE_WRITE, req),
-  getPath: (name: UserDataPath) => ipcRenderer.invoke(IpcChannel.FILE_GET_PATH, name),
   showInFolder: (filePath?: string) => ipcRenderer.invoke(IpcChannel.FILE_SHOW_IN_FOLDER, filePath)
 }
 
@@ -92,8 +85,7 @@ const notificationApi = {
 }
 
 const clipboardApi = {
-  write: (text: string) => ipcRenderer.invoke(IpcChannel.CLIPBOARD_WRITE, text),
-  read: () => ipcRenderer.invoke(IpcChannel.CLIPBOARD_READ)
+  write: (text: string) => ipcRenderer.invoke(IpcChannel.CLIPBOARD_WRITE, text)
 }
 
 const shellApi = {
@@ -104,10 +96,6 @@ const storeApi = {
   get: (key: string) => ipcRenderer.invoke(IpcChannel.STORE_GET, key),
   set: (key: string, value: unknown) => ipcRenderer.invoke(IpcChannel.STORE_SET, key, value),
   delete: (key: string) => ipcRenderer.invoke(IpcChannel.STORE_DELETE, key)
-}
-
-const healthApi = {
-  ping: () => ipcRenderer.invoke(IpcChannel.PING)
 }
 
 // ---- Agent 本地运行时（云边双模阶段 1）----
@@ -187,15 +175,6 @@ const secureKeyApi = {
     ipcRenderer.invoke(IpcChannel.SECURE_KEY_DELETE, name)
 }
 
-// ---- 本地上传（云边双模阶段 2：userData/uploads）----
-const uploadApi = {
-  save: (req: UploadSaveRequest): Promise<UploadSaveResult> =>
-    ipcRenderer.invoke(IpcChannel.UPLOAD_SAVE, req),
-  list: (): Promise<UploadInfo[]> => ipcRenderer.invoke(IpcChannel.UPLOAD_LIST),
-  delete: (id: string): Promise<UploadDeleteResult> =>
-    ipcRenderer.invoke(IpcChannel.UPLOAD_DELETE, id)
-}
-
 // ---- 快捷键治理（electron-store 为主进程唯一真源，渲染端只读缓存 + 提交全量覆盖表）----
 const hotkeysApi = {
   /** 拉取当前覆盖表（应用启动 hydrate 用） */
@@ -215,11 +194,9 @@ const api = {
   clipboard: clipboardApi,
   shell: shellApi,
   store: storeApi,
-  health: healthApi,
   agent: agentApi,
   localChat: localChatApi,
   secureKeys: secureKeyApi,
-  upload: uploadApi,
   hotkeys: hotkeysApi
 }
 

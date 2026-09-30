@@ -67,23 +67,3 @@ export function getPastedImageFiles(clipboardData: DataTransfer | null): File[] 
   }
   return files
 }
-
-/** 深拷贝图片附件列表。 */
-export function cloneImageAttachments(images: ImageAttachment[]): ImageAttachment[] {
-  return images.map((img) => ({ ...img }))
-}
-
-/** 比较两个图片附件列表是否相等（按 id + dataUrl）。 */
-export function areImageAttachmentsEqual(left: ImageAttachment[], right: ImageAttachment[]): boolean {
-  if (left.length !== right.length) return false
-  return left.every((l, i) => {
-    const r = right[i]!
-    return l.id === r.id && l.dataUrl === r.dataUrl && l.mediaType === r.mediaType
-  })
-}
-
-/** 估算单张图片占用的 token（粗略：按解码后像素面积）。 */
-export function estimateImageTokens(attachment: ImageAttachment): number {
-  // 仅作展示用途的粗略估计
-  return 1024
-}

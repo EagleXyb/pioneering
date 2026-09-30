@@ -70,11 +70,6 @@ function emit() {
   for (const l of listeners) l()
 }
 
-/** 命令式读取，非 React 上下文使用 */
-export function isFeatureEnabled<K extends keyof FeatureFlags>(key: K): FeatureFlags[K] {
-  return currentFlags[key]
-}
-
 /** 命令式更新，会持久化并通知所有订阅 */
 export function setFeatureFlag<K extends keyof FeatureFlags>(key: K, value: FeatureFlags[K]): void {
   currentFlags = { ...currentFlags, [key]: value }
@@ -98,11 +93,6 @@ export function useFeatureFlag<K extends keyof FeatureFlags>(key: K): FeatureFla
     getSnapshot,
     () => DEFAULT_FLAGS // SSR 快照（本项目无 SSR，但 useSyncExternalStore 要求）
   )[key]
-}
-
-/** React Hook 读取全部 flag */
-export function useFeatureFlags(): FeatureFlags {
-  return useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_FLAGS)
 }
 
 // 暴露到 window 方便控制台调试（仅 dev）

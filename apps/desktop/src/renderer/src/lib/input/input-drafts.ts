@@ -25,14 +25,6 @@ export function getSessionInputDraftKey(sessionId: string): string {
   return `${DRAFT_PREFIX}:session:${sessionId}`
 }
 
-export function getHomeInputDraftKey(mode: string): string {
-  return `${DRAFT_PREFIX}:home:${mode}`
-}
-
-export function getProjectInputDraftKey(projectId: string, mode: string): string {
-  return `${DRAFT_PREFIX}:project:${projectId}:${mode}`
-}
-
 // ---- 读写（带 Promise 容错）----
 async function readRaw(key: string): Promise<InputDraftValue | null> {
   try {

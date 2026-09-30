@@ -46,7 +46,6 @@ const mockApi: PioneeringApi = {
   },
 
   app: {
-    getVersion: () => Promise.resolve('0.0.0-browser'),
     getPlatform: () => Promise.resolve('windows'),
     quit: noopAsync,
     checkUpdate: () => Promise.resolve('0.0.0'),
@@ -65,7 +64,6 @@ const mockApi: PioneeringApi = {
       Promise.resolve({ success: false, error: 'IPC not available in browser' }),
     write: (_req: unknown) =>
       Promise.resolve({ success: false, error: 'IPC not available in browser' }),
-    getPath: (_name: string) => Promise.resolve(''),
     showInFolder: (_filePath?: string) => Promise.resolve(false)
   },
 
@@ -78,8 +76,7 @@ const mockApi: PioneeringApi = {
   clipboard: {
     write: async (_text: string) => {
       await navigator.clipboard.writeText(_text).catch(noop)
-    },
-    read: () => navigator.clipboard.readText().catch(() => '')
+    }
   },
 
   shell: {
@@ -107,10 +104,6 @@ const mockApi: PioneeringApi = {
     }
   },
 
-  health: {
-    ping: () => Promise.resolve('pong')
-  },
-
   // 浏览器模式无本地 Agent 运行时（主进程 IPC 不存在）：
   // 提供安全桩——ipc 模式下调用会得到明确错误而非崩溃
   agent: {
@@ -127,7 +120,7 @@ const mockApi: PioneeringApi = {
     onEvent: (_callback: (envelope: never) => void) => noop
   },
 
-  // 云边双模阶段 2：本地持久化 / 密钥 / 上传 IPC 桩——
+  // 云边双模阶段 2：本地持久化 / 密钥 IPC 桩——
   // 浏览器模式无主进程，统一返回 ok:false 降级错误而非崩溃
   localChat: {
     listSessions: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
@@ -144,12 +137,6 @@ const mockApi: PioneeringApi = {
     list: () => Promise.resolve({ keys: [], descriptors: [] }),
     set: () => Promise.resolve({ ok: false, error: '密钥管理仅在 Electron 桌面端可用' }),
     delete: () => Promise.resolve({ ok: false, error: '密钥管理仅在 Electron 桌面端可用' })
-  },
-
-  upload: {
-    save: () => Promise.resolve({ ok: false, error: '本地上传仅在 Electron 桌面端可用' }),
-    list: () => Promise.resolve([]),
-    delete: () => Promise.resolve({ ok: false, error: '本地上传仅在 Electron 桌面端可用' })
   },
 
   // 快捷键治理：纯浏览器环境无主进程 globalShortcut。

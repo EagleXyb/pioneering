@@ -27,7 +27,6 @@ import type {
   FileReadResult,
   FileWriteRequest,
   NotificationOptions,
-  UserDataPath,
   AgentRunRequestPayload,
   LocalSessionListRequest,
   LocalSessionListResult,
@@ -41,11 +40,7 @@ import type {
   LocalDaoResult,
   SecureKeySetRequest,
   SecureKeySetResult,
-  SecureKeyInfo,
-  UploadSaveRequest,
-  UploadSaveResult,
-  UploadInfo,
-  UploadDeleteResult
+  SecureKeyInfo
 } from '../shared/ipc-channels'
 import {
   ensureAgentEnv,
@@ -61,7 +56,6 @@ import {
 } from './agent-runtime'
 import { getLocalChatStore, type LocalChatStore } from './local-store'
 import { getKeyStore, MANAGED_KEYS } from './key-store'
-import { getUploadStore } from './upload-store'
 import { getHotkeyManager } from './hotkey-main'
 import type { AbortRequest, HitlStateResponse } from '../shared/types'
 import type { HotkeyOverrides, HotkeyApplyResult } from '../shared/hotkey-protocol'
@@ -282,11 +276,6 @@ export function registerIpcHandlers(): void {
   })
 
   // ---- 应用信息 ----
-  ipcMain.handle(IpcChannel.APP_GET_VERSION, (event) => {
-    if (!isTrustedSender(event)) return ''
-    return app.getVersion()
-  })
-
   ipcMain.handle(IpcChannel.APP_GET_PLATFORM, (event) => {
     if (!isTrustedSender(event)) return ''
     return process.platform
@@ -329,7 +318,9 @@ export function registerIpcHandlers(): void {
   })
 
   // 渲染端同步后端 baseURL 到主进程，供 APP_NETWORK_CHECK 使用。
-  // 同时持久化到 appStore，使主进程在后续重启中也能恢复（best-effort）。
+  // 仅内存态同步：不做主进程持久化——渲染端启动时会从设置存储读取
+  // baseURL 并重新调用本通道（见 App.tsx 的 appApi.setApiBaseUrl 引导），
+  // 主进程持久化反而会引入双写漂移。
   ipcMain.handle(
     IpcChannel.APP_SET_API_BASE_URL,
     (event, url: string): boolean => {
@@ -448,11 +439,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IpcChannel.FILE_GET_PATH, (event, name: UserDataPath) => {
-    if (!isTrustedSender(event)) return ''
-    return app.getPath(name)
-  })
-
   // 在系统文件管理器中显示路径（会话操作菜单「打开文件夹」/ 产物卡片）。
   // 安全：仅允许展示应用自身数据目录内的路径（userData 与开发态 ~/.pioneering），
   // 无参数时直接打开 userData 目录。禁止传入任意自由路径，防止渲染端被攻陷后
@@ -498,11 +484,6 @@ export function registerIpcHandlers(): void {
     clipboard.writeText(text)
   })
 
-  ipcMain.handle(IpcChannel.CLIPBOARD_READ, (event) => {
-    if (!isTrustedSender(event)) return ''
-    return clipboard.readText()
-  })
-
   // ---- 外部链接 ----
   // H9（保持）：仅允许 http/https，避免 file:// / javascript: 等危险协议。
   // 该实现已属良好实践，不做修改，仅保留作为安全基线锚点。
@@ -538,12 +519,6 @@ export function registerIpcHandlers(): void {
     if (!isTrustedSender(event)) return false
     appStore.delete(key)
     return true
-  })
-
-  // ---- 健康检查 ----
-  ipcMain.handle(IpcChannel.PING, (event) => {
-    if (!isTrustedSender(event)) return ''
-    return 'pong'
   })
 
   // ---- Agent 本地运行时（云边双模阶段 1）----
@@ -763,8 +738,9 @@ export function registerIpcHandlers(): void {
         return Promise.resolve({ ok: false, error: 'Invalid messages' })
       }
       try {
-        const n = localChat().appendMessages(req.sessionId, sanitized as never)
-        return Promise.resolve({ ok: true, error: n >= 0 ? undefined : undefined })
+        // appendMessages 返回值恒为已插入条数（>=0），无失败通道，无需映射 error
+        localChat().appendMessages(req.sessionId, sanitized as never)
+        return Promise.resolve({ ok: true })
       } catch (e) {
         return Promise.resolve({ ok: false, error: String(e) })
       }
@@ -848,40 +824,6 @@ export function registerIpcHandlers(): void {
         return Promise.resolve({ ok: false, error: 'Invalid payload' })
       }
       return Promise.resolve({ ok: getKeyStore(appStore).delete(name) })
-    },
-  )
-
-  // ---- 本地上传（云边双模阶段 2：userData/uploads）----
-
-  const uploadStore = getUploadStore(path.join(app.getPath('userData'), 'uploads'))
-
-  ipcMain.handle(
-    IpcChannel.UPLOAD_SAVE,
-    (event, req: UploadSaveRequest): Promise<UploadSaveResult> => {
-      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
-      if (!req || typeof req.fileName !== 'string' || typeof req.base64 !== 'string') {
-        return Promise.resolve({ ok: false, error: 'Invalid payload' })
-      }
-      return uploadStore.save(req.fileName, req.base64)
-    },
-  )
-
-  ipcMain.handle(
-    IpcChannel.UPLOAD_LIST,
-    (event): Promise<UploadInfo[]> => {
-      if (!isTrustedSender(event)) return Promise.resolve([])
-      return uploadStore.list()
-    },
-  )
-
-  ipcMain.handle(
-    IpcChannel.UPLOAD_DELETE,
-    (event, id: string): Promise<UploadDeleteResult> => {
-      if (!isTrustedSender(event)) return Promise.resolve({ ok: false, error: 'Forbidden' })
-      if (typeof id !== 'string' || !id) {
-        return Promise.resolve({ ok: false, error: 'Invalid payload' })
-      }
-      return uploadStore.delete(id)
     },
   )
 

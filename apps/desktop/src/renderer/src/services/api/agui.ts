@@ -168,7 +168,7 @@ export function createAguiEventDispatcher(cb: AguiStreamCallbacks): {
         break
 
       case 'THINKING_TEXT_MESSAGE_CONTENT':
-        // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
+        // M3: 兼容后端以 content 字段推送（部分端点用 content 而非 delta），
         // 否则按 delta 全部丢弃，造成思考过程整段丢失。
         {
           const thinking = event.delta ?? event.content
@@ -185,7 +185,7 @@ export function createAguiEventDispatcher(cb: AguiStreamCallbacks): {
         break
 
       case 'TEXT_MESSAGE_CONTENT':
-        // M3: 兼容后端以 content 字段推送（共享类型 SSEChunk 定义为 content），
+        // M3: 兼容后端以 content 字段推送（部分端点用 content 而非 delta），
         // 否则按 delta 全部丢弃，造成正文整段丢失。
         {
           const text = event.delta ?? event.content

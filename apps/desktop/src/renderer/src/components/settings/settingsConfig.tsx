@@ -18,8 +18,8 @@
 //     ──── 分隔线 3 ────
 //     关于
 //   历史：
-//     - 原「分组小标题」机制（settingsGroups/getGroup）保留为兼容层；
-//       但 SettingsSidebar 已改为平铺 + dividerAfter，不再渲染分组标题。
+//     - 原「分组小标题」机制（settingsGroups/getGroup）已随死代码清理删除；
+//       SettingsSidebar 为平铺 + dividerAfter，不渲染分组标题。
 // ============================================================
 
 import type { ComponentType } from 'react'
@@ -54,19 +54,6 @@ export interface SettingsCategory {
   Component: ComponentType
   /** 在该项之后是否渲染一条水平分隔线（分组视觉断点） */
   dividerAfter?: boolean
-}
-
-// ────────────────────────────────────────────────────────────
-// 兼容层：保留分组查询 API（SettingsDialog 标题、外部代码可能引用）
-//   分类不再视觉上归属于「分组小标题」，但 getGroup 仍返回 label 为 '' 的空组。
-// ────────────────────────────────────────────────────────────
-export interface SettingsGroup {
-  id: string
-  label: string
-}
-export const settingsGroups: SettingsGroup[] = []
-export function getGroup(_groupId?: string): SettingsGroup | undefined {
-  return undefined
 }
 
 /** 占位组件 — 提示该分类尚未实现 */

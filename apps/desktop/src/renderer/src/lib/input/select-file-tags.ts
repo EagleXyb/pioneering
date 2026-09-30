@@ -4,8 +4,6 @@
 // 本模块只负责「文本 <-> 标签」的解析与转换，不涉及文档模型。
 // ============================================================
 
-import type { ImageAttachment } from './image-attachments'
-
 // ---- 标签正则 ----
 const FILE_TAG_RE = /<select-file>([\s\S]*?)<\/select-file>/g
 const PLUGIN_TAG_RE = /<select-plugin>([\s\S]*?)<\/select-plugin>/g
@@ -30,10 +28,6 @@ export interface SelectPluginPayload {
 }
 
 // ---- 创建标签 ----
-export function createSelectFileTag(filePath: string): string {
-  return `<select-file>${filePath}</select-file>`
-}
-
 export function createSelectFileToken(filePath: string): string {
   return `@{${filePath}}`
 }
@@ -61,20 +55,8 @@ function collectMatches(text: string): RawMatch[] {
 
   PLUGIN_TAG_RE.lastIndex = 0
   while ((m = PLUGIN_TAG_RE.exec(text)) !== null) {
-    let payload: SelectPluginPayload | undefined
-    try {
-      payload = JSON.parse(m[1] ?? '{}') as SelectPluginPayload
-    } catch {
-      payload = undefined
-    }
-    matches.push({
-      index: m.index,
-      end: m.index + m[0].length,
-      type: 'plugin',
-      content: m[1] ?? '',
-      // 通过 content 透传，外层再解析
-      ...(payload ? {} : {})
-    })
+    // 插件内容通过 content 透传，外层（parseSelectFileText）再解析 payload
+    matches.push({ index: m.index, end: m.index + m[0].length, type: 'plugin', content: m[1] ?? '' })
   }
 
   FILE_TOKEN_RE.lastIndex = 0
@@ -119,29 +101,6 @@ export function parseSelectFileText(text: string): SelectFileTextSegment[] {
   return segments
 }
 
-/** 查找光标位置所在的标签区间，返回匹配范围与内容（用于删除/高亮）。 */
-export function findSelectFileTagAt(
-  text: string,
-  cursor: number
-): { start: number; end: number; filePath?: string; plugin?: SelectPluginPayload } | null {
-  const matches = collectMatches(text)
-  for (const match of matches) {
-    if (cursor >= match.index && cursor <= match.end) {
-      if (match.type === 'file') {
-        return { start: match.index, end: match.end, filePath: match.content }
-      }
-      let payload: SelectPluginPayload | undefined
-      try {
-        payload = JSON.parse(match.content) as SelectPluginPayload
-      } catch {
-        payload = undefined
-      }
-      return { start: match.index, end: match.end, plugin: payload }
-    }
-  }
-  return null
-}
-
 /**
  * 计算 `@` 触发的文件搜索查询。
  * 算法（对应文档 §5.4）：
@@ -166,57 +125,3 @@ export function getSelectFileMentionQuery(
 
   return { start: atIndex, end: cursor, query: between }
 }
-
-/** 移除所有标签，仅保留纯文本。 */
-export function selectFileTextToPlainText(text: string): string {
-  return parseSelectFileText(text)
-    .map((seg) => (seg.type === 'text' ? seg.content : ''))
-    .join('')
-}
-
-/** 统一转为 `@{}` 内联 Token 格式（文件标签 <-> 内联 Token）。 */
-export function normalizeSelectFileText(text: string): string {
-  let out = text.replace(FILE_TAG_RE, (_full, p1: string) => `@{${p1}}`)
-  // 插件标签保持不变
-  return out
-}
-
-/** 统一转为 `<select-file>` XML 格式（用于发送给后端）。 */
-export function serializeSelectFileText(text: string): string {
-  let out = text.replace(FILE_TOKEN_RE, (_full, p1: string) => `<select-file>${p1}</select-file>`)
-  return out
-}
-
-/** 文本是否包含任意文件引用标签。 */
-export function hasSelectFileTag(text: string): boolean {
-  return FILE_TAG_RE.test(text) || FILE_TOKEN_RE.test(text)
-}
-
-/** 是否存在任意插件引用标签。 */
-export function hasSelectPluginTag(text: string): boolean {
-  return PLUGIN_TAG_RE.test(text)
-}
-
-/** 提取所有文件引用路径（去重，保留顺序）。 */
-export function extractFilePaths(text: string): string[] {
-  const paths: string[] = []
-  for (const seg of parseSelectFileText(text)) {
-    if (seg.type === 'file' && seg.filePath && !paths.includes(seg.filePath)) {
-      paths.push(seg.filePath)
-    }
-  }
-  return paths
-}
-
-/** 从序列化文本中移除指定文件路径的引用（用于删除文件引用）。 */
-export function removeFilePathFromText(text: string, filePath: string): string {
-  const token = createSelectFileToken(filePath)
-  const tag = createSelectFileTag(filePath)
-  let out = text.split(token).join('')
-  out = out.split(tag).join('')
-  // 清理可能残留的连续空白
-  return out.replace(/\s{2,}/g, ' ').trim()
-}
-
-// ---- 与图片附件的交互（供发送构建）----
-export type SendImages = ImageAttachment[]

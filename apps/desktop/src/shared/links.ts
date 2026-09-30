@@ -24,12 +24,6 @@
  */
 export const OFFICIAL_SITE_URL = 'https://pioneering.ai'
 
-/** 趋势报告子页（在官网根域下） */
-export const TRENDS_REPORT_URL = `${OFFICIAL_SITE_URL}/trends`
-
-/** 桌面端分发入口（CTA 按钮指向） */
-export const DESKTOP_DOWNLOAD_URL = `${OFFICIAL_SITE_URL}/desktop`
-
 /** 文档中心 */
 export const DOCS_URL = 'https://docs.pioneering.ai'
 
