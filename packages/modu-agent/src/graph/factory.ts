@@ -196,10 +196,18 @@ export async function build_checkpointer(
   // HITL 依赖：interrupt 状态保存在 checkpointer 中，跨请求 resume 需要复用
   // 同一个 MemorySaver 实例——若每次 create_agent() 新建，中断状态会随实例销毁丢失。
   // 改为惰性单例后，所有图实例共享同一份 checkpoint 数据（与 get_runner 缓存语义一致）。
-  const { MemorySaver } = await import('@langchain/langgraph')
+  //
+  // P1-7：使用 BoundedMemorySaver（MemorySaver 子类），按 memory.checkpointer_max_threads
+  // 做 LRU 淘汰，防止长跑多会话进程中 checkpoint state 无界增长。
   if (_sharedMemoryCheckpointer === null) {
-    _sharedMemoryCheckpointer = new MemorySaver()
-    logger.info('Built shared MemorySaver checkpointer (singleton)')
+    const { MemorySaver } = await import('@langchain/langgraph')
+    const { BoundedMemorySaver } = await import('./bounded-memory-saver.js')
+    const maxThreadsRaw = Number(getConfig().get('memory.checkpointer_max_threads', 100))
+    const maxThreads = Number.isFinite(maxThreadsRaw) && maxThreadsRaw >= 1
+      ? Math.floor(maxThreadsRaw)
+      : 100
+    _sharedMemoryCheckpointer = new BoundedMemorySaver(maxThreads)
+    logger.info('Built shared BoundedMemorySaver checkpointer (singleton, max_threads=%s)', maxThreads)
     // 能力边界显式告警：HITL 暂停态（interrupt 载荷 + 待答复项）只存在于本进程内存。
     // 进程重启 / 多实例部署后 GET /agent/state 将返回 pending=false，
     // 前端无法恢复待答复项（表现为"暂停项已失效"）。生产环境请改用 sqlite 检查点。

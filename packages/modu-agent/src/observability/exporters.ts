@@ -180,6 +180,9 @@ export async function start_prometheus_server(
   port: number = 9090,
   path: string = '/metrics',
   registry?: any | null,
+  // P1-25：默认仅绑定 loopback，指标端点不向局域网/公网暴露；
+  // 需要容器外采集（host/节点外 Prometheus）时必须显式传 '0.0.0.0'（运维 opt-in）。
+  host: string = '127.0.0.1',
 ): Promise<any | null> {
   if (_prometheus_lock) {
     logger.debug('start_prometheus_server: concurrent call, skipping')
@@ -251,11 +254,11 @@ export async function start_prometheus_server(
         resolve(null)
       })
 
-      server.listen(port, () => {
+      server.listen(port, host, () => {
         _prometheus_server = server
         logger.info(
-          'Prometheus server started: port=%d path=%s',
-          port, path,
+          'Prometheus server started: host=%s port=%d path=%s',
+          host, port, path,
         )
         _prometheus_lock = false
         resolve(server)

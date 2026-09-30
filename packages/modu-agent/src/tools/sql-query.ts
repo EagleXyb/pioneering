@@ -30,6 +30,24 @@ const _FORBIDDEN_SQL_KEYWORDS = /\b(DROP|DELETE|INSERT|UPDATE|REPLACE|ALTER|CREA
 // SELECT 语句前缀校验
 const _SELECT_PREFIX = /^\s*SELECT\b/i
 
+/**
+ * P1-12：只读查询限量下推。
+ *
+ * 把用户 SELECT 包装为 `SELECT * FROM (<inner>) LIMIT maxRows+1`：
+ *   - 引擎在扫描/物化 maxRows+1 行后即可终止，避免百万行结果集进入进程内存；
+ *   - 调用方以"取到 maxRows+1 行"作为截断判据（修正旧实现"恰好等于 maxRows
+ *     也误报 truncated"的问题）；
+ *   - 入机 SQL 已由 _validateQuery 保证为 SELECT；尾部分号在子查询内非法，显式剥离。
+ *
+ * 导出为纯函数便于在无 better-sqlite3 原生模块的环境下单测包装逻辑。
+ */
+export function applySelectLimitPushdown(query: string, maxRows: number): string {
+  // trim 去首尾空白，再剥离结尾的分号与分号周边空白（子查询内尾分号非法）
+  const inner = query.trim().replace(/[\s;]+$/g, '')
+  return `SELECT * FROM (${inner}) LIMIT ${maxRows + 1}`
+}
+
+
 // 表名引用提取正则（对应文档 §2.5 建议4）：
 //   支持三种表引用格式：
 //     1. 引号标识符（双引号）："my table" 或 ""quoted"" 转义
@@ -273,11 +291,12 @@ export class SqlQueryTool extends BaseTool {
         logger.warning('SqlQuery: query_only pragma unsupported, relying on readonly option: %s', String(e))
       }
 
-      const stmt = db.prepare(query)
-      const rows = stmt.all(...queryParams) as any[]
-
-      // 限制返回行数
-      const limitedRows = rows.slice(0, this._maxRows)
+      const stmt = db.prepare(applySelectLimitPushdown(query, this._maxRows))
+      // P1-12：限量下推到 SQL（LIMIT maxRows+1）——引擎可提前终止扫描，
+      // 不再把整张结果集物化进进程内存；取到 maxRows+1 行即证明发生截断。
+      const fetched = stmt.all(...queryParams) as any[]
+      const truncated = fetched.length > this._maxRows
+      const limitedRows = truncated ? fetched.slice(0, this._maxRows) : fetched
       const columns: string[] = limitedRows.length > 0 ? Object.keys(limitedRows[0]) : []
 
       return {
@@ -287,7 +306,7 @@ export class SqlQueryTool extends BaseTool {
           columns,
           rows: limitedRows,
           row_count: limitedRows.length,
-          truncated: limitedRows.length >= this._maxRows,
+          truncated,
         },
       }
     } catch (e: any) {

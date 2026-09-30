@@ -56,6 +56,13 @@ export class DefaultPolicyEngine implements PolicyEngine {
     return all.map((r) => r.id)
   }
 
+  /** 移除规则；返回规则此前是否存在（P0-1：卸载回滚闭环）。 */
+  remove(id: string): boolean {
+    const existed = this._rules.delete(id)
+    if (existed) logger.debug('Removed policy rule: %s', id)
+    return existed
+  }
+
   async decide(
     stage: PolicyStage,
     subject: PolicySubject,
@@ -106,6 +113,10 @@ export class NoopPolicyEngine implements PolicyEngine {
 
   listRules(_stage?: PolicyStage): string[] {
     return []
+  }
+
+  remove(_id: string): boolean {
+    return false
   }
 
   async decide(

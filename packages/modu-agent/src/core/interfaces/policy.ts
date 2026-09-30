@@ -149,4 +149,11 @@ export interface PolicyEngine {
   ): Promise<PolicyDecision>
   /** 列出规则 id（可按阶段过滤） */
   listRules(stage?: PolicyStage): string[]
+  /**
+   * 移除规则；返回规则此前是否存在。
+   *
+   * 场景包卸载 / `ComponentRegistry.unregisterPolicyRule` 时调用，
+   * 保证规则从引擎内摘除，避免"注册表已删、引擎仍命中"的权限残留。
+   */
+  remove(id: string): boolean
 }

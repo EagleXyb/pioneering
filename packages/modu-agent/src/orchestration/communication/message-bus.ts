@@ -60,6 +60,10 @@ export class Subscription {
 export class EventBus {
   private _subscriptions: Subscription[] = []
   private _domainIndex: Map<string, Subscription[]> = new Map()
+  // P0-7：无 domain 的全局订阅者（如 PersistentEventLog 审计日志）单独索引。
+  // 域索引仅作分发加速，绝不能替代全局集合——否则某 domain 一旦存在域级订阅者，
+  // 该 domain 的全部事件都会跳过全局订阅者，造成审计事件间歇性丢失。
+  private _globalSubs: Subscription[] = []
 
   subscribe(
     handler: EventHandler,
@@ -76,6 +80,8 @@ export class EventBus {
         this._domainIndex.set(domain, list)
       }
       list.push(sub)
+    } else {
+      this._globalSubs.push(sub)
     }
 
     return () => {
@@ -91,13 +97,23 @@ export class EventBus {
             list.splice(i2, 1)
           }
         }
+      } else {
+        const gi = this._globalSubs.indexOf(sub)
+        if (gi >= 0) {
+          this._globalSubs.splice(gi, 1)
+        }
       }
     }
   }
 
   async publish(event: AgentEvent): Promise<void> {
-    let matched = this._domainIndex.get(event.domain)
-    if (!matched || matched.length === 0) {
+    // P0-7：接收方 = 域级订阅者 ∪ 全局订阅者。
+    // 一个订阅者要么属域级、要么属全局（互斥），concat 不会重复。
+    // 无 domain 的事件退化为全量扫描，由 Subscription.matches 做最终过滤。
+    let matched: Subscription[]
+    if (event.domain) {
+      matched = (this._domainIndex.get(event.domain) ?? []).concat(this._globalSubs)
+    } else {
       matched = this._subscriptions
     }
 
@@ -187,15 +203,36 @@ export interface PersistentEventLogOptions {
    * 对应文档 §2.2 建议5：事件 TTL。
    */
   event_ttl_ms?: number
+  /**
+   * P1-11：内存写队列硬上限（事件条数）。
+   * 磁盘写入跟不上时丢弃最旧事件并计数告警，防止无界排队 OOM。默认 1000。
+   */
+  max_queue_size?: number
+  /** P1-11：单次 appendFile 最多合并的事件条数，默认 50。 */
+  write_batch_size?: number
+  /** P1-11：无数据时的轮询/攒批等待（毫秒），默认 100。 */
+  write_flush_interval_ms?: number
 }
+
+/** P1-11 默认写队列上限。 */
+const _DEFAULT_WRITE_QUEUE_LIMIT = 1000
+/** P1-11 默认每批写入条数。 */
+const _DEFAULT_WRITE_BATCH_SIZE = 50
+/** P1-11 默认攒批/轮询间隔（毫秒）。 */
+const _DEFAULT_FLUSH_INTERVAL_MS = 100
 
 export class PersistentEventLog {
   private _log_file_path: string
   private _max_file_size: number
   private _domains: Set<string> | null
   private _event_ttl_ms: number
+  private _queue_limit: number
+  private _batch_size: number
+  private _flush_interval_ms: number
   private _enabled = false
   private _write_queue: AgentEvent[] = []
+  /** P1-11：因队列达上限丢弃的事件计数（可观测）。 */
+  private _dropped_count = 0
   private _writer_running = false
   private _writerPromise: Promise<void> | null = null
 
@@ -210,13 +247,35 @@ export class PersistentEventLog {
       this._max_file_size = Math.floor(max_file_size_mb * 1024 * 1024)
       this._domains = domains ? new Set(domains) : null
       this._event_ttl_ms = 0
+      this._queue_limit = _DEFAULT_WRITE_QUEUE_LIMIT
+      this._batch_size = _DEFAULT_WRITE_BATCH_SIZE
+      this._flush_interval_ms = _DEFAULT_FLUSH_INTERVAL_MS
     } else {
       const opts = log_file_path_or_opts
       this._log_file_path = opts.log_file_path
       this._max_file_size = Math.floor((opts.max_file_size_mb ?? 10.0) * 1024 * 1024)
       this._domains = opts.domains ? new Set(opts.domains) : null
       this._event_ttl_ms = opts.event_ttl_ms ?? 0
+      this._queue_limit = opts.max_queue_size !== undefined && opts.max_queue_size >= 1
+        ? Math.floor(opts.max_queue_size)
+        : _DEFAULT_WRITE_QUEUE_LIMIT
+      this._batch_size = opts.write_batch_size !== undefined && opts.write_batch_size >= 1
+        ? Math.floor(opts.write_batch_size)
+        : _DEFAULT_WRITE_BATCH_SIZE
+      this._flush_interval_ms = opts.write_flush_interval_ms !== undefined && opts.write_flush_interval_ms >= 1
+        ? Math.floor(opts.write_flush_interval_ms)
+        : _DEFAULT_FLUSH_INTERVAL_MS
     }
+  }
+
+  /** P1-11：累计因队列满而丢弃的事件数（测试/监控用）。 */
+  get droppedCount(): number {
+    return this._dropped_count
+  }
+
+  /** P1-11：当前待写队列长度（测试/监控用）。 */
+  get queueLength(): number {
+    return this._write_queue.length
   }
 
   async start(event_bus: EventBus): Promise<void> {
@@ -262,49 +321,77 @@ export class PersistentEventLog {
         return
       }
     }
+    // P1-11：队列硬上限——背压场景丢弃最旧事件（审计日志可丢，内存不可爆），
+    // 计数并按频率告警，绝不静默。
+    if (this._write_queue.length >= this._queue_limit) {
+      this._write_queue.shift()
+      this._dropped_count += 1
+      if (this._dropped_count === 1 || this._dropped_count % 100 === 0) {
+        logger.warning(
+          'Persistent event log write queue is full (limit=%s); dropped %s oldest event(s)',
+          this._queue_limit, this._dropped_count,
+        )
+      }
+    }
     this._write_queue.push(event)
+  }
+
+  /** 序列化单个事件为 JSONL 行（二进制 payload 不落盘）。 */
+  private _serializeEvent(event: AgentEvent): string {
+    const event_dict: Record<string, any> = {
+      event_id: event.event_id,
+      timestamp: event.timestamp.toISOString(),
+      trace_id: event.trace_id,
+      session_id: event.session_id,
+      user_id: event.user_id,
+      domain: event.domain,
+      action: event.action,
+      priority: event.priority,
+      metadata: event.metadata,
+      schema_version: event.schema_version,
+    }
+    const payload: any = event.payload
+    if (payload !== undefined && payload !== null && !(payload instanceof Uint8Array)) {
+      event_dict['payload'] = payload
+    }
+    return JSON.stringify(event_dict) + '\n'
+  }
+
+  /**
+   * P1-11：单批落盘——一批只做一次（可选的）滚动检查与一次 appendFile，
+   * 消除原实现"每事件 existsSync + stat + append"的同步 IO 与磁盘写放大。
+   */
+  private async _writeBatch(batch: AgentEvent[]): Promise<void> {
+    if (batch.length === 0) return
+    try {
+      // 不做 existsSync：stat 直接判定大小；文件不存在时抛 ENOENT，按"新文件"处理
+      try {
+        const stats = await stat(this._log_file_path)
+        if (stats.size > this._max_file_size) {
+          await this._rotateLog()
+        }
+      } catch {
+        // 文件尚未创建：无需滚动
+      }
+      const lines = batch.map((e) => this._serializeEvent(e)).join('')
+      await appendFile(this._log_file_path, lines, 'utf-8')
+    } catch (e) {
+      logger.warning('Failed to write event log batch (size=%d): %s', batch.length, String(e))
+    }
   }
 
   private async _writerLoop(): Promise<void> {
     // 在 _writer_running 为 true 时持续运行；被 stop() 置为 false 后，
-    // 仍需处理完队列中剩余事件再退出，避免数据丢失
+    // 仍需处理完队列中剩余事件再退出，避免数据丢失。
     while (this._writer_running || this._write_queue.length > 0) {
       if (this._write_queue.length === 0) {
-        await new Promise((r) => setTimeout(r, 1000))
+        if (!this._writer_running) break
+        await new Promise((r) => setTimeout(r, this._flush_interval_ms))
         continue
       }
-      const event = this._write_queue.shift()!
-      try {
-        if (fs.existsSync(this._log_file_path)) {
-          const stats = await stat(this._log_file_path)
-          if (stats.size > this._max_file_size) {
-            await this._rotateLog()
-          }
-        }
-        // P0（T-03）：落盘 payload。
-        // 审计事件的关键语义（event_type / decision / details）位于 payload，
-        // 若仅落 metadata 则审计日志缺少决策依据。二进制载荷（Uint8Array）不落 JSON 行。
-        const event_dict: Record<string, any> = {
-          event_id: event.event_id,
-          timestamp: event.timestamp.toISOString(),
-          trace_id: event.trace_id,
-          session_id: event.session_id,
-          user_id: event.user_id,
-          domain: event.domain,
-          action: event.action,
-          priority: event.priority,
-          metadata: event.metadata,
-          schema_version: event.schema_version,
-        }
-        const payload: any = event.payload
-        if (payload !== undefined && payload !== null && !(payload instanceof Uint8Array)) {
-          event_dict['payload'] = payload
-        }
-        const line = JSON.stringify(event_dict) + '\n'
-        await appendFile(this._log_file_path, line, 'utf-8')
-      } catch (e) {
-        logger.warning('Failed to write event log: %s', String(e))
-      }
+      // P1-11：攒批取快照（最多 _batch_size 条），一次 appendFile 落盘
+      const batch = this._write_queue.splice(0, this._batch_size)
+      await this._writeBatch(batch)
     }
   }
 

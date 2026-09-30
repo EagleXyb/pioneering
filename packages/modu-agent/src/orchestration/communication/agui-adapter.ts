@@ -1,4 +1,4 @@
-// 对应 Python: orchestration/communication/agui_adapter.py
+﻿// 对应 Python: orchestration/communication/agui_adapter.py
 // AGUIStreamAdapter + AGUIStateMachine + 19 种 AG-UI 事件类型
 import { randomUUID } from 'crypto'
 
@@ -1058,22 +1058,24 @@ export class AGUIStreamAdapter {
     let interrupted = false
     let interruptValue: Record<string, any> | null = null
 
-    console.info('[agui-adapter] transform.start trace_id=%s message_id=%s', this._trace_id, this._message_id)
+    // P1-24：流式热路径日志统一降为 debug（旧实现每个上游事件 3 条 console.info，
+    // 长流产生数千行同步 IO）。
+    logger.debug('transform.start trace_id=%s message_id=%s', this._trace_id, this._message_id)
     yield sm.emit_run_started() as Record<string, string>
 
     for await (const event of langgraph_stream) {
       eventIdx++
       const event_type = (event.type as string) ?? ''
-      console.info(
-        '[agui-adapter] transform.event[%d] type=%s node=%s keys=%j',
+      logger.debug(
+        'transform.event[%d] type=%s node=%s keys=%j',
         eventIdx, event_type, (event as any)?.node ?? '',
         Object.keys(event || {}),
       )
       let should_stop = false
 
       const processed = AGUIStreamAdapter._process_langgraph_event(sm, event, event_type)
-      console.info(
-        '[agui-adapter] transform.event[%d] processed_count=%d',
+      logger.debug(
+        'transform.event[%d] processed_count=%d',
         eventIdx, Array.isArray(processed) ? processed.length : 0,
       )
       for (const ev of processed) {
@@ -1084,14 +1086,12 @@ export class AGUIStreamAdapter {
         if (final_response === '' && sm.response_text) {
           final_response = sm.response_text
         }
-        const evData = (ev as any)?.data ?? ''
-        const evType = evData ? (JSON.parse(evData).type ?? '') : ''
-        console.info('[agui-adapter] transform.yield agui_type=%s', evType)
+        // P1-24：删除仅为日志服务的 JSON.parse（每个输出事件一次重复反序列化）。
         yield ev as Record<string, string>
       }
 
       if (should_stop) {
-        console.info('[agui-adapter] transform.stop_sentinel at event[%d]', eventIdx)
+        logger.debug('transform.stop_sentinel at event[%d]', eventIdx)
         break
       }
 
@@ -1104,11 +1104,7 @@ export class AGUIStreamAdapter {
           interrupted = true
           const first = interrupts[0]
           interruptValue = (first?.value ?? first) as Record<string, any> | null
-          console.info(
-            '[agui-adapter] transform.interrupt_detected(updates) session=%s tool_calls=%d',
-            this._trace_id, Array.isArray(interruptValue?.tool_calls) ? interruptValue!.tool_calls.length : 0,
-          )
-        }
+          }
       }
 
       if (event_type === 'values') {
@@ -1121,8 +1117,8 @@ export class AGUIStreamAdapter {
             interrupted = true
             const first = interrupts[0]
             interruptValue = (first?.value ?? first) as Record<string, any> | null
-            console.info(
-              '[agui-adapter] transform.interrupt_detected session=%s tool_calls=%d',
+            logger.debug(
+              'transform.interrupt_detected session=%s tool_calls=%d',
               this._trace_id, Array.isArray(interruptValue?.tool_calls) ? interruptValue!.tool_calls.length : 0,
             )
           }
@@ -1134,13 +1130,13 @@ export class AGUIStreamAdapter {
       }
     }
 
-    console.info(
-      '[agui-adapter] transform.loop_end total_events=%d text_started=%s final_response_len=%d collected_len=%d',
+    logger.debug(
+      'transform.loop_end total_events=%d text_started=%s final_response_len=%d collected_len=%d',
       eventIdx, sm.text_message_started, final_response.length, sm.collected_text.length,
     )
 
     if (sm.has_error) {
-      console.info('[agui-adapter] transform.has_error, returning early')
+      logger.debug('transform.has_error, returning early')
       this._sync_state_machine(sm)
       return
     }
@@ -1150,7 +1146,7 @@ export class AGUIStreamAdapter {
     // 并跳过全部"完成"语义（RUN_FINISHED / flush_message_buffer / emit_text_end），
     // 前端据此进入 paused 状态等待用户答复，而不是结束本轮。
     if (interrupted) {
-      console.info('[agui-adapter] transform.interrupt_branch, emitting USER_QUESTION_REQUEST + RUN_PAUSED')
+      logger.debug('transform.interrupt_branch, emitting USER_QUESTION_REQUEST + RUN_PAUSED')
       const pauseEvents = AGUIStreamAdapter._process_interrupt_event(
         interruptValue,
         this._trace_id,
@@ -1181,11 +1177,11 @@ export class AGUIStreamAdapter {
       const toolNames = Array.from(new Set(sm.tool_call_records.map((r) => r.tool_name)))
       final_response =
         `任务已完成：共执行 ${sm.tool_call_records.length} 次工具调用（${toolNames.join('、')}）。`
-      console.info('[agui-adapter] transform.final_fallback len=%d', final_response.length)
+      logger.debug('transform.final_fallback len=%d', final_response.length)
     }
 
     if (!sm.text_message_started && final_response) {
-      console.info('[agui-adapter] transform.fallback_text_content len=%d', final_response.length)
+      logger.debug('transform.fallback_text_content len=%d', final_response.length)
       for (const ev of sm.emit_text_content(final_response)) {
         yield ev as Record<string, string>
       }
@@ -1195,8 +1191,8 @@ export class AGUIStreamAdapter {
     // 用 final_response 覆盖 collected_text（仅影响持久化，不重发流式事件）。
     // 防御流式管道可能遗漏最终回答边缘 token 的情况。
     if (final_response && final_response.length > sm.collected_text.length) {
-      console.info(
-        '[agui-adapter] transform.override_collected_text stream_len=%d final_len=%d',
+      logger.debug(
+        'transform.override_collected_text stream_len=%d final_len=%d',
         sm.collected_text.length, final_response.length,
       )
       sm.collected_text = final_response
@@ -1207,7 +1203,7 @@ export class AGUIStreamAdapter {
     }
 
     yield sm.emit_run_finished() as Record<string, string>
-    console.info('[agui-adapter] transform.run_finished')
+    logger.debug('transform.run_finished')
 
     this._sync_state_machine(sm)
   }

@@ -15,16 +15,38 @@ const logger = {
  *
  * P2-3: 原 redis_adapter.py 名不副实（无 Redis），重命名为 short_term_memory.py
  * 以准确反映其实现。如需 Redis 支持，请新建 redis-short-term-memory.ts。
+ *
+ * P1-10:
+ *   - 时间戳量纲统一为秒：写入时 >1e12 的入参视为毫秒自动 /1000（兼容 Date.now() 调用方）；
+ *   - 过期清空后立即删除 userId 空键，避免 Map 随用户数线性泄漏；
+ *   - 低频全量 sweep（默认 60s 节流），让"只写不读"用户的过期数据也能被回收。
  */
 export class InMemoryShortTermMemory extends BaseMemory {
+  /** 全量 sweep 默认节流间隔（秒）。 */
+  static readonly DEFAULT_SWEEP_INTERVAL_SECONDS = 60
+  /** 毫秒时间戳判定阈值（秒级时间戳约 1e9，毫秒约 1e12+）。 */
+  private static readonly _MS_THRESHOLD = 1e12
+
   private _maxTurns: number
   private _ttlSeconds: number
+  private _sweepIntervalSeconds: number
   private _store: Map<string, Array<Record<string, any>>> = new Map()
+  private _lastSweepAt = 0
 
-  constructor(maxTurns: number = 5, ttlSeconds: number = 3600) {
+  constructor(
+    maxTurns: number = 5,
+    ttlSeconds: number = 3600,
+    sweepIntervalSeconds: number = InMemoryShortTermMemory.DEFAULT_SWEEP_INTERVAL_SECONDS,
+  ) {
     super()
     this._maxTurns = maxTurns
     this._ttlSeconds = ttlSeconds
+    this._sweepIntervalSeconds = Math.max(0, sweepIntervalSeconds)
+  }
+
+  /** 归一化时间戳：毫秒（>1e12）转秒；秒级/0 原样返回。 */
+  private _normalizeTimestamp(rawTs: number): number {
+    return rawTs > InMemoryShortTermMemory._MS_THRESHOLD ? rawTs / 1000 : rawTs
   }
 
   query(
@@ -32,7 +54,9 @@ export class InMemoryShortTermMemory extends BaseMemory {
     contextWindow: string,
     requiredFields: string[],
   ): Record<string, any> {
-    this._evictExpired(userId)
+    const now = Date.now() / 1000
+    this._maybeSweep(now)
+    this._evictExpired(userId, now)
 
     const entries = this._store.get(userId)
     if (!entries || entries.length === 0) {
@@ -60,13 +84,22 @@ export class InMemoryShortTermMemory extends BaseMemory {
     newData: Record<string, any>,
     metadata: Record<string, any>,
   ): boolean {
+    // P1-10：sweep 在写入前执行——先回收（含本用户的）过期条目，再压入新条目。
+    // 放在 push 之后会出现"sweep 删除当前用户键 → 本函数后续访问悬空"的问题。
+    this._maybeSweep()
+
     if (!this._store.has(userId)) {
       this._store.set(userId, [])
     }
     const entries = this._store.get(userId)!
 
     const entry: Record<string, any> = { ...newData }
-    entry['_timestamp'] = metadata.timestamp ?? Date.now() / 1000
+    // P1-10：缺省/显式时间戳统一为秒（毫秒入参自动钳制，保证 TTL 始终生效）
+    entry['_timestamp'] = this._normalizeTimestamp(
+      typeof metadata.timestamp === 'number'
+        ? metadata.timestamp
+        : Date.now() / 1000,
+    )
     entry['_session_id'] = metadata.session_id ?? ''
 
     entries.push(entry)
@@ -77,21 +110,26 @@ export class InMemoryShortTermMemory extends BaseMemory {
       this._store.set(userId, keep)
     }
 
-    logger.debug('Memory updated for user %s, total entries: %d', userId, this._store.get(userId)!.length)
+    logger.debug('Memory updated for user %s, total entries: %d', userId, entries.length)
     return true
   }
 
-  private _evictExpired(userId: string): void {
+  private _evictExpired(userId: string, now: number = Date.now() / 1000): void {
     const entries = this._store.get(userId)
     if (!entries) {
       return
     }
 
-    const now = Date.now() / 1000
     const cutoff = now - this._ttlSeconds
     const originalLen = entries.length
     const kept = entries.filter((e) => (e['_timestamp'] ?? 0) > cutoff)
-    this._store.set(userId, kept)
+
+    // P1-10：清空后删除空键，Map 不再随历史用户数无限增长
+    if (kept.length === 0) {
+      this._store.delete(userId)
+    } else if (kept.length !== originalLen) {
+      this._store.set(userId, kept)
+    }
 
     if (kept.length < originalLen) {
       logger.debug(
@@ -99,6 +137,19 @@ export class InMemoryShortTermMemory extends BaseMemory {
         originalLen - kept.length,
         userId,
       )
+    }
+  }
+
+  /**
+   * P1-10：低频全量过期回收。
+   * 单个用户的 query/update 只会驱逐自己；本 sweep 按时间节流遍历全部用户，
+   * 回收"只写不读"用户的过期条目与空键。
+   */
+  private _maybeSweep(now: number = Date.now() / 1000): void {
+    if (now - this._lastSweepAt < this._sweepIntervalSeconds) return
+    this._lastSweepAt = now
+    for (const userId of [...this._store.keys()]) {
+      this._evictExpired(userId, now)
     }
   }
 

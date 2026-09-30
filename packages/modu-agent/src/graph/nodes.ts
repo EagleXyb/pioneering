@@ -1416,37 +1416,40 @@ export function makeToolResultProcessor(
               docWriterFailIncrement++
             }
           }
-        }
 
-        // P0-3: Observation 蒸馏
-        // 启用条件：distiller 非空 + enableDistillation=true
-        // 蒸馏结果写入 observation_history，供 agentNode 作为辅助上下文注入
-        // 异常时跳过蒸馏（不影响 tool_results 提取与主流程）
-        if (distiller && enableDistillation) {
-          try {
-            const distilled = distiller.distill(
-              parsedContent,
-              state.current_step ?? state.current_subtask ?? null,
-              state.observation_history ?? [],
-            )
-            observationHistoryEntries.push({
-              tool: toolName,
-              execution_id: toolCallId,
-              summary: distilled.summary,
-              status: distilled.status,
-              key_metrics: distilled.key_metrics,
-              records_count: distilled.records_count,
-              // P1-1: 异常信号增强 —— 透传 enhancement 文本到 observation_history
-              // agentNode 注入上下文时会一并展示，引导 LLM 调整策略
-              enhancement: distilled.enhancement,
-            })
-          } catch (e: any) {
-            // 蒸馏异常降级：跳过此条蒸馏，不影响主流程
-            logger.warning(
-              '[P0-3] Observation distillation failed for tool %s, skipping: %s',
-              toolName,
-              String(e?.message ?? e),
-            )
+          // P0-3 / P0-6: Observation 蒸馏必须在去重守卫内执行——
+          // 原实现把蒸馏块放在守卫之外，tool_processor 每轮 ReAct 都会对全部
+          // 历史 ToolMessage 重新蒸馏，observation_history（append reducer）按轮次
+          // 二次增长并污染"最近 5 条"注入。仅对新 ToolMessage（未处理 execution_id）
+          // 蒸馏一次，resume/重执行天然幂等。
+          // 启用条件：distiller 非空 + enableDistillation=true；
+          // 异常时跳过蒸馏（不影响 tool_results 提取与主流程）。
+          if (distiller && enableDistillation) {
+            try {
+              const distilled = distiller.distill(
+                parsedContent,
+                state.current_step ?? state.current_subtask ?? null,
+                state.observation_history ?? [],
+              )
+              observationHistoryEntries.push({
+                tool: toolName,
+                execution_id: toolCallId,
+                summary: distilled.summary,
+                status: distilled.status,
+                key_metrics: distilled.key_metrics,
+                records_count: distilled.records_count,
+                // P1-1: 异常信号增强 —— 透传 enhancement 文本到 observation_history
+                // agentNode 注入上下文时会一并展示，引导 LLM 调整策略
+                enhancement: distilled.enhancement,
+              })
+            } catch (e: any) {
+              // 蒸馏异常降级：跳过此条蒸馏，不影响主流程
+              logger.warning(
+                '[P0-3] Observation distillation failed for tool %s, skipping: %s',
+                toolName,
+                String(e?.message ?? e),
+              )
+            }
           }
         }
 
@@ -2602,6 +2605,8 @@ export function makeSubagentNode(
     const multiAgentCfg = config.get('orchestration.multi_agent', {}) ?? {}
     const timeoutMs = Number(multiAgentCfg['subgraph_timeout_ms'] ?? 30000)
     const maxRetries = Number(multiAgentCfg['subagent_max_retries'] ?? 1)
+    // P1-17：子图循环上限必须经 invoke config 传入（LangGraph JS 不读编译产物上的属性）
+    const recursionLimit = Number(multiAgentCfg['subgraph_recursion_limit'] ?? 10)
 
     // v1.4 §4.4 建议3：读取共享黑板，注入到子任务上下文
     //   子 Agent 可读取其他已完成子 Agent 写入的中间结果（如 search_results）
@@ -2626,13 +2631,17 @@ export function makeSubagentNode(
         if (subgraph) {
           // v1.4 §4.4 建议2+6：子图执行 + 超时
           const subgraphResult = await _invokeWithTimeout(
-            subgraph.invoke({
-              task_id: taskId,
-              task_type: taskType,
-              task_input: enrichedTaskInput,
-              messages: [],
-              trace_id: traceId,
-            }),
+            subgraph.invoke(
+              {
+                task_id: taskId,
+                task_type: taskType,
+                task_input: enrichedTaskInput,
+                messages: [],
+                trace_id: traceId,
+              },
+              // P1-17：子图独立 10 轮（或配置值）上限，经 invoke config 真正生效
+              { recursionLimit },
+            ),
             timeoutMs,
             `Subagent (task_id=${taskId})`,
           )

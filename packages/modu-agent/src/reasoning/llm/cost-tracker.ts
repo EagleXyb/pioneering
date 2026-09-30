@@ -73,7 +73,10 @@ export async function publish_llm_cost_event(
     const event = new AgentEvent({
       domain: EventDomain.LLM,
       action: EventAction.COST,
-      session_id: ctx.sessionId || '',
+      // P1-19：无会话上下文（如全局成本统计）时用 'unknown' 哨兵，对齐 audit.ts 约定；
+      // 旧实现传 '' 触发 protocol 的 "session_id is required" 校验，事件被下面的
+      // catch 静默吞掉，无会话成本事件全部丢失。
+      session_id: ctx.sessionId || 'unknown',
       user_id: ctx.userId || 'unknown',
       payload,
       metadata: {
@@ -96,7 +99,7 @@ export async function publish_llm_cost_event(
       ctx.provider, ctx.model, usage.total_tokens,
     )
   } catch (e) {
-    // 成本核算失败不影响主流程
-    logger.debug('publish_llm_cost_event failed (suppressed): %s', String(e))
+    // P1-19：成本事件发布失败升 warning（旧实现 debug 级静默吞事件，审计不可见）
+    logger.warning('publish_llm_cost_event failed: %s', String(e))
   }
 }

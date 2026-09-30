@@ -30,6 +30,21 @@ const _MAX_RETRY_BASE_DELAY_SECONDS = 10
 /** 单次重试等待上限（毫秒），防止指数退避放大成请求级挂起。 */
 const _MAX_RETRY_DELAY_MS = 30_000
 
+/**
+ * P1-15：supervisor 子图是否实际挂载可用。
+ *
+ * 图构建仅在 orchestration.multi_agent.enabled=true 时挂载 supervisor 节点；
+ * task_type=delegation 的步骤在未挂载时若仍 Send 到 'supervisor' 会触发
+ * unknown node 运行时崩溃。未启用时 delegation 一律降级走普通 agent。
+ */
+function _isSupervisorAvailable(): boolean {
+  try {
+    return Boolean(getConfig().get('orchestration.multi_agent.enabled', false))
+  } catch {
+    return false
+  }
+}
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.plan_execute.dispatcher] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[graph.plan_execute.dispatcher] ${msg}`, ...args),
@@ -215,11 +230,13 @@ export function stepDispatch(state: ModuAgentState): string | Send[] {
 
   if (readyIndices.length === 1) {
     // 单步就绪：保持原顺序逻辑（向后兼容）
-    // v1.2 #6: 若 task_type=delegation 且 supervisor 节点可用，路由到 'supervisor'
+    // v1.2 #6 + P1-15: 仅当 task_type=delegation **且 supervisor 子图已挂载**
+    // （multi_agent.enabled=true）时才路由到 'supervisor'；否则降级普通 agent，
+    // 避免在未挂载 supervisor 的图配置下抛 unknown node。
     const readyIdx = readyIndices[0]
     const readyStep = plan[readyIdx] ?? {}
     const taskType = String(readyStep['task_type'] ?? '')
-    if (taskType === 'delegation') {
+    if (taskType === 'delegation' && _isSupervisorAvailable()) {
       // 组合模式：task_type=delegation 步骤委托给 supervisor 节点
       // 通过 Send 携带 current_step，让 supervisor 感知步骤上下文
       logger.info(
@@ -232,6 +249,12 @@ export function stepDispatch(state: ModuAgentState): string | Send[] {
         current_step: { ...readyStep, status: 'running' },
         step_msg_baseline: messagesLen,
       })]
+    }
+    if (taskType === 'delegation') {
+      logger.warning(
+        'Step %s task_type=delegation but multi_agent supervisor is not enabled; falling back to agent',
+        String(readyStep['step_id'] ?? `step_${readyIdx + 1}`),
+      )
     }
     if (readyIdx === idx) {
       return 'agent'
@@ -246,7 +269,11 @@ export function stepDispatch(state: ModuAgentState): string | Send[] {
 
   // 多步就绪：通过 Send API 并行分发
   // v1.2 #6: task_type=delegation 的步骤路由到 supervisor，其他步骤路由到 agent
-  // 混合并行：delegation 步骤走 supervisor 流，tool_use/reasoning 步骤走 agent 流
+  // P1-15: supervisor 未挂载时 delegation 步骤同样降级 agent（混合并行不炸图）
+  const supervisorAvailable = _isSupervisorAvailable()
+  if (!supervisorAvailable && readyIndices.some((i) => String(plan[i]?.['task_type'] ?? '') === 'delegation')) {
+    logger.warning('DAG batch contains delegation step(s) but supervisor is disabled; dispatching them to agent')
+  }
   logger.info(
     'DAG parallel dispatch: %d ready steps (indices=%s) trace_id=%s',
     readyIndices.length, readyIndices.join(','), state.trace_id ?? '',
@@ -255,7 +282,7 @@ export function stepDispatch(state: ModuAgentState): string | Send[] {
   return readyIndices.map((i) => {
     const step = plan[i] ?? {}
     const taskType = String(step['task_type'] ?? '')
-    const target = taskType === 'delegation' ? 'supervisor' : 'agent'
+    const target = taskType === 'delegation' && supervisorAvailable ? 'supervisor' : 'agent'
     return new SendClass(target, {
       current_step_index: i,
       current_step: { ...step, status: 'running' },

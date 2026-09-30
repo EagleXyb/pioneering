@@ -95,6 +95,56 @@ function _ipInCidr(ipInt: number, cidr: { base: number; mask: number }): boolean
   return (ipInt & cidr.mask) === (cidr.base & cidr.mask)
 }
 
+/** 解析单个十六进制 IPv6 分组（0-ffff），非法返回 NaN。 */
+function _parseHex16(part: string): number {
+  if (!/^[0-9a-f]{1,4}$/i.test(part)) return Number.NaN
+  return parseInt(part, 16)
+}
+
+/**
+ * 将 IPv6 字面量展开为 8 组 16 位整数（P0-4：SSRF 防护的 IPv6 侧判定基础）。
+ *
+ * 处理：
+ *   - 去方括号与 zone id（`%eth0`）；
+ *   - `::` 压缩补零（至多一处，多处/非法 → null）；
+ *   - 末尾内嵌点分十进制（如 `::ffff:10.0.0.1`、`64:ff9b::10.0.0.1`）转换为两组 hex；
+ *   - 畸形（组数不为 8、含非法字符）返回 null。
+ */
+export function parseIpv6Groups(ipStr: string): number[] | null {
+  let ip = ipStr.trim().replace(/^\[|\]$/g, '')
+  const pct = ip.indexOf('%')
+  if (pct >= 0) ip = ip.slice(0, pct)
+
+  // 仅 IPv6 调用此函数；含点号时只可能是"末尾内嵌点分 IPv4"
+  if (ip.includes('.')) {
+    const lastColon = ip.lastIndexOf(':')
+    if (lastColon < 0) return null
+    const v4Int = _ipv4ToInt(ip.slice(lastColon + 1))
+    if (v4Int === null) return null
+    ip = `${ip.slice(0, lastColon + 1)}${(v4Int >>> 16).toString(16)}:${(v4Int & 0xffff).toString(16)}`
+  }
+
+  let groups: number[]
+  if (ip.includes('::')) {
+    const halves = ip.split('::')
+    if (halves.length !== 2) return null
+    const left = halves[0] ? halves[0].split(':') : []
+    const right = halves[1] ? halves[1].split(':') : []
+    const missing = 8 - left.length - right.length
+    if (missing < 0) return null
+    groups = [
+      ...left.map(_parseHex16),
+      ...new Array<number>(missing).fill(0),
+      ...right.map(_parseHex16),
+    ]
+  } else {
+    groups = ip.split(':').map(_parseHex16)
+  }
+
+  if (groups.length !== 8 || groups.some((g) => Number.isNaN(g))) return null
+  return groups
+}
+
 /**
  * P3-12.3.4: HTTP 请求工具。
  *
@@ -231,17 +281,20 @@ export class HttpRequestTool extends BaseTool {
   /**
    * 检查 IP 是否为私有/内网地址（SSRF 防护）。
    * 对应 Python _is_private_ip。
+   *
+   * P0-4：补齐 IPv6 十六进制映射形态——WHATWG URL 会把
+   * `http://[::ffff:10.0.0.1]/` 规范化为 `[::ffff:a00:1]`，旧的点分内嵌正则
+   * 只认 `::ffff:10.0.0.1`，导致 v4-mapped / compatible / NAT64 十六进制形态绕过。
    */
   private _isPrivateIp(ipStr: string): boolean {
-    // URL.hostname 对 IPv6 会保留方括号，先归一化
-    const ip = ipStr.trim().replace(/^\[|\]$/g, '')
+    // URL.hostname 对 IPv6 保留方括号；剥离方括号与 zone id
+    const ip = ipStr.trim().replace(/^\[|\]$/g, '').replace(/%.+$/, '')
     const lower = ip.toLowerCase()
 
-    // IPv4-mapped IPv6（::ffff:10.0.0.1 / ::10.0.0.1）：还原内嵌 IPv4 后再判定
-    const embeddedIpv4 = /^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)
-    if (embeddedIpv4) return this._isIpv4Private(embeddedIpv4[1])
+    // 纯 IPv4（无冒号）直接判定
+    if (!ip.includes(':')) return this._isIpv4Private(ip)
 
-    // IPv6 保留段：loopback / 未指定 / ULA / link-local / 6to4
+    // 保留地址快速判定：回环 / 未指定 / ULA(fc|fd) / 链路本地(fe80) / 6to4(2002::/16)
     if (ip === '::1' || ip === '::') return true
     if (
       lower.startsWith('fc') || lower.startsWith('fd') ||
@@ -249,7 +302,41 @@ export class HttpRequestTool extends BaseTool {
     ) {
       return true
     }
-    return this._isIpv4Private(ip)
+
+    const groups = parseIpv6Groups(ip)
+    if (!groups) return false
+
+    const embeddedV4 = (): string => {
+      const hi = groups[6]
+      const lo = groups[7]
+      return `${(hi >>> 8) & 0xff}.${hi & 0xff}.${(lo >>> 8) & 0xff}.${lo & 0xff}`
+    }
+
+    // ::/128 未指定 与 ::1 回环（展开形态兜底）
+    if (groups.slice(0, 7).every((g) => g === 0)) {
+      return groups[7] === 0 || groups[7] === 1
+    }
+
+    // IPv4-mapped IPv6（::ffff:0:0/96）：::ffff:a00:1 / ::ffff:0a00:0001 / ::ffff:10.0.0.1
+    if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
+      return this._isIpv4Private(embeddedV4())
+    }
+
+    // NAT64 知名前缀（64:ff9b::/96）：64:ff9b::a00:1 / 64:ff9b::10.0.0.1
+    if (
+      groups[0] === 0x0064 && groups[1] === 0xff9b &&
+      groups.slice(2, 6).every((g) => g === 0)
+    ) {
+      return this._isIpv4Private(embeddedV4())
+    }
+
+    // IPv4-compatible IPv6（::/96，已废弃但旧协议栈仍会发出）：::a00:1 / ::10.0.0.1
+    // 注：::1 与 :: 已在上方回环/未指定分支处理。
+    if (groups.slice(0, 6).every((g) => g === 0)) {
+      return this._isIpv4Private(embeddedV4())
+    }
+
+    return false
   }
 
   /**

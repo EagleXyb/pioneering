@@ -48,13 +48,27 @@ function isJsonSerializable(value: any): boolean {
  *   - 内存缓存保证同进程内 rollback 可用（与 Python 同进程行为等价）
  */
 export class VersionedComponentStore {
+  /** P1-8：每组件保留版本数上限（FIFO 淘汰最旧版本）。 */
+  static readonly DEFAULT_MAX_VERSIONS_PER_COMPONENT = 20
+
   private _storagePath: string
+  /** P1-8：每组件版本上限。 */
+  private readonly _maxVersionsPerComponent: number
   // 内存缓存：key = "componentName:version" → component 实例
   // ESM 无同步动态 import，缓存保证同进程内回滚可用
   private _componentCache: Map<string, any> = new Map()
 
-  constructor(storagePath: string = 'evolution/versions') {
+  constructor(
+    storagePath: string = 'evolution/versions',
+    maxVersionsPerComponent: number = VersionedComponentStore.DEFAULT_MAX_VERSIONS_PER_COMPONENT,
+  ) {
     this._storagePath = storagePath
+    if (!Number.isFinite(maxVersionsPerComponent) || maxVersionsPerComponent < 1) {
+      throw new RangeError(
+        `maxVersionsPerComponent must be a positive integer, got ${maxVersionsPerComponent}`,
+      )
+    }
+    this._maxVersionsPerComponent = Math.floor(maxVersionsPerComponent)
   }
 
   /** 获取组件的存储目录路径。 */
@@ -220,10 +234,37 @@ export class VersionedComponentStore {
     const versions = this._loadVersionsIndex(componentName)
     if (!versions.includes(version)) {
       versions.push(version)
+      // P1-8：FIFO 有界——超出上限时淘汰最旧版本（索引/文件/缓存三处同步）
+      while (versions.length > this._maxVersionsPerComponent) {
+        const oldest = versions.shift()
+        if (oldest === undefined) break
+        this._purgeVersion(componentName, oldest)
+        logger.info(
+          'Evicted oldest version %s of component %s (max=%s)',
+          oldest, componentName, this._maxVersionsPerComponent,
+        )
+      }
       this._saveVersionsIndex(componentName, versions)
     }
 
     logger.info('Saved version %s for component %s', version, componentName)
+  }
+
+  /**
+   * P1-8：彻底删除单个版本——版本 JSON 文件 + 内存缓存（索引条目由调用方 shift）。
+   * 文件删除失败不抛（磁盘本就是缓存语义），仅告警。
+   */
+  private _purgeVersion(componentName: string, version: string): void {
+    this._componentCache.delete(`${componentName}:${version}`)
+    const filePath = this._getVersionFilePath(componentName, version)
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    } catch (e) {
+      logger.warning(
+        'Failed to delete evicted version file %s: %s',
+        filePath, String(e instanceof Error ? e.message : e),
+      )
+    }
   }
 
   /**

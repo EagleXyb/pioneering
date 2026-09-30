@@ -308,7 +308,7 @@ export function checkGuardrailsForToolCalls(
  * 迁移自 graph/nodes.ts 的 `_toolRequiresApproval`，行为逐条等价：
  *   1. 工具名在 sensitiveTools 列表中 → true
  *   2. registry 中工具实例的 requiresApprovalFor(args, context) → true
- *   3. 工具方法抛异常 → false（不阻断流程）
+ *   3. 工具方法抛异常 → true（P1-1：fail-closed，必须走人工审批，不旁路 HITL）
  *
  * @param toolName       工具名
  * @param registry       组件注册表
@@ -331,9 +331,15 @@ export function toolRequiresApproval(
     if (moduTool) {
       try {
         return Boolean(moduTool.requiresApprovalFor(args ?? {}, context ?? {}))
-      } catch {
-        // 工具方法异常时不阻断流程，按不需要审批处理
-        return false
+      } catch (e) {
+        // P1-1：fail-closed —— 动态敏感性判定异常时一律走人工审批，
+        // 绝不能因工具内部错误静默旁路 HITL（warning 保留可观测性）。
+        console.warn(
+          '[tool-guardrails] requiresApprovalFor for tool %s threw; failing closed (approval required): %s',
+          toolName,
+          String(e instanceof Error ? e.message : e),
+        )
+        return true
       }
     }
   }

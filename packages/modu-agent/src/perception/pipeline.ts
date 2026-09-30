@@ -142,6 +142,13 @@ export async function runPerceptionPipelineAsync(
   config: RuntimeConfig,
   registry: ComponentRegistry,
 ): Promise<Record<string, any> | null> {
+  // P1-21：并行语义与串行不等价（并行时第 2..N 个处理器均以首个处理器输出为输入，
+  // 串行时逐个以上一处理器输出为输入）。默认关闭，未显式开启时严格回落到串行管线。
+  const parallelEnabled = Boolean(config.get('perception.parallel.enabled', false))
+  if (!parallelEnabled) {
+    return runPerceptionPipeline(inputData, config, registry)
+  }
+
   const inputType = (inputData['input_type'] as string) ?? 'text'
   const rawContent = new TextEncoder().encode(
     (inputData['prompt'] as string) ?? '',

@@ -265,6 +265,67 @@ describe('P1-T10b · OutputGuardPolicyRule', () => {
   })
 })
 
+describe('P0-1 · DefaultPolicyEngine.remove 卸载闭环', () => {
+  it('remove 已存在规则返回 true，decide 随即放行（注册→移除→decide 闭环）', async () => {
+    const engine = new DefaultPolicyEngine()
+    engine.use(rule('deny_once', 'tool', 1, 'deny'))
+    expect((await engine.decide('tool', { kind: 'tool' })).effect).toBe('deny')
+
+    expect(engine.remove('deny_once')).toBe(true)
+    expect(engine.listRules('tool')).toEqual([])
+    expect((await engine.decide('tool', { kind: 'tool' })).effect).toBe('allow')
+  })
+
+  it('remove 不存在的规则返回 false', () => {
+    const engine = new DefaultPolicyEngine()
+    expect(engine.remove('ghost')).toBe(false)
+  })
+
+  it('remove 仅摘除目标规则，同阶段其他规则仍生效', async () => {
+    const engine = new DefaultPolicyEngine()
+    engine.use(rule('a', 'tool', 1, 'deny'))
+    engine.use(rule('b', 'tool', 2, 'require_approval'))
+
+    expect(engine.remove('a')).toBe(true)
+    const d = await engine.decide('tool', { kind: 'tool' })
+    expect(d.effect).toBe('require_approval')
+    expect(d.ruleId).toBe('b')
+  })
+
+  it('NoopPolicyEngine.remove 恒为 false 且不抛错', () => {
+    expect(new NoopPolicyEngine().remove('x')).toBe(false)
+  })
+})
+
+describe('P0-1 · ComponentRegistry.unregisterPolicyRule 引擎同步摘除', () => {
+  it('引擎已懒构造：反注册后引擎 decide 放行（回归原 P0 缺陷）', async () => {
+    const reg = new ComponentRegistry()
+    reg.registerPolicyRule(rule('late', 'tool', 1, 'deny'))
+    // 先注册后取引擎：规则被灌入引擎
+    const engine = reg.getPolicyEngine()
+    expect((await engine.decide('tool', { kind: 'tool' })).effect).toBe('deny')
+
+    expect(reg.unregisterPolicyRule('late')).toBe(true)
+    expect(reg.listPolicyRules()).toEqual([])
+    expect((await engine.decide('tool', { kind: 'tool' })).effect).toBe('allow')
+  })
+
+  it('引擎先构造后注册：反注册同样从引擎摘除', async () => {
+    const reg = new ComponentRegistry()
+    const engine = reg.getPolicyEngine()
+    reg.registerPolicyRule(rule('late', 'tool', 1, 'deny'))
+    expect((await engine.decide('tool', { kind: 'tool' })).effect).toBe('deny')
+
+    reg.unregisterPolicyRule('late')
+    expect((await engine.decide('tool', { kind: 'tool' })).effect).toBe('allow')
+  })
+
+  it('引擎从未构造时反注册不抛错且返回 false（规则不存在）', () => {
+    const reg = new ComponentRegistry()
+    expect(reg.unregisterPolicyRule('never_registered')).toBe(false)
+  })
+})
+
 describe('P1-T10 · registerDefaultPolicyRules', () => {
   it('注册 3 条默认规则且幂等', () => {
     const reg = new ComponentRegistry()

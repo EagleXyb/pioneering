@@ -93,11 +93,13 @@ export class MetricsRegistry {
       })
 
       // 对应文档 §2.4 建议3：带维度的指标
-      // 工具调用计数（按 tool_name / status / session_id 维度）
+      // 工具调用计数（按 tool_name / status 维度）
+      // P1-25：移除 session_id label——会话 ID 无界基数会让每个会话生成一条新时间序列，
+      // 内存随会话数线性膨胀且无聚合价值；会话维度分析应走审计事件而非指标。
       this._tool_calls = new Counter({
         name: 'modu_agent_tool_calls_total',
         help: 'Total number of tool calls with status and tool_name dimensions',
-        labelNames: ['tool_name', 'status', 'session_id'],
+        labelNames: ['tool_name', 'status'],
         registers: [this._registry],
       })
       // 工具调用延迟（按 tool_name 维度）
@@ -206,18 +208,16 @@ export class MetricsRegistry {
    *
    * @param tool_name  工具名称（如 'http_request' / 'code_executor'）
    * @param status     调用状态（'success' / 'error' / 'rate_limited' 等）
-   * @param session_id 会话 ID（可选，用于 per-session 维度分析）
    * @param duration   调用耗时（秒，可选，记录到 latency histogram）
    */
   record_tool_call(
     tool_name: string,
     status: string = 'success',
-    session_id: string = '',
     duration?: number | null,
   ): void {
     if (!this.enabled) return
     try {
-      this._tool_calls.labels({ tool_name, status, session_id }).inc()
+      this._tool_calls.labels({ tool_name, status }).inc()
       if (duration !== undefined && duration !== null) {
         this._tool_latency.labels({ tool_name }).observe(duration)
       }

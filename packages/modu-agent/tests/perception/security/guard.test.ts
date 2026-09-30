@@ -26,6 +26,57 @@ describe('SecurityGuard', () => {
     expect(r.matches.phone_cn[0]).toBe('138***')
   })
 
+  // === P0-2：同段输出多个 PII 必须全部脱敏（原缺陷：三个 PII 正则无 g 标志）===
+  describe('P0-2 多 PII 全量脱敏', () => {
+    it('两个手机号全部被掩码，无遗漏', () => {
+      const text = '联系方式 13800138000 或 13900139000'
+      const [out, info] = guard.sanitizeOutput(text)
+      expect(out).not.toContain('13800138000')
+      expect(out).not.toContain('13900139000')
+      expect(out).toContain('[REDACTED:phone_cn]')
+      // 两个占位都应存在
+      expect(out.match(/\[REDACTED:phone_cn\]/g)).toHaveLength(2)
+      expect(info.detected).toBe(true)
+      expect(info.pii_types).toContain('phone_cn')
+    })
+
+    it('两个身份证号全部被掩码', () => {
+      const text = '身份证 110101199001011234 和 31011019850725691X'
+      const [out] = guard.sanitizeOutput(text)
+      expect(out).not.toContain('110101199001011234')
+      expect(out).not.toContain('31011019850725691X')
+      expect(out.match(/\[REDACTED:id_card_cn\]/g)).toHaveLength(2)
+    })
+
+    it('两个银行卡号全部被掩码', () => {
+      const text = '卡号 6222021234567890123 与 6222029876543210987'
+      const [out] = guard.sanitizeOutput(text)
+      expect(out).not.toContain('6222021234567890123')
+      expect(out).not.toContain('6222029876543210987')
+      expect(out.match(/\[REDACTED:bank_card\]/g)?.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('detectPii 统计全部匹配（最多 5 个）且掩码前缀正确', () => {
+      const r = guard.detectPii('13800138000 13900139000 13700137000')
+      expect(r.types).toContain('phone_cn')
+      expect(r.matches.phone_cn).toEqual(['138***', '139***', '137***'])
+    })
+
+    it('同一 SecurityGuard 实例连续调用 sanitizeOutput 结果稳定（全局正则 lastIndex 不串扰）', () => {
+      const first = guard.sanitizeOutput('电话 13800138000')[0]
+      const second = guard.sanitizeOutput('电话 13800138000 13900139000')[0]
+      expect(first).not.toContain('13800138000')
+      expect(second).not.toContain('13800138000')
+      expect(second).not.toContain('13900139000')
+    })
+
+    it('无 PII 文本清洗后保持原样', () => {
+      const text = '这是一段完全正常的输出文本。'
+      const [out] = guard.sanitizeOutput(text)
+      expect(out).toBe(text)
+    })
+  })
+
   it('detects SQL injection risk', () => {
     const r = guard.detectInjectionRisk('DROP TABLE users; SELECT * FROM t')
     expect(r.detected).toBe(true)

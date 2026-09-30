@@ -1,11 +1,12 @@
 // P2-1 单元测试：写操作 + 敏感数据安全防护
 // 对应文档 §5.3 P2-1 + 风险 R-10：guardrail 合并判定 + dry_run + 配置化注册表
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   ACTION_GUARDRAILS,
   registerGuardrailRule,
   checkGuardrail,
   checkGuardrailsForToolCalls,
+  toolRequiresApproval,
   type GuardrailRule,
 } from '@/tools/tool-guardrails.js'
 import { TOOL_CAPABILITY_MATRIX } from '@/tools/tool-registry.js'
@@ -324,5 +325,55 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
         expect(checkGuardrail(name, {}).hit).toBe(true)
       }
     })
+  })
+})
+
+// ============================================================
+// P1-1：toolRequiresApproval fail-closed（异常时必须走审批）
+// ============================================================
+describe('P1-1 · toolRequiresApproval 异常 fail-closed', () => {
+  it('requiresApprovalFor 抛异常 → 返回 true（需审批），不静默旁路', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const throwingTool = {
+      requiresApprovalFor: () => {
+        throw new Error('dynamic policy exploded')
+      },
+    }
+    const registry = { getTool: () => throwingTool } as any
+
+    const result = toolRequiresApproval('risky_tool', registry, [], { q: 'x' }, {})
+
+    expect(result).toBe(true)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(String(warnSpy.mock.calls[0])).toContain('risky_tool')
+    warnSpy.mockRestore()
+  })
+
+  it('正常返回 false 的工具不被误判为需审批', () => {
+    const tool = { requiresApprovalFor: () => false }
+    const registry = { getTool: () => tool } as any
+    expect(toolRequiresApproval('safe_tool', registry, [])).toBe(false)
+  })
+
+  it('正常返回 true 的工具保持需审批', () => {
+    const tool = { requiresApprovalFor: () => true }
+    const registry = { getTool: () => tool } as any
+    expect(toolRequiresApproval('maybe', registry, [])).toBe(true)
+  })
+
+  it('敏感工具列表命中直接 true（不调用工具方法）', () => {
+    const tool = {
+      requiresApprovalFor: vi.fn(() => {
+        throw new Error('should not be called')
+      }),
+    }
+    const registry = { getTool: () => tool } as any
+    expect(toolRequiresApproval('code_executor', registry, ['code_executor'])).toBe(true)
+    expect(tool.requiresApprovalFor).not.toHaveBeenCalled()
+  })
+
+  it('registry 为空 / 查无工具 → false（保持现状不回归）', () => {
+    expect(toolRequiresApproval('ghost', null, [])).toBe(false)
+    expect(toolRequiresApproval('ghost', { getTool: () => undefined } as any, [])).toBe(false)
   })
 })

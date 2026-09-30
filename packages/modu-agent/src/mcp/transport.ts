@@ -22,6 +22,43 @@ import { MCPConnectionError, MCPProtocolError } from './errors.js'
 /** MCP 握手默认超时（毫秒）。 */
 const _DEFAULT_CONNECT_TIMEOUT_MS = 30_000
 
+/**
+ * P1-22：统一的"握手 + 超时 + 失败清理"助手，stdio/SSE/WS 三传输复用。
+ *
+ * - doConnect 超过 timeoutMs 未完成 → 抛 MCPConnectionError 并调用 cleanup 回收资源
+ *   （spawned 子进程 / 打开的 HTTP、WS 连接），杜绝悬挂；
+ * - doConnect 自身抛错时同样走 cleanup，错误原样上抛；
+ * - timeoutMs <= 0 时不设超时（仅在显式配置时使用）。
+ */
+export async function connectWithTimeout(
+  label: string,
+  timeoutMs: number,
+  doConnect: () => Promise<unknown>,
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  if (!(timeoutMs > 0)) {
+    await doConnect()
+    return
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new MCPConnectionError(`MCP ${label} handshake timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    )
+  })
+
+  try {
+    await Promise.race([doConnect(), timeoutPromise])
+  } catch (e) {
+    await cleanup().catch(() => undefined)
+    throw e
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[mcp] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[mcp] ${msg}`, ...args),
@@ -64,6 +101,59 @@ export abstract class Transport {
 
   /** 是否已连接。 */
   abstract get connected(): boolean
+
+  /**
+   * P1-23：注册"意外断连"回调（远端关闭连接/进程退出/传输错误）。
+   * 由上层（MCPSession）注册以把连接标记为失活；主动 disconnect 不触发回调。
+   */
+  onUnexpectedClose(handler: () => void): void {
+    this._unexpectedCloseHandler = handler
+  }
+
+  /** P1-23：意外断连回调（null=未注册）。 */
+  private _unexpectedCloseHandler: (() => void) | null = null
+  /** P1-23：主动 disconnect 期间抑制断连回调。 */
+  protected _intentionalClose = false
+
+  /** P1-23：触发意外断连通知（主动关闭不触发）；连接状态由子类/会话侧收敛。 */
+  protected _fireUnexpectedClose(): void {
+    if (this._intentionalClose) return
+    logger.warning('MCP transport closed unexpectedly')
+    try {
+      this._unexpectedCloseHandler?.()
+    } catch (e) {
+      logger.warning('MCP unexpected-close handler failed: %s', String(e))
+    }
+  }
+
+  /**
+   * P1-23：链接 SDK 传输的 onclose（保留 SDK 既有回调并在其后触发本层失活通知）。
+   * 必须在 Client.connect 成功**之后**调用——connect 会给 transport.onclose 赋值，
+   * 事后链接才能同时保留 SDK 行为与本层钩子。
+   */
+  protected _wireSdkLifecycleHooks(sdkTransport: {
+    onclose?: () => void
+    onerror?: (error: Error) => void
+  }): void {
+    const prevClose = sdkTransport.onclose?.bind(sdkTransport)
+    sdkTransport.onclose = () => {
+      try {
+        prevClose?.()
+      } finally {
+        this._fireUnexpectedClose()
+      }
+    }
+    const prevError = sdkTransport.onerror?.bind(sdkTransport)
+    sdkTransport.onerror = (error: Error) => {
+      // 多数致命传输错误随后会触发 onclose 收敛状态；这里只透传+留痕，不重复改状态
+      logger.warning('MCP transport onerror: %s', String(error))
+      try {
+        prevError?.(error)
+      } catch {
+        // 忽略 SDK 旧回调异常
+      }
+    }
+  }
 }
 
 /**
@@ -142,29 +232,15 @@ export class StdioTransport extends Transport {
       { capabilities: {} },
     )
 
-    // 修复（握手无超时）：SDK 的 connect() 在子进程不响应时会无限挂起。
-    // 增加外层超时，超时后主动 disconnect 清理已 spawn 的子进程，避免悬挂进程泄漏。
-    if (this._connectTimeoutMs > 0) {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new MCPConnectionError(
-            `MCP stdio handshake timed out after ${this._connectTimeoutMs}ms: ${this._command}`,
-          )),
-          this._connectTimeoutMs,
-        )
-      })
-      try {
-        await Promise.race([this._client.connect(this._sdkTransport), timeoutPromise])
-      } catch (e) {
-        await this.disconnect().catch(() => undefined)
-        throw e
-      } finally {
-        if (timer) clearTimeout(timer)
-      }
-    } else {
-      await this._client.connect(this._sdkTransport)
-    }
+    // P1-22：统一走 connectWithTimeout（与 SSE/WS 同一套超时+清理逻辑）
+    await connectWithTimeout(
+      `stdio (${this._command})`,
+      this._connectTimeoutMs,
+      () => (this._client as Client).connect(this._sdkTransport as StdioClientTransport),
+      () => this.disconnect(),
+    )
+    // P1-23：握手成功后链接 SDK 传输的 onclose/onerror（子进程退出→失活）
+    this._wireSdkLifecycleHooks(this._sdkTransport as unknown as { onclose?: () => void; onerror?: (e: Error) => void })
     this._connected = true
     logger.info(
       'StdioTransport connected: command=%s args=%s',
@@ -174,6 +250,7 @@ export class StdioTransport extends Transport {
 
   /** 终止子进程。 */
   async disconnect(): Promise<void> {
+    this._intentionalClose = true
     this._connected = false
     if (this._client) {
       try {
@@ -228,15 +305,20 @@ export class StdioTransport extends Transport {
  */
 export class SSETransport extends Transport {
   private _url: string
-  private _timeout: number
+  private _connectTimeoutMs: number
   private _sdkTransport: SSEClientTransport | null = null
   private _client: Client | null = null
   private _connected: boolean = false
 
-  constructor(url: string, timeout: number = 30.0) {
+  /**
+   * @param url MCP Server URL
+   * @param connectTimeoutMs 握手超时毫秒（P1-22：与 stdio 对齐，默认 30000ms）。
+   *   注意旧版第五个参数曾以"秒"计（默认 30.0），client.ts 负责把旧配置换算为毫秒。
+   */
+  constructor(url: string, connectTimeoutMs: number = _DEFAULT_CONNECT_TIMEOUT_MS) {
     super()
     this._url = url
-    this._timeout = timeout
+    this._connectTimeoutMs = connectTimeoutMs
   }
 
   /** 建立 HTTP 客户端连接（含 MCP 握手）。 */
@@ -246,13 +328,22 @@ export class SSETransport extends Transport {
       { name: 'moduagent', version: '0.1.0' },
       { capabilities: {} },
     )
-    await this._client.connect(this._sdkTransport)
+    // P1-22：远端不接受连接 / 挂起时按超时失败并关闭，不再无限等待
+    await connectWithTimeout(
+      `sse (${this._url})`,
+      this._connectTimeoutMs,
+      () => (this._client as Client).connect(this._sdkTransport as SSEClientTransport),
+      () => this.disconnect(),
+    )
+    // P1-23：远端关闭 SSE 连接时标记失活
+    this._wireSdkLifecycleHooks(this._sdkTransport as unknown as { onclose?: () => void; onerror?: (e: Error) => void })
     this._connected = true
     logger.info('SSETransport connected: url=%s', this._url)
   }
 
   /** 关闭 HTTP 客户端。 */
   async disconnect(): Promise<void> {
+    this._intentionalClose = true
     this._connected = false
     if (this._client) {
       try {
@@ -310,15 +401,19 @@ export class SSETransport extends Transport {
  */
 export class WebSocketTransport extends Transport {
   private _url: string
-  private _timeout: number
+  private _connectTimeoutMs: number
   private _sdkTransport: WebSocketClientTransport | null = null
   private _client: Client | null = null
   private _connected: boolean = false
 
-  constructor(url: string, timeout: number = 30.0) {
+  /**
+   * @param url MCP WebSocket URL
+   * @param connectTimeoutMs 握手超时毫秒（P1-22：与 stdio/SSE 对齐，默认 30000ms）。
+   */
+  constructor(url: string, connectTimeoutMs: number = _DEFAULT_CONNECT_TIMEOUT_MS) {
     super()
     this._url = url
-    this._timeout = timeout
+    this._connectTimeoutMs = connectTimeoutMs
   }
 
   /** 建立 WebSocket 连接（含 MCP 握手）。 */
@@ -328,13 +423,22 @@ export class WebSocketTransport extends Transport {
       { name: 'moduagent', version: '0.1.0' },
       { capabilities: {} },
     )
-    await this._client.connect(this._sdkTransport)
+    // P1-22：握手超时统一治理（旧实现无超时，连接挂起会永久卡死启动）
+    await connectWithTimeout(
+      `websocket (${this._url})`,
+      this._connectTimeoutMs,
+      () => (this._client as Client).connect(this._sdkTransport as WebSocketClientTransport),
+      () => this.disconnect(),
+    )
+    // P1-23：服务端关闭 WS 连接时标记失活
+    this._wireSdkLifecycleHooks(this._sdkTransport as unknown as { onclose?: () => void; onerror?: (e: Error) => void })
     this._connected = true
     logger.info('WebSocketTransport connected: url=%s', this._url)
   }
 
   /** 关闭 WebSocket 连接。 */
   async disconnect(): Promise<void> {
+    this._intentionalClose = true
     this._connected = false
     if (this._client) {
       try {

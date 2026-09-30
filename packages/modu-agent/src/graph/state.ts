@@ -116,6 +116,8 @@ export interface ModuAgentState {
   subtask_results?: Record<string, Record<string, any>>
   consensus_result?: Record<string, any> | null
   consensus_failed?: boolean
+  /** P1-16：supervisor 重拆分轮次（原实现读取一个未声明字段且恒为 2） */
+  supervisor_round?: number
   current_subtask?: Record<string, any>
   /** v1.4 §4.4 建议3：子 Agent 间共享黑板 */
   blackboard?: Record<string, any>
@@ -286,7 +288,9 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   }),
   consensus_result: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
   consensus_failed: Annotation<boolean>(_lw(() => false)),
-  current_subtask: Annotation<Record<string, any>>(_lw(() => ({}))),
+  /** P1-16：supervisor 轮次（last-write-wins，由 supervisor 节点递增） */
+  supervisor_round: Annotation<number>(_lw(() => 0)),
+  current_subtask: Annotation<Record<string, any>>(_lw<Record<string, any>>(() => ({}))),
   /**
    * v1.4 §4.4 建议3：子 Agent 间共享黑板。
    *
@@ -478,6 +482,7 @@ export function makeInitialState(
     subtask_results: {},
     consensus_result: null,
     consensus_failed: false,
+    supervisor_round: 0,
     current_subtask: {},
     blackboard: {},
     plan: [],
@@ -589,6 +594,7 @@ export interface MultiAgentModeState {
   subtask_results?: Record<string, Record<string, any>>
   consensus_result?: Record<string, any> | null
   consensus_failed?: boolean
+  supervisor_round?: number
   current_subtask?: Record<string, any>
   /** v1.4 §4.4 建议3：子 Agent 间共享黑板 */
   blackboard?: Record<string, any>

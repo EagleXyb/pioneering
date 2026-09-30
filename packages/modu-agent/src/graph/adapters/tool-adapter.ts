@@ -352,7 +352,7 @@ export function wrap_modu_tool(
       } finally {
         try {
           get_metrics_registry().record_tool_call(
-            toolName, status, '', (Date.now() - started) / 1000,
+            toolName, status, (Date.now() - started) / 1000,
           )
         } catch (e: any) {
           logger.debug("record_tool_call failed for '%s': %s", toolName, String(e?.message ?? e))

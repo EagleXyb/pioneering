@@ -205,10 +205,11 @@ export function build_subagent_subgraph(
   graph.addEdge('sub_finalize', END)
 
   const compiled = graph.compile()
-  ;(compiled as any).recursionLimit = recursionLimit
-
+  // P1-17：recursionLimit 不挂在编译产物实例上（LangGraph JS 从不读取该实例属性，
+  // 旧赋值是无效操作）；上限由调用方在 invoke/stream 的第二参 config.recursionLimit
+  // 显式传入（见 makeSubagentNode）。此处保留日志便于排障。
   logger.info(
-    'Subagent subgraph built: task_type=%s tools=%d recursion_limit=%d',
+    'Subagent subgraph built: task_type=%s tools=%d recursion_limit(default invoke config)=%d',
     taskType, effectiveTools.length, recursionLimit,
   )
 

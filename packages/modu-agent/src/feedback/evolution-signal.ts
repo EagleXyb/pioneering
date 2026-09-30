@@ -27,6 +27,12 @@ export class EvolutionSignal {
 }
 
 /**
+ * P1-9：信号保留上限（环形缓冲语义，超出丢弃最旧）。
+ * 命名与剔除手法对齐 loop-controller.ts 的 `_MAX_CUMULATIVE_SAMPLES`。
+ */
+const _MAX_SIGNALS = 500
+
+/**
  * 进化信号收集器：从 EventBus 订阅事件并生成进化信号。
  *
  * 对应 Python EvolutionSignalCollector。
@@ -67,6 +73,10 @@ export class EvolutionSignalCollector {
     if (count % this._reportInterval === 0) {
       const signal = this._createSignal(event, counterKey)
       this._signals.push(signal)
+      // P1-9：环形上限，防止长跑进程内存随信号（含完整 metadata 快照）无界增长
+      if (this._signals.length > _MAX_SIGNALS) {
+        this._signals.splice(0, this._signals.length - _MAX_SIGNALS)
+      }
     }
   }
 
@@ -109,8 +119,19 @@ export class EvolutionSignalCollector {
     )
   }
 
-  /** 获取累积的进化信号。 */
-  getSignals(): EvolutionSignal[] {
-    return [...this._signals]
+  /**
+   * 获取累积的进化信号（副本，防止外部修改内部缓冲）。
+   *
+   * @param sampleCount 传入时只取最近 N 条（slice(-N) 语义，与 loop-controller 一致）；
+   *                    省略返回全部（受 _MAX_SIGNALS 上限约束，至多 500 条）。
+   */
+  getSignals(sampleCount?: number): EvolutionSignal[] {
+    const all = [...this._signals]
+    if (sampleCount !== undefined && Number.isFinite(sampleCount) && sampleCount >= 0) {
+      const n = Math.floor(sampleCount)
+      // 注意 slice(-0) 等价 slice(0)（返回全部），0 必须显式返回空数组
+      return n === 0 ? [] : all.slice(-n)
+    }
+    return all
   }
 }

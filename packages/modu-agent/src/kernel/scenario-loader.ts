@@ -59,6 +59,20 @@ export interface ScenarioPackManifest {
 
 const _REQUIRED_CAPABILITIES = ['domain', 'prompt', 'guardrail', 'sop', 'eval'] as const
 
+/**
+ * P1-4：路径沙箱断言——candidate 必须位于 baseDir 之内（含 baseDir 自身）。
+ *
+ * pack.yaml 可来自不可信分发源，entry/target 中的 `../../` 穿越不得指向
+ * 约定目录之外，否则等同于任意路径代码加载。
+ */
+function assertInside(baseDir: string, candidate: string, label: string): void {
+  const base = path.resolve(baseDir)
+  const target = path.resolve(candidate)
+  if (target !== base && !target.startsWith(base + path.sep)) {
+    throw new Error(`${label} 越界：${target} 不在允许目录 ${base} 内`)
+  }
+}
+
 /** 校验 manifest 基本结构；返回错误列表（空=合法）。 */
 function validatePackManifest(raw: any): string[] {
   const errors: string[] = []
@@ -95,6 +109,11 @@ export class ScenarioLoader {
   readonly config: RuntimeConfig
 
   private _active: Map<string, ScenarioHost> = new Map()
+  /**
+   * P1-3：正在激活链路上的包名集合（环检测）。
+   * A extends B、B extends A 时环上包永不进入 _active，旧实现会递归至栈溢出。
+   */
+  private _activating: Set<string> = new Set()
 
   constructor(opts: {
     packsDir?: string
@@ -134,9 +153,13 @@ export class ScenarioLoader {
    * @returns 场景包宿主
    */
   async activate(target: string): Promise<ScenarioHost> {
-    const packDir = fs.existsSync(target) && fs.statSync(target).isDirectory()
+    // P1-4：target 解析后必须位于 packsDir 内——按名解析的相对路径天然在内，
+    // 但绝对路径 / 含 ../ 的目录不得指向 packsDir 之外（不可信 manifest 分发面）。
+    const directExists = fs.existsSync(target) && fs.statSync(target).isDirectory()
+    const packDir = directExists
       ? path.resolve(target)
       : path.resolve(this.packsDir, target)
+    assertInside(this.packsDir, packDir, 'scenario pack target')
     if (!fs.existsSync(packDir) || !fs.statSync(packDir).isDirectory()) {
       throw new Error(`scenario pack not found: ${target} (resolved: ${packDir})`)
     }
@@ -146,40 +169,67 @@ export class ScenarioLoader {
       return this._active.get(manifest.name)!
     }
 
-    // 依赖先行激活
-    for (const dep of manifest.extends ?? []) {
-      if (!this.isActive(dep)) await this.activate(dep)
+    // P1-3：环检测。递归激活依赖前先压栈，链路上再次遇到同名包即循环依赖。
+    if (this._activating.has(manifest.name)) {
+      throw new Error(
+        `circular scenario pack dependency detected: '${manifest.name}' is already being activated`,
+      )
     }
+    this._activating.add(manifest.name)
 
-    const host = new ScenarioHost({
-      scope: manifest.name,
-      packDir,
-      registry: this.registry,
-      config: this.config,
-    })
+    try {
+      // 依赖先行激活（环依赖在此处递归触发上抛）
+      for (const dep of manifest.extends ?? []) {
+        if (!this.isActive(dep)) await this.activate(dep)
+      }
 
-    // 1. 配置画像
-    const profile = manifest.config_profile
-    if (profile?.graph_spec_extra) host.mergeGraphExtra(profile.graph_spec_extra)
-    if (profile?.agent_overrides) host.applyConfigOverrides(profile.agent_overrides)
+      const host = new ScenarioHost({
+        scope: manifest.name,
+        packDir,
+        registry: this.registry,
+        config: this.config,
+      })
 
-    // 2. 按能力装配（逐项隔离，单文件失败不阻断整包其余能力）
-    const capabilities = new Set(manifest.capabilities ?? [])
-    if (capabilities.has('domain')) this._loadDomains(host, packDir)
-    if (capabilities.has('prompt')) this._loadPrompts(host, packDir)
-    if (capabilities.has('guardrail')) this._loadGuardrails(host, packDir)
-    if (capabilities.has('sop')) this._loadSop(host, packDir)
-    if (capabilities.has('eval')) this._checkEval(packDir)
+      // P1-2：配置画像 + 能力装配 + entry 激活作为一个事务段；
+      // 任一步失败都逆序回滚本轮已注册资产，避免"部分激活"残留与同名包双重注册。
+      const capabilities = new Set(manifest.capabilities ?? [])
+      try {
+        // 1. 配置画像
+        const profile = manifest.config_profile
+        if (profile?.graph_spec_extra) host.mergeGraphExtra(profile.graph_spec_extra)
+        if (profile?.agent_overrides) host.applyConfigOverrides(profile.agent_overrides)
 
-    // 3. 代码型入口
-    if (manifest.entry) await this._runEntry(host, packDir, manifest.entry)
+        // 2. 按能力装配（逐项隔离，单文件失败不阻断整包其余能力）
+        if (capabilities.has('domain')) this._loadDomains(host, packDir)
+        if (capabilities.has('prompt')) this._loadPrompts(host, packDir)
+        if (capabilities.has('guardrail')) this._loadGuardrails(host, packDir)
+        if (capabilities.has('sop')) this._loadSop(host, packDir)
+        if (capabilities.has('eval')) this._checkEval(packDir)
 
-    this._active.set(manifest.name, host)
-    console.info(
-      `[kernel.loader] scenario pack activated: ${manifest.name} v${manifest.version} ` +
-      `(capabilities=[${[...capabilities].join(',')}], packDir=${packDir})`,
-    )
-    return host
+        // 3. 代码型入口
+        if (manifest.entry) await this._runEntry(host, packDir, manifest.entry)
+      } catch (e) {
+        // 激活失败：回滚本包已注册资产（依赖包由各自 activate 负责，保持激活）
+        try {
+          host.deactivate()
+        } catch (rollbackErr: any) {
+          console.error(
+            `[kernel.loader] rollback after activation failure failed for '${manifest.name}': ` +
+              String(rollbackErr?.message ?? rollbackErr),
+          )
+        }
+        throw e
+      }
+
+      this._active.set(manifest.name, host)
+      console.info(
+        `[kernel.loader] scenario pack activated: ${manifest.name} v${manifest.version} ` +
+        `(capabilities=[${[...capabilities].join(',')}], packDir=${packDir})`,
+      )
+      return host
+    } finally {
+      this._activating.delete(manifest.name)
+    }
   }
 
   /**
@@ -300,6 +350,8 @@ export class ScenarioLoader {
     entrySpec: string,
   ): Promise<void> {
     const entryAbs = path.resolve(packDir, entrySpec)
+    // P1-4：entry 必须解析在包目录之内，拒绝 ../../evil.js 越界加载
+    assertInside(packDir, entryAbs, 'pack entry')
     if (!fs.existsSync(entryAbs)) throw new Error(`pack entry not found: ${entryAbs}`)
 
     const mod = (await import(pathToFileURL(entryAbs).href)) as ScenarioEntryModule

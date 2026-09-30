@@ -415,12 +415,13 @@ describe('P0-T09 审批判定单一入口', () => {
     expect(d.map((x) => x.requiresApproval)).toEqual([false, true, true])
   })
 
-  it('toolRequiresApproval 与迁移前语义一致（异常 → false 不阻断）', () => {
+  it('toolRequiresApproval 判定语义（P1-1 修正：异常 → true 走审批，fail-closed）', () => {
     expect(toolRequiresApproval('sql_query', fakeRegistry, ['sql_query'])).toBe(true)
     expect(toolRequiresApproval('policy_danger', fakeRegistry, [])).toBe(true)
     expect(toolRequiresApproval('calculator', fakeRegistry, [])).toBe(false)
     const throwing = { getTool: () => ({ requiresApprovalFor: () => { throw new Error('x') } }) }
-    expect(toolRequiresApproval('any', throwing, [])).toBe(false)
+    // P1-1：工具动态判定抛异常时必须 fail-closed（旧实现错误地返回 false 旁路 HITL）
+    expect(toolRequiresApproval('any', throwing, [])).toBe(true)
     expect(toolRequiresApproval('any', null, [])).toBe(false)
   })
 })

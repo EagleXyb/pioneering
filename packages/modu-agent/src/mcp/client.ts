@@ -43,6 +43,11 @@ export class MCPSession {
   private _transport: Transport
   private _toolsCache: ToolInfo[] = []
   private _connected: boolean = false
+  /**
+   * P1-23：连接意外丢失通知（由 MCPClient 设置，用于清工具缓存并允许懒重连）。
+   * 主动 disconnect 不触发。
+   */
+  onConnectionLost: (() => void) | null = null
 
   constructor(serverName: string, transport: Transport) {
     this.serverName = serverName
@@ -61,6 +66,13 @@ export class MCPSession {
       return
     }
     await this._transport.connect()
+    // P1-23：传输层意外断连 → 本会话失活、清缓存并通知 MCPClient
+    this._transport.onUnexpectedClose(() => {
+      this._connected = false
+      this._toolsCache = []
+      logger.warning("MCP session lost connection: server=%s", this.serverName)
+      this.onConnectionLost?.()
+    })
     this._connected = true
     logger.info('MCP session connected: server=%s', this.serverName)
   }
@@ -167,9 +179,14 @@ export class MCPSession {
  */
 export class MCPClient {
   private _sessions: Map<string, MCPSession> = new Map()
+  /** P1-23：最近一次成功启动的 Server 配置，供死连接懒重连使用。 */
+  private _serverConfigs: Map<string, Record<string, any>> = new Map()
   private _discovery: ToolDiscovery = new ToolDiscovery()
   private _lifecycle: ServerLifecycleManager = new ServerLifecycleManager()
   private _started: boolean = false
+  /** P1-23：懒重连退避（毫秒）与单 server 重入保护。 */
+  private _reconnecting: Set<string> = new Set()
+  private static readonly _LAZY_RECONNECT_DELAY_MS = 200
 
   /**
    * 根据配置连接所有 MCP Server。
@@ -187,17 +204,16 @@ export class MCPClient {
       logger.info('No MCP servers configured, skipping MCPClient start')
       return
     }
+    this._serverConfigs.clear()
 
     for (const serverCfg of serversConfig) {
       if (!(serverCfg.enabled ?? true)) {
         logger.debug("MCP server '%s' disabled, skip", serverCfg.name)
         continue
       }
+      this._serverConfigs.set(serverCfg.name, serverCfg)
       try {
-        const transport = MCPClient._createTransport(serverCfg)
-        const session = new MCPSession(serverCfg.name, transport)
-        await session.connect()
-        this._sessions.set(serverCfg.name, session)
+        const session = await this._openSession(serverCfg)
 
         // 发现工具并缓存
         const tools = await session.listTools(false)
@@ -232,6 +248,8 @@ export class MCPClient {
       }
     }
     this._sessions.clear()
+    this._serverConfigs.clear()
+    this._reconnecting.clear()
     this._discovery.clear()
     await this._lifecycle.stopAll()
     this._started = false
@@ -279,13 +297,83 @@ export class MCPClient {
     timeout: number = 30.0,
   ): Promise<Record<string, any>> {
     const [serverName, rawToolName] = this._resolveTool(toolName)
-    const session = this._sessions.get(serverName)
+
+    // P1-23：连接不存在/已失活 → 先带退避懒重连一次（旧实现直接永久报 not connected）
+    let session = this._sessions.get(serverName)
     if (session === undefined || !session.connected) {
+      session = await this._lazyReconnect(serverName)
+      return await session.callTool(rawToolName, arguments_, timeout)
+    }
+
+    try {
+      return await session.callTool(rawToolName, arguments_, timeout)
+    } catch (e) {
+      // 连接类错误（远端中途断开）→ 懒重连一次后重试；其他错误原样上抛
+      if (e instanceof MCPConnectionError) {
+        logger.warning(
+          "MCP call '%s' hit connection error, lazy reconnecting once: %s",
+          toolName, String(e),
+        )
+        session = await this._lazyReconnect(serverName)
+        return await session.callTool(rawToolName, arguments_, timeout)
+      }
+      throw e
+    }
+  }
+
+  /**
+   * P1-23：按缓存的 Server 配置懒重连（单次、带短退避、单 server 重入保护）。
+   *
+   * @returns 重连后的会话
+   * @throws MCPConnectionError 无配置可重连 / 重连失败 / 已有重连进行中
+   */
+  private async _lazyReconnect(serverName: string): Promise<MCPSession> {
+    const serverCfg = this._serverConfigs.get(serverName)
+    if (!serverCfg) {
       throw new MCPConnectionError(
-        `MCP server '${serverName}' not connected for tool '${toolName}'`,
+        `MCP server '${serverName}' not connected and no cached config available for reconnect`,
       )
     }
-    return await session.callTool(rawToolName, arguments_, timeout)
+    if (this._reconnecting.has(serverName)) {
+      throw new MCPConnectionError(
+        `MCP server '${serverName}' reconnect already in progress`,
+      )
+    }
+    this._reconnecting.add(serverName)
+    try {
+      await new Promise((r) => setTimeout(r, MCPClient._LAZY_RECONNECT_DELAY_MS))
+      // 清旧会话（可能残留失活实例）
+      const stale = this._sessions.get(serverName)
+      if (stale && !stale.connected) {
+        await stale.disconnect().catch(() => undefined)
+      }
+      const session = await this._openSession(serverCfg)
+      const tools = await session.listTools(false)
+      this._discovery.update(serverName, tools)
+      logger.info("MCP server '%s' lazily reconnected", serverName)
+      return session
+    } finally {
+      this._reconnecting.delete(serverName)
+    }
+  }
+
+  /**
+   * P1-23：按配置创建+连接会话并登记失活回调（start 与懒重连共用）。
+   */
+  private async _openSession(serverCfg: Record<string, any>): Promise<MCPSession> {
+    const transport = MCPClient._createTransport(serverCfg)
+    const session = new MCPSession(serverCfg.name, transport)
+    session.onConnectionLost = () => {
+      // 失活即清工具发现缓存，防止向已断开的 server 路由工具
+      this._discovery.update(serverCfg.name, [])
+      logger.warning(
+        "MCP server '%s' connection lost; tool cache cleared, will lazily reconnect on next call",
+        serverCfg.name,
+      )
+    }
+    await session.connect()
+    this._sessions.set(serverCfg.name, session)
+    return session
   }
 
   /**
@@ -327,6 +415,15 @@ export class MCPClient {
    */
   static _createTransport(serverCfg: Record<string, any>): Transport {
     const transportType = serverCfg.transport ?? 'stdio'
+    // P1-22：SSE/WS 握手超时统一为毫秒。
+    // 兼容旧配置 timeout（秒，浮点）→ ×1000；新配置 timeout_ms/connect_timeout_ms 直接生效；
+    // 缺省 30000ms（与 stdio 对齐）。
+    const resolveTimeoutMs = (): number => {
+      if (typeof serverCfg.timeout_ms === 'number') return serverCfg.timeout_ms
+      if (typeof serverCfg.connect_timeout_ms === 'number') return serverCfg.connect_timeout_ms
+      if (typeof serverCfg.timeout === 'number') return Math.floor(serverCfg.timeout * 1000)
+      return 30_000
+    }
 
     if (transportType === 'stdio') {
       return new StdioTransport(
@@ -338,13 +435,13 @@ export class MCPClient {
     } else if (transportType === 'sse' || transportType === 'streamable_http') {
       return new SSETransport(
         serverCfg.url,
-        serverCfg.timeout ?? 30.0,
+        resolveTimeoutMs(),
       )
     } else if (transportType === 'websocket' || transportType === 'ws') {
       // v1.2 §4.3 建议11：支持 WebSocket transport
       return new WebSocketTransport(
         serverCfg.url,
-        serverCfg.timeout ?? 30.0,
+        resolveTimeoutMs(),
       )
     } else {
       throw new ValueError(`Unknown MCP transport type: ${transportType}`)

@@ -150,7 +150,10 @@ export class PerceptionFusion {
         best = r
       }
     }
-    const bestCopy = { ...best }
+    // P1-20：深拷贝基底——旧实现 `{ ...best }` 浅拷贝后写 metadata，
+    // 且 parsed_content/entities 等嵌套对象仍与入参共享，融合结果被后续逻辑
+    // 改动时会污染调用方传入的感知结果。感知结果为纯 JSON 数据，structuredClone 可用。
+    const bestCopy = structuredClone(best)
     bestCopy.metadata = bestCopy.metadata ?? {}
     bestCopy.metadata['fusion_strategy'] = 'max_confidence'
     return bestCopy
@@ -181,7 +184,8 @@ export class PerceptionFusion {
         best = r
       }
     }
-    const bestCopy = { ...best }
+    // P1-20：深拷贝（同 max_confidence），voting 写 sensitivity_level 不得反向污染入参
+    const bestCopy = structuredClone(best)
     bestCopy.metadata = bestCopy.metadata ?? {}
     bestCopy.metadata['sensitivity_level'] = votedSensitivity
     bestCopy.metadata['fusion_strategy'] = 'voting'

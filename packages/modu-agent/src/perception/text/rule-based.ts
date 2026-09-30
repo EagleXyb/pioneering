@@ -85,7 +85,7 @@ const _CONTEXT_SAFE_KEYWORDS: Array<{ pattern: RegExp; keywords: string[]; reduc
   },
 ]
 
-// P1: 白名单短语（完全跳过敏感检测）
+// P1: 白名单短语（仅豁免 level≤1 的良性词组词命中；level≥2 不豁免，见 _detectSensitivity P0-3）
 const _WHITELIST_PHRASES: string[] = [
   '密码学',
   '密码算法',
@@ -173,6 +173,40 @@ const _LANGDETECT_AVAILABLE = false
  * - 真实置信度计算：加权平均
  * - 输入质量评估：启发式规则
  */
+
+/**
+ * P1-26：在有序 items 前缀上二分查找"序列化后长度 ≤ maxLength"的最大前缀。
+ *
+ * 序列化长度随前缀长度单调不减（对象/数组均成立），故可二分；
+ * 至多 ⌈log₂(N+1)⌉ 次 stringify，替代旧的逐元素重序列化（O(k·n)）。
+ *
+ * @returns 命中的前缀文本与元素数；连空容器（0 元素）都超长时返回 null
+ */
+function _fitJsonPrefix<T>(
+  items: T[],
+  maxLength: number,
+  stringify: (slice: T[]) => string,
+): { text: string; count: number } | null {
+  let lo = 0
+  let hi = items.length
+  let bestText: string | null = null
+  let bestCount = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const text = stringify(items.slice(0, mid))
+    if (text.length <= maxLength) {
+      bestText = text
+      bestCount = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return bestCount >= 0 && bestText !== null
+    ? { text: bestText, count: bestCount }
+    : null
+}
+
 export class TextPreprocessor extends BasePerception {
   private _language: string
   private _maxLength: number
@@ -406,44 +440,36 @@ export class TextPreprocessor extends BasePerception {
     }
 
     if (parsed !== null) {
-      // 完整 JSON，但长度超限：逐个移除末尾元素
+      // 完整 JSON，但长度超限：
+      // P1-26：用二分查找"最大可容纳前缀"，至多 1+log(N) 次序列化；
+      // 旧实现每移除一个键/元素就整体 stringify 一次，O(k·n) 在长 JSON 上 CPU 尖峰。
       if (typeof parsed === 'object' && !Array.isArray(parsed) && parsed !== null) {
-        const items = Object.entries(parsed)
-        while (items.length > 0) {
-          const truncatedDict = Object.fromEntries(items)
-          const candidate = JSON.stringify(truncatedDict)
-          if (candidate.length <= maxLength) {
-            return {
-              truncated: true,
-              original_length: originalLength,
-              truncated_length: candidate.length,
-              truncation_ratio: Math.round((candidate.length / originalLength) * 100) / 100,
-              method: 'json_key_boundary',
-              removed_keys: Object.keys(parsed).length - items.length,
-            }
-          }
-          items.pop()
+        const entries = Object.entries(parsed)
+        const fit = _fitJsonPrefix(entries, maxLength, (slice) =>
+          JSON.stringify(Object.fromEntries(slice as Array<[string, any]>)),
+        )
+        if (fit === null) return null
+        return {
+          truncated: true,
+          original_length: originalLength,
+          truncated_length: fit.text.length,
+          truncation_ratio: Math.round((fit.text.length / originalLength) * 100) / 100,
+          method: 'json_key_boundary',
+          removed_keys: entries.length - fit.count,
         }
-        return null
       }
 
       if (Array.isArray(parsed)) {
-        const items = [...parsed]
-        while (items.length > 0) {
-          const candidate = JSON.stringify(items)
-          if (candidate.length <= maxLength) {
-            return {
-              truncated: true,
-              original_length: originalLength,
-              truncated_length: candidate.length,
-              truncation_ratio: Math.round((candidate.length / originalLength) * 100) / 100,
-              method: 'json_array_boundary',
-              removed_items: parsed.length - items.length,
-            }
-          }
-          items.pop()
+        const fit = _fitJsonPrefix(parsed, maxLength, (slice) => JSON.stringify(slice))
+        if (fit === null) return null
+        return {
+          truncated: true,
+          original_length: originalLength,
+          truncated_length: fit.text.length,
+          truncation_ratio: Math.round((fit.text.length / originalLength) * 100) / 100,
+          method: 'json_array_boundary',
+          removed_items: parsed.length - fit.count,
         }
-        return null
       }
 
       return null
@@ -712,14 +738,8 @@ export class TextPreprocessor extends BasePerception {
 
   /** 多层正则分类检测，返回最高命中的敏感级别（0-5）。 */
   private _detectSensitivity(text: string): number {
-    // P1: 白名单短语优先匹配
-    const textLower = text.toLowerCase()
-    for (const phrase of _WHITELIST_PHRASES) {
-      if (textLower.includes(phrase.toLowerCase())) {
-        return 0
-      }
-    }
-
+    // P0-3：分级判定先于白名单——原实现"白名单短语全文 includes 即 return 0"
+    // 可被追加一个白名单词（如"密码学"/"password policy"）整体秒杀全部分级。
     let maxLevel = 0
     const levels = Object.keys(SENSITIVITY_PATTERNS).map(Number).sort((a, b) => b - a)
     for (const level of levels) {
@@ -739,6 +759,19 @@ export class TextPreprocessor extends BasePerception {
       if (pattern.test(text)) {
         maxLevel = Math.max(maxLevel, 5)
         break
+      }
+    }
+
+    // P0-3：白名单仅允许豁免 level≤1 的"良性词组"命中——白名单短语本身只覆盖
+    // 某个低敏词（如"密码学"中的"密码"、"password policy"中的 password）。
+    // level≥2（敏感操作 / 敏感实体 / 证件号 / level-5 密码明文赋值）绝不因文本中
+    // 顺带出现白名单短语而被整体放行。
+    if (maxLevel <= 1) {
+      const textLower = text.toLowerCase()
+      for (const phrase of _WHITELIST_PHRASES) {
+        if (textLower.includes(phrase.toLowerCase())) {
+          return 0
+        }
       }
     }
 

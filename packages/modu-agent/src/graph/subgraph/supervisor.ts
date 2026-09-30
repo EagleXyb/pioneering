@@ -257,7 +257,8 @@ export function make_supervisor_node(
         subtasks: newSubtasks,
         subtask_results: {}, // 清空，重新收集
         consensus_failed: false,
-        supervisor_round: (state as any)['supervisor_round'] ?? 1 + 1,
+        // P1-16：原 `state.x ?? 1 + 1` 因运算符优先级恒为 2；且字段未在 state 声明。
+        supervisor_round: (state.supervisor_round ?? 0) + 1,
       }
     }
 
@@ -308,31 +309,72 @@ export function route_from_supervisor(state: ModuAgentState): Send[] {
     return []
   }
 
-  // v1.4 §4.4 建议1：过滤出无依赖（或依赖已完成）的子任务并行分发
-  const completedTaskIds = new Set(
-    Object.entries(state.subtask_results ?? {})
+  // P1-16：终态结果集合——success 之外，failed/need_help 也是终态，
+  // 依赖一个永远不会成功的任务的下游不能无限等待（旧实现只认 success → 静默丢任务）。
+  const TERMINAL_STATUSES = new Set(['success', 'failed', 'need_help', 'skipped'])
+  const resultEntries = Object.entries(state.subtask_results ?? {})
+  const succeededTaskIds = new Set(
+    resultEntries
       .filter(([, r]) => (r as any)?.['status'] === 'success')
+      .map(([tid]) => tid),
+  )
+  const terminalTaskIds = new Set(
+    resultEntries
+      .filter(([, r]) => TERMINAL_STATUSES.has(String((r as any)?.['status'] ?? '')))
       .map(([tid]) => tid),
   )
 
   const sends: Send[] = []
+  /** 依赖已确定无法满足（依赖任务终态但非 success）的任务：本轮不调度且永不就绪。 */
+  const blocked: Array<{ taskId: string; reason: string }> = []
+  /** 依赖尚未跑完、需后续轮次再调度的任务（本轮无重入边时不可达，需显式告警）。 */
+  const waiting: string[] = []
+
   for (const task of subtasks) {
     const taskId = task['task_id'] ?? ''
-    // 已有结果的跳过（避免重复执行）
-    if (completedTaskIds.has(taskId)) continue
+    // 已有终态结果的跳过（避免重复执行）
+    if (terminalTaskIds.has(taskId)) continue
 
-    const deps = Array.isArray(task['depends_on']) ? task['depends_on'] : []
-    const depsReady = deps.every((d: string) => completedTaskIds.has(d))
-    if (!depsReady) {
-      logger.debug(
-        'Subtask %s waiting for deps: %s',
-        taskId, deps.join(','),
-      )
+    const deps: string[] = Array.isArray(task['depends_on']) ? task['depends_on'] : []
+    if (deps.length === 0) {
+      sends.push(new SendClass('subagent_run', { current_subtask: task }))
       continue
     }
-    sends.push(new SendClass('subagent_run', { current_subtask: task }))
+
+    const failedDeps = deps.filter((d) => terminalTaskIds.has(d) && !succeededTaskIds.has(d))
+    if (failedDeps.length > 0) {
+      blocked.push({ taskId, reason: `upstream failed: ${failedDeps.join(',')}` })
+      continue
+    }
+    if (deps.every((d) => succeededTaskIds.has(d))) {
+      sends.push(new SendClass('subagent_run', { current_subtask: task }))
+      continue
+    }
+    waiting.push(taskId)
   }
 
-  logger.debug('Supervisor dispatching %d Send(s) to subagent_run', sends.length)
+  // P1-16：不允许静默丢任务——阻塞/等待均显式记录（consensus/审计可据此判定计划不完整）。
+  if (blocked.length > 0) {
+    logger.error(
+      'Supervisor skipped %d subtask(s) whose dependencies terminated unsuccessfully: %s',
+      blocked.length,
+      blocked.map((b) => `${b.taskId}(${b.reason})`).join('; '),
+    )
+  }
+  if (sends.length === 0 && waiting.length > 0) {
+    // 当前拓扑 supervisor→subagent_run 无重入边（OQ-2 已确认多轮闭环为后续工作），
+    // waiting 任务本轮不可达：显式 error 而非旧实现的静默 END。
+    logger.error(
+      'Supervisor cannot dispatch %d subtask(s) waiting on incomplete dependencies ' +
+        '(supervisor re-entry edge is not wired; these tasks will not run this round): %s',
+      waiting.length,
+      waiting.join(','),
+    )
+  }
+
+  logger.debug(
+    'Supervisor dispatching %d Send(s) to subagent_run (blocked=%d, waiting=%d)',
+    sends.length, blocked.length, waiting.length,
+  )
   return sends
 }

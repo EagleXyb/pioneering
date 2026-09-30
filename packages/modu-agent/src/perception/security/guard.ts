@@ -38,9 +38,13 @@ const _INJECTION_PATTERNS: RegExp[] = [
 // ---------------------------------------------------------------------------
 
 const _PII_PATTERNS: Record<string, RegExp> = {
-  phone_cn: /(?<!\d)1[3-9]\d{9}(?!\d)/,
-  id_card_cn: /(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/,
-  bank_card: /(?<!\d)[1-9]\d{14,18}(?!\d)/,
+  // P0-2：phone/id_card/bank_card 必须带 g 标志——sanitizeOutput 用 String.replace
+  // 非全局替换只会掩码首个匹配，同段输出第 2 个起的 PII 会原样泄漏。
+  // 注：三者均只含非捕获组，String.match(/g/) 返回"全部完整匹配"数组，
+  // detectPii 的 found.slice(0,5) 掩码语义随之正确（最多 5 个匹配）。
+  phone_cn: /(?<!\d)1[3-9]\d{9}(?!\d)/g,
+  id_card_cn: /(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)/g,
+  bank_card: /(?<!\d)[1-9]\d{14,18}(?!\d)/g,
   email: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/,
   ipv4: /\b(?:\d{1,3}\.){3}\d{1,3}\b/,
 }
@@ -387,6 +391,8 @@ export class SecurityGuard {
     for (const piiType of piiTypesToRedact) {
       const pattern = _PII_PATTERNS[piiType]
       if (pattern) {
+        // 全局正则对象跨调用复用：显式重置 lastIndex（P0-2）
+        pattern.lastIndex = 0
         sanitized = sanitized.replace(pattern, `[REDACTED:${piiType}]`)
       }
     }

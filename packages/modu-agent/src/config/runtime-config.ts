@@ -70,6 +70,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     //     并无代码通过 RuntimeConfig.get('memory.context_window' / 'memory.enable_compression') 读取，
     //     故在 P0 清理中移除（见文档 4.4）。
     checkpointer_type: 'memory',
+    // P1-7：内存检查点 LRU 上限（按 thread 计）。MemorySaver 为进程级单例，
+    // 0/缺省回退到内置默认 100；长周期多会话进程靠此防止 state 无限累积。
+    checkpointer_max_threads: 100,
     store_type: 'chroma',
     chroma_persist_path: null,
   },
@@ -81,6 +84,8 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       consensus_strategy: 'majority_vote',
       consensus_quorum: 2,
       subgraph_timeout_ms: 30000,
+      // P1-17：子图 ReAct 循环硬上限（经 invoke config.recursionLimit 生效）
+      subgraph_recursion_limit: 10,
       consensus_failure_as_evolution_signal: true,
       // v1.4 §4.4 建议1：LLM 驱动任务拆分（默认开启，plannerLlm 为空时自动 fallback）
       use_llm_decompose: true,
@@ -219,6 +224,13 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     fusion: {
       strategy: 'weighted_average',
       weights: { text: 0.5, image: 0.3, audio: 0.2 },
+    },
+    // P1-21：感知管线并行化显式开关。
+    // 默认 **false**：runPerceptionPipelineAsync 回落到严格串行管线——
+    // 并行语义与串行不等价（并行时第 2..N 个处理器都接收首个处理器的输出，
+    // 串行时逐个接收上一处理器输出），属于宿主显式 opt-in 的行为变更。
+    parallel: {
+      enabled: false,
     },
     security: {
       enable_guard: true,
@@ -474,20 +486,8 @@ export class RuntimeConfig {
   }
 
   static fromEnv(): RuntimeConfig {
-    const data: Record<string, any> = {}
-    const provider = process.env.MODU_LLM_PROVIDER
-    if (provider) {
-      ;(data.llm ??= {}).default_provider = provider
-    }
-    const temp = process.env.MODU_LLM_TEMPERATURE
-    if (temp) {
-      ;(data.llm ??= {}).temperature = parseFloat(temp)
-    }
-    const strategy = process.env.MODU_MEMORY_STRATEGY
-    if (strategy) {
-      ;(data.memory ??= {}).default_strategy = strategy
-    }
-    return new RuntimeConfig(data)
+    // P1-18：env 覆盖字典独立为 readEnvOverrides，便于在 yaml 分层之上叠加
+    return new RuntimeConfig(readEnvOverrides())
   }
 
   /** 线程安全地读取配置值（点分路径）。 */
@@ -534,6 +534,49 @@ export class RuntimeConfig {
     // 触发回调
     this._notifyChange(keyPath, oldValue, value)
     return oldValue
+  }
+
+  /**
+   * 删除点分路径配置（P1-6：场景包配置覆盖回滚原语）。
+   *
+   * 与 `update(key, undefined)` 的关键区别：真正 `delete` 叶键——update 写 undefined
+   * 会留下"键存在但值为 undefined"的残留（`key in obj === true`），导致后续
+   * `get(key, defaultValue)` 取到 undefined 而非默认值。本方法同时自底向上清理
+   * 因此变空的普通对象容器（数组与根 `_data` 不动）。
+   *
+   * @returns 叶键此前是否存在；删除后触发 change 回调（newValue=undefined）。
+   */
+  remove(keyPath: string): boolean {
+    const keys = keyPath.split('.')
+    const chain: Array<{ parent: any; key: string }> = []
+    let current: any = this._data
+    for (const key of keys) {
+      if (!current || typeof current !== 'object' || !(key in current)) {
+        return false
+      }
+      chain.push({ parent: current, key })
+      current = current[key]
+    }
+
+    const leaf = chain[chain.length - 1]
+    const oldValue = leaf.parent[leaf.key]
+    delete leaf.parent[leaf.key]
+
+    // 自底向上清理因此变空的普通对象容器；遇非空节点即可停止（其上层不可能因此变空）
+    for (let i = chain.length - 2; i >= 0; i--) {
+      const node = chain[i].parent[chain[i].key]
+      if (
+        node && typeof node === 'object' && !Array.isArray(node) &&
+        Object.keys(node).length === 0
+      ) {
+        delete chain[i].parent[chain[i].key]
+      } else {
+        break
+      }
+    }
+
+    this._notifyChange(keyPath, oldValue, undefined)
+    return true
   }
 
   /**
@@ -617,6 +660,30 @@ export class RuntimeConfig {
 // 全局单例（对应 Python 模块级 _config + get_config + reset_config）
 // ============================================================
 
+/**
+ * P1-18：读取仅包含**已设置** MODU_* 环境变量的稀疏覆盖字典。
+ *
+ * 分层优先级固定为：内置 default → config.yaml → 环境变量（env 最高）。
+ * 旧实现在找到 yaml 后完全跳过 fromEnv，"yaml 打进镜像 + env 注入覆盖"的
+ * 容器化标准姿势静默失效；getConfig 在 yaml 分层之上叠加本字典完成修正。
+ */
+export function readEnvOverrides(): Record<string, any> {
+  const data: Record<string, any> = {}
+  const provider = process.env.MODU_LLM_PROVIDER
+  if (provider) {
+    ;(data.llm ??= {}).default_provider = provider
+  }
+  const temp = process.env.MODU_LLM_TEMPERATURE
+  if (temp) {
+    ;(data.llm ??= {}).temperature = parseFloat(temp)
+  }
+  const strategy = process.env.MODU_MEMORY_STRATEGY
+  if (strategy) {
+    ;(data.memory ??= {}).default_strategy = strategy
+  }
+  return data
+}
+
 let _config: RuntimeConfig | null = null
 
 /** 记录当前生效的 config.yaml 路径（用于来源溯源）。 */
@@ -657,10 +724,17 @@ export function getConfig(override?: RuntimeConfig | null): RuntimeConfig {
       const yamlFile = findConfigYamlForLogging()
       const validated = loadConfigYamlValidated(DEFAULT_CONFIG)
       if (validated) {
-        const base = deepMergeConfig(deepCopyDict(DEFAULT_CONFIG), validated.cleaned)
+        // 分层：内置 default → config.yaml → 环境变量（P1-18：env 必须最高优先级，
+        // 旧实现找到 yaml 后完全跳过 env，容器化 env 注入覆盖被静默忽略）
+        const envOverrides = readEnvOverrides()
+        const base = deepMergeConfig(
+          deepMergeConfig(deepCopyDict(DEFAULT_CONFIG), validated.cleaned),
+          envOverrides,
+        )
         const sources: Record<string, string> = {
           base: 'DEFAULT_CONFIG',
           file: yamlFile ?? 'config.yaml',
+          ...buildEnvSources(),
         }
         if (validated.droppedKeys.length > 0) {
           sources.dropped = validated.droppedKeys.join(', ')

@@ -625,14 +625,12 @@ export class ComponentRegistry {
     return true
   }
 
-  /** 移除策略规则；已构造引擎同步摘除（引擎实现不支持时安全跳过）。 */
+  /** 移除策略规则；已构造引擎同步摘除（P0-1：契约化 remove，不再 as any 探测）。 */
   unregisterPolicyRule(id: string): boolean {
     const existed = this._policyRules.delete(id)
     if (!existed) return false
-    const engineAny = this._policyEngine as any
-    if (engineAny && typeof engineAny.remove === 'function') {
-      engineAny.remove(id)
-    }
+    // 引擎一旦懒构造，规则副本已灌入引擎，必须同步摘除，否则卸载后仍命中。
+    this._policyEngine?.remove(id)
     logger.info('Unregistered policy rule: %s', id)
     return true
   }

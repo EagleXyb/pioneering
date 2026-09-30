@@ -213,7 +213,11 @@ export class ScenarioHost {
   /** 注册图边声明（作用域内可回滚）。 */
   registerEdge(spec: EdgeSpec): void {
     this.registry.registerEdge(spec)
-    this.track(() => this.registry.removeEdgeSpec(spec.from))
+    // P1-5：undo 必须精确到本包注册的单条边（from+to）。
+    // 旧实现只传 from，registry 会删除该 from 的全部边，可误删其他包同 from 不同 to 的边。
+    // 条件边（to 为映射对象）按 registry 命名约定以 '(conditional)' 命中。
+    const undoTarget = typeof spec.to === 'string' ? spec.to : '(conditional)'
+    this.track(() => this.registry.removeEdgeSpec(spec.from, undoTarget))
   }
 
   /** 注册扩展子图（作用域内可回滚）。 */
@@ -239,6 +243,9 @@ export class ScenarioHost {
   /**
    * 点分键配置覆盖（逐键回滚）。
    * 覆盖值在 deactivate 时恢复旧值（含"键原本不存在"）。
+   *
+   * P1-6：键原本不存在时，回滚走 `config.remove(key)` 真正删键并清理空容器；
+   * 旧实现写 undefined 会留下键残留，使 get(key, default) 取到 undefined 而非默认值。
    */
   applyConfigOverrides(overrides: Record<string, any>): void {
     for (const [key, value] of Object.entries(overrides)) {
@@ -246,7 +253,7 @@ export class ScenarioHost {
       const old = this.config.update(key, value)
       this.track(() => {
         if (existed) this.config.update(key, old)
-        else this.config.update(key, undefined)
+        else this.config.remove(key)
       })
     }
   }

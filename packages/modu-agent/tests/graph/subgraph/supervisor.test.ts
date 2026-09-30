@@ -1,5 +1,5 @@
 // 对应文档 §4.4 建议1/4/5：Supervisor 任务拆分单元测试
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   decompose_task,
@@ -124,6 +124,20 @@ describe('make_supervisor_node', () => {
     // 新拆分应产生子任务（替换 need_help 的 coding_def）
     expect(result.subtasks.length).toBeGreaterThanOrEqual(1)
   })
+
+  // === P1-16：supervisor_round 真实递增（旧实现恒为 2） ===
+  it('P1-16：need_help 重拆分时 supervisor_round 自 0→1，已有轮次 +1', async () => {
+    const nodeFn = make_supervisor_node(null, null, null)
+    const needHelpState = (round?: number) => _makeState({
+      supervisor_round: round,
+      subtasks: [{ task_id: 'coding_def', task_type: 'coding', task_input: {} }],
+      subtask_results: { coding_def: { status: 'need_help', reason: 'x' } },
+    })
+
+    expect((await nodeFn(needHelpState(undefined))).supervisor_round).toBe(1)
+    expect((await nodeFn(needHelpState(0))).supervisor_round).toBe(1)
+    expect((await nodeFn(needHelpState(3))).supervisor_round).toBe(4)
+  })
 })
 
 describe('route_from_supervisor', () => {
@@ -185,5 +199,50 @@ describe('route_from_supervisor', () => {
     const sends = route_from_supervisor(state)
     // 仅 t2 未完成
     expect(sends.length).toBe(1)
+  })
+
+  // === P1-16：依赖失败的任务不被静默丢弃（确定性归属） ===
+  it('P1-16：依赖任务 failed → 下游不调度（blocked），无依赖任务仍调度', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const state = _makeState({
+      subtasks: [
+        { task_id: 't1', task_type: 'research', task_input: {}, depends_on: [] },
+        { task_id: 't2', task_type: 'coding', task_input: {}, depends_on: ['t1'] },
+      ],
+      subtask_results: { t1: { status: 'failed', error_code: 'X' } },
+    })
+    const sends = route_from_supervisor(state)
+    // t1 终态跳过；t2 因上游 failed 永不就绪，不得被调度
+    expect(sends.length).toBe(0)
+    // 显式 error 留痕（不静默 END）
+    expect(errorSpy).toHaveBeenCalled()
+    expect(String(errorSpy.mock.calls[0])).toContain('t2')
+    errorSpy.mockRestore()
+  })
+
+  it('P1-16：need_help 终态同样不满足下游 success 依赖', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const state = _makeState({
+      subtasks: [
+        { task_id: 't1', task_type: 'research', task_input: {}, depends_on: [] },
+        { task_id: 't2', task_type: 'coding', task_input: {}, depends_on: ['t1'] },
+      ],
+      subtask_results: { t1: { status: 'need_help', reason: 'r' } },
+    })
+    expect(route_from_supervisor(state).length).toBe(0)
+    ;(console.error as any).mockRestore?.()
+  })
+
+  it('P1-16：依赖链全 success 时下游正常调度（不回归）', () => {
+    const state = _makeState({
+      subtasks: [
+        { task_id: 't1', task_type: 'research', task_input: {}, depends_on: [] },
+        { task_id: 't2', task_type: 'coding', task_input: {}, depends_on: ['t1'] },
+      ],
+      subtask_results: { t1: { status: 'success' } },
+    })
+    const sends = route_from_supervisor(state)
+    expect(sends.length).toBe(1)
+    expect((sends[0] as any).node).toBe('subagent_run')
   })
 })

@@ -22,6 +22,9 @@ const logger = {
   debug: (msg: string, ...args: any[]) => console.debug(`[file-ops] ${msg}`, ...args),
 }
 
+/** P1-13：单次读取的最大字节数（256KB），按字节限量、不整文件物化。 */
+const _MAX_READ_BYTES = 256 * 1024
+
 /**
  * P3-12.3.4: 文件操作工具。
  *
@@ -179,10 +182,10 @@ export class FileOpsTool extends BaseTool {
     return fullPath
   }
 
-  invoke(
+  async invoke(
     params: Record<string, any>,
     _context: Record<string, any>,
-  ): Record<string, any> {
+  ): Promise<Record<string, any>> {
     const op = params.op ?? ''
     const relPath = params.path ?? ''
     const content = params.content ?? ''
@@ -216,14 +219,21 @@ export class FileOpsTool extends BaseTool {
 
     try {
       if (op === 'read') {
-        if (!fs.existsSync(fullPath)) {
-          return {
-            status: 'error',
-            error_code: 'FILE_003',
-            data: { message: `File not found: ${relPath}` },
+        // P1-13：stat 预检 + 文件句柄限量读，取代 readFileSync 整文件读入后再截断
+        // （旧实现在 10GB 文件上会先把整个文件读进内存，内存尖峰可 OOM）。
+        let stat
+        try {
+          stat = await fs.promises.stat(fullPath)
+        } catch (e: any) {
+          if (e && typeof e?.code === 'string' && e.code === 'ENOENT') {
+            return {
+              status: 'error',
+              error_code: 'FILE_003',
+              data: { message: `File not found: ${relPath}` },
+            }
           }
+          throw e
         }
-        const stat = fs.statSync(fullPath)
         if (!stat.isFile()) {
           return {
             status: 'error',
@@ -231,8 +241,20 @@ export class FileOpsTool extends BaseTool {
             data: { message: `Not a file: ${relPath}` },
           }
         }
-        // 限制读取大小 256KB
-        const text = fs.readFileSync(fullPath, 'utf-8').slice(0, 262144)
+
+        // 最多分配/读取 _MAX_READ_BYTES 字节（offset=0 起读）
+        const readLen = Math.min(stat.size, _MAX_READ_BYTES)
+        const buf = Buffer.alloc(readLen)
+        const fh = await fs.promises.open(fullPath, 'r')
+        let bytesRead = 0
+        try {
+          const result = await fh.read(buf, 0, readLen, 0)
+          bytesRead = result.bytesRead
+        } finally {
+          await fh.close()
+        }
+        // 定长字节缓冲转 UTF-8（边界处多字节字符可能被截为替换字符，与"截断预览"语义一致）
+        const text = buf.toString('utf-8', 0, bytesRead)
         return {
           status: 'success',
           error_code: '',
@@ -240,6 +262,7 @@ export class FileOpsTool extends BaseTool {
             content: text,
             path: relPath,
             size: stat.size,
+            truncated: bytesRead < stat.size,
           },
         }
       } else if (op === 'write') {
