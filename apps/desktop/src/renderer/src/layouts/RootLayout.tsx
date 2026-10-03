@@ -1,18 +1,18 @@
 // ============================================================
 // RootLayout — 自适应根布局
-//   三栏模式 (>= 断点)：左 Sidebar(灰色贴边) + 中卡片(白色圆角) + 右卡片(白色圆角)，
-//                      卡片间 1px 灰色沟渠，卡片四周 5px 灰色边距
+//   三栏模式 (>= 断点)：左 Sidebar(冷灰贴边) + 中内容(白色直角) + 右内容(白色直角)，
+//                      侧栏与内容间无分割线，白色内容贴满顶/右/底（DeepSeek 风格）
 //                      使用 ResizablePanelGroup（始终渲染 2 个 Panel，
 //                      通过 collapse/expand 控显隐，避免拖拽 Bug）。
 //   覆盖模式 (< 断点)：中栏全宽，Sidebar / RightPanel 转 Drawer 抽屉。
 // 断点与窗口记忆按平台区分，保证各 OS 下的一致体验。
 //
-// 布局策略：
-//   - 窗口底色始终为 bg-sidebar（灰色），作为沟渠/边框色
-//   - Sidebar absolute 贴左/顶/底边，无外间距（全高灰色）
-//   - 白色卡片区域 absolute 定位，四周 5px 间距（沟渠）
-//   - ResizableHandle 宽 1px 透明，作为两卡片间的沟渠（透显灰色底色）
-//   - 每个 ResizablePanel 内部用独立白色圆角卡片包裹
+// 布局策略（无浮卡沟渠）：
+//   - Sidebar absolute 贴左/顶/底边，全高冷灰色，与内容区无分割线（灰/白自然分界）
+//   - 白色内容区 absolute 贴边（macOS top:0；Win/Linux 让出标题栏高度），
+//     无圆角、无描边、无阴影；原四周 5px 沟渠已全部并入内容区
+//   - ResizableHandle 宽 1px bg-border，作为中/右两块白面的分割线（保留拖拽热区）
+//   - 每个 ResizablePanel 内部为独立白色直角容器
 //   - TitleBar absolute 覆盖在窗口顶部左侧（macOS 仅左区）
 //
 // 子组件外提（问题 3 收敛）：
@@ -27,7 +27,6 @@ import {
   ResizablePanel,
   ResizableHandle
 } from '@/components/ui/resizable'
-import { cn } from '@/lib/utils'
 import { TitleBar } from './TitleBar'
 import { ChatHeader } from './ChatHeader'
 import { TopBarActions } from './TopBarActions'
@@ -50,6 +49,7 @@ import { usePanelToggle } from '@/platform/usePanelToggle'
 import { useChatStore } from '@/stores/chatStore'
 import { windowApi } from '@/services/ipc'
 
+// 侧栏展开宽度：与 WorkBuddy / DeepSeek / 千问办公 保持一致（262px）
 const SIDEBAR_WIDTH = 262
 const CENTER_INIT = 65
 const CONTEXT_INIT = 35
@@ -76,6 +76,11 @@ export function RootLayout() {
   // ============================================================
   const matchedNav = NAV_ITEMS.find((i) => i.route === location.pathname)
   const isChatView = !matchedNav && (location.pathname === '/' || location.pathname === '')
+  // 插件页 / 自动化页自带顶栏（插件：Tab + 搜索/管理/添加；自动化：定时任务/运行记录），
+  // 隐藏通用 ChatHeader 避免功能页标题与页内 Tab 重复。
+  const isPluginsRoute = location.pathname === '/plugins'
+  const isAutomationRoute = location.pathname === '/automation'
+  const hidePageHeader = isPluginsRoute || isAutomationRoute
   const headerTitle = matchedNav
     ? matchedNav.label
     : currentSession?.title || '新对话'
@@ -139,21 +144,18 @@ export function RootLayout() {
 
       {mode === 'three-column' ? (
         /* ============================================================
-           三栏模式：
-           - 左栏 Sidebar absolute 贴左/顶/底边（灰色，全高，无外间距）
-           - 卡片容器 absolute 定位，四周 5px 沟渠（top/right/bottom 固定 5px，
-             left 视侧边栏状态而定：展开时 262+5=267px，折叠时 5px）
-           - ResizablePanelGroup 填满容器，底色透明（透显灰色）
-           - ResizableHandle 宽 1px 透明，作为两卡片间沟渠（透显灰色底色）
-           - 每个 Panel 内包裹独立白色圆角卡片
+           三栏模式（DeepSeek 风格贴边布局）：
+           - 左栏 Sidebar absolute 贴左/顶/底边（冷灰，全高，无分割线）
+           - 内容容器 absolute 贴边（top/right/bottom:0；
+             left 视侧边栏状态而定：展开时 262px，折叠时 0）
+           - ResizablePanelGroup 填满容器
+           - ResizableHandle 宽 1px bg-border，中/右白面分割线（保留 4px 拖拽热区）
+           - 每个 Panel 内为独立白色直角容器（无圆角/描边/阴影）
            ============================================================ */
         <div className="absolute inset-0 overflow-hidden">
-          {/* 左栏 Sidebar */}
+          {/* 左栏 Sidebar（与内容区之间无分割线，靠灰/白色块自然分界） */}
           <div
-            className={cn(
-              'absolute top-0 left-0 bottom-0 overflow-hidden transition-[width] duration-200 ease-out bg-sidebar',
-              sidebarVisible && 'border-r border-border/0' /* 无分割线，靠沟渠分隔 */
-            )}
+            className="absolute top-0 left-0 bottom-0 overflow-hidden transition-[width] duration-200 ease-out bg-sidebar"
             style={{
               width: sidebarVisible ? SIDEBAR_WIDTH : 0,
               paddingTop: sidebarVisible ? 'var(--titlebar-h)' : 0
@@ -162,18 +164,18 @@ export function RootLayout() {
             <Sidebar />
           </div>
 
-          {/* 白色卡片区域容器：四周 5px 沟渠 */}
+          {/* 白色内容区容器：贴边，无沟渠（原四周 5px 沟渠已并入内容区） */}
           <div
             className="absolute"
             style={{
               // macOS：TitleBar 只覆盖左侧 262px 区域（left-0 bg-transparent），
-              //       中栏从 left=267 开始横向不与 TitleBar 重叠，卡片可用 5px 顶部沟渠。
-              // Win/Linux：TitleBar 全宽覆盖（inset-x-0），卡片需让出顶部 titlebar 高度，
+              //       内容区贴顶至 y=0，ChatHeader 在白面内自然显示，红绿灯浮于灰侧栏上。
+              // Win/Linux：TitleBar 全宽覆盖（inset-x-0），内容区需让出顶部 titlebar 高度，
               //       否则 ChatHeader 顶部会被 TitleBar 灰底遮挡。
-              top: isMac ? '5px' : 'var(--titlebar-h)',
-              right: '5px',
-              bottom: '5px',
-              left: sidebarVisible ? `calc(${SIDEBAR_WIDTH}px + 5px)` : '5px'
+              top: isMac ? '0px' : 'var(--titlebar-h)',
+              right: '0px',
+              bottom: '0px',
+              left: sidebarVisible ? `${SIDEBAR_WIDTH}px` : '0px'
             }}
             onMouseDown={handleCardMouseDown}
           >
@@ -182,13 +184,13 @@ export function RootLayout() {
               direction="horizontal"
               className="h-full w-full"
             >
-              {/* 中栏：独立白色圆角卡片 */}
+              {/* 中栏：白色直角内容区 */}
               <ResizablePanel id="center" defaultSize={CENTER_INIT} minSize={30}>
-                <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col relative" style={{ borderRadius: 6 }}>
-                  {/* 中栏顶部栏：欢迎页模式下隐藏标题栏（输入框居中、无标题干扰），
+                <div className="h-full w-full bg-background overflow-hidden flex flex-col relative">
+                  {/* 中栏顶部栏：欢迎页 / 插件页 / 自动化页隐藏标题栏（页面自带顶栏），
                       但侧边栏折叠时仍需在左上角显示"展开侧边栏/新建任务"按钮；
                       路由感知：会话视图显示会话标题+按钮，功能页显示对应名称无会话按钮 */}
-                  {!isWelcomeMode ? (
+                  {!isWelcomeMode && !hidePageHeader ? (
                     <ChatHeader
                       title={headerTitle}
                       contextPanelVisible={contextPanelVisible}
@@ -199,7 +201,7 @@ export function RootLayout() {
                       showSessionActions={showSessionActions}
                     />
                   ) : (
-                    /* 欢迎页模式：侧边栏收起时在左上角显示浮动按钮
+                    /* 欢迎页 / 插件页 / 自动化页：侧边栏收起时在左上角显示浮动按钮
                        位置与 ChatHeader 中按钮对齐：top-2(8px) 垂直居中于 48px 标题栏高度，
                        left-4(16px) 对齐 ChatHeader 的 px-4 内边距，macOS 额外避让红绿灯 */
                     !sidebarVisible && (
@@ -221,10 +223,10 @@ export function RootLayout() {
                 </div>
               </ResizablePanel>
 
-              {/* 中卡片与右卡片之间的沟渠：1px 拖拽线，hover 时显示高亮线 */}
-              <ResizableHandle className="w-px bg-transparent hover:bg-primary/40 transition-colors shrink-0 rounded-sm after:w-px" />
+              {/* 中/右白面之间的 1px 分割线（bg-border），hover 时高亮；4px 隐形热区负责拖拽 */}
+              <ResizableHandle className="w-px bg-border hover:bg-primary/40 transition-colors shrink-0 after:w-px" />
 
-              {/* 右栏：独立白色圆角卡片 */}
+              {/* 右栏：白色直角内容区 */}
               <ResizablePanel
                 id="context-panel"
                 ref={contextRef}
@@ -234,7 +236,7 @@ export function RootLayout() {
                 collapsible
                 collapsedSize={0}
               >
-                <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden" style={{ borderRadius: 6 }}>
+                <div className="h-full w-full bg-background overflow-hidden">
                   <RightPanel />
                 </div>
               </ResizablePanel>
@@ -243,20 +245,20 @@ export function RootLayout() {
         </div>
       ) : (
         /* ============================================================
-           覆盖模式（小屏抽屉）：单白色卡片 + 两侧 Drawer
-           与三栏模式一致：卡片四周 5px 沟渠
+           覆盖模式（小屏抽屉）：单白色内容区贴边 + 两侧 Drawer
+           与三栏模式一致：无沟渠、无圆角/描边/阴影
            ============================================================ */
-        <div className="absolute inset-0 overflow-hidden p-[5px]" style={{paddingTop: isMac ? '5px' : 'var(--titlebar-h)'}}>
-          <div className="h-full w-full bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/5 overflow-hidden flex flex-col relative" style={{ borderRadius: 6 }}>
-            {showTopBarActions && !isWelcomeMode ? (
+        <div className="absolute inset-0 overflow-hidden" style={{paddingTop: isMac ? '0px' : 'var(--titlebar-h)'}}>
+          <div className="h-full w-full bg-background overflow-hidden flex flex-col relative">
+            {showTopBarActions && !isWelcomeMode && !hidePageHeader ? (
               <TopBarActions
                 platform={platform}
                 onExpandSidebar={() => setSidebarVisible(true)}
                 onCreate={handleCreate}
               />
-            ) : !sidebarVisible && isWelcomeMode ? (
-              /* 覆盖模式欢迎页：侧边栏收起时在左上角显示浮动按钮
-                 位置与三栏模式欢迎页一致：top-2(8px) left-4(16px)，macOS 额外避让红绿灯 */
+            ) : !sidebarVisible && (isWelcomeMode || hidePageHeader) ? (
+              /* 覆盖模式欢迎页 / 插件页 / 自动化页：侧边栏收起时在左上角显示浮动按钮
+                 位置与三栏模式一致：top-2(8px) left-4(16px)，macOS 额外避让红绿灯 */
               <TooltipProvider delayDuration={200}>
                 <div
                   className="absolute top-2 left-4 z-10 flex items-center gap-1"

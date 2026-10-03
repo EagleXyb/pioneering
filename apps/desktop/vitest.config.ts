@@ -13,7 +13,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/renderer/src/**/*.test.ts'],
+    // 覆盖 renderer 与 main：main 侧（agent-runtime 等）为纯函数/结构接口实现，
+    // 不依赖 Electron 运行时，可直接在 node 环境断言（内核经 vi.mock 隔离）。
+    include: ['src/**/*.test.ts'],
     globals: true
   }
 })

@@ -1,6 +1,6 @@
 import { useState, memo, useRef, useEffect } from 'react'
 import { useSetAtom } from 'jotai'
-import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share, HelpCircle, ShieldCheck, ListChecks } from 'lucide-react'
+import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share, MessageCircleQuestion, ShieldCheck, ListChecks, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -40,27 +40,53 @@ interface MessageBubbleProps {
   streamingTraceRootOrder?: string[]
 }
 
-/** HITL 暂停徽标：让用户看到"这条消息正在等待确认/补充"，而非空白气泡 */
-function HitlPausedBadge({ kind }: { kind?: ChatMessage['pausedKind'] }) {
+/** 已处理耗时：从暂停消息产生起每秒刷新（120s 超时内即可读到秒级反馈） */
+function useElapsedSeconds(start: number): number {
+  const [secs, setSecs] = useState(() => Math.max(0, Math.floor((Date.now() - start) / 1000)))
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSecs(Math.max(0, Math.floor((Date.now() - start) / 1000)))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [start])
+  return secs
+}
+
+function formatElapsed(total: number): string {
+  if (total < 60) return `已处理 ${total} 秒`
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `已处理 ${minutes} 分 ${String(seconds).padStart(2, '0')} 秒`
+}
+
+/**
+ * HITL 暂停状态头：已处理耗时 + 虚线分隔 + 等待状态。
+ * 暂停的半截消息不落库、内容可能为空，状态头保证用户看到
+ * "Agent 正在询问/等待"以及本次中断已持续多久，而不是空白气泡。
+ */
+function HitlPausedHeader({ kind, timestamp }: { kind?: ChatMessage['pausedKind']; timestamp: number }) {
+  const secs = useElapsedSeconds(timestamp)
   const { Icon, text } = (() => {
     switch (kind) {
       case 'tool_confirm':
         return { Icon: ShieldCheck, text: '等待你确认该操作' }
       case 'choice':
         return { Icon: ListChecks, text: '等待你选择' }
+      case 'plan_confirm':
+        return { Icon: ClipboardCheck, text: '等待你确认方案' }
       case 'clarifying':
       default:
-        return { Icon: HelpCircle, text: '等待你补充信息' }
+        return { Icon: MessageCircleQuestion, text: '正在询问用户' }
     }
   })()
   return (
-    <div
-      className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary"
-      role="status"
-      aria-live="polite"
-    >
-      <Icon className="size-3.5" />
-      {text}
+    <div className="mb-2" role="status" aria-live="polite">
+      <div className="text-xs text-muted-foreground">{formatElapsed(secs)}</div>
+      <div className="mt-1.5 border-t border-dashed border-border" />
+      <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="size-3.5" />
+        {text}
+      </div>
     </div>
   )
 }
@@ -138,9 +164,11 @@ export const MessageBubble = memo(function MessageBubble({
   // T04：Message 作为消息行布局外壳，承担对齐 + 内容容器的组合（头像已隐藏）
   <Message align={align}>
       <MessageContent>
-        {/* HITL 暂停徽标：暂停的半截消息不落库、内容可能为空，
-            徽标保证用户能看到"正在等待答复"而不是空白气泡 */}
-        {isAssistant && message.paused && <HitlPausedBadge kind={message.pausedKind} />}
+        {/* HITL 暂停状态头：暂停的半截消息不落库、内容可能为空，
+            耗时+虚线+状态保证用户能看到"正在询问/等待"而不是空白气泡 */}
+        {isAssistant && message.paused && (
+          <HitlPausedHeader kind={message.pausedKind} timestamp={message.timestamp} />
+        )}
         {useTrace && isAssistant ? (
           traceNodes && traceRootOrder ? (
             <AgentTimeline

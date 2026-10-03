@@ -34,13 +34,15 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
+  ClipboardCheck,
+  CornerDownLeft,
+  FileText,
   HelpCircle,
   Image as ImageIcon,
   Mic,
-  Paperclip,
   Plus,
+  ShieldCheck,
   Square,
-  Terminal,
   X,
   Zap
 } from 'lucide-react'
@@ -49,10 +51,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import {
@@ -79,16 +78,20 @@ import { getSessionInputDraftKey } from '@/lib/input/input-drafts'
 
 import { useInputDraftPersistence } from '@/hooks/use-input-draft-persistence'
 import { useChatStore } from '@/stores/chatStore'
+import { useHitlStore } from '@/stores/hitlStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { resolveBinding } from '../../../../../shared/hotkey-registry'
 import { matchesAccelerator } from '@/lib/match-accelerator'
 import { FileAwareEditor, type FileAwareEditorHandle } from './FileAwareEditor'
 import {
-  SlashCommandPopover,
-  BUILTIN_SLASH_COMMANDS,
-  scoreSlashCommand,
-  type SlashCommand
-} from './SlashCommandPopover'
+  CommandPalette,
+  PALETTE_COMMANDS,
+  filterPaletteCommands,
+  groupPaletteCommands,
+  flattenPaletteGroups,
+  type PaletteCommand,
+  type PaletteVisibleGroup
+} from './CommandPalette'
 import { FileSearchPopover } from './FileSearchPopover'
 import { ImagePreview } from './ImagePreview'
 import { ComposerRuntimeStatus } from './ComposerRuntimeStatus'
@@ -107,11 +110,17 @@ export interface InputAreaSendOptions {
  * 而不是发起新的对话请求（对应设计文档 ClarifyingInputPanel 的落地形态）。
  */
 export interface InputAreaHitlState {
-  kind: 'tool_confirm' | 'clarifying' | 'choice'
+  kind: 'tool_confirm' | 'clarifying' | 'choice' | 'plan_confirm'
   /** 澄清问题文本 */
   question?: string
   /** 兜底提示文案 */
   message?: string
+  /** 候选选项（有值时渲染编号选项列表，点击直接作答；无值时仅自由文本输入） */
+  options?: Array<{ id: string; label: string; description?: string }>
+  /** kind='tool_confirm' 时携带待审批的工具调用（编号 + 工具名 + 参数） */
+  toolCalls?: Array<{ id: string; name: string; args?: Record<string, unknown> }>
+  /** kind='plan_confirm' 时携带待确认的产物文件（spec.md/tasks.md 等） */
+  artifacts?: Array<{ name: string; path?: string }>
   /** 当前项在队列中的序号（从 1 开始） */
   index?: number
   /** 队列总项数 */
@@ -140,15 +149,49 @@ export interface InputAreaProps {
    * `+` 仅附件、仅 `↑` 发送，并禁用草稿持久化。
    */
   mode?: 'normal' | 'hitl'
-  /** HITL 待答复项（有值时渲染内联澄清条并接管提交语义） */
+  /** HITL 待答复项（有值时在输入框上方渲染内嵌卡并接管提交语义） */
   hitl?: InputAreaHitlState | null
+  /** 最近一次答复/恢复失败的可见原因（由 hitlStore 透传，卡片内展示） */
+  hitlError?: string | null
   /** 内联澄清条提交（自由文本回答） */
   onHitlAnswer?: (text: string) => void
+  /** 点选候选选项（以选项 id 作答，立即提交） */
+  onHitlSelectOption?: (optionId: string) => void
   /** 跳过当前澄清问题（仅 clarifying/choice 生效） */
   onHitlSkip?: () => void
+  /** 工具审批-批准（可携带按 tool_call_id 覆盖的修改参数；返回 false 表示恢复未启动） */
+  onHitlApprove?: (
+    modifiedArgs: Record<string, Record<string, unknown>> | null
+  ) => void | Promise<boolean>
+  /** 工具审批-拒绝（approved=false 恢复；返回 false 表示恢复未启动） */
+  onHitlReject?: () => void | Promise<boolean>
+  /** 工具审批-取消（放弃整个 run，等价旧弹窗点遮罩/ESC） */
+  onHitlDismiss?: () => void
+  /** 方案确认门-执行此方案（kind='plan_confirm'，批准继续） */
+  onHitlConfirmPlan?: () => void
 }
 
 const CHAR_LIMIT = 10000
+
+/**
+ * 方案确认门（kind='plan_confirm'）的固定说明语。
+ * 当前为 UI-only 形态（后端尚无 plan_confirm 生产节点），说明语先内置；
+ * 后端接入后如需按场景定制，可把该文案并入 interrupt 载荷（如 message 字段）。
+ */
+const PLAN_CONFIRM_HINT = '如果不符合预期，可以在输入框中输入指导要求（暂不支持在线编辑）。'
+/** 方案确认门缺省问题文案（载荷未给 question/message 时兜底） */
+const PLAN_CONFIRM_FALLBACK_QUESTION = '文档已生成，是否基于该方案继续执行？'
+
+/**
+ * dev-only mock 数据：/mock-plan 命令在当前会话入队的方案确认门载荷。
+ * 对齐参考设计（TRAE Spec 模式三件套），后端 plan_confirm 节点接入后删除此 mock。
+ */
+const MOCK_PLAN_CONFIRM_QUESTION = '文档已经生成，请问是否要基于文档继续执行？'
+const MOCK_PLAN_CONFIRM_ARTIFACTS = [
+  { name: 'spec.md' },
+  { name: 'tasks.md' },
+  { name: 'checklist.md' }
+]
 
 /** 计算 `/` 触发的 Slash 命令查询（对应规范 §10.1） */
 function getSlashQuery(
@@ -255,6 +298,180 @@ function ModelSelect({
 }
 
 // ============================================================
+// HitlToolConfirmPanel — 工具审批内嵌卡（审批从模态弹窗迁入输入框上方）
+//
+// 能力与旧 HitlToolConfirmDialog 一一对应，不丢失任何交互：
+//   - 工具列表：编号 + 工具名 + 参数单行摘要，点击行展开完整 JSON；
+//   - 每个工具可独立切换"修改参数"（JSON textarea；批准时解析失败的项保持原参）；
+//   - 拒绝（approved=false 恢复，图走拒绝分支）/ 批准并继续（可携带 modifiedArgs）；
+//   - 右上 × = 放弃整个 run（等价旧弹窗点遮罩/ESC → abort）；
+//   - resume 进行中按钮禁用防重复提交；恢复失败原因由 error 展示，可重试。
+// 组件随审批项条件挂载/卸载，展开/改参等本地编辑状态天然按项隔离。
+// ============================================================
+function HitlToolConfirmPanel({
+  hitl,
+  error,
+  onApprove,
+  onReject,
+  onDismiss
+}: {
+  hitl: InputAreaHitlState
+  error?: string | null
+  onApprove: (
+    modifiedArgs: Record<string, Record<string, unknown>> | null
+  ) => void | Promise<boolean>
+  onReject: () => void | Promise<boolean>
+  onDismiss: () => void
+}) {
+  const toolCalls = hitl.toolCalls ?? []
+  const [resolving, setResolving] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [editMode, setEditMode] = useState<Record<string, boolean>>({})
+  // 每个工具的「修改后参数」JSON 文本（初始为原参数格式化）
+  const [argEdits, setArgEdits] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {}
+    for (const tc of toolCalls) init[tc.id] = JSON.stringify(tc.args ?? {}, null, 2)
+    return init
+  })
+
+  // 收集处于改参态且 JSON 合法的覆盖项（按 tool_call_id 索引；解析失败的项忽略，保持原参）
+  const collectModifiedArgs = (): Record<string, Record<string, unknown>> | null => {
+    let modifiedArgs: Record<string, Record<string, unknown>> | null = null
+    for (const tc of toolCalls) {
+      if (!editMode[tc.id]) continue
+      try {
+        const parsed = JSON.parse(argEdits[tc.id] ?? '')
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          modifiedArgs ??= {}
+          modifiedArgs[tc.id] = parsed as Record<string, unknown>
+        }
+      } catch {
+        // JSON 解析失败：保持原参（与旧模态弹窗行为一致）
+      }
+    }
+    return modifiedArgs
+  }
+
+  // 仅当恢复未真正启动（返回 false）时解除忙碌态；成功时当前项卸载，无需复位
+  const runAction = useCallback(async (action: () => void | Promise<boolean>) => {
+    if (resolving) return
+    setResolving(true)
+    const ok = await action()
+    if (ok === false) setResolving(false)
+  }, [resolving])
+
+  return (
+    <div className="pro-input-hitl-panel">
+      <div className="pro-input-hitl-header">
+        <ShieldCheck className="size-4 shrink-0 text-amber-500" />
+        <span className="pro-input-hitl-question">需要你的确认</span>
+        {!!hitl.index && (
+          <span className="pro-input-hitl-index">
+            {hitl.index}
+            {hitl.total ? `/${hitl.total}` : ''}
+          </span>
+        )}
+        <button
+          type="button"
+          className="pro-input-hitl-skip"
+          onClick={onDismiss}
+          aria-label="取消并中止本次执行"
+          title="取消并中止本次执行"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+
+      <p className="pro-input-hitl-tool-desc">
+        {hitl.message || 'Agent 请求执行以下操作，请确认是否批准。'}
+      </p>
+
+      {/* 待审批工具列表：默认折叠为单行摘要，展开后查看完整参数 / 修改参数 */}
+      <div className="pro-input-hitl-tools">
+        {toolCalls.map((tc, i) => {
+          const isOpen = !!expanded[tc.id]
+          const isEdit = !!editMode[tc.id]
+          return (
+            <div key={tc.id} className="pro-input-hitl-tool">
+              <button
+                type="button"
+                className="pro-input-hitl-tool-head"
+                onClick={() => setExpanded((prev) => ({ ...prev, [tc.id]: !prev[tc.id] }))}
+                aria-expanded={isOpen}
+              >
+                <span className="pro-input-hitl-tool-no" aria-hidden>
+                  {i + 1}
+                </span>
+                <span className="pro-input-hitl-tool-name">{tc.name}</span>
+                <span className="pro-input-hitl-tool-args-summary">
+                  {JSON.stringify(tc.args ?? {})}
+                </span>
+                <ChevronDown
+                  className={cn('pro-input-hitl-tool-chevron', isOpen && 'is-open')}
+                  aria-hidden
+                />
+              </button>
+              {isOpen && (
+                <div className="pro-input-hitl-tool-body">
+                  <pre className="pro-input-hitl-tool-args">
+                    {JSON.stringify(tc.args ?? {}, null, 2)}
+                  </pre>
+                  <button
+                    type="button"
+                    className="pro-input-hitl-tool-edit-toggle"
+                    onClick={() => setEditMode((prev) => ({ ...prev, [tc.id]: !prev[tc.id] }))}
+                  >
+                    <ChevronDown
+                      className={cn('size-3.5 transition-transform', isEdit && 'rotate-180')}
+                      aria-hidden
+                    />
+                    修改参数
+                  </button>
+                  {isEdit && (
+                    <textarea
+                      spellCheck={false}
+                      className="pro-input-hitl-tool-edit"
+                      value={argEdits[tc.id] ?? ''}
+                      onChange={(e) =>
+                        setArgEdits((prev) => ({ ...prev, [tc.id]: e.target.value }))
+                      }
+                      aria-label={`${tc.name} 修改后参数（JSON）`}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {error && <p className="pro-input-hitl-error">{error}</p>}
+
+      <div className="pro-input-hitl-divider" aria-hidden />
+
+      <div className="pro-input-hitl-actions">
+        <button
+          type="button"
+          className="pro-input-hitl-btn is-reject"
+          onClick={() => void runAction(onReject)}
+          disabled={resolving}
+        >
+          拒绝
+        </button>
+        <button
+          type="button"
+          className="pro-input-hitl-btn is-approve"
+          onClick={() => void runAction(() => onApprove(collectModifiedArgs()))}
+          disabled={resolving}
+        >
+          {resolving ? '处理中…' : '批准并继续'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // InputArea 主组件
 // ============================================================
 export function InputArea({
@@ -268,8 +485,14 @@ export function InputArea({
   isWelcome = false,
   mode = 'normal',
   hitl = null,
+  hitlError = null,
   onHitlAnswer,
-  onHitlSkip
+  onHitlSelectOption,
+  onHitlSkip,
+  onHitlApprove,
+  onHitlReject,
+  onHitlDismiss,
+  onHitlConfirmPlan
 }: InputAreaProps) {
   const editorRef = useRef<FileAwareEditorHandle>(null)
   const [text, setText] = useState('')
@@ -283,15 +506,23 @@ export function InputArea({
 
   // ---- HITL 精简态（阶段三 3.4）----
   const hitlMode = mode === 'hitl'
-  // 工具审批必须走弹窗（approve/reject/modified_args），输入框仅禁用不再接管提交；
-  // 澄清/多选允许直接在输入框补充说明并发送。
+  // 工具审批已内嵌为审批卡（approve/reject/modified_args 在卡内完成），
+  // 不再需要文本输入：审批态隐藏编辑区与工具栏；澄清/多选仍由输入框承接自由文本。
   const hitlAnswerable = !!hitl && hitl.kind !== 'tool_confirm'
   const hitlLocked = !!hitl && hitl.kind === 'tool_confirm'
+  // 候选选项：有值时渲染编号列表（点击即作答），为空时退化为纯自由文本澄清
+  const hitlOptions = hitl?.options ?? []
+  // 方案确认门的产物文件（spec.md/tasks.md/checklist.md 等）
+  const hitlArtifacts = hitl?.artifacts ?? []
 
   // ---- 弹出层状态 ----
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashTrigger, setSlashTrigger] = useState<{ start: number; end: number; query: string } | null>(null)
   const [slashActiveIndex, setSlashActiveIndex] = useState(0)
+  // 「+」触发的同一面板（plus 模式）：查询由面板内置搜索框驱动
+  const [plusOpen, setPlusOpen] = useState(false)
+  const [plusQuery, setPlusQuery] = useState('')
+  const [plusActiveIndex, setPlusActiveIndex] = useState(0)
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionTrigger, setMentionTrigger] = useState<{ start: number; end: number; query: string } | null>(null)
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
@@ -299,16 +530,24 @@ export function InputArea({
   // ---- 派生：已附加文件（从文本解析，保持单一数据源）----
   const selectedFiles = useMemo<SelectedFileItem[]>(() => deserializeEditorState(text).files, [text])
 
-  // ---- Slash 命令过滤 ----
-  const slashCommands = useMemo<SlashCommand[]>(() => {
-    if (!slashTrigger) return []
-    const q = slashTrigger.query
-    return BUILTIN_SLASH_COMMANDS
-      .map((c) => ({ c, s: scoreSlashCommand(c.name, q) }))
-      .filter((x) => x.s !== Infinity)
-      .sort((a, b) => a.s - b.s)
-      .map((x) => x.c)
-  }, [slashTrigger])
+  // ---- 统一命令面板：单一注册表，「/」与「+」共用 ----
+  // HITL 精简态（阶段三 3.4）：「+」仅保留附件动作，与既有约束一致
+  const paletteCommands = useMemo<PaletteCommand[]>(
+    () => (hitlMode ? PALETTE_COMMANDS.filter((c) => c.actionId === 'attach-file') : PALETTE_COMMANDS),
+    [hitlMode]
+  )
+
+  const slashGroups = useMemo<PaletteVisibleGroup[]>(
+    () => groupPaletteCommands(filterPaletteCommands(paletteCommands, slashTrigger?.query ?? '')),
+    [paletteCommands, slashTrigger]
+  )
+  const plusGroups = useMemo<PaletteVisibleGroup[]>(
+    () => groupPaletteCommands(filterPaletteCommands(paletteCommands, plusQuery)),
+    [paletteCommands, plusQuery]
+  )
+  // 跨组拍平索引：键盘 ↑↓ 与 ⌘N 直选共用
+  const slashFlat = useMemo<PaletteCommand[]>(() => flattenPaletteGroups(slashGroups), [slashGroups])
+  const plusFlat = useMemo<PaletteCommand[]>(() => flattenPaletteGroups(plusGroups), [plusGroups])
 
   // ---- @ 文件搜索结果 ----
   const mentionFiles = useMemo<SelectedFileItem[]>(() => {
@@ -449,15 +688,126 @@ export function InputArea({
     [insertFileTokens, addImages]
   )
 
-  // ---- 应用 Slash 命令 ----
-  const applySlash = useCallback(
-    (cmd: SlashCommand) => {
-      if (!slashTrigger) return
-      editorRef.current?.replaceRange(slashTrigger.start, slashTrigger.end, `${cmd.name} `)
-      setSlashOpen(false)
-      setSlashTrigger(null)
+  // ---- Agent 模式切换（命令面板「模式」动作与工具栏徽标共用）----
+  const setAgentMode = useChatStore((s) => s.setAgentMode)
+  const handleToggleAgent = useCallback(() => {
+    setAgentMode(!agentMode)
+    onToggleAgent?.()
+  }, [agentMode, setAgentMode, onToggleAgent])
+
+  // ---- dev-only：/mock-plan 在当前会话注入方案确认门（纯前端 UI 预览，不经后端）----
+  const triggerMockPlanConfirm = useCallback(() => {
+    if (!import.meta.env.DEV) return
+    const sid = sessionId
+    if (!sid) {
+      notificationApi.show({ title: '无法模拟方案确认门', body: '请先进入或创建一个会话后再使用 /mock-plan' })
+      return
+    }
+    const chat = useChatStore.getState()
+    // 当前会话已有暂停项时不覆盖（避免打断正在处理的真实 HITL）
+    if (chat.hitlPausedSessionId === sid) return
+    chat.restoreHitlPause({
+      sessionId: sid,
+      kind: 'plan_confirm',
+      message: MOCK_PLAN_CONFIRM_QUESTION,
+      question: MOCK_PLAN_CONFIRM_QUESTION
+    })
+    useHitlStore.getState().enqueue({
+      sessionId: sid,
+      kind: 'plan_confirm',
+      message: MOCK_PLAN_CONFIRM_QUESTION,
+      question: MOCK_PLAN_CONFIRM_QUESTION,
+      artifacts: MOCK_PLAN_CONFIRM_ARTIFACTS,
+      origin: 'live'
+    })
+  }, [sessionId])
+
+  // ---- 「+」面板开关 ----
+  const openPlus = useCallback(() => {
+    setPlusQuery('')
+    setPlusActiveIndex(0)
+    // 与「/」面板互斥
+    setSlashOpen(false)
+    setPlusOpen(true)
+  }, [])
+
+  const closePlus = useCallback(() => {
+    setPlusOpen(false)
+    setPlusQuery('')
+    setPlusActiveIndex(0)
+  }, [])
+
+  // ---- 统一命令分发：「/」与「+」选择后共用同一入口 ----
+  const applyCommand = useCallback(
+    (cmd: PaletteCommand, source: 'slash' | 'plus') => {
+      const trigger = source === 'slash' ? slashTrigger : null
+
+      if (cmd.kind === 'insert' && cmd.slashName) {
+        const token = `${cmd.slashName} `
+        if (trigger) {
+          editorRef.current?.replaceRange(trigger.start, trigger.end, token)
+        } else {
+          editorRef.current?.insertText(token)
+        }
+      } else if (cmd.actionId === 'attach-file') {
+        // 动作型命令：先移除「/」触发片段，再执行动作
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        void handleAttachFile()
+      } else if (cmd.actionId === 'toggle-agent') {
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        handleToggleAgent()
+      } else if (cmd.actionId === 'mock-plan-confirm') {
+        // dev-only：清掉 slash 触发片段后注入 mock 方案确认门
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        triggerMockPlanConfirm()
+      }
+
+      if (source === 'slash') {
+        setSlashOpen(false)
+        setSlashTrigger(null)
+      } else {
+        closePlus()
+        editorRef.current?.focus()
+      }
     },
-    [slashTrigger]
+    [slashTrigger, handleAttachFile, handleToggleAgent, triggerMockPlanConfirm, closePlus]
+  )
+
+  // ---- plus 面板搜索框键盘导航（slash 模式焦点在 textarea，由 handleKeyDown 处理）----
+  const handlePlusQueryKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closePlus()
+        editorRef.current?.focus()
+        return
+      }
+      if (plusFlat.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setPlusActiveIndex((i) => (i + 1) % plusFlat.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setPlusActiveIndex((i) => (i - 1 + plusFlat.length) % plusFlat.length)
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        applyCommand(plusFlat[plusActiveIndex]!, 'plus')
+        return
+      }
+      // ⌘/Ctrl + 数字：直选可见项（与面板右侧徽标一致）
+      if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+        const cmd = plusFlat[Number(e.key) - 1]
+        if (cmd) {
+          e.preventDefault()
+          applyCommand(cmd, 'plus')
+        }
+      }
+    },
+    [plusFlat, plusActiveIndex, applyCommand, closePlus]
   )
 
   // ---- 应用 @ 文件引用 ----
@@ -479,7 +829,15 @@ export function InputArea({
     // 这条分支是输入框 HITL 能力的关键——否则提交会落到 sendMessage，
     // 与后端仍处于 interrupt 的 run 冲突。
     if (hitlAnswerable) {
-      if (!promptText) return
+      // 方案确认门：空文本回车 = 执行此方案（与卡片上的 Enter 提示一致）；
+      // 有文本则视为"其他"指导要求，作为澄清回答回传（未来由后端据意见修订后重新询问）
+      if (!promptText) {
+        if (hitl?.kind === 'plan_confirm') {
+          onHitlConfirmPlan?.()
+          editorRef.current?.focus()
+        }
+        return
+      }
       onHitlAnswer?.(promptText)
       setText('')
       setAttachedImages([])
@@ -513,33 +871,43 @@ export function InputArea({
     setMentionOpen(false)
     setSlashTrigger(null)
     setMentionTrigger(null)
+    closePlus()
     clearDraftRef.current?.()
     editorRef.current?.focus()
-  }, [text, attachedImages, selectedSkill, selectedFiles, model, onSend, hitlAnswerable, onHitlAnswer])
+  }, [text, attachedImages, selectedSkill, selectedFiles, model, onSend, hitlAnswerable, hitl, onHitlAnswer, onHitlConfirmPlan, closePlus])
 
   // ---- 键盘导航 ----
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      if (slashOpen && slashCommands.length) {
+      if (slashOpen && slashFlat.length) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
-          setSlashActiveIndex((i) => (i + 1) % slashCommands.length)
+          setSlashActiveIndex((i) => (i + 1) % slashFlat.length)
           return
         }
         if (e.key === 'ArrowUp') {
           e.preventDefault()
-          setSlashActiveIndex((i) => (i - 1 + slashCommands.length) % slashCommands.length)
+          setSlashActiveIndex((i) => (i - 1 + slashFlat.length) % slashFlat.length)
           return
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault()
-          applySlash(slashCommands[slashActiveIndex]!)
+          applyCommand(slashFlat[slashActiveIndex]!, 'slash')
           return
         }
         if (e.key === 'Escape') {
           e.preventDefault()
           setSlashOpen(false)
           return
+        }
+        // ⌘/Ctrl + 数字：直选可见项（与面板右侧徽标一致）
+        if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+          const cmd = slashFlat[Number(e.key) - 1]
+          if (cmd) {
+            e.preventDefault()
+            applyCommand(cmd, 'slash')
+            return
+          }
         }
       }
 
@@ -592,7 +960,7 @@ export function InputArea({
         }
       }
     },
-    [slashOpen, slashCommands, slashActiveIndex, mentionOpen, mentionFiles, mentionActiveIndex, applySlash, applyMention, handleSend, hotkeyOverrides]
+    [slashOpen, slashFlat, slashActiveIndex, mentionOpen, mentionFiles, mentionActiveIndex, applyCommand, applyMention, handleSend, hotkeyOverrides]
   )
 
   // ---- 草稿持久化（HITL 精简态禁用）----
@@ -631,22 +999,27 @@ export function InputArea({
     ? text.trim().length > 0 && !isOverLimit
     : (text.trim().length > 0 || attachedImages.length > 0) && !isOverLimit
 
-  const setAgentMode = useChatStore((s) => s.setAgentMode)
-  const handleToggleAgent = useCallback(() => {
-    setAgentMode(!agentMode)
-    onToggleAgent?.()
-  }, [agentMode, setAgentMode, onToggleAgent])
-
   return (
     <div className="pro-input-area">
       <div className="pro-input-inner">
-        {/* Slash 命令弹出层 */}
-        <SlashCommandPopover
-          open={slashOpen}
-          commands={slashCommands}
-          activeIndex={slashActiveIndex}
-          onHover={setSlashActiveIndex}
-          onSelect={applySlash}
+        {/* 统一命令面板：「/」与「+」共用；仅其中一种模式打开时渲染 */}
+        <CommandPalette
+          open={slashOpen || plusOpen}
+          mode={slashOpen ? 'slash' : 'plus'}
+          groups={slashOpen ? slashGroups : plusGroups}
+          activeIndex={slashOpen ? slashActiveIndex : plusActiveIndex}
+          query={plusQuery}
+          onQueryChange={(q) => {
+            setPlusQuery(q)
+            setPlusActiveIndex(0)
+          }}
+          onQueryKeyDown={handlePlusQueryKeyDown}
+          onHover={slashOpen ? setSlashActiveIndex : setPlusActiveIndex}
+          onSelect={(cmd) => applyCommand(cmd, slashOpen ? 'slash' : 'plus')}
+          onClose={() => {
+            closePlus()
+            editorRef.current?.focus()
+          }}
         />
 
         {/* @ 文件搜索弹出层 */}
@@ -666,32 +1039,127 @@ export function InputArea({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* HITL 内联澄清条：展示 Agent 的问题 + 队列序号 + 跳过 */}
-          {hitl && (
-            <div className="pro-input-hitl-header">
-              <HelpCircle className="size-4 shrink-0 text-primary" />
-              <span className="pro-input-hitl-question">
-                {hitl.question || hitl.message || 'Agent 需要你补充信息后才能继续。'}
-              </span>
-              {!!hitl.index && (
-                <span className="pro-input-hitl-index">
-                  {hitl.index}
-                  {hitl.total ? `/${hitl.total}` : ''}
+          {/* HITL 内嵌卡：工具审批 / 方案确认 / 需求澄清统一在输入框上方承接。
+              各分支显式 `&& hitl` 守卫，保证分支内 hitl 非空（嵌套三元不跨分支保留收窄）。 */}
+          {hitl?.kind === 'tool_confirm' && hitl ? (
+            <HitlToolConfirmPanel
+              hitl={hitl}
+              error={hitlError}
+              onApprove={async (modifiedArgs) => (await onHitlApprove?.(modifiedArgs)) ?? false}
+              onReject={async () => (await onHitlReject?.()) ?? false}
+              onDismiss={() => onHitlDismiss?.()}
+            />
+          ) : hitl?.kind === 'plan_confirm' && hitl ? (
+            /* 方案确认门：问题 → 说明 → 产物文件 → 执行此方案（Enter）→ 分隔线 → 下方输入框输入"其他"指导要求 */
+            <div className="pro-input-hitl-panel">
+              <div className="pro-input-hitl-header">
+                <ClipboardCheck className="size-4 shrink-0 text-primary" />
+                <span className="pro-input-hitl-question">
+                  {hitl.question || hitl.message || PLAN_CONFIRM_FALLBACK_QUESTION}
                 </span>
+                {!!hitl.index && (
+                  <span className="pro-input-hitl-index">
+                    {hitl.index}
+                    {hitl.total ? `/${hitl.total}` : ''}
+                  </span>
+                )}
+                {onHitlDismiss && (
+                  <button
+                    type="button"
+                    className="pro-input-hitl-skip"
+                    onClick={onHitlDismiss}
+                    aria-label="取消并中止本次执行"
+                    title="取消并中止本次执行（Esc）"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <p className="pro-input-hitl-tool-desc">{PLAN_CONFIRM_HINT}</p>
+
+              {/* 产物文件列表（path 未提供时仅展示，不支持点击打开） */}
+              {hitlArtifacts.length > 0 && (
+                <div className="pro-input-hitl-artifacts">
+                  {hitlArtifacts.map((a) => (
+                    <div key={a.name} className="pro-input-hitl-artifact" title={a.path ?? a.name}>
+                      <FileText className="size-4 shrink-0 text-blue-500" aria-hidden />
+                      <span className="pro-input-hitl-artifact-name">{a.name}</span>
+                    </div>
+                  ))}
+                </div>
               )}
-              {hitlAnswerable && onHitlSkip && (
+
+              <div className="pro-input-hitl-options">
                 <button
                   type="button"
-                  className="pro-input-hitl-skip"
-                  onClick={onHitlSkip}
-                  aria-label="跳过该问题"
-                  title="跳过该问题，按现有信息继续"
+                  className="pro-input-hitl-option is-plan-approve"
+                  onClick={() => onHitlConfirmPlan?.()}
+                  title="基于该方案继续执行（Enter）"
                 >
-                  <X className="size-3.5" />
+                  <span className="pro-input-hitl-option-text">
+                    <span className="pro-input-hitl-option-label">是的，执行此方案</span>
+                  </span>
+                  <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 </button>
+              </div>
+
+              <div className="pro-input-hitl-divider" aria-hidden />
+            </div>
+          ) : hitl ? (
+            <div className="pro-input-hitl-panel">
+              <div className="pro-input-hitl-header">
+                <HelpCircle className="size-4 shrink-0 text-primary" />
+                <span className="pro-input-hitl-question">
+                  {hitl.question || hitl.message || 'Agent 需要你补充信息后才能继续。'}
+                </span>
+                {!!hitl.index && (
+                  <span className="pro-input-hitl-index">
+                    {hitl.index}
+                    {hitl.total ? `/${hitl.total}` : ''}
+                  </span>
+                )}
+                {hitlAnswerable && onHitlSkip && (
+                  <button
+                    type="button"
+                    className="pro-input-hitl-skip"
+                    onClick={onHitlSkip}
+                    aria-label="跳过该问题"
+                    title="跳过该问题，按现有信息继续"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+              {hitlAnswerable && hitlOptions.length > 0 && (
+                <div className="pro-input-hitl-options" role="listbox" aria-label="候选方向">
+                  {hitlOptions.map((opt, i) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="option"
+                      className="pro-input-hitl-option"
+                      onClick={() => onHitlSelectOption?.(opt.id)}
+                      title="选择该方向并发送"
+                    >
+                      <span className="pro-input-hitl-option-no" aria-hidden>
+                        {i + 1}
+                      </span>
+                      <span className="pro-input-hitl-option-text">
+                        <span className="pro-input-hitl-option-label">{opt.label}</span>
+                        {opt.description && (
+                          <span className="pro-input-hitl-option-desc">{opt.description}</span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {hitlAnswerable && hitlOptions.length > 0 && (
+                <div className="pro-input-hitl-divider" aria-hidden />
               )}
             </div>
-          )}
+          ) : null}
 
           {/* 状态行：运行时状态 + 选中技能 */}
           {(attachedImages.length > 0 || selectedSkill) && (
@@ -711,6 +1179,9 @@ export function InputArea({
             <ImagePreview images={attachedImages} onRemove={removeImage} className="pro-input-attachments" />
           )}
 
+          {/* 工具审批态：文本编辑区与工具栏由审批卡的操作按钮取代，整体不渲染 */}
+          {!hitlLocked && (
+          <>
           {/* 文本编辑区 */}
           <div className="pro-input-main">
             <FileAwareEditor
@@ -724,13 +1195,15 @@ export function InputArea({
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               placeholder={
-                hitlLocked
-                  ? '请在弹窗中确认或拒绝该操作'
-                  : hitl
-                    ? '在此补充说明后发送，或在上方弹窗中选择…'
-                    : '你想知道什么？@引用对话文件，/调用技能与指令'
+                hitl
+                  ? hitl.kind === 'plan_confirm'
+                    ? '输入其他指导要求…（暂不支持在线编辑）'
+                    : hitlOptions.length > 0
+                      ? '自定义描述…'
+                      : '在此补充说明后发送…'
+                  : '你想知道什么？@引用对话文件，/调用技能与指令'
               }
-              disabled={disabled || hitlLocked}
+              disabled={disabled}
               maxHeight={200}
             />
           </div>
@@ -738,61 +1211,30 @@ export function InputArea({
           {/* 工具栏 */}
           <div className="pro-input-toolbar">
             <div className="pro-input-toolbar-left">
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="pro-input-more-btn"
-                        disabled={isStreaming || hitlLocked}
-                      >
-                        <Plus className="size-[18px]" />
-                      </button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>添加附件 / 工具</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="start" side="top" className="pro-input-more-pop w-56">
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>
-                      <Paperclip />
-                      <span>添加附件</span>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-40">
-                      <DropdownMenuItem onSelect={() => handleAttachFile()}>
-                        <Paperclip />
-                        <span>上传文件</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => handleAttachFile()}>
-                        <ImageIcon />
-                        <span>上传图片</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                      <DropdownMenuItem onSelect={() => handleAttachFile()}>
-                    <Paperclip />
-                    <span>附件</span>
-                  </DropdownMenuItem>
-                  {/* HITL 精简态（阶段三 3.4）：`+` 仅附件，省略 模式/技能/连接 */}
-                  {!hitlMode && (
-                    <>
-                      <DropdownMenuItem onSelect={handleToggleAgent}>
-                        <Zap className={cn('size-4', agentMode && 'text-primary')} />
-                        <span>模式{agentMode ? ' · Agent' : ''}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => editorRef.current?.insertText('/agent ')}>
-                        <Terminal />
-                        <span>技能</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => { /* 连接设置暂未实现 */ }}>
-                        <HelpCircle className="size-4" />
-                        <span>连接</span>
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* 「+」与「/」共用豆包式全宽命令面板（CommandPalette） */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="pro-input-more-btn"
+                    disabled={isStreaming}
+                    aria-label="添加附件 / 工具"
+                    aria-expanded={plusOpen}
+                    aria-haspopup="listbox"
+                    onClick={() => {
+                      if (plusOpen) {
+                        closePlus()
+                        editorRef.current?.focus()
+                      } else {
+                        openPlus()
+                      }
+                    }}
+                  >
+                    <Plus className="size-[18px]" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>添加附件 / 工具</TooltipContent>
+              </Tooltip>
 
               {agentMode && !hitlMode && (
                 <Tooltip>
@@ -858,7 +1300,7 @@ export function InputArea({
                       type="button"
                       className="pro-input-send-btn"
                       onClick={handleSend}
-                      disabled={!canSend || disabled || hitlLocked}
+                      disabled={!canSend || disabled}
                       aria-label={hitlAnswerable ? '提交澄清回答' : '发送'}
                     >
                       <ArrowUp size={18} strokeWidth={2.5} />
@@ -869,6 +1311,8 @@ export function InputArea({
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
 
         {/* 字符超限提示 */}

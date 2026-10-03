@@ -15,6 +15,11 @@
 import { create } from 'zustand'
 import type { UserQuestionRequestPayload } from '@shared/types'
 import { getTransportForRuntime } from '../services/transport'
+import {
+  trackClarifyAnswered,
+  trackClarifyExpired,
+  trackClarifySkipped
+} from '../services/clarify-metrics'
 import { useChatStore } from './chatStore'
 
 /**
@@ -36,6 +41,8 @@ export interface HitlItem {
   question?: string
   /** kind='choice' 时携带多选选项 */
   options?: UserQuestionRequestPayload['options']
+  /** kind='plan_confirm' 时携带待确认的产物文件列表 */
+  artifacts?: UserQuestionRequestPayload['artifacts']
   /** 来源：live=实时事件；recover=进页/重连恢复 */
   origin: 'live' | 'recover'
   /** 入队时间（epoch ms，供 UI 展示序号/耗时） */
@@ -174,6 +181,11 @@ export const useHitlStore = create<HitlState>((set, get) => ({
       set({ status: 'paused', error: result.reason })
       return false
     }
+    // 阶段2 观测：空回答（answer/answerId 均空，含 skip() 路径）视为「跳过」，
+    // 计入误触发率分子；其余记 answered 并累计「入队 → 回答」耗时。
+    const isSkipLike = !(input.answer ?? '').trim() && !(input.answerId ?? '').trim()
+    if (isSkipLike) trackClarifySkipped(item.sessionId, item.kind)
+    else trackClarifyAnswered(item.sessionId, item.kind)
     // 成功启动 resume 流：关窗等待流回调 dequeue（resolving 期间不渲染弹窗）
     set({ currentItem: null })
     stopPolling()
@@ -210,6 +222,8 @@ export const useHitlStore = create<HitlState>((set, get) => ({
       // 后端已无暂停项：超时自动拒绝，或（memory checkpointer）进程重启导致暂停态丢失
       if (st.expired || !st.pending) {
         if (locallyPaused) {
+          // 阶段2 观测：本地处于暂停态但服务端已无暂停项 → 超时/失效收敛
+          trackClarifyExpired(threadId)
           chat.finalizeHitlStale(
             threadId,
             st.expired ? '待确认的操作已超时，已自动取消。' : '待确认的操作已失效，请重新发起请求。'
@@ -258,6 +272,7 @@ export const useHitlStore = create<HitlState>((set, get) => ({
         message: st.message || undefined,
         question: st.question ?? undefined,
         options: st.options ?? undefined,
+        artifacts: st.artifacts ?? undefined,
         toolCalls: toolCalls.length ? toolCalls : undefined,
         origin: 'recover'
       })
@@ -277,6 +292,7 @@ export const useHitlStore = create<HitlState>((set, get) => ({
       const st = await getTransportForRuntime(session?.runtime).getState(currentItem.sessionId)
       if (st && (st.expired || !st.pending)) {
         const reason = st.expired ? '待确认的操作已超时，已自动取消。' : '待确认的操作已失效。'
+        trackClarifyExpired(currentItem.sessionId, currentItem.kind)
         useChatStore.getState().finalizeHitlStale(currentItem.sessionId, reason)
         // 弹窗即将关闭，提示改走全局错误提示条（AgentStatus）保证可见
         useChatStore.setState({ error: `待答复项${st.expired ? '已超时，服务端已自动拒绝' : '已失效'}。` })

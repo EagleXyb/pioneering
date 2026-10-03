@@ -17,8 +17,13 @@
 //     本 runtime 只负责「执行 + 事件投递」；多轮上下文由渲染端
 //     在请求里携带 history 提供。
 //   - userId 为本地常量 LOCAL_USER_ID（单用户桌面场景，无 JWT）。
-//   - model / systemPrompt / agentMode 覆盖暂不透传（云端 completions
-//     同样固定 model:null，行为对齐）。
+//   - model / systemPrompt 覆盖不透传（云端 completions 同样固定
+//     model:null，行为对齐）；agentMode 已对齐云端契约透传：
+//     plan_execute 需建图期覆盖（create_agent + 运行时 extraConfigurable），
+//     其余模式复用 get_runner() 缓存图。
+//   - 图构建复用内核 get_runner() 的编译图缓存（config hash 失效），
+//     不再每次 run 全量重建；受管密钥变更经 invalidateAgentGraphCache()
+//     主动失效（密钥注入 process.env，不进入 config hash）。
 //
 // 事件投递：AGUIStreamAdapter 产出的 { data: "<json>" } dict 逐条
 // JSON.parse 后封装为 AgentEventEnvelope { runId, seq, event } 经
@@ -30,6 +35,7 @@ import { randomUUID } from 'crypto'
 import {
   create_agent,
   get_runner,
+  reset_runner_cache,
   stream_response,
   resume_stream,
   resume_sync,
@@ -136,6 +142,9 @@ export function ensureAgentEnv(envFileCandidates: string[], readFile: (p: string
 // 请求校验（对齐 backend zod schema 的关键字段）
 // ============================================================
 
+/** 透传的外层图模式白名单（对齐云端 AgentChatRequestSchema，非法值归一化丢弃） */
+const ALLOWED_AGENT_MODES: ReadonlySet<string> = new Set(['react_agent', 'plan_execute'])
+
 export function validateSendRequest(request: unknown): SendMessageRequest | null {
   if (!request || typeof request !== 'object') return null
   const r = request as Partial<SendMessageRequest>
@@ -153,6 +162,12 @@ export function validateSendRequest(request: unknown): SendMessageRequest | null
     sessionId: r.sessionId,
     message: r.message,
     history: r.history,
+    // agentMode 对齐云端契约透传（plan_execute 启用 Plan-Execute 图）；
+    // 白名单外取值归一化为 undefined，避免任意字符串流入内核 configurable。
+    agentMode:
+      typeof r.agentMode === 'string' && ALLOWED_AGENT_MODES.has(r.agentMode)
+        ? (r.agentMode as SendMessageRequest['agentMode'])
+        : undefined,
   }
 }
 
@@ -162,11 +177,18 @@ export function validateResumeRequest(request: unknown): ResumeRequest | null {
   if (typeof r.sessionId !== 'string' || !r.sessionId) return null
   if (typeof r.approved !== 'boolean') return null
   if (r.feedback !== undefined && r.feedback !== null && typeof r.feedback !== 'string') return null
+  // P0 修复：answer / answerId 是澄清（kind='clarifying'）与多选（kind='choice'）
+  // 弹窗的答复载荷，原实现未保留，导致本地模式下答案永远为 undefined、
+  // clarify 节点读不到用户回答（云端 agent-bridge 透传这两项）。
+  if (r.answer !== undefined && r.answer !== null && typeof r.answer !== 'string') return null
+  if (r.answerId !== undefined && r.answerId !== null && typeof r.answerId !== 'string') return null
   return {
     sessionId: r.sessionId,
     approved: r.approved,
     feedback: r.feedback ?? undefined,
     modifiedArgs: r.modifiedArgs ?? undefined,
+    answer: r.answer ?? undefined,
+    answerId: r.answerId ?? undefined,
   }
 }
 
@@ -241,18 +263,31 @@ async function executeSend(run: AgentRun, request: SendMessageRequest): Promise<
   const traceId = randomUUID()
   try {
     ensureSensitiveToolsRegistered()
-    const graph = await create_agent()
+    // agentMode 对齐云端 agent-bridge，且 plan_execute 必须「建图期」就带上覆盖：
+    //   factory 按 configurable.plan_execute_enabled 决定 planner/step_dispatch/
+    //   step_finalize 节点是否挂载，而 stream_response 的 extraConfigurable 只影响
+    //   运行时路由（routeAfterMemoryQuery）。若只在运行时传，路由会指向不存在的
+    //   planner 节点而报错——故 plan_execute 走 create_agent({ configurable })。
+    //   其余模式（含默认 react_agent）复用内核编译图缓存 get_runner()，
+    //   避免每次 run 全量重建（LLM/工具/checkpointer/store）。
+    const enablePlanExecute = request.agentMode === 'plan_execute'
+    const graph = enablePlanExecute
+      ? await create_agent({ configurable: { plan_execute_enabled: true } })
+      : await get_runner()
     const adapter = new AGUIStreamAdapter(traceId)
     const inputData: Record<string, unknown> = { input_type: 'text', prompt: request.message }
     if (request.history && request.history.length > 0) {
       inputData.history = request.history
     }
+    // 运行时路由覆盖：仅影响本次 run，不触发图重建
+    const extraConfigurable = enablePlanExecute ? { plan_execute_enabled: true } : null
     logger.info(
-      'send.start runId=%s session=%s trace=%s history=%d',
+      'send.start runId=%s session=%s trace=%s history=%d agent_mode=%s',
       run.runId, run.sessionId, traceId, request.history?.length ?? 0,
+      request.agentMode ?? 'react_agent',
     )
     for await (const dict of adapter.transform_langgraph_events(
-      stream_response(graph, LOCAL_USER_ID, run.sessionId, inputData, traceId),
+      stream_response(graph, LOCAL_USER_ID, run.sessionId, inputData, traceId, null, extraConfigurable),
     )) {
       if (run.controller.signal.aborted) break
       if (!emitAguiDict(emit, dict)) {
@@ -274,7 +309,9 @@ async function executeResume(run: AgentRun, request: ResumeRequest): Promise<voi
   const traceId = randomUUID()
   try {
     ensureSensitiveToolsRegistered()
-    const graph = await create_agent()
+    // resume 依赖 checkpointer 的 thread checkpoint：与 send 共用同一
+    // 缓存图实例（checkpointer 为内核模块级单例，跨图实例亦共享）。
+    const graph = await get_runner()
     const adapter = new AGUIStreamAdapter(traceId)
     logger.info(
       'resume.start runId=%s session=%s approved=%s modified_args=%d answer=%s',
@@ -437,5 +474,27 @@ export function abortRunsForSender(sender: AgentEventSender): void {
     if (run.sender === sender) {
       run.controller.abort()
     }
+  }
+}
+
+// ============================================================
+// 图缓存治理
+// ============================================================
+
+/**
+ * 使内核编译图缓存失效（下次 run 经 get_runner() 重建图）。
+ *
+ * 场景：受管密钥（LLM_API_KEY 等）经 safeStorage 更新后写入 process.env，
+ * 但 env 不参与内核 config hash —— 不清缓存会继续复用按旧密钥构建的
+ * LLM 实例，表现为「改 key 不生效直到重启」。由 ipc-handlers 在
+ * SECURE_KEY_SET / SECURE_KEY_DELETE 成功后调用（best-effort，
+ * 在途 run 持有各自图引用，不受影响）。
+ */
+export function invalidateAgentGraphCache(): void {
+  try {
+    reset_runner_cache()
+    logger.info('graph_cache.invalidated')
+  } catch (e) {
+    logger.warn('graph_cache.invalidate_failed err=%s', String(e))
   }
 }

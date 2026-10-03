@@ -18,6 +18,12 @@ import {
   type ChatState
 } from '@renderer/stores/chatStore'
 import { useHitlStore } from '@renderer/stores/hitlStore'
+import { resolveHitlSurface } from '@renderer/lib/hitl-surface'
+import {
+  getClarifyMetrics,
+  resetClarifyMetrics,
+  trackClarifyTriggered
+} from '@renderer/services/clarify-metrics'
 
 function makeChatState(partial: Partial<ChatState> = {}): ChatState {
   return {
@@ -318,5 +324,118 @@ describe('hitlStore.recover —— 后端状态对齐', () => {
     )
     await useHitlStore.getState().recover('s1', 'cloud')
     expect(useHitlStore.getState().currentItem).toBeNull()
+  })
+})
+
+// ============================================================
+// 澄清端到端组合链路（阶段0 + 阶段2 + 阶段4 串联验证）
+//
+// 单层测试各自锁定局部契约，本组验证"串起来"仍然成立：
+//   事件(kind=clarifying) → 内联可答决策 → resume 携带 answer → 指标记录
+// ============================================================
+describe('澄清端到端组合链路（阶段0/2/4 串联）', () => {
+  beforeEach(() => {
+    useHitlStore.getState().reset()
+    resetClarifyMetrics()
+    useChatStore.setState({
+      currentSessionId: 's1',
+      messages: {},
+      hitlPausedSessionId: null,
+      hitlPausedMessageId: null
+    })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    useHitlStore.getState().reset()
+    resetClarifyMetrics()
+  })
+
+  it('入队(kind=clarifying) → 内联可答 → resume 携带 answer → 指标记 answered', async () => {
+    const resumed: Array<Record<string, unknown>> = []
+    setAgentTransport(
+      makeTransport({
+        resume: (req) => {
+          resumed.push(req as unknown as Record<string, unknown>)
+          return new AbortController()
+        }
+      })
+    )
+    // 暂停容器就绪（HITL 暂停态：消息保留 streamingMessageId 供续写）
+    useChatStore.setState({
+      sessions: [{ id: 's1', title: 't', isArchived: false, createdAt: '', updatedAt: '' }],
+      hitlPausedSessionId: 's1',
+      hitlPausedMessageId: 'm1',
+      messages: { s1: [pausedMsg] }
+    })
+
+    // 流回调侧（chatStore.onHumanInputRequest）的等价行为：埋点 + 入队
+    trackClarifyTriggered('s1', 'clarifying')
+    useHitlStore.getState().enqueue({
+      sessionId: 's1',
+      kind: 'clarifying',
+      question: '请补充需求细节',
+      origin: 'live'
+    })
+
+    // 阶段4：澄清由输入框内联澄清条承载（不占用模态弹窗）
+    const st = useHitlStore.getState()
+    expect(resolveHitlSurface(st.currentItem, st.status, 's1')).toBe('inline')
+
+    // 用户在内联条作答（ChatArea.handleHitlAnswer 的等价调用）
+    const ok = await useHitlStore.getState().resolve({
+      approved: true,
+      answer: '季度销售总结文档',
+      feedback: '季度销售总结文档'
+    })
+    expect(ok).toBe(true)
+
+    // 修复链路：answer 必须透传到 transport.resume（本地经 IPC / 云端经 REST）
+    expect(resumed).toHaveLength(1)
+    expect(resumed[0]).toMatchObject({
+      sessionId: 's1',
+      approved: true,
+      answer: '季度销售总结文档'
+    })
+
+    // 阶段2 指标：触发计一次、回答计一次、不计入跳过
+    const m = getClarifyMetrics()
+    expect(m.triggered).toBe(1)
+    expect(m.answered).toBe(1)
+    expect(m.skipped).toBe(0)
+  })
+
+  it('跳过（空回答）→ resume 不带答案 → 指标记 skipped 而非 answered', async () => {
+    const resumed: Array<Record<string, unknown>> = []
+    setAgentTransport(
+      makeTransport({
+        resume: (req) => {
+          resumed.push(req as unknown as Record<string, unknown>)
+          return new AbortController()
+        }
+      })
+    )
+    useChatStore.setState({
+      sessions: [{ id: 's1', title: 't', isArchived: false, createdAt: '', updatedAt: '' }],
+      hitlPausedSessionId: 's1',
+      hitlPausedMessageId: 'm1',
+      messages: { s1: [pausedMsg] }
+    })
+
+    trackClarifyTriggered('s1', 'clarifying')
+    useHitlStore.getState().enqueue({
+      sessionId: 's1',
+      kind: 'clarifying',
+      question: '请补充需求细节',
+      origin: 'live'
+    })
+
+    // skip() 等价于 resolve({approved:true, answer:'', answerId:''})
+    const ok = await useHitlStore.getState().skip()
+    expect(ok).toBe(true)
+
+    const m = getClarifyMetrics()
+    expect(m.triggered).toBe(1)
+    expect(m.skipped).toBe(1)
+    expect(m.answered).toBe(0)
   })
 })

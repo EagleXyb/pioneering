@@ -52,6 +52,7 @@ import {
   abortPending,
   getHitlState,
   abortRunsForSender,
+  invalidateAgentGraphCache,
   type AgentEventSender
 } from './agent-runtime'
 import { getLocalChatStore, type LocalChatStore } from './local-store'
@@ -812,7 +813,11 @@ export function registerIpcHandlers(): void {
       if (!req || typeof req.name !== 'string' || typeof req.value !== 'string') {
         return Promise.resolve({ ok: false, error: 'Invalid payload' })
       }
-      return Promise.resolve(getKeyStore(appStore).set(req.name, req.value))
+      const result = getKeyStore(appStore).set(req.name, req.value)
+      // 密钥注入 process.env，不进入内核 config hash：写入成功后主动失效
+      // 图缓存，使下次 run 以新密钥重建 LLM 实例（在途 run 持有旧图，不受影响）。
+      if (result.ok) invalidateAgentGraphCache()
+      return Promise.resolve(result)
     },
   )
 
@@ -823,7 +828,9 @@ export function registerIpcHandlers(): void {
       if (typeof name !== 'string' || !name) {
         return Promise.resolve({ ok: false, error: 'Invalid payload' })
       }
-      return Promise.resolve({ ok: getKeyStore(appStore).delete(name) })
+      const ok = getKeyStore(appStore).delete(name)
+      if (ok) invalidateAgentGraphCache()
+      return Promise.resolve({ ok })
     },
   )
 

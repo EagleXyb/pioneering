@@ -80,14 +80,17 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
 
-  /* Sidebar */
-  --sidebar: #e5e7eb;
+  /* Sidebar — DeepSeek 风格冷灰蓝
+     （对官方客户端截图实测取色：顶 #e3e7f0 → 底 #e6e7eb，取代表值 #e6e9ef） */
+  --sidebar: #e6e9ef;
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  /* 比侧栏底色深约 3% 的极淡压边线：肉眼近乎灰/白色块自然分界，
+     同时避免两个纯色像素级相接时的亚像素闪烁 */
+  --sidebar-border: #d9dce5;
   --sidebar-ring: oklch(0.708 0 0);
 }
 
@@ -119,8 +122,8 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  /* Dark sidebar */
-  --sidebar: oklch(0.205 0 0);
+  /* Dark sidebar — 与浅色对应，带轻微冷蓝调 */
+  --sidebar: oklch(0.21 0.012 255);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);

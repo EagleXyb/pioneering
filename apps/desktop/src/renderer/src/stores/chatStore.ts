@@ -21,6 +21,7 @@ import type {
 import { chatService } from '../services/api/chat'
 import { agentService } from '../services/api/agent'
 import { getAgentTransport, getTransportForRuntime } from '../services/transport'
+import { trackClarifyTriggered } from '../services/clarify-metrics'
 import {
   localChatService,
   isLocalChatAvailable,
@@ -356,6 +357,7 @@ function toHitlItem(p: UserQuestionRequestPayload): HitlItem {
     toolCalls: p.tool_calls,
     question: p.question,
     options: p.options,
+    artifacts: p.artifacts,
     origin: 'live',
     createdAt: Date.now()
   }
@@ -893,6 +895,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       //   - onHitlAborted：超时/用户取消后收尾
       onHumanInputRequest: (p) => {
         set({ hitlPending: p })
+        // 阶段2 观测：澄清类暂停项入队（clarifying/choice）；重复计数由指标层按会话+类型去重
+        trackClarifyTriggered(p.session_id, p.kind)
         useHitlStore.getState().enqueue(toHitlItem(p))
       },
       onRunPaused: () => {
@@ -922,7 +926,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessionId: _sessionId,
       message: buildSendText(content),
       stream: true,
-      model: model && model !== '配置模型' ? model : undefined
+      model: model && model !== '配置模型' ? model : undefined,
+      // 云边对齐（P1）：外层图模式透传（plan_execute → Plan-Execute 图）。
+      // 云端由 AgentChatRequestSchema 校验；本地由 agent-runtime 白名单归一化。
+      agentMode: targetSession?.agentMode === 'plan_execute' ? 'plan_execute' : undefined
     }
     let controller: AbortController
     if (useAgent) {
@@ -1161,6 +1168,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // ===== HITL：resume 流上的暂停/中止处理（多次 interrupt 串行）=====
       onHumanInputRequest: (p) => {
         set({ hitlPending: p })
+        // 阶段2 观测：澄清类暂停项入队（clarifying/choice）；重复计数由指标层按会话+类型去重
+        trackClarifyTriggered(p.session_id, p.kind)
         useHitlStore.getState().enqueue(toHitlItem(p))
       },
       onRunPaused: () => {

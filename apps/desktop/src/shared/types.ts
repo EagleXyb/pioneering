@@ -122,6 +122,12 @@ export interface SendMessageRequest {
   deepThink?: boolean
   netSearch?: boolean
   messageId?: string
+  /**
+   * 本次 run 的外层图模式（对齐云端 AgentChatRequestSchema）：
+   * 'plan_execute' 启用 Plan-Execute 图；缺省/'react_agent' 走 ReAct。
+   * 云端由 zod 校验，本地由 agent-runtime 白名单归一化。
+   */
+  agentMode?: 'react_agent' | 'plan_execute'
 }
 
 // ---- Agent ----
@@ -298,7 +304,12 @@ export function normalizePlatform(p: string): Platform {
 // 阶段零 D3 收敛的最小 AG-UI 事件集合对应类型。一期仅使用 kind='tool_confirm'
 // （工具审批）；'clarifying'/'choice' 为澄清追问/多选确认预留（图1/图2）。
 export interface UserQuestionRequestPayload {
-  kind: 'tool_confirm' | 'clarifying' | 'choice'
+  /**
+   * tool_confirm=工具执行审批；clarifying=自由文本澄清；choice=选项式澄清；
+   * plan_confirm=方案/文档生成后的"是否基于产物继续执行"确认门（UI 已落地，
+   * 后端图节点暂未发射该事件，属于协议预留）。
+   */
+  kind: 'tool_confirm' | 'clarifying' | 'choice' | 'plan_confirm'
   session_id: string
   run_id?: string
   message?: string
@@ -310,8 +321,16 @@ export interface UserQuestionRequestPayload {
   }>
   /** kind='clarifying' 时携带澄清问题文本 */
   question?: string
-  /** kind='choice' 时携带多选选项 */
-  options?: Array<{ id: string; label: string }>
+  /** kind='choice' 时携带多选选项（description 为选项补充说明，可选） */
+  options?: Array<{ id: string; label: string; description?: string }>
+  /** kind='plan_confirm' 时携带待确认的产物文件列表（如 spec.md/tasks.md/checklist.md） */
+  artifacts?: HitlArtifact[]
+}
+
+/** 方案确认门的产物文件描述（path 可选：未提供时仅展示文件名，不支持点击打开） */
+export interface HitlArtifact {
+  name: string
+  path?: string
 }
 
 /** POST /agent/resume 请求体（对应 Command(resume) 载荷：approved/feedback/modified_args/answer） */
@@ -345,8 +364,10 @@ export interface HitlStateResponse {
   message?: string
   /** kind='clarifying' 时的澄清问题 */
   question?: string
-  /** kind='choice' 时的选项 */
-  options?: Array<{ id: string; label: string }>
+  /** kind='choice' 时的选项（description 为选项补充说明，可选） */
+  options?: Array<{ id: string; label: string; description?: string }>
+  /** kind='plan_confirm' 时的产物文件列表（协议预留） */
+  artifacts?: HitlArtifact[]
   next_nodes?: string[]
   pending_tool_calls?: Array<Record<string, unknown>>
   tool_requires_approval?: boolean

@@ -2,6 +2,10 @@
 // HitlClarifyDialog — HITL 澄清追问弹窗（图1）
 // 自由文本 input，发送 → resolve({ answer })。后端 kind='clarifying' 事件到达时渲染。
 //
+// 阶段四：澄清已改由输入框上方内联澄清条承载（见 lib/hitl-surface.ts 与
+// ChatArea/InputArea 的 hitl 内联条），本组件保留作为降级/回退通道——
+// 将 HitlHost 的 surface 判断改回"非 none 即渲染弹窗"即可恢复本弹窗。
+//
 // 阶段三补强：
 //   - "跳过"按钮接入 hitlStore.skip()（跳过本问、按现有信息继续执行）
 //   - resume 未真正启动时展示 store.error（不再静默失败）

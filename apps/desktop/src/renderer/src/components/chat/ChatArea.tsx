@@ -59,8 +59,10 @@ export function ChatArea() {
     s.currentItem && s.currentItem.sessionId === currentSessionId ? s.currentItem : null
   )
   const hitlQueueLength = useHitlStore((s) => s.pendingQueue.length)
+  const hitlError = useHitlStore((s) => s.error)
   const resolveHitl = useHitlStore((s) => s.resolve)
   const skipHitl = useHitlStore((s) => s.skip)
+  const dismissHitl = useHitlStore((s) => s.dismiss)
 
   // T09：dev-only 压测开关
   const devStress = useFeatureFlag('devStressMessages')
@@ -119,8 +121,7 @@ export function ChatArea() {
     [sendMessage]
   )
 
-  // ===== HITL 内联澄清（阶段三 3.4）=====
-  // 待答复项映射为 InputArea 的展示契约：澄清/多选可内联回答，工具审批由弹窗处理
+  // ===== HITL 内嵌卡（澄清/多选/工具审批统一在输入框上方承接）=====
   const hitlTotal = hitlItem ? 1 + hitlQueueLength : 0
   const hitlInput = useMemo(
     () =>
@@ -129,6 +130,9 @@ export function ChatArea() {
             kind: hitlItem.kind,
             question: hitlItem.question,
             message: hitlItem.message,
+            options: hitlItem.options,
+            artifacts: hitlItem.artifacts,
+            toolCalls: hitlItem.toolCalls,
             index: hitlTotal > 1 ? 1 : undefined,
             total: hitlTotal > 1 ? hitlTotal : undefined
           }
@@ -142,9 +146,35 @@ export function ChatArea() {
     },
     [resolveHitl]
   )
+  // 点选候选选项：以 answerId 回传（后端 clarify 节点按 id 匹配选项 label 注入下游）
+  const handleHitlSelectOption = useCallback(
+    (optionId: string) => {
+      void resolveHitl({ approved: true, answerId: optionId })
+    },
+    [resolveHitl]
+  )
   const handleHitlSkip = useCallback(() => {
     void skipHitl()
   }, [skipHitl])
+  // 工具审批-批准：可携带按 tool_call_id 覆盖的修改参数（解析失败的项由 store 忽略）
+  const handleHitlApprove = useCallback(
+    (modifiedArgs: Record<string, Record<string, unknown>> | null) =>
+      resolveHitl({ approved: true, modifiedArgs }),
+    [resolveHitl]
+  )
+  // 工具审批-拒绝：以 approved=false 恢复，图继续走"拒绝"分支（不等同中止）
+  const handleHitlReject = useCallback(
+    () => resolveHitl({ approved: false, feedback: '用户拒绝了该工具调用' }),
+    [resolveHitl]
+  )
+  // 工具审批-取消：放弃整个 run（等价旧模态弹窗的点遮罩/ESC 关闭 → abort）
+  const handleHitlDismiss = useCallback(() => {
+    dismissHitl()
+  }, [dismissHitl])
+  // 方案确认门-执行此方案：批准并继续（后端 plan_confirm 节点尚未接入，当前协议预留）
+  const handleHitlConfirmPlan = useCallback(() => {
+    void resolveHitl({ approved: true })
+  }, [resolveHitl])
 
   // 是否显示欢迎引导页（无消息且非流式状态）
   const showWelcome = currentMessages.length === 0 && !isStreaming && !streamingContent
@@ -232,8 +262,14 @@ export function ChatArea() {
                   isWelcome={true}
                   mode={isHitlPaused ? 'hitl' : 'normal'}
                   hitl={hitlInput}
+                  hitlError={hitlError}
                   onHitlAnswer={handleHitlAnswer}
+                  onHitlSelectOption={handleHitlSelectOption}
                   onHitlSkip={handleHitlSkip}
+                  onHitlApprove={handleHitlApprove}
+                  onHitlReject={handleHitlReject}
+                  onHitlDismiss={handleHitlDismiss}
+                  onHitlConfirmPlan={handleHitlConfirmPlan}
                 />
               </div>
             </div>
@@ -309,8 +345,14 @@ export function ChatArea() {
         isWelcome={false}
         mode={isHitlPaused ? 'hitl' : 'normal'}
         hitl={hitlInput}
+        hitlError={hitlError}
         onHitlAnswer={handleHitlAnswer}
+        onHitlSelectOption={handleHitlSelectOption}
         onHitlSkip={handleHitlSkip}
+        onHitlApprove={handleHitlApprove}
+        onHitlReject={handleHitlReject}
+        onHitlDismiss={handleHitlDismiss}
+        onHitlConfirmPlan={handleHitlConfirmPlan}
       />
 
       {/* P1：图片放大预览 Lightbox（Portal 挂载，关闭时不渲染任何 DOM） */}

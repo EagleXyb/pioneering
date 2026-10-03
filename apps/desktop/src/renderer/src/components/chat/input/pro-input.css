@@ -15,7 +15,7 @@
 
        --chat-col-min     下限 880px：保持内部既定标准，小窗口 / 面板收起时不收窄（零回归）
        --chat-col-max     上限 1040px：大屏下避免行长过宽影响阅读
-       --chat-col-gutter  整窗预留 560px（左栏 262 + 卡片沟渠 + 右侧面板与视觉留白）
+       --chat-col-gutter  整窗预留 550px（左栏 262 + 无沟渠 + 右侧面板与视觉留白 288）
        --chat-col-w       实际列宽 = clamp(下限, 100vw - 预留, 上限)
 
      映射行为（窗口宽 → 列宽）：
@@ -30,7 +30,7 @@
      ============================================================ */
   --chat-col-min: 880px;
   --chat-col-max: 1040px;
-  --chat-col-gutter: 560px;
+  --chat-col-gutter: 550px;
   --chat-col-w: clamp(
     var(--chat-col-min),
     calc(100vw - var(--chat-col-gutter)),
@@ -144,26 +144,28 @@
 }
 
 /* ============================================================
-   HITL 内联澄清条（阶段三 3.4）
-   展示 Agent 的澄清问题 + 队列序号 + 跳过；输入框提交语义切换为"澄清回答"
+   HITL 澄清卡（需求澄清卡片化）
+   结构：问题行（图标+问题+队列序号+跳过）→ 编号候选选项 → 分隔线 → 自定义输入
+   输入框提交语义切换为"澄清回答"；选项点击以 answerId 立即作答
    ============================================================ */
+.pro-input-hitl-panel {
+  padding-top: 4px;
+}
+
 .pro-input-hitl-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 12px 6px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: color-mix(in oklch, var(--primary) 8%, transparent);
-  border: 1px solid color-mix(in oklch, var(--primary) 24%, transparent);
+  padding: 10px 16px 8px;
 }
 
 .pro-input-hitl-question {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.5;
-  color: var(--text-primary, inherit);
+  color: var(--foreground, inherit);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -172,10 +174,9 @@
 
 .pro-input-hitl-index {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary, inherit);
-  opacity: 0.75;
+  color: var(--muted-foreground, inherit);
 }
 
 .pro-input-hitl-skip {
@@ -183,19 +184,334 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 9999px;
   border: none;
   background: transparent;
-  color: var(--text-secondary, inherit);
+  color: var(--muted-foreground, inherit);
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .pro-input-hitl-skip:hover {
-  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
   color: var(--primary);
+}
+
+/* 编号候选选项列表 */
+.pro-input-hitl-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 4px;
+}
+
+.pro-input-hitl-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.pro-input-hitl-option:hover {
+  background: var(--muted);
+}
+
+.pro-input-hitl-option-no {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.pro-input-hitl-option:hover .pro-input-hitl-option-no {
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.pro-input-hitl-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pro-input-hitl-option-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.pro-input-hitl-option-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+/* ============================================================
+   HITL 方案确认门内嵌卡（plan_confirm，UI-only 阶段）
+   结构：问题行 → 说明 → 产物文件 → 执行此方案（Enter）→ 分隔线 → 下方"其他"输入
+   ============================================================ */
+.pro-input-hitl-artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 6px;
+}
+
+/* 产物文件行：path 缺失时仅展示（无 hover/指针），后续接入打开能力时可升级为 button */
+.pro-input-hitl-artifact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+}
+
+.pro-input-hitl-artifact-name {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 「是的，执行此方案」：复用选项行结构，右侧固定 Enter 提示图标，hover 用主色浅底 */
+.pro-input-hitl-option.is-plan-approve .pro-input-hitl-option-text {
+  flex: 1;
+}
+
+.pro-input-hitl-option.is-plan-approve:hover {
+  background: color-mix(in oklch, var(--primary) 8%, var(--muted));
+}
+
+/* 选项区与自定义输入之间的分隔线（审批卡操作区上方共用） */
+.pro-input-hitl-divider {
+  height: 1px;
+  margin: 4px 14px 2px;
+  background: var(--border);
+}
+
+/* ============================================================
+   HITL 工具审批内嵌卡（tool_confirm）
+   结构：标题行 → 操作说明 → 工具列表（可展开参数/改参）→ 错误 → 分隔线 → 拒绝/批准
+   视觉语言与澄清卡一致（同款 panel / header / divider / 编号圆圈），
+   仅以琥珀色表达"需要确认的执行授权"语义。
+   ============================================================ */
+.pro-input-hitl-tool-desc {
+  margin: 0;
+  padding: 0 16px 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.pro-input-hitl-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.pro-input-hitl-tool {
+  border-radius: 10px;
+}
+
+.pro-input-hitl-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.pro-input-hitl-tool-head:hover {
+  background: var(--muted);
+}
+
+.pro-input-hitl-tool-no {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: color-mix(in oklch, #f59e0b 14%, transparent);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #d97706;
+}
+
+.pro-input-hitl-tool-name {
+  flex-shrink: 0;
+  max-width: 42%;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pro-input-hitl-tool-args-summary {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pro-input-hitl-tool-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  transition: transform var(--transition-fast);
+}
+
+.pro-input-hitl-tool-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.pro-input-hitl-tool-body {
+  margin: 2px 10px 6px 42px;
+}
+
+.pro-input-hitl-tool-args {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  white-space: pre;
+}
+
+.pro-input-hitl-tool-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.pro-input-hitl-tool-edit-toggle:hover {
+  text-decoration: underline;
+}
+
+.pro-input-hitl-tool-edit {
+  display: block;
+  width: 100%;
+  height: 112px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--foreground);
+  outline: none;
+}
+
+.pro-input-hitl-tool-edit:focus {
+  border-color: var(--primary);
+}
+
+.pro-input-hitl-error {
+  margin: 4px 14px 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--destructive) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--destructive);
+}
+
+.pro-input-hitl-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 10px;
+}
+
+.pro-input-hitl-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.pro-input-hitl-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pro-input-hitl-btn.is-reject {
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.pro-input-hitl-btn.is-reject:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.pro-input-hitl-btn.is-approve {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.pro-input-hitl-btn.is-approve:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--primary) 90%, black);
+  border-color: color-mix(in oklch, var(--primary) 90%, black);
 }
 
 /* ============================================================

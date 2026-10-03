@@ -26,7 +26,7 @@ export function usePanelToggle() {
   const sizeBeforeMaximizeRef = useRef<number | null>(null)
 
   // 同步 atom → 三栏模式的折叠态（覆盖键盘快捷键等外部修改）
-  // 注：侧边栏已改为固定 260px 的 flex 元素，其折叠态由 sidebarVisible atom
+  // 注：侧边栏已改为固定 262px 的 flex 元素，其折叠态由 sidebarVisible atom
   //     直接通过 CSS 宽度控制，无需驱动 ResizablePanel。
   useEffect(() => {
     if (mode === 'three-column') {

@@ -142,6 +142,9 @@ export class KeyStore {
     if (!MANAGED_NAMES.has(name)) return false
     this.store.delete(SECURE_PREFIX + name)
     this.store.delete(PLAIN_PREFIX + name)
+    // 同步清理已注入的进程环境变量：applyToEnv 仅在值非空时写入、
+    // 不会主动移除残留值，若不清 env，「删除」要等下次启动才真正生效。
+    delete process.env[name]
     return true
   }
 

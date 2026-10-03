@@ -281,7 +281,7 @@ export function createAguiEventDispatcher(cb: AguiStreamCallbacks): {
         break
 
       case 'USER_QUESTION_REQUEST': {
-        // HITL：携带待答复的暂停项（kind/tool_calls/question/options）
+        // HITL：携带待答复的暂停项（kind/tool_calls/question/options/artifacts）
         cb.onHumanInputRequest?.({
           kind: (event as Record<string, unknown>).kind as UserQuestionRequestPayload['kind'] ?? 'tool_confirm',
           session_id: (event as Record<string, unknown>).session_id as string ?? '',
@@ -290,6 +290,7 @@ export function createAguiEventDispatcher(cb: AguiStreamCallbacks): {
           tool_calls: (event as Record<string, unknown>).tool_calls as UserQuestionRequestPayload['tool_calls'],
           question: (event as Record<string, unknown>).question as string | undefined,
           options: (event as Record<string, unknown>).options as UserQuestionRequestPayload['options'],
+          artifacts: (event as Record<string, unknown>).artifacts as UserQuestionRequestPayload['artifacts'],
         })
         break
       }

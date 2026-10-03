@@ -14,11 +14,13 @@ export function getWindowOptions(platform: NodeJS.Platform): BrowserWindowConstr
     case 'mac':
       // 保留原生 frame，标题栏用 hiddenInset：
       // macOS 自动在红绿灯左侧加 inset 内边距，通过 trafficLightPosition 精确定位。
-      // 红绿灯位置: x=9(距左边缘), y=18(垂直居中于 48px 标题栏，中心 y=24px)。
+      // y=15 为圆形灯(12px)顶边，中心 y=21。该值经截图像素标定：与渲染层
+      // 折叠态浮动按钮（top-2 + h-8）、展开态标题栏按钮的图标视觉质心齐平。
+      // 注：trafficLightPosition 仅接受整数，15 是最接近实测值（14.73）的取值。
       return {
         frame: true,
         titleBarStyle: 'hiddenInset',
-        trafficLightPosition: { x: 21, y: 21 }
+        trafficLightPosition: { x: 20, y: 17 }
       }
     case 'windows':
     case 'linux':
