@@ -23,3 +23,39 @@ tools:
       - code_executor
       - sql_query
       - file_ops_write
+
+# 需求澄清（HITL clarifying，阶段2 灰度上线）：
+#   - 仅对「极短输入（<3 字）」或「高置信模糊短语」追问，避免误打扰；
+#   - 1 轮上限 + 120s 独立超时，超时按现有信息继续（不消耗澄清轮次）；
+#   - 快速关闭：enabled: false（或删除本段）即回退默认关闭，行为与开启前一致。
+# 观测：渲染端 __clarifyStats() 查看 triggered/answered/skipped/expired 与误触发率。
+perception:
+  clarification:
+    enabled: true
+    max_clarify_rounds: 1
+    min_input_chars: 3
+    timeout_seconds: 120
+    on_timeout: continue_with_defaults
+    insufficient_patterns:
+      - 帮我弄一下
+      - 帮我搞一下
+      - 搞个东西
+      - 弄个东西
+      - 随便弄
+      - 你看着办
+      - you know what i mean
+    question_template: 你想搞的是什么东西？（这决定了我后续的方案设计方向）
+    # 候选方向（choice 卡片）：命中即渲染为编号选项，用户也可在输入框自定义描述
+    default_options:
+      - id: web_app
+        label: 一个网页/应用
+        description: 比如工具型 H5、单页应用、全栈应用，可直接在浏览器用
+      - id: content_design
+        label: 一份内容/设计稿
+        description: 比如海报、封面、短视频脚本、PPT、公众号文章等创意内容
+      - id: analysis_doc
+        label: 一份分析/方案文档
+        description: 比如产品方案、竞品分析、行业调研报告、数据看板等
+      - id: ai_agent
+        label: 一个 AI Agent 演示
+        description: 结合你此前的项目，做一个可运行的 AI 产品原型

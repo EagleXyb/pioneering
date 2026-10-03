@@ -1,0 +1,110 @@
+# ============================================================
+# 需求澄清评测用例（阶段3）
+#
+# 标注约定（标签即期望值）：
+#   - expect_clarify    ：期望触发澄清（模糊需求）
+#   - expect_no_clarify ：期望不触发澄清（明确需求/明确短指令）
+#   - short-command     ：明确但极短的指令（阈值误报的回归保护样本）
+#   - llm-required      ：规则路径无法覆盖的语义歧义（LLM 复判目标样本），
+#                        规则评测下漏报属预期，用于量化"复判增量空间"
+#
+# 评测门禁（clarification-eval.ts）：
+#   precision ≥ 0.85（误触发率 ≤ 15%）且 recall ≥ 0.6（灰度可容忍漏报换低打扰）
+# ============================================================
+
+version: 1
+
+cases:
+  # ---- 明确需求：不应澄清 ----
+  - id: clarify-clear-001
+    category: core
+    input: 请帮我生成一份 2026 年第三季度的销售总结文档，包含图表与结论
+    tags: [clarify, expect_no_clarify]
+    source: human
+
+  - id: clarify-clear-002
+    category: core
+    input: 分析这份用户访谈记录，输出关键痛点和改进建议
+    tags: [clarify, expect_no_clarify]
+    source: human
+
+  - id: clarify-clear-003
+    category: core
+    input: 把这段 Python 代码重构成使用类型注解的版本，并补充单元测试
+    tags: [clarify, expect_no_clarify]
+    source: human
+
+  - id: clarify-clear-004
+    category: core
+    input: 对比 React 和 Vue 的渲染性能，给出选型建议
+    tags: [clarify, expect_no_clarify]
+    source: human
+
+  # ---- 明确短指令：不应澄清（阈值误报的回归保护，"写首诗"在 min_input_chars=10 下会被误触发）----
+  - id: clarify-short-001
+    category: edge
+    input: 生成周报
+    tags: [clarify, expect_no_clarify, short-command]
+    source: synthetic
+
+  - id: clarify-short-002
+    category: edge
+    input: 查一下天气
+    tags: [clarify, expect_no_clarify, short-command]
+    source: synthetic
+
+  - id: clarify-short-003
+    category: edge
+    input: 写首诗
+    tags: [clarify, expect_no_clarify, short-command]
+    source: synthetic
+
+  - id: clarify-short-004
+    category: edge
+    input: 解释一下 Docker
+    tags: [clarify, expect_no_clarify, short-command]
+    source: synthetic
+
+  # ---- 模糊短语：应澄清（规则命中）----
+  - id: clarify-vague-001
+    category: core
+    input: 帮我弄一下
+    tags: [clarify, expect_clarify]
+    source: human
+
+  - id: clarify-vague-002
+    category: core
+    input: 帮我搞一下这个
+    tags: [clarify, expect_clarify]
+    source: human
+
+  - id: clarify-vague-003
+    category: core
+    input: 随便弄一下就行
+    tags: [clarify, expect_clarify]
+    source: human
+
+  - id: clarify-vague-004
+    category: core
+    input: 你看着办吧
+    tags: [clarify, expect_clarify]
+    source: human
+
+  # ---- 语义歧义：规则盲区（LLM 复判目标样本）----
+  - id: clarify-ambiguous-001
+    category: adversarial
+    input: 帮我优化一下那个方案
+    tags: [clarify, expect_clarify, llm-required]
+    source: failure
+
+  - id: clarify-ambiguous-002
+    category: adversarial
+    input: 那个东西再改改
+    tags: [clarify, expect_clarify, llm-required]
+    source: failure
+
+  - id: clarify-ambiguous-003
+    category: adversarial
+    input: 上次说的那件事跟进一下
+    tags: [clarify, expect_clarify, llm-required]
+    source: failure

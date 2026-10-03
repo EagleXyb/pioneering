@@ -37,6 +37,22 @@ export * from './memory/index.js'
 // perception
 export * from './perception/index.js'
 
+// 澄清检测（阶段3）——显式导出：graph/nodes 与 perception 均导出该符号，
+// 显式声明可规避 `export *` 同名歧义（歧义名字会被顶层排除，导致消费方导入失败）
+export {
+  assessClarificationNeed,
+  assessClarificationCoarse,
+  detectClarification,
+  extractUserInputText,
+  isHighImpactInput,
+  DEFAULT_HIGH_IMPACT_KEYWORDS,
+} from './perception/clarity-detector.js'
+export type {
+  ClarifyDecision,
+  ClarityDetectionResult,
+  ClarifyStateView,
+} from './perception/clarity-detector.js'
+
 // reasoning
 export * from './reasoning/index.js'
 

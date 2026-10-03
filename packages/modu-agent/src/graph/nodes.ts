@@ -41,6 +41,8 @@ import {
   runPerceptionPipeline,
   runPerceptionPipelineAsync,
 } from '../perception/pipeline.js'
+// 阶段3：需求澄清分层检测（规则 + LLM 复判 + 高影响门控）
+import { detectClarification } from '../perception/clarity-detector.js'
 import { get_event_bus } from '../orchestration/communication/message-bus.js'
 import {
   AgentEvent,
@@ -2255,83 +2257,12 @@ export function routeAfterHumanReview(state: ModuAgentState): string {
 // 需求澄清（HITL clarifying）——复用工具审批的 interrupt/resume 链路
 // ============================================================
 
-/** 澄清判定输入（确定性信号，无副作用、可单测） */
-export interface ClarifyDecision {
-  /** 是否需要向用户澄清 */
-  needed: boolean
-  /** 判定原因（日志与可观测用） */
-  reason: string
-  /** 澄清问题文本 */
-  question: string
-  /** 候选选项（空数组表示纯自由文本回答） */
-  options: Array<{ id: string; label: string }>
-}
+// 判定逻辑已迁移至 perception/clarity-detector（阶段3：规则 + LLM 复判 + 高影响门控）。
+// 此处 re-export 保持既有对外契约（graph.ts / 单测从 './nodes.js' 导入不破坏）。
+export type { ClarifyDecision, ClarityDetectionResult } from '../perception/clarity-detector.js'
+export { assessClarificationNeed } from '../perception/clarity-detector.js'
 
-/** 从 state 提取用户本轮输入文本（感知层清洗结果优先） */
-function _extractUserInput(state: ModuAgentState): string {
-  const cleaned = (state.cleaned_text ?? '').trim()
-  if (cleaned) return cleaned
-  const prompt = String((state.input_data ?? {})['prompt'] ?? '').trim()
-  return prompt
-}
-
-/**
- * 需求明确度检测（确定性信号）。
- *
- * 检测顺序（任一命中即需要澄清）：
- *   1. 开关关闭 → 不澄清（保证 enabled=false 时行为与现状完全一致）
- *   2. 已达 max_clarify_rounds → 不再追问（防无限追问死循环）
- *   3. 输入过短（< min_input_chars）→ 表达不充分的强信号
- *   4. 命中 insufficient_patterns（"帮我弄一下"等语义模糊短语）
- *
- * 说明：doc 12 方案中的 LLM 槽位缺失检测（clarity_score / missing_slots）需要
- * 额外的 LLM 调用与槽位声明，属后续增强；本实现只覆盖零额外开销的确定性信号，
- * 保证可测、可灰度、默认关闭时零行为变化。
- *
- * @param state 图状态
- * @param cfg perception.clarification 配置块（缺省时读取全局配置）
- */
-export function assessClarificationNeed(
-  state: ModuAgentState,
-  cfg?: Record<string, any> | null,
-): ClarifyDecision {
-  const conf = cfg ?? (getConfig().get('perception.clarification', {}) ?? {})
-  const question = String(conf['question_template'] ?? '你的需求还不太明确，方便补充一下具体想做什么吗？')
-  const options = Array.isArray(conf['default_options'])
-    ? (conf['default_options'] as Array<{ id: string; label: string }>)
-    : []
-
-  if (!conf['enabled']) {
-    return { needed: false, reason: 'disabled', question, options: [] }
-  }
-
-  const round = Number(state.clarification_round ?? 0)
-  const maxRounds = Number(conf['max_clarify_rounds'] ?? 2)
-  if (round >= maxRounds) {
-    return { needed: false, reason: 'round_limit_reached', question, options: [] }
-  }
-
-  const input = _extractUserInput(state)
-  if (!input) {
-    return { needed: false, reason: 'empty_input', question, options: [] }
-  }
-
-  const minChars = Number(conf['min_input_chars'] ?? 10)
-  if (input.length < minChars) {
-    return { needed: true, reason: 'input_too_short', question, options }
-  }
-
-  const patterns = Array.isArray(conf['insufficient_patterns'])
-    ? (conf['insufficient_patterns'] as string[])
-    : []
-  const lowered = input.toLowerCase()
-  const hit = patterns.find((p) => p && lowered.includes(String(p).toLowerCase()))
-  if (hit) {
-    return { needed: true, reason: `insufficient_pattern:${hit}`, question, options }
-  }
-
-  return { needed: false, reason: 'sufficient', question, options: [] }
-}
+// assessClarificationNeed 的实现在 perception/clarity-detector（见上方 re-export）。
 
 /**
  * 创建需求澄清节点工厂（对应 docs/code-wiki/12-需求澄清HITL机制实施方案.md 的 clarify 节点）。
@@ -2359,30 +2290,17 @@ export function makeClarifyNode(
         ? config.get('perception.clarification', {})
         : getConfig().get('perception.clarification', {})) ?? {}
 
-    const decision = assessClarificationNeed(state, conf)
+    // 阶段3：规则预筛 + LLM 复判统一入口。
+    // detectClarification 内部依次处理：规则命中（含高影响门控）→ 可选 LLM 润色问题
+    // → 规则未命中时（llm_judge.enabled=true）LLM 复判 clarity_score / missing_slots。
+    // llm_judge 默认关闭时，与迁移前的纯规则判定逐条等价。
+    const decision = await detectClarification(state, conf, llm)
     if (!decision.needed) {
       // 兜底：路由与节点判定不一致时（配置热变更）直接透传，避免死循环
       return { needs_clarification: false }
     }
-
-    // LLM 生成更精准的问题（可选）：失败/未启用时回退配置兜底文案
-    let question = decision.question
-    let options = decision.options
-    const useLlm = Boolean(conf['use_llm'] ?? false)
-    if (useLlm && llm && typeof llm.invoke === 'function') {
-      try {
-        const prompt =
-          '用户请求可能不够明确。请用一句中文向用户提出澄清问题（15-40 字），' +
-          '只输出问题本身，不要输出其它内容。\n\n用户请求：' +
-          _extractUserInput(state)
-        const res = await llm.invoke([new HumanMessage(prompt)])
-        const text = String((res as any)?.content ?? '').trim()
-        if (text) question = text
-      } catch (e: any) {
-        logger.warning('clarify.llm_failed fallback to template: %s', String(e?.message ?? e))
-        options = decision.options
-      }
-    }
+    const question = decision.question
+    const options = decision.options
 
     logger.info(
       'clarify.interrupt session=%s reason=%s round=%d',
@@ -2402,11 +2320,32 @@ export function makeClarifyNode(
     }) as any
 
     const answerPayload = (resumePayload ?? {}) as Record<string, any>
+    // 阶段1：超时（on_timeout='continue_with_defaults'）恢复——
+    // 不消耗澄清轮次、不写入答案记录，仅清除暂停标志后按现有信息继续执行。
+    // 判定只看显式 answer/answer_id 字段：feedback 是"只读 feedback 后端"的兼容通道，
+    // 超时自动恢复可能携带系统生成的 feedback 文本，不得误判为用户回答。
+    const timedOut = answerPayload['timeout'] === true
     const answerText = String(answerPayload['answer'] ?? answerPayload['feedback'] ?? '').trim()
     const answerId = String(answerPayload['answer_id'] ?? '').trim()
+    const hasExplicitAnswer =
+      String(answerPayload['answer'] ?? '').trim().length > 0 ||
+      String(answerPayload['answer_id'] ?? '').trim().length > 0
     // 选项 id → 选项 label（便于注入人类可读的需求描述）
     const matchedOption = options.find((o) => o.id === answerId)
     const answerLabel = matchedOption?.label ?? ''
+
+    if (timedOut && !hasExplicitAnswer) {
+      logger.info(
+        'clarify.timeout_continue session=%s round=%d',
+        String(state.session_id ?? ''), Number(state.clarification_round ?? 0),
+      )
+      return {
+        needs_clarification: false,
+        clarification_question: '',
+        clarification_options: [],
+        interrupt_kind: '',
+      }
+    }
 
     const answerRecord = {
       question,

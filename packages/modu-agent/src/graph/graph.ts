@@ -44,7 +44,6 @@ import {
   makeAgentNode,
   makeConsensusNode,
   makeFeedbackNode,
-  assessClarificationNeed,
   makeClarifyNode,
   makeHumanReviewNode,
   makeMemoryQueryNode,
@@ -60,6 +59,8 @@ import {
   docGenEnforceNode,
   docFinalAnswerNode,
 } from './nodes.js'
+// 阶段3：澄清粗筛（同步；LLM 复判在 clarify 节点内异步执行）
+import { assessClarificationCoarse } from '../perception/clarity-detector.js'
 // P0-1: 复杂度评估器
 import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
 // P0-3: Observation 蒸馏器
@@ -519,7 +520,9 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
     ? (state: ModuAgentState): string => {
         const base = routeAfterPerception(state)
         if (base !== 'memory_query') return base
-        return assessClarificationNeed(state).needed ? 'clarify' : 'memory_query'
+        // 阶段3：粗筛（规则命中，或 llm_judge 启用且输入在候选区间）→ 进 clarify 节点精判。
+        // 规则未命中且未启用 LLM 复判时与迁移前逐条等价（零回归）。
+        return assessClarificationCoarse(state).needed ? 'clarify' : 'memory_query'
       }
     : routeAfterPerception
 
@@ -602,7 +605,9 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
     // 需求澄清节点（perception.clarification.enabled=true 时插入）
     {
       name: 'clarify',
-      factory: () => makeClarifyNode(),
+      // 阶段3：注入未绑定工具的原始 LLM（供 use_llm 润色 / llm_judge 复判；
+      // 两者默认关闭时不产生任何 LLM 调用）
+      factory: (deps) => makeClarifyNode(null, deps.rawLlm ?? deps.llm),
       when: (p) => p.clarifyEnabled,
     },
     // P3-12.3.1: 多 Agent 协作节点

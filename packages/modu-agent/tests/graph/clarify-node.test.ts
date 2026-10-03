@@ -14,7 +14,7 @@ import { MemorySaver } from '@langchain/langgraph'
 import { buildModuGraph } from '@/graph/graph.js'
 import { assessClarificationNeed, makeClarifyNode } from '@/graph/nodes.js'
 import { overrideConfig, resetConfig, RuntimeConfig } from '@/config/runtime-config.js'
-import { get_interrupt_state, resume_sync } from '@/graph/runner.js'
+import { checkInterruptTimeout, get_interrupt_state, resume_sync } from '@/graph/runner.js'
 import type { ModuAgentState } from '@/graph/state.js'
 
 /** 始终返回同一段终答的 mock LLM */
@@ -231,4 +231,81 @@ describe('clarify 节点 e2e：澄清暂停与恢复', () => {
     } as ModuAgentState)
     expect(out.needs_clarification).toBe(false)
   })
+
+  it('阶段1：超时恢复（timeout 标记）不消耗澄清轮次、不写入答案记录', async () => {
+    overrideClarify()
+    const llm = new StaticMockLlm()
+    const compiled = buildModuGraph(
+      [],
+      llm,
+      new MemorySaver(),
+      null,
+      'You are a helpful AI assistant.',
+      null,
+      null,
+      false,
+      false,
+      null,
+      false,
+      null,
+      null,
+      null,
+    )
+
+    const threadId = 'clarify-timeout-thread'
+    await compiled.invoke(makeState(threadId, '帮我做'), {
+      configurable: { thread_id: threadId },
+    })
+    // 暂停在 clarify（配置了 default_options → kind='choice'）
+    expect((await get_interrupt_state(compiled, threadId))?.kind).toBe('choice')
+
+    // 模拟 runner.checkInterruptTimeout 在 on_timeout='continue_with_defaults' 下的恢复调用
+    const result = await resume_sync(
+      compiled,
+      threadId,
+      false,
+      'clarify timed out after 120s, continuing with defaults',
+      'trace-timeout-1',
+      { timeout: true },
+    )
+    expect(result.status).toBe('success')
+
+    const after = await compiled.getState({ configurable: { thread_id: threadId } })
+    const values = after?.values ?? {}
+    // 超时不消耗轮次、不写答案记录（用户回来后仍保有完整澄清机会）
+    expect(values.clarification_round ?? 0).toBe(0)
+    expect((values.clarification_answers ?? []).length).toBe(0)
+    // 暂停解除，图已继续执行完毕
+    expect(await get_interrupt_state(compiled, threadId)).toBeNull()
+  }, 30000)
+
+  it('阶段1：澄清超时读独立配置（timeout_seconds=0 禁用，不再复用工具审批 300s）', async () => {
+    overrideClarify({ timeout_seconds: 0 })
+    const llm = new StaticMockLlm()
+    const compiled = buildModuGraph(
+      [],
+      llm,
+      new MemorySaver(),
+      null,
+      'You are a helpful AI assistant.',
+      null,
+      null,
+      false,
+      false,
+      null,
+      false,
+      null,
+      null,
+      null,
+    )
+
+    const threadId = 'clarify-timeout-config-thread'
+    await compiled.invoke(makeState(threadId, '帮我做'), {
+      configurable: { thread_id: threadId },
+    })
+    expect(await get_interrupt_state(compiled, threadId)).not.toBeNull()
+
+    // 澄清超时被禁用 → no_config；若仍复用工具审批默认 300s 会返回 active（分流回归）
+    expect(await checkInterruptTimeout(compiled, threadId)).toBe('no_config')
+  }, 30000)
 })

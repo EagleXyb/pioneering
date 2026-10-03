@@ -248,6 +248,8 @@ export async function getPendingAgentState(
     message: state['message'] ?? '',
     question: state['question'] ?? undefined,
     options: state['options'] ?? undefined,
+    // plan_confirm 预留：方案确认门的产物文件列表（spec.md/tasks.md 等），无该字段时为 undefined
+    artifacts: state['artifacts'] ?? undefined,
     next_nodes: state['next_nodes'] ?? [],
     pending_tool_calls: state['pending_tool_calls'] ?? [],
     tool_requires_approval: state['tool_requires_approval'] ?? false,

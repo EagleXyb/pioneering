@@ -1283,17 +1283,28 @@ export async function checkInterruptTimeout(
 ): Promise<'active' | 'expired' | 'no_interrupt' | 'no_config' | 'resume_failed'> {
   const config = getConfig()
   const hitlCfg = config.get('tools.human_in_loop', {}) ?? {}
+  const clarifyCfg = config.get('perception.clarification', {}) ?? {}
   const timeoutSeconds = Number(hitlCfg['approval_timeout_seconds'] ?? 300)
   const autoReject = hitlCfg['auto_reject_on_timeout'] ?? true
-
-  // timeout<=0 视为禁用超时检查
-  if (!(timeoutSeconds > 0)) {
-    return 'no_config'
-  }
 
   const state = await get_interrupt_state(graph, sessionId)
   if (state === null) {
     return 'no_interrupt'
+  }
+
+  // 阶段1：按 interrupt 类型分流超时治理——
+  //   澄清（clarifying/choice）读取 perception.clarification 的独立配置；
+  //   工具审批维持 tools.human_in_loop 原语义（零回归）。
+  const kind = state['kind'] as string | undefined
+  const isClarify = kind === 'clarifying' || kind === 'choice'
+  const effectiveTimeout = isClarify
+    ? Number(clarifyCfg['timeout_seconds'] ?? 120)
+    : timeoutSeconds
+  const onTimeout = String(clarifyCfg['on_timeout'] ?? 'continue_with_defaults')
+
+  // timeout<=0 视为禁用超时检查
+  if (!(effectiveTimeout > 0)) {
+    return 'no_config'
   }
 
   const createdAt = state['created_at']
@@ -1316,14 +1327,55 @@ export async function checkInterruptTimeout(
 
   const nowMs = Date.now()
   const elapsedSec = (nowMs - createdAtMs) / 1000
-  if (elapsedSec < timeoutSeconds) {
+  if (elapsedSec < effectiveTimeout) {
     return 'active'
   }
 
   logger.warning(
-    'HITL interrupt timed out: session_id=%s elapsed=%.1fs timeout=%ds auto_reject=%s',
-    sessionId, elapsedSec, timeoutSeconds, autoReject,
+    'HITL interrupt timed out: session_id=%s kind=%s elapsed=%.1fs timeout=%ds auto_reject=%s on_timeout=%s',
+    sessionId, kind ?? 'unknown', elapsedSec, effectiveTimeout, autoReject, onTimeout,
   )
+
+  // ---- 澄清超时：独立策略（阶段1）----
+  if (isClarify) {
+    if (onTimeout === 'abort') {
+      // 不自动 resume：仅标记过期，由调用方（前端）提示用户重新发起；
+      // checkpoint 保留，等待 sweep 或用户下次交互时收敛。
+      return 'expired'
+    }
+    // continue_with_defaults：按现有信息继续执行。
+    // resume 携带 timeout 标记，clarify 节点据此不写入答案记录、不消耗澄清轮次。
+    // feedback 必须留空：clarify 节点对"回答"存在 `answer ?? feedback` 回退，
+    // 若在此塞入描述性文本会被误判为用户回答（测试回归锁定）。
+    logger.info(
+      'clarify timeout continue_with_defaults: session_id=%s timeout=%ds',
+      sessionId, effectiveTimeout,
+    )
+    try {
+      const result = await resume_sync(
+        graph,
+        sessionId,
+        false,
+        '',
+        `clarify-timeout-${sessionId}-${Math.floor(nowMs)}`,
+        { timeout: true },
+      )
+      if (result && result['status'] === 'error') {
+        logger.error(
+          'clarify timeout resume returned error: session_id=%s error_code=%s',
+          sessionId, result['error_code'] ?? 'unknown',
+        )
+        return 'resume_failed'
+      }
+      return 'expired'
+    } catch (e: any) {
+      logger.error(
+        'clarify timeout resume failed: session_id=%s error=%s',
+        sessionId, String(e),
+      )
+      return 'resume_failed'
+    }
+  }
 
   if (!autoReject) {
     // 未启用自动拒绝，仅标记为已过期，由调用方处理

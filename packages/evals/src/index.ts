@@ -84,6 +84,15 @@ export {
 
 export { evaluateGate } from './gate.js'
 
+export {
+  CLARIFY_GATE,
+  checkClarifyGate,
+  runClarificationEval,
+  type ClarifyEvalCaseResult,
+  type ClarifyEvalOptions,
+  type ClarifyEvalReport,
+} from './clarification-eval.js'
+
 export { buildEvolutionSignals, feedEvolutionCollector } from './evolution-bridge.js'
 
 export { runCli } from './cli.js'

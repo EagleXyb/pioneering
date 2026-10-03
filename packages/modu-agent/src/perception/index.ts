@@ -116,3 +116,18 @@ export { AudioProcessor } from './audio/asr-processor.js'
 
 // 安全守卫（security/）
 export { SecurityGuard } from './security/guard.js'
+
+// 需求明确度检测（clarity-detector.ts，阶段3：规则 + LLM 复判 + 高影响门控）
+export {
+  assessClarificationNeed,
+  assessClarificationCoarse,
+  detectClarification,
+  extractUserInputText,
+  isHighImpactInput,
+  DEFAULT_HIGH_IMPACT_KEYWORDS,
+} from './clarity-detector.js'
+export type {
+  ClarifyDecision,
+  ClarityDetectionResult,
+  ClarifyStateView,
+} from './clarity-detector.js'

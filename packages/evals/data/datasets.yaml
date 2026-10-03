@@ -37,6 +37,15 @@ datasets:
     sample:
       strategy: all
 
+  # 需求澄清评测集（阶段3）：规则路径 precision/recall 门禁 + LLM 复判增量空间量化
+  # 标签约定：expect_clarify / expect_no_clarify / short-command / llm-required
+  clarification:
+    description: 需求澄清评测集——误触发率与模糊需求召回率门禁
+    sources:
+      - file: cases/clarification.yaml
+    sample:
+      strategy: all
+
   # 抽样子集：本地开发快速迭代（随机 4 条，seed 可复现）
   dev:
     description: 开发抽样集——随机抽取 4 条

@@ -1,4 +1,4 @@
-﻿// 对应 Python: orchestration/communication/agui_adapter.py
+// 对应 Python: orchestration/communication/agui_adapter.py
 // AGUIStreamAdapter + AGUIStateMachine + 19 种 AG-UI 事件类型
 import { randomUUID } from 'crypto'
 
@@ -48,24 +48,28 @@ export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType]
 
 /**
  * HITL 用户提问事件 payload（阶段零 D3 收敛）。
- * 一期仅使用 kind='tool_confirm'（工具审批）；'clarifying'/'choice'
- * 为后续澄清追问/多选确认预留（图1/图2，当前后端仅支持工具审批一种）。
+ * tool_confirm=工具审批；clarifying/choice=需求澄清；
+ * plan_confirm=方案/文档生成后的"是否基于产物继续执行"确认门——
+ * 当前图中尚无节点发射该 kind（无 interrupt 生产方），仅做协议与透传预留，
+ * 前端已具备对应内嵌卡 UI；未来由方案确认节点 interrupt({ kind:'plan_confirm', ... }) 启用。
  */
 export interface UserQuestionRequestPayload {
-  kind: 'tool_confirm' | 'clarifying' | 'choice'
+  kind: 'tool_confirm' | 'clarifying' | 'choice' | 'plan_confirm'
   session_id: string
   run_id?: string
   message?: string
   /** kind='tool_confirm' 时携带待审批的工具调用列表 */
   tool_calls?: Array<{
-    id: string
-    name: string
+    id: string;
+    name: string;
     args: Record<string, any>
   }>
   /** kind='clarifying' 时携带澄清问题文本 */
   question?: string
-  /** kind='choice' 时携带多选选项 */
-  options?: Array<{ id: string; label: string }>
+  /** kind='choice' 时携带多选选项（description 为选项补充说明，可选） */
+  options?: Array<{ id: string; label: string; description?: string }>
+  /** kind='plan_confirm' 时携带待确认的产物文件列表（spec.md/tasks.md 等） */
+  artifacts?: Array<{ name: string; path?: string }>
 }
 
 /** AG-UI 事件 → payload 数据结构映射表 */
@@ -1473,13 +1477,18 @@ export class AGUIStreamAdapter {
   }
 
   /**
-   * HITL 中断事件处理（阶段零 D3）。
+   * HITL 中断事件处理（阶段零 D3；补强：clarify/choice 载荷激活）。
    *
    * 从 interrupt() 的载荷（interruptValue）构建最小事件对：
-   *   USER_QUESTION_REQUEST（携带待审批工具调用）→ RUN_PAUSED。
+   *   USER_QUESTION_REQUEST（携带 kind 与对应字段）→ RUN_PAUSED。
    * 与主循环解耦：主循环在流结束后调用本函数，命中则跳过"完成"语义。
    *
-   * @param interruptValue interrupt() 传入的载荷（含 tool_calls / session_id / message）
+   * kind 透传规则（与 runner.resolveInterruptKind 语义对齐）：
+   *   - 载荷显式声明 'tool_confirm' | 'clarifying' | 'choice' → 原样透传；
+   *   - 其余（历史/异常载荷）→ 保守兜底 'tool_confirm'，避免异常载荷触发澄清 UI。
+   * clarifying/choice 透传 question/options；tool_confirm 透传 tool_calls。
+   *
+   * @param interruptValue interrupt() 传入的载荷（含 kind / question / options / tool_calls / session_id / message）
    * @param sessionId 会话标识（LangGraph thread_id）
    * @param runId 本次运行标识（AGUI message_id）
    * @returns 两个 AG-UI 事件 dict；无有效载荷时返回 null
@@ -1493,16 +1502,68 @@ export class AGUIStreamAdapter {
       ? (interruptValue as Record<string, any>).tool_calls
       : []
 
+    // kind 归一：载荷显式声明优先（白名单校验），否则保守兜底工具审批
+    const rawKind = interruptValue?.kind
+    const kind: UserQuestionRequestPayload['kind'] =
+      rawKind === 'tool_confirm' ||
+      rawKind === 'clarifying' ||
+      rawKind === 'choice' ||
+      rawKind === 'plan_confirm'
+        ? rawKind
+        : 'tool_confirm'
+
+    // 澄清字段透传（类型校验后再下发；tool_confirm 载荷无这两项，天然为空）
+    const rawQuestion = interruptValue?.question
+    const question =
+      typeof rawQuestion === 'string' && rawQuestion.trim() ? rawQuestion : undefined
+    const rawOptions = interruptValue?.options
+    const options = Array.isArray(rawOptions)
+      ? (rawOptions as Array<{ id?: unknown; label?: unknown; description?: unknown }>)
+          .filter((o) => o && typeof o.id === 'string' && typeof o.label === 'string')
+          .map((o) => ({
+            id: o.id as string,
+            label: o.label as string,
+            // 选项补充说明：校验为非空字符串后透传，其余情况省略
+            ...(typeof o.description === 'string' && o.description.trim()
+              ? { description: o.description }
+              : {}),
+          }))
+      : undefined
+    // plan_confirm 产物列表透传（name 必须为非空字符串；path 为可选非空字符串）
+    const rawArtifacts = interruptValue?.artifacts
+    const artifacts = Array.isArray(rawArtifacts)
+      ? (rawArtifacts as Array<{ name?: unknown; path?: unknown }>)
+          .filter((a) => a && typeof a.name === 'string' && a.name.trim())
+          .map((a) => ({
+            name: a.name as string,
+            ...(typeof a.path === 'string' && a.path.trim() ? { path: a.path } : {}),
+          }))
+      : undefined
+
     const payload: UserQuestionRequestPayload = {
-      kind: 'tool_confirm',
+      kind,
       session_id: String(interruptValue?.session_id ?? sessionId),
       run_id: runId,
-      message: String(interruptValue?.message ?? '工具调用需要人工审批后才能执行'),
-      tool_calls: toolCalls.map((tc: Record<string, any>) => ({
-        id: String(tc['id'] ?? tc['tool_call_id'] ?? ''),
-        name: String(tc['name'] ?? tc['tool_name'] ?? 'unknown'),
-        args: (tc['args'] ?? tc['arguments'] ?? {}) as Record<string, any>,
-      })),
+      message: String(
+        interruptValue?.message ??
+          (kind === 'tool_confirm'
+            ? '工具调用需要人工审批后才能执行'
+            : kind === 'plan_confirm'
+              ? '方案文档已生成，请确认是否基于该方案继续执行。'
+              : '需要你补充信息后才能继续。'),
+      ),
+      // 待审批工具调用仅在工具审批场景填充（澄清场景保持空数组，避免前端误渲染工具列表）
+      tool_calls:
+        kind === 'tool_confirm'
+          ? toolCalls.map((tc: Record<string, any>) => ({
+              id: String(tc['id'] ?? tc['tool_call_id'] ?? ''),
+              name: String(tc['name'] ?? tc['tool_name'] ?? 'unknown'),
+              args: (tc['args'] ?? tc['arguments'] ?? {}) as Record<string, any>,
+            }))
+          : [],
+      ...(question ? { question } : {}),
+      ...(options && options.length > 0 ? { options } : {}),
+      ...(artifacts && artifacts.length > 0 ? { artifacts } : {}),
     }
 
     return {

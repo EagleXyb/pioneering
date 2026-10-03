@@ -273,8 +273,27 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       ],
       // 澄清问题文案（LLM 不可用/未启用时的兜底）
       question_template: '你的需求还不太明确，方便补充一下具体想做什么吗？',
-      // 澄清问题附带的候选选项（空数组 = 纯自由文本回答）
-      default_options: [] as Array<{ id: string; label: string }>,
+      // 澄清问题附带的候选选项（空数组 = 纯自由文本回答；description 为选项补充说明）
+      default_options: [] as Array<{ id: string; label: string; description?: string }>,
+      // 澄清超时（秒）：独立于工具审批的 approval_timeout_seconds（阶段1），<=0 禁用
+      timeout_seconds: 120,
+      // 超时策略：'continue_with_defaults' 按现有信息继续（不消耗轮次）|
+      //          'abort' 仅标记过期，由前端提示用户重新发起
+      on_timeout: 'continue_with_defaults',
+      // 可选：LLM 润色澄清问题（需宿主注入 LLM；默认关闭，失败回退模板）
+      use_llm: false,
+      // 阶段3：LLM 复判（规则未命中时的语义歧义兜底；默认关闭 → 零 LLM 成本）
+      llm_judge: {
+        enabled: false,
+        // clarity_score 低于该阈值触发澄清
+        clarity_threshold: 0.4,
+        // 仅对不超过该字符数的输入复判（长文本通常已明确，避免浪费 LLM 调用）
+        max_input_chars: 60,
+      },
+      // 阶段3：高影响门控（true 时仅对命中 high_impact_keywords 的请求澄清，防打扰）
+      high_impact_only: false,
+      // 高影响关键词（留空数组 = 使用 clarity-detector 的内置默认集）
+      high_impact_keywords: [] as string[],
     },
   },
   feedback: {
