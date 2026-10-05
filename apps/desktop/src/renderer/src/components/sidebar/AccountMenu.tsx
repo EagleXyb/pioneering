@@ -1,9 +1,26 @@
 // ============================================================
 // AccountMenu — Sidebar 底部账户菜单
 // ============================================================
-// 头像/昵称/副标题触发 DropdownMenu，含：
-//   个人中心 / 外观设置 / 帮助与反馈 / 主题子菜单 / 关于软件 / 登录或登出
-// 提取自 Sidebar.tsx。
+// 头像/昵称/副标题触发 DropdownMenu，卡片式菜单，参照设计图：
+//   ┌──────────────────────────────┐
+//   │ desktop                      │  ← 大标题 + 灰色邮箱
+//   │ desktop@example.com          │
+//   ├──────────────────────────────┤  ← 通栏分隔线
+//   │ 个人中心 / 外观设置 / 帮助与反馈 > │
+//   ├──────────────────────────────┤
+//   │ 主题      浅色（居中）       > │  ← 子菜单，黑色箭头
+//   │ 关于软件                    > │
+//   ├──────────────────────────────┤
+//   │ ↪ 退出登录（红）             │
+//   ├──────────────────────────────┤
+//   │       Pioneering v0.1.0      │
+//   └──────────────────────────────┘
+// 规格（设计图等比换算，卡片宽 288px）：
+//   · 圆角 16px / 无内边距（分隔线与 hover 通栏）
+//   · 标题 20px 加粗；副标题 15px muted
+//   · 行高 42px；行文字 18px；图标 16px；行内边距 18px
+//   · 退出登录 #E7000B，行高 50px
+//   · 底部版本 13px 居中
 // ============================================================
 
 import { useAtomValue, useSetAtom } from 'jotai'
@@ -24,7 +41,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
@@ -34,9 +50,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
-import { authViewAtom } from '@/stores/authStore'
 import { useAppStore, type ThemeMode } from '@/stores/useAppStore'
-import { runMenuAction } from '@/menu/menuActions'
 import { authService } from '@/services/api/auth'
 
 export interface AccountMenuProps {
@@ -49,6 +63,16 @@ export interface AccountMenuProps {
   isError: boolean
   avatar?: string | null
 }
+
+// ============================================================
+// 卡片内统一视觉 token
+// ============================================================
+/** 普通行：36px 高 / 16px 字 / 18px 横向内边距 / 18px 图标 / 无圆角（通栏 hover） */
+const ROW_CLASS =
+  'h-[36px] !py-0 px-[18px] gap-3 rounded-none text-[16px] [&_svg]:size-[18px]'
+/** 次级行（登录入口/退出登录）：46px 高 */
+const ROW_CLASS_TALL =
+  'h-[46px] !py-0 px-[18px] gap-3 rounded-none text-[16px] [&_svg]:size-[18px]'
 
 /**
  * 底部账户菜单。认证态未定时展示骨架屏，已定时展示头像与昵称。
@@ -80,6 +104,8 @@ export function AccountMenu({
     setSettingsCategory(categoryId)
     setSettingsOpen(true)
   }
+
+  const themeLabel = theme === 'light' ? '浅色' : theme === 'dark' ? '深色' : '跟随系统'
 
   return (
     <div className="conversation-list-footer flex items-center justify-between px-2 py-1.5 border-t border-border shrink-0 min-h-[44px]">
@@ -127,47 +153,66 @@ export function AccountMenu({
         <DropdownMenuContent
           side="top"
           align="start"
-          className="w-64 rounded-[10px] border-border/60 p-1 shadow-lg [&_[role=menuitem]]:py-1.5 [&_[role=separator]]:my-1.5"
+          sideOffset={6}
+          className="w-[288px] rounded-[16px] border-border/60 !p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
         >
-          <DropdownMenuLabel className="px-2 py-2.5">
-            <div className="truncate text-sm font-medium">{displayName}</div>
-            <div
-              className={cn(
-                'truncate text-[11px] font-normal',
-                isError ? 'text-destructive' : 'text-muted-foreground'
-              )}
-            >
-              {displaySubtitle}
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
+          {/* ===== 头部：大标题 + 灰色副标题 ===== */}
+          <div className="px-[18px] pt-5 pb-[22px]">
+            {isSettling ? (
+              <div className="flex flex-col gap-1.5 py-0.5">
+                <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-36 animate-pulse rounded bg-muted/70" />
+              </div>
+            ) : (
+              <>
+                <div className="truncate text-[20px] font-bold leading-snug text-foreground">
+                  {displayName}
+                </div>
+                <div
+                  className={cn(
+                    'mt-1 truncate text-[15px]',
+                    isError ? 'text-destructive' : 'text-muted-foreground'
+                  )}
+                >
+                  {displaySubtitle}
+                </div>
+              </>
+            )}
+          </div>
 
-          <DropdownMenuItem onSelect={() => openSettingsWithCategory('account')}>
-            <User />
-            个人中心
-            <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
+          {/* 通栏分隔线 */}
+          <DropdownMenuSeparator className="!mx-0 !my-0" />
+
+          {/* ===== 分组 1：个人中心 / 外观设置 / 帮助与反馈 ===== */}
+          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('account')}>
+            <User className="shrink-0" />
+            <span className="truncate">个人中心</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
           </DropdownMenuItem>
 
-          <DropdownMenuItem onSelect={() => openSettingsWithCategory('appearance')}>
-            <Sun className="size-4" />
-            外观设置
-            <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
+          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('appearance')}>
+            <Sun className="shrink-0" />
+            <span className="truncate">外观设置</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
           </DropdownMenuItem>
 
-          <DropdownMenuItem onSelect={() => openSettingsWithCategory('about')}>
-            <HelpCircle />
-            帮助与反馈
-            <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
+          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('about')}>
+            <HelpCircle className="shrink-0" />
+            <span className="truncate">帮助与反馈</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
           </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
+          {/* 通栏分隔线 */}
+          <DropdownMenuSeparator className="!mx-0 !my-0" />
 
+          {/* ===== 分组 2：主题（子菜单）/ 关于软件 ===== */}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Sun className="size-4" />
-              <span>主题</span>
-              <span className="ml-auto text-[11px] text-muted-foreground/60">
-                {theme === 'light' ? '浅色' : theme === 'dark' ? '深色' : '跟随系统'}
+            <DropdownMenuSubTrigger className={ROW_CLASS}>
+              <Sun className="shrink-0" />
+              <span className="truncate">主题</span>
+              {/* 主题值：占据剩余空间并居中（与设计图一致），非 ml-auto 靠右 */}
+              <span className="flex-1 text-center text-[13px] font-normal text-muted-foreground">
+                {themeLabel}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="min-w-[150px]">
@@ -191,32 +236,45 @@ export function AccountMenu({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          <DropdownMenuItem onSelect={() => openSettingsWithCategory('about')}>
-            <Settings />
-            关于软件
-            <ChevronRight className="ml-auto size-3.5 text-muted-foreground/60" />
+          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('about')}>
+            <Settings className="shrink-0" />
+            <span className="truncate">关于软件</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
           </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
-          {/* 仅在确认已登录时提供登出；未登录时改为提供登录入口，
+          {/* 通栏分隔线 */}
+          <DropdownMenuSeparator className="!mx-0 !my-0" />
+
+          {/* ===== 分组 3：退出登录 / 登录入口 =====
+              仅在确认已登录时提供登出；未登录时改为提供登录入口，
               避免出现「未登录却可点退出登录」的无效操作 */}
           {isAuthed ? (
             <DropdownMenuItem
               onSelect={handleLogout}
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              className={cn(
+                ROW_CLASS_TALL,
+                'text-[#E7000B] focus:text-[#E7000B] focus:bg-[#E7000B]/[0.07]'
+              )}
             >
-              <LogOut />
-              退出登录
+              <LogOut className="shrink-0" />
+              <span className="truncate">退出登录</span>
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem onSelect={handleLoginClick} disabled={isSettling}>
-              <LogIn />
-              {isError ? '重新连接并登录' : '登录账户'}
+            <DropdownMenuItem
+              onSelect={handleLoginClick}
+              disabled={isSettling}
+              className={ROW_CLASS_TALL}
+            >
+              <LogIn className="shrink-0" />
+              <span className="truncate">{isError ? '重新连接并登录' : '登录账户'}</span>
             </DropdownMenuItem>
           )}
 
-          <DropdownMenuSeparator />
-          <div className="px-2 py-1.5 text-center text-[10px] text-muted-foreground/50">
+          {/* 通栏分隔线 */}
+          <DropdownMenuSeparator className="!mx-0 !my-0" />
+
+          {/* ===== 底部：版本号 ===== */}
+          <div className="py-6 text-center text-[13px] text-muted-foreground/60 select-none">
             Pioneering v0.1.0
           </div>
         </DropdownMenuContent>
