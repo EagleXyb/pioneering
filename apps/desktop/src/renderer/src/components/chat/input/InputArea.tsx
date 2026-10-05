@@ -14,7 +14,7 @@
 //      └─ 字符上限提示
 //
 // 保留全部 desktop 端功能特性：
-//   - 图片附件（粘贴 / 拖拽 / 按钮添加）与预览
+//   - 图片附件（粘贴 / 拖拽 / 按钮选择）与预览
 //   - FileAwareEditor（@ 文件引用 / / 快捷命令 弹层）
 //   - 模型选择、Agent 模式切换、草稿持久化
 //   - 拖拽高亮、字符上限校验
@@ -26,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent
@@ -39,6 +40,7 @@ import {
   FileText,
   HelpCircle,
   Image as ImageIcon,
+  ListChecks,
   Mic,
   Plus,
   ShieldCheck,
@@ -64,6 +66,7 @@ import { useSetAtom } from 'jotai'
 import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
 import type { ImageAttachment } from '@/lib/input/image-attachments'
 import {
+  ACCEPTED_IMAGE_TYPES,
   fileToImageAttachment,
   getPastedImageFiles,
   QUEUED_IMAGE_ONLY_TEXT
@@ -74,7 +77,7 @@ import {
 } from '@/lib/input/select-file-editor'
 import { getSelectFileMentionQuery } from '@/lib/input/select-file-tags'
 import { getDroppedLocalPaths } from '@/lib/input/drag-folder'
-import { getSessionInputDraftKey } from '@/lib/input/input-drafts'
+import { getSessionInputDraftKey, removeInputDraft } from '@/lib/input/input-drafts'
 
 import { useInputDraftPersistence } from '@/hooks/use-input-draft-persistence'
 import { useChatStore } from '@/stores/chatStore'
@@ -142,6 +145,10 @@ export interface InputAreaProps {
   agentMode?: boolean
   /** 切换 Agent 模式 */
   onToggleAgent?: () => void
+  /** T10：计划模式（新会话以 plan_execute 图创建） */
+  planMode?: boolean
+  /** T10：切换计划模式 */
+  onTogglePlan?: () => void
   /** 欢迎页态：输入卡片使用增强阴影引导关注 */
   isWelcome?: boolean
   /**
@@ -206,42 +213,36 @@ function getSlashQuery(
 }
 
 // ============================================================
-// 模型选择器
+// 模型选择器（T6 修复：候选项来自设置页 modelConfigs 的 enabled 项，
+// 选中值写入 useAppStore.defaultModel；'Auto' 表示由后端决定，不下发 model 字段）
 // ============================================================
-const DEFAULT_MODEL = 'Auto'
-const MODEL_OPTIONS: { label: string; value: string }[] = [
-  { label: 'Auto', value: 'Auto' },
-  { label: 'DeepSeek V4 Flash', value: 'deepseek-v4-flash' },
-  { label: 'DeepSeek V4 Pro', value: 'deepseek-v4-Pro' },
-  { label: 'GLM 5.2', value: 'GLM-5.2' },
-  { label: 'Kimi K3', value: 'Kimi-K3' },
-  { label: 'MiniMax M3', value: 'MiniMax-M3' },
-  { label: '配置模型', value: '配置模型' },
-]
+const AUTO_MODEL = 'Auto'
 
-function ModelSelect({
-  value,
-  onChange,
-  disabled
-}: {
-  value: string
-  onChange: (model: string) => void
-  disabled?: boolean
-}) {
+function ModelSelect({ disabled }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false)
-  const [custom, setCustom] = useState('')
-  const isCustomMode = value === '配置模型' || (custom.length > 0 && value === custom)
+  const modelConfigs = useAppStore((s) => s.modelConfigs)
+  const defaultModel = useAppStore((s) => s.defaultModel)
+  const setDefaultModel = useAppStore((s) => s.setDefaultModel)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setSettingsCategory = useSetAtom(settingsCategoryAtom)
 
-  const handleSelect = (optValue: string) => {
-    if (optValue === '配置模型') {
-      setSettingsCategory('model')
-      setSettingsOpen(true)
-      setOpen(false)
-      return
-    }
-    onChange(optValue)
+  // 仅启用模型进入下拉；value 缺省回退模型名（与 sendMessage 下发逻辑一致）
+  const options = useMemo(
+    () =>
+      modelConfigs
+        .filter((m) => m.enabled)
+        .map((m) => ({ label: m.name, value: m.value ?? m.name })),
+    [modelConfigs]
+  )
+  // 当前默认值已被删除/停用 → 回显 Auto（实际发送同样回退为不下发 model）
+  const effectiveValue = options.some((o) => o.value === defaultModel)
+    ? defaultModel
+    : AUTO_MODEL
+
+  const goConfigure = () => {
+    setSettingsCategory('model')
+    setSettingsOpen(true)
+    setOpen(false)
   }
 
   return (
@@ -254,44 +255,38 @@ function ModelSelect({
               className="pro-input-model-btn"
               disabled={disabled}
             >
-              <span>{isCustomMode && custom ? custom : value === '配置模型' ? '配置模型' : value}</span>
+              <span>{effectiveValue}</span>
               <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent>选择模型</TooltipContent>
+        <TooltipContent>选择模型（在设置中管理）</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="start" side="top" sideOffset={4} alignOffset={0} avoidCollisions={true} className="pro-input-more-pop min-w-[200px]">
-        {MODEL_OPTIONS.slice(0, 6).map((opt) => (
-          <DropdownMenuItem key={opt.value} onSelect={() => handleSelect(opt.value)}>
+      <DropdownMenuContent align="start" side="top" sideOffset={4} alignOffset={0} avoidCollisions={true} className="pro-input-more-pop min-w-[240px]">
+        <DropdownMenuItem onSelect={() => setDefaultModel(AUTO_MODEL)}>
+          <span>Auto</span>
+          <span className="ml-2 text-[11px] text-muted-foreground/70">由后端决定</span>
+          {effectiveValue === AUTO_MODEL && <Check className="ml-auto size-3.5 text-primary" />}
+        </DropdownMenuItem>
+        {options.map((opt) => (
+          <DropdownMenuItem key={opt.value} onSelect={() => setDefaultModel(opt.value)}>
             <span>{opt.label}</span>
-            {value === opt.value && <Check className="ml-auto size-3.5 text-primary" />}
+            {effectiveValue === opt.value && <Check className="ml-auto size-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
-        {MODEL_OPTIONS.slice(6).map((opt) => (
-          <DropdownMenuItem key={opt.value} onSelect={() => handleSelect(opt.value)}>
-            <span>{opt.label}</span>
-            {value === opt.value && <Check className="ml-auto size-3.5 text-primary" />}
-          </DropdownMenuItem>
-        ))}
-        {isCustomMode && (
-          <div
-            className="flex items-center gap-2 border-t px-2 py-2"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <input
-              autoFocus
-              value={custom}
-              onChange={(e) => {
-                setCustom(e.target.value)
-                onChange(e.target.value)
-              }}
-              placeholder="输入模型名称"
-              className="h-7 w-full rounded-md border bg-background px-2 text-xs outline-none focus:border-primary"
-            />
+        {options.length === 0 && (
+          <div className="px-2 py-1.5 text-[12px] text-muted-foreground/70">
+            暂无启用模型，可在下方「配置模型」中添加
           </div>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={goConfigure}>
+          <span className="text-blue-600">配置模型…</span>
+        </DropdownMenuItem>
+        {/* T6③：本地 IPC 模式不透传会话级 model，以系统设置中的默认模型为准 */}
+        <div className="px-2 py-1.5 text-[11px] leading-relaxed text-muted-foreground/60">
+          本地运行时以「系统设置 → 本地运行时」配置的默认模型（LLM_DEFAULT_MODEL）为准。
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -482,6 +477,8 @@ export function InputArea({
   disabled = false,
   agentMode = false,
   onToggleAgent,
+  planMode = false,
+  onTogglePlan,
   isWelcome = false,
   mode = 'normal',
   hitl = null,
@@ -500,7 +497,8 @@ export function InputArea({
   const hotkeyOverrides = useAppStore((s) => s.hotkeys)
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
-  const [model, setModel] = useState<string>(DEFAULT_MODEL)
+  // T6：模型选择单一数据源为 useAppStore.defaultModel（设置页 modelConfigs 管理候选项）
+  const defaultModel = useAppStore((s) => s.defaultModel)
   const [focused, setFocused] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -531,9 +529,15 @@ export function InputArea({
   const selectedFiles = useMemo<SelectedFileItem[]>(() => deserializeEditorState(text).files, [text])
 
   // ---- 统一命令面板：单一注册表，「/」与「+」共用 ----
-  // HITL 精简态（阶段三 3.4）：「+」仅保留附件动作，与既有约束一致
+  // HITL 精简态（阶段三 3.4）：「+」仅保留附件动作（文件引用 + 图片附件），与既有约束一致。
+  // T17 修复：图片附件动作在 HITL 态必须保留，否则该模式下图片完全无法附加。
   const paletteCommands = useMemo<PaletteCommand[]>(
-    () => (hitlMode ? PALETTE_COMMANDS.filter((c) => c.actionId === 'attach-file') : PALETTE_COMMANDS),
+    () =>
+      hitlMode
+        ? PALETTE_COMMANDS.filter(
+            (c) => c.actionId === 'attach-file' || c.actionId === 'attach-image'
+          )
+        : PALETTE_COMMANDS,
     [hitlMode]
   )
 
@@ -620,6 +624,26 @@ export function InputArea({
     setAttachedImages((prev) => prev.filter((i) => i.id !== id))
   }, [])
 
+  // ---- 按钮入口选择图片（T4a 修复）----
+  // 系统文件对话框只回路径字符串（无法还原二进制），故图片按钮走隐藏的
+  // <input type="file">，拿到 File 对象后复用与粘贴/拖拽同一套 addImages 附件管线，
+  // 保证「按钮 / 粘贴 / 拖拽」三个入口行为一致（缩略图 + 20MB 上限 + 类型白名单）。
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const openImagePicker = useCallback(() => {
+    imageInputRef.current?.click()
+  }, [])
+  const handleImageInputChange = useCallback(
+    (e: ReactChangeEvent<HTMLInputElement>) => {
+      const picked = Array.from(e.target.files ?? [])
+      // 即便操作系统/文件选择器绕过 accept，仍按统一白名单过滤，拒绝非 png/jpeg/gif/webp
+      const accepted = picked.filter((f) => ACCEPTED_IMAGE_TYPES.includes(f.type))
+      if (accepted.length) void addImages(accepted)
+      // 重置 value，使重复选择同一文件仍能触发 change
+      e.target.value = ''
+    },
+    [addImages]
+  )
+
   // ---- 文件插入 helper ----
   const insertFileTokens = useCallback((paths: string[]) => {
     if (paths.length === 0) return
@@ -679,7 +703,11 @@ export function InputArea({
         insertFileTokens(paths)
         return
       }
-      const imageFiles = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'))
+      // T4a 修复：拖拽与粘贴共用同一类型白名单（png/jpeg/gif/webp），
+      // 不再接受任意 image/*（如 bmp/svg）进入附件管线。
+      const imageFiles = Array.from(e.dataTransfer.files).filter(
+        (f) => f.type.startsWith('image/') && ACCEPTED_IMAGE_TYPES.includes(f.type)
+      )
       if (imageFiles.length) {
         e.preventDefault()
         void addImages(imageFiles)
@@ -688,8 +716,11 @@ export function InputArea({
     [insertFileTokens, addImages]
   )
 
-  // ---- Agent 模式切换（命令面板「模式」动作与工具栏徽标共用）----
+  // ---- Agent 模式切换（命令面板「模式」动作与工具栏徽标共用）--
   const setAgentMode = useChatStore((s) => s.setAgentMode)
+  // T11：/help 需要从主组件作用域打开设置弹框（ModelSelect 内的同名 setter 不可达）
+  const openSettings = useSetAtom(settingsOpenAtom)
+  const chooseSettingsCategory = useSetAtom(settingsCategoryAtom)
   const handleToggleAgent = useCallback(() => {
     setAgentMode(!agentMode)
     onToggleAgent?.()
@@ -753,9 +784,34 @@ export function InputArea({
         // 动作型命令：先移除「/」触发片段，再执行动作
         if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
         void handleAttachFile()
+      } else if (cmd.actionId === 'attach-image') {
+        // T4a 修复：图片按钮走真正的附件通道（打开文件选择器 → addImages）
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        openImagePicker()
       } else if (cmd.actionId === 'toggle-agent') {
         if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
         handleToggleAgent()
+      } else if (cmd.actionId === 'toggle-plan') {
+        // T10：/plan 真实动作——切换计划模式（下一个新会话以 plan_execute 图创建）
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        onTogglePlan?.()
+      } else if (cmd.actionId === 'clear-conversation') {
+        // T11：/clear —— 清空当前对话内容与草稿（等价新建任务，旧会话保留在列表）
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        const oldKey = sessionId ? getSessionInputDraftKey(sessionId) : null
+        setText('')
+        setAttachedImages([])
+        setSelectedSkill(null)
+        useChatStore.getState().startNewTask()
+        // 清理旧会话与新 draft（home）键下残留草稿，避免清空后又被恢复
+        if (oldKey) void removeInputDraft(oldKey)
+        void removeInputDraft(getSessionInputDraftKey('home'))
+        editorRef.current?.focus()
+      } else if (cmd.actionId === 'open-help') {
+        // T11：/help —— 打开设置「关于」页（帮助文档/反馈/版本信息）
+        if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
+        chooseSettingsCategory('about')
+        openSettings(true)
       } else if (cmd.actionId === 'mock-plan-confirm') {
         // dev-only：清掉 slash 触发片段后注入 mock 方案确认门
         if (trigger) editorRef.current?.replaceRange(trigger.start, trigger.end, '')
@@ -770,7 +826,7 @@ export function InputArea({
         editorRef.current?.focus()
       }
     },
-    [slashTrigger, handleAttachFile, handleToggleAgent, triggerMockPlanConfirm, closePlus]
+    [slashTrigger, handleAttachFile, openImagePicker, handleToggleAgent, onTogglePlan, openSettings, chooseSettingsCategory, triggerMockPlanConfirm, sessionId, closePlus]
   )
 
   // ---- plus 面板搜索框键盘导航（slash 模式焦点在 textarea，由 handleKeyDown 处理）----
@@ -848,11 +904,10 @@ export function InputArea({
 
     if (!promptText && attachedImages.length === 0) return
 
-    const hasSlash = promptText.startsWith('/')
-    const message =
-      selectedSkill && !hasSlash
-        ? `[Skill: ${selectedSkill}]\n${promptText}`
-        : promptText || QUEUED_IMAGE_ONLY_TEXT
+    // T11（修复任务清单 T11）：移除 [Skill: x] 文本前缀拼接——
+    // selectedSkill 没有选择入口（技能市场尚未落地），拼接只会产出用户可见的
+    // 死 token；skill 仍以 options.skill 结构化字段透传，待技能选择器落地后启用。
+    const message = promptText || QUEUED_IMAGE_ONLY_TEXT
 
     onSend(
       message,
@@ -860,7 +915,8 @@ export function InputArea({
       {
         selectedFiles: selectedFiles.map((f) => f.path),
         skill: selectedSkill,
-        model
+        // T6：Auto 由 sendMessage 归一化为不下发 model 字段
+        model: defaultModel
       }
     )
 
@@ -874,7 +930,7 @@ export function InputArea({
     closePlus()
     clearDraftRef.current?.()
     editorRef.current?.focus()
-  }, [text, attachedImages, selectedSkill, selectedFiles, model, onSend, hitlAnswerable, hitl, onHitlAnswer, onHitlConfirmPlan, closePlus])
+  }, [text, attachedImages, selectedSkill, selectedFiles, defaultModel, onSend, hitlAnswerable, hitl, onHitlAnswer, onHitlConfirmPlan, closePlus])
 
   // ---- 键盘导航 ----
   const handleKeyDown = useCallback(
@@ -987,7 +1043,7 @@ export function InputArea({
 
   useEffect(() => {
     scheduleSave()
-  }, [text, attachedImages, selectedSkill, model, scheduleSave])
+  }, [text, attachedImages, selectedSkill, scheduleSave])
 
   useEffect(() => {
     computeTriggers()
@@ -1001,6 +1057,17 @@ export function InputArea({
 
   return (
     <div className="pro-input-area">
+      {/* T4a：按钮入口的图片选择器（命令面板「上传图片」）。
+          与粘贴/拖拽共用 addImages 管线；accept 仅为系统层过滤，
+          类型白名单在 handleImageInputChange 中再次校验。 */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept={ACCEPTED_IMAGE_TYPES.join(',')}
+        multiple
+        hidden
+        onChange={handleImageInputChange}
+      />
       <div className="pro-input-inner">
         {/* 统一命令面板：「/」与「+」共用；仅其中一种模式打开时渲染 */}
         <CommandPalette
@@ -1161,16 +1228,10 @@ export function InputArea({
             </div>
           ) : null}
 
-          {/* 状态行：运行时状态 + 选中技能 */}
-          {(attachedImages.length > 0 || selectedSkill) && (
+          {/* 状态行：仅运行时状态（T11：无技能选择入口，移除 [Skill: x] badge） */}
+          {attachedImages.length > 0 && (
             <div className="pro-input-status-row">
               <ComposerRuntimeStatus imageCount={attachedImages.length} />
-              {selectedSkill && (
-                <span className="inline-flex items-center gap-1 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] text-violet-500">
-                  <ImageIcon className="size-3" />
-                  {selectedSkill}
-                </span>
-              )}
             </div>
           )}
 
@@ -1236,7 +1297,28 @@ export function InputArea({
                 <TooltipContent>添加附件 / 工具</TooltipContent>
               </Tooltip>
 
-              {agentMode && !hitlMode && (
+              {/* T10：计划模式徽标优先于普通 Agent 徽标（计划模式隐含 Agent 通道）。
+                  徽标仅反映「新会话将使用的模式」；已创建会话的模式以会话自身 agentMode 为准。 */}
+              {planMode && !hitlMode && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="pro-input-agent-badge">
+                      <ListChecks className="size-3.5" />
+                      <span>计划模式</span>
+                      <button
+                        type="button"
+                        className="pro-input-agent-close"
+                        onClick={() => onTogglePlan?.()}
+                        aria-label="关闭计划模式"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>新会话将按计划分步执行；点击关闭计划模式</TooltipContent>
+                </Tooltip>
+              )}
+              {agentMode && !planMode && !hitlMode && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="pro-input-agent-badge">
@@ -1259,7 +1341,7 @@ export function InputArea({
 
             <div className="pro-input-toolbar-right">
               {/* HITL 精简态（阶段三 3.4）：省略 ModelSelect 与麦克风，仅 ↑ 发送 */}
-              {!hitlMode && <ModelSelect value={model} onChange={setModel} disabled={isStreaming} />}
+              {!hitlMode && <ModelSelect disabled={isStreaming} />}
 
               {/* 麦克风：与 web pro 端一致，暂未开放 */}
               {!hitlMode && (

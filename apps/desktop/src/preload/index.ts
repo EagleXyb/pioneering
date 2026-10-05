@@ -3,6 +3,7 @@ import { IpcChannel } from '../shared/ipc-channels'
 import type {
   FileDialogOptions,
   FileWriteRequest,
+  DraftAssetWriteRequest,
   NotificationOptions,
   AgentEventEnvelope,
   LocalSessionListRequest,
@@ -18,6 +19,9 @@ import type {
   SecureKeyListResult,
   SecureKeySetRequest,
   SecureKeySetResult,
+  ModelSecretSetRequest,
+  ModelSecretGetResult,
+  ModelSecretListResult,
   HotkeyOverrides,
   HotkeyApplyResult
 } from '../shared/ipc-channels'
@@ -98,6 +102,13 @@ const storeApi = {
   delete: (key: string) => ipcRenderer.invoke(IpcChannel.STORE_DELETE, key)
 }
 
+// T9：草稿图片资产（二进制外置到 userData/draft-assets，草稿仅存引用）
+const draftAssetApi = {
+  write: (req: DraftAssetWriteRequest) => ipcRenderer.invoke(IpcChannel.DRAFT_ASSET_WRITE, req),
+  read: (id: string) => ipcRenderer.invoke(IpcChannel.DRAFT_ASSET_READ, id),
+  delete: (id: string) => ipcRenderer.invoke(IpcChannel.DRAFT_ASSET_DELETE, id)
+}
+
 // ---- Agent 本地运行时（云边双模阶段 1）----
 // 流式事件不走 invoke 返回值：主进程经 AGENT_EVENT 主动推送，
 // 渲染端通过 onEvent 按 runId 过滤消费。
@@ -175,6 +186,14 @@ const secureKeyApi = {
     ipcRenderer.invoke(IpcChannel.SECURE_KEY_DELETE, name)
 }
 
+// T6：模型配置密钥（apiKey 经 safeStorage 加密存储；明文不回传）
+const modelSecretApi = {
+  set: (req: ModelSecretSetRequest) => ipcRenderer.invoke(IpcChannel.MODEL_SECRET_SET, req),
+  get: (id: string) => ipcRenderer.invoke(IpcChannel.MODEL_SECRET_GET, id),
+  list: () => ipcRenderer.invoke(IpcChannel.MODEL_SECRET_LIST),
+  delete: (id: string) => ipcRenderer.invoke(IpcChannel.MODEL_SECRET_DELETE, id)
+}
+
 // ---- 快捷键治理（electron-store 为主进程唯一真源，渲染端只读缓存 + 提交全量覆盖表）----
 const hotkeysApi = {
   /** 拉取当前覆盖表（应用启动 hydrate 用） */
@@ -194,9 +213,11 @@ const api = {
   clipboard: clipboardApi,
   shell: shellApi,
   store: storeApi,
+  draftAsset: draftAssetApi,
   agent: agentApi,
   localChat: localChatApi,
   secureKeys: secureKeyApi,
+  modelSecret: modelSecretApi,
   hotkeys: hotkeysApi
 }
 

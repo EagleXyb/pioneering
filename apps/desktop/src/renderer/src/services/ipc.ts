@@ -8,6 +8,8 @@ import type {
   FileDialogResult,
   FileReadResult,
   FileWriteRequest,
+  DraftAssetWriteRequest,
+  ModelSecretSetRequest,
   NotificationOptions
 } from '@shared/ipc-channels'
 import { normalizePlatform } from '@shared/types'
@@ -116,4 +118,33 @@ export const storeApi = {
   get: <T = unknown>(key: string) => getApi()?.store.get(key) as Promise<T | undefined> | undefined,
   set: (key: string, value: unknown) => getApi()?.store.set(key, value) ?? Promise.resolve(false),
   delete: (key: string) => getApi()?.store.delete(key) ?? Promise.resolve(false)
+}
+
+// ---- 模型配置密钥（T6：apiKey 经 safeStorage 加密，localStorage 不再保存明文）----
+export const modelSecretApi = {
+  set: (req: ModelSecretSetRequest) =>
+    getApi()?.modelSecret.set(req) ??
+    Promise.resolve({ ok: false, error: 'IPC not available' }),
+  get: (id: string) =>
+    getApi()?.modelSecret.get(id) ??
+    Promise.resolve({ ok: false, error: 'IPC not available' }),
+  list: () =>
+    getApi()?.modelSecret.list() ??
+    Promise.resolve({ items: [] }),
+  delete: (id: string) =>
+    getApi()?.modelSecret.delete(id) ??
+    Promise.resolve({ ok: false, error: 'IPC not available' })
+}
+
+// ---- 草稿图片资产（T9：大 base64 外置，避免随 electron-store 同步整档落盘）----
+export const draftAssetApi = {
+  write: (req: DraftAssetWriteRequest) =>
+    getApi()?.draftAsset.write(req) ??
+    Promise.resolve({ success: false, error: 'IPC not available' }),
+  read: (id: string) =>
+    getApi()?.draftAsset.read(id) ??
+    Promise.resolve({ success: false, error: 'IPC not available' }),
+  delete: (id: string) =>
+    getApi()?.draftAsset.delete(id) ??
+    Promise.resolve({ success: false, error: 'IPC not available' })
 }

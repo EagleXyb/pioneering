@@ -70,9 +70,10 @@ export function RootLayout() {
 
   // ============================================================
   // 顶部栏模式判定（路由感知，与 Sidebar.activeNavKey 同源）：
-  //   - 路径 '/' 或 '' → 会话视图：标题取会话 title，显示搜索/分享/历史/右面板
+  //   - 路径 '/' 或 '' → 会话视图：标题取会话 title，显示分享/右面板
   //   - 路径匹配 NAV_ITEMS.route → 功能页视图：标题取对应 label，隐藏会话按钮
-  //   - 其余路径（/home /workspace）→ 兜底会话视图（后续可按需要扩展）
+  //   - 其余路径（/home）→ 兜底会话视图（后续可按需要扩展；
+  //     /workspace 路由已随 T15 摘除）
   // ============================================================
   const matchedNav = NAV_ITEMS.find((i) => i.route === location.pathname)
   const isChatView = !matchedNav && (location.pathname === '/' || location.pathname === '')

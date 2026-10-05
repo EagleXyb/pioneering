@@ -32,9 +32,13 @@ import type {
 } from '@shared/ipc-channels'
 import { getAgentTransportMode } from './transport'
 
-/** preload localChat API 是否可用（纯浏览器 dev / 单测环境为 false） */
+/** preload localChat API 是否可用（T22：排除浏览器 mock 的 unavailable 桩） */
 export function isLocalChatAvailable(): boolean {
-  return typeof window !== 'undefined' && !!window.api?.localChat
+  return (
+    typeof window !== 'undefined' &&
+    !!window.api?.localChat &&
+    !window.api.localChat.unavailable
+  )
 }
 
 /** 本地运行时是否激活：IPC 模式 + 本地 DAO 可用（新建会话归属 local 的判据） */

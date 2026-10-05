@@ -16,7 +16,7 @@
 //     外链图标 stroke #bfbfbf；前缀图标 18×18 stroke #8c8c8c
 // ============================================================
 
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import {
   RefreshCw,
   CheckCircle2,
@@ -28,7 +28,7 @@ import {
   XCircle,
   Info
 } from 'lucide-react'
-import { shellApi } from '@/services/ipc'
+import { appApi, shellApi } from '@/services/ipc'
 import { pxToRem } from '@/lib/utils'
 import {
   DOCS_URL,
@@ -36,7 +36,10 @@ import {
   SUPPORT_MAILTO_URL
 } from '@shared/links'
 
-type UpdateStatus = 'idle' | 'checking' | 'latest' | 'error'
+// T5 修复（修复任务清单 T5 / 报告 §2.7）：
+// 应用尚未接入自动更新器，主进程 APP_CHECK_UPDATE 仅回传当前版本号。
+// 状态机去掉随机的「已是最新/检查失败」分支，改为如实展示当前版本与通道状态。
+type UpdateStatus = 'idle' | 'checking' | 'checked' | 'error'
 
 /**
  * 统一的安全打开外部链接包装。
@@ -139,17 +142,35 @@ function Divider() {
 // ==================================================
 function VersionRow() {
   const [status, setStatus] = useState<UpdateStatus>('idle')
+  const [version, setVersion] = useState('0.1.0')
   const [hover, setHover] = useState(false)
+
+  // 挂载时取一次真实版本号（app.getVersion()），替换写死的 v0.1.0
+  useEffect(() => {
+    let cancelled = false
+    appApi
+      .checkUpdate()
+      .then((v) => {
+        if (!cancelled && v) setVersion(v)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleCheck = (e: React.MouseEvent) => {
     e.stopPropagation() // 防止冒泡触发行自身 click
     if (status === 'checking') return
     setStatus('checking')
-    window.setTimeout(() => {
-      const ok = Math.random() > 0.2
-      setStatus(ok ? 'latest' : 'error')
-      window.setTimeout(() => setStatus('idle'), 1500)
-    }, 600)
+    // 当前无自动更新器：IPC 只回传版本号，据此如实告知「暂无自动更新通道」
+    appApi
+      .checkUpdate()
+      .then((v) => {
+        if (v) setVersion(v)
+        setStatus('checked')
+      })
+      .catch(() => setStatus('error'))
   }
 
   return (
@@ -165,9 +186,11 @@ function VersionRow() {
       <span className="flex items-center gap-[10px] min-w-0">
         <Info className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />
         <span className="flex flex-col min-w-0">
-          <span className="text-[#262626] truncate" style={{ fontSize: pxToRem(14) }}>当前版本 v0.1.0</span>
+          <span className="text-[#262626] truncate" style={{ fontSize: pxToRem(14) }}>当前版本 v{version}</span>
           <span className="text-[#bfbfbf] mt-0.5 truncate" style={{ fontSize: pxToRem(11) }}>
-            Powered by Electron 42 · React 19 · LangGraph
+            {status === 'checked'
+              ? '暂无自动更新通道，可前往官网获取新版本'
+              : 'Powered by Electron 42 · React 19 · LangGraph'}
           </span>
         </span>
       </span>
@@ -449,8 +472,9 @@ function CheckUpdateButton({
   if (status === 'checking') {
     text = '检查中...'
     icon = <RefreshCw size={12} strokeWidth={2} className="shrink-0 animate-spin" />
-  } else if (status === 'latest') {
-    text = '已是最新版本'
+  } else if (status === 'checked') {
+    // T5：无自动更新器，检查结果只可能是「回显当前版本 + 无更新通道」
+    text = '暂无自动更新'
     variant = 'success'
     icon = <CheckCircle2 size={12} strokeWidth={2} className="shrink-0" />
   } else if (status === 'error') {

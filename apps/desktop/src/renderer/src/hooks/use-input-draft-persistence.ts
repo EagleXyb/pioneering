@@ -28,7 +28,11 @@ interface UseInputDraftPersistenceOptions {
   skipWhenDisabled?: boolean
   /** 焦点不在输入区时跳过保存 */
   isFocused?: () => boolean
-  /** 去抖延迟，默认 400ms */
+  /**
+   * 去抖延迟，默认 1000ms。
+   * T9：图片已外置为资产文件（草稿 JSON 仅存引用），节流同步加大以降低
+   * 高频编辑时 electron-store 的同步落盘频率。
+   */
   delay?: number
 }
 
@@ -40,7 +44,7 @@ export function useInputDraftPersistence({
   skipWhenStreaming = true,
   skipWhenDisabled = true,
   isFocused,
-  delay = 400
+  delay = 1000
 }: UseInputDraftPersistenceOptions) {
   const [hydrated, setHydrated] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

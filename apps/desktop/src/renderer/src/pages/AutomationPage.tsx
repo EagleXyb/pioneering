@@ -9,7 +9,7 @@
 // 当前为纯前端本地状态，不与后端调度系统联动。
 // ============================================================
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlarmClockCheck,
   CalendarDays,
@@ -43,16 +43,39 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { cn } from '@/lib/utils'
 import { genId } from '@/lib/genId'
+import { storeApi } from '@/services/ipc'
 import { sidebarVisibleAtom } from '@/stores/atoms'
+
+// T14（修复任务清单 T14）：任务列表持久化键（electron-store；浏览器 mock 下落 localStorage）。
+// 仅持久化任务配置；真实定时调度（触发 Agent run）待后端/主进程调度器接入。
+const AUTOMATION_TASKS_KEY = 'automation.tasks'
 
 type TabKey = 'tasks' | 'records'
 type RepeatKey = 'daily' | 'weekdays' | 'weekly' | 'once'
+
+/** 任务图标的可序列化 key（Lucide 组件无法直接持久化，按 key 映射） */
+type TaskIconKey =
+  | 'alarm'
+  | 'news'
+  | 'languages'
+  | 'moon'
+  | 'list-checks'
+  | 'clapperboard'
+  | 'calendar'
+  | 'lightbulb'
+  | 'phone'
+  | 'stethoscope'
+  | 'message'
+  | 'clipboard'
+  | 'image'
 
 interface Template {
   id: string
   name: string
   description: string
   icon: LucideIcon
+  /** T14：持久化用的图标 key（与 TEMPLATE_ICONS 对应） */
+  iconKey: TaskIconKey
   time: string
   repeat: RepeatKey
   weekday: number // 0=周日 ... 6=周六（repeat=weekly 时生效）
@@ -63,7 +86,7 @@ interface ScheduledTask {
   id: string
   name: string
   prompt: string
-  icon: LucideIcon
+  iconKey: TaskIconKey
   time: string
   repeat: RepeatKey
   weekday: number
@@ -71,11 +94,45 @@ interface ScheduledTask {
   enabled: boolean
 }
 
+/** iconKey → Lucide 图标（持久化恢复时查表；未命中回退闹钟图标） */
+const TEMPLATE_ICONS: Record<TaskIconKey, LucideIcon> = {
+  alarm: AlarmClockCheck,
+  news: Newspaper,
+  languages: Languages,
+  moon: Moon,
+  'list-checks': ListChecks,
+  clapperboard: Clapperboard,
+  calendar: CalendarDays,
+  lightbulb: Lightbulb,
+  phone: PhoneCall,
+  stethoscope: Stethoscope,
+  message: MessageCircleQuestion,
+  clipboard: ClipboardListIcon,
+  image: ImageIcon
+}
+
+/** 模板 id → iconKey（从模板创建任务时携带） */
+const TEMPLATE_ICON_KEYS: Record<string, TaskIconKey> = {
+  'ai-news': 'news',
+  'english-words': 'languages',
+  'bedtime-story': 'moon',
+  'weekly-report': 'list-checks',
+  'movie-recommend': 'clapperboard',
+  'today-in-history': 'calendar',
+  'daily-why': 'lightbulb',
+  'call-parents': 'phone',
+  'health-check': 'stethoscope',
+  'interview-prep': 'message',
+  'meeting-prep': 'clipboard',
+  'pet-wallpaper': 'image'
+}
+
 // ============================================================
 // 静态数据：定时任务模版（与产品图一致，共 12 个）
 // ============================================================
 
-const TEMPLATES: Template[] = [
+// 静态模板只有图标组件、无可序列化 iconKey；iconKey 由下方 TEMPLATES_WITH_KEY 按 id 派生
+const TEMPLATES: Omit<Template, 'iconKey'>[] = [
   {
     id: 'ai-news',
     name: '每日 AI 新闻推送',
@@ -198,6 +255,12 @@ const TEMPLATES: Template[] = [
   }
 ]
 
+// T14：静态模板只有 icon 组件，按 id 派生可持久化的 iconKey
+const TEMPLATES_WITH_KEY: Template[] = TEMPLATES.map((t) => ({
+  ...t,
+  iconKey: TEMPLATE_ICON_KEYS[t.id] ?? 'alarm'
+}))
+
 const REPEAT_OPTIONS: { key: RepeatKey; label: string }[] = [
   { key: 'daily', label: '每天' },
   { key: 'weekdays', label: '工作日' },
@@ -240,11 +303,35 @@ function todayStr(): string {
 export function AutomationPage() {
   const [tab, setTab] = useState<TabKey>('tasks')
   const [tasks, setTasks] = useState<ScheduledTask[]>([])
+  // T14：创建弹窗中选中的图标 key（模板预填 / 默认闹钟）
+  const [formIconKey, setFormIconKey] = useState<TaskIconKey>('alarm')
+
+  // T14：挂载时恢复已保存的任务配置（切路由/重启不再丢失）
+  useEffect(() => {
+    void storeApi.get<ScheduledTask[]>(AUTOMATION_TASKS_KEY)?.then((saved) => {
+      if (Array.isArray(saved)) {
+        setTasks(
+          saved.filter(
+            (t): t is ScheduledTask =>
+              !!t && typeof t.id === 'string' && typeof t.name === 'string'
+          )
+        )
+      }
+    })
+  }, [])
+
+  /** T14：所有任务变更统一经此落盘（best-effort，失败不回滚本地 UI） */
+  const updateTasks = (updater: (prev: ScheduledTask[]) => ScheduledTask[]) => {
+    setTasks((prev) => {
+      const next = updater(prev)
+      void storeApi.set(AUTOMATION_TASKS_KEY, next)
+      return next
+    })
+  }
 
   // 创建弹窗
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
-  const [formIcon, setFormIcon] = useState<LucideIcon>(AlarmClockCheck)
 
   // 侧边栏折叠时，左上角会浮显「展开侧边栏 / 新建任务」按钮，
   // 顶栏需让出位置避免重叠（macOS 额外避让红绿灯）。
@@ -260,10 +347,10 @@ export function AutomationPage() {
         weekday: template.weekday,
         date: template.date || todayStr()
       })
-      setFormIcon(() => template.icon)
+      setFormIconKey(template.iconKey)
     } else {
       setForm(emptyForm())
-      setFormIcon(AlarmClockCheck)
+      setFormIconKey('alarm')
     }
     setDialogOpen(true)
   }
@@ -272,12 +359,12 @@ export function AutomationPage() {
     const name = form.name.trim()
     const prompt = form.prompt.trim()
     if (!name || !prompt) return
-    setTasks((prev) => [
+    updateTasks((prev) => [
       {
         id: genId('task'),
         name,
         prompt,
-        icon: formIcon,
+        iconKey: formIconKey,
         time: form.time,
         repeat: form.repeat,
         weekday: form.weekday,
@@ -290,9 +377,9 @@ export function AutomationPage() {
   }
 
   const toggleEnabled = (id: string) =>
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, enabled: !t.enabled } : t)))
+    updateTasks((prev) => prev.map((t) => (t.id === id ? { ...t, enabled: !t.enabled } : t)))
 
-  const removeTask = (id: string) => setTasks((prev) => prev.filter((t) => t.id !== id))
+  const removeTask = (id: string) => updateTasks((prev) => prev.filter((t) => t.id !== id))
 
   const canSubmit = form.name.trim().length > 0 && form.prompt.trim().length > 0
 
@@ -370,9 +457,14 @@ export function AutomationPage() {
                     添加定时任务
                   </Button>
                 </div>
+                {/* T14：如实说明当前边界——配置已持久化，自动调度执行尚未接入 */}
+                <p className="-mt-1 mb-3 text-[12px] leading-5 text-muted-foreground/70">
+                  任务配置已保存在本机；定时自动执行能力即将开放，当前开关仅保存启停状态，暂不会触发任务。
+                </p>
                 <div className="flex flex-col gap-2.5">
                   {tasks.map((task) => {
-                    const Icon = task.icon
+                    // T14：图标按持久化 iconKey 查表，未知 key 回退闹钟
+                    const Icon = TEMPLATE_ICONS[task.iconKey] ?? AlarmClockCheck
                     return (
                       <div
                         key={task.id}
@@ -432,7 +524,7 @@ export function AutomationPage() {
             {/* ---------- 定时任务模版 ---------- */}
             <h2 className="mt-10 text-[17px] font-bold text-foreground">定时任务模版</h2>
             <div className="mt-4 grid grid-cols-3 gap-4">
-              {TEMPLATES.map((template) => {
+              {TEMPLATES_WITH_KEY.map((template) => {
                 const Icon = template.icon
                 return (
                   <button
@@ -455,12 +547,14 @@ export function AutomationPage() {
         </div>
       ) : (
         /* ================================================ */
-        /* 运行记录：空态 */
+        /* 运行记录：T14——调度执行未接入前恒定空态，如实标注 */
         /* ================================================ */
         <div className="flex-1 flex flex-col items-center justify-center gap-2">
           <Inbox className="size-14 text-foreground/20" strokeWidth={1.4} />
           <p className="mt-3 text-[15px] text-muted-foreground">暂无运行记录</p>
-          <p className="text-[12px] text-muted-foreground/60">定时任务执行后可在此查看运行结果</p>
+          <p className="text-[12px] text-muted-foreground/60">
+            调度能力即将开放：定时任务接入自动执行后，运行结果将在此展示
+          </p>
         </div>
       )}
 

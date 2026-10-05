@@ -104,9 +104,35 @@ const mockApi: PioneeringApi = {
     }
   },
 
+  // T6：模型密钥在纯浏览器下不可用（无系统密钥库）；表单仍可配置模型，密钥保存被拒绝
+  modelSecret: {
+    set: (_req: unknown) =>
+      Promise.resolve({ ok: false, error: '模型密钥加密存储仅在 Electron 桌面端可用' }),
+    get: (_id: string) =>
+      Promise.resolve({ ok: false, error: '模型密钥加密存储仅在 Electron 桌面端可用' }),
+    list: () => Promise.resolve({ items: [] }),
+    delete: (_id: string) =>
+      Promise.resolve({ ok: false, error: '模型密钥加密存储仅在 Electron 桌面端可用' })
+  },
+
+  // T9：草稿图片资产在纯浏览器下不可用（无主进程文件系统）。
+  // 返回 ok:false 后草稿层回退为内联 dataUrl（localStorage mock 持久化）。
+  draftAsset: {
+    write: (_req: unknown) =>
+      Promise.resolve({ success: false, error: '草稿图片资产仅在 Electron 桌面端可用' }),
+    read: (_id: string) =>
+      Promise.resolve({ success: false, error: '草稿图片资产仅在 Electron 桌面端可用' }),
+    delete: (_id: string) =>
+      Promise.resolve({ success: false, error: '草稿图片资产仅在 Electron 桌面端可用' })
+  },
+
   // 浏览器模式无本地 Agent 运行时（主进程 IPC 不存在）：
-  // 提供安全桩——ipc 模式下调用会得到明确错误而非崩溃
+  // 提供安全桩——ipc 模式下调用会得到明确错误而非崩溃。
+  // T22（修复任务清单 T22）：unavailable=true 为可辨识的「不可用」标记，
+  // transport/localChat 的可用性检测据此排除 mock，使浏览器模式选择 ipc 时
+  // 能正确回退 http 并告警，而不是恒被桩「屏蔽」成 ipc 可用。
   agent: {
+    unavailable: true,
     send: (_runId: string, _request: unknown) =>
       Promise.resolve({ ok: false, error: '本地 Agent 运行时仅在 Electron 桌面端可用' }),
     resume: (_runId: string, _request: unknown) =>
@@ -121,8 +147,10 @@ const mockApi: PioneeringApi = {
   },
 
   // 云边双模阶段 2：本地持久化 / 密钥 IPC 桩——
-  // 浏览器模式无主进程，统一返回 ok:false 降级错误而非崩溃
+  // 浏览器模式无主进程，统一返回 ok:false 降级错误而非崩溃。
+  // T22：带 unavailable 标记供 isLocalChatAvailable 排除。
   localChat: {
+    unavailable: true,
     listSessions: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
     createSession: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),
     updateSession: () => Promise.resolve({ ok: false, error: '本地会话仅在 Electron 桌面端可用' }),

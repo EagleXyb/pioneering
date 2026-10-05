@@ -7,22 +7,21 @@
 //   - 审批内嵌化：tool_confirm 同样迁入输入框上方内嵌卡（工具列表 + 参数
 //     展开/改参 + 拒绝/批准，见 ChatArea → InputArea 的 pro-input-hitl-panel）。
 //
-// 当前三类中断统一走 resolveHitlSurface()='inline'，由输入框卡片承接，
-// 因此本宿主不再渲染任何弹窗（恒返回 null）。
+// T20 清理（修复任务清单 T20）：原 resolveHitlSurface() 纯函数在全部 HITL 统一为
+// inline 通道后已无生产调用方（仅测试引用），已随其单测一并删除，避免维护者
+// 按注释改一个不会被任何渲染路径读取的「回退开关」。
 //
-// 回退方式：
-//   1. 将 hitl-surface.ts 中对应 kind 改回 'dialog'；
-//   2. 恢复下方被注释的 <HitlToolConfirmDialog item={currentItem} /> 分支。
-//   弹窗组件文件（HitlToolConfirmDialog / HitlClarifyDialog / HitlChoiceDialog）
-//   均完整保留，未被删除。
+// 当前宿主恒返回 null；挂载位置保留在 App.tsx（Router 之外），
+// 设置/聊天页切换不卸载，便于未来新增「必须模态」的中断类型时直接在此挂载。
 //
-// 挂载位置保留在 App.tsx（Router 之外）：设置/聊天页切换不卸载，
-// 也便于未来新增"必须模态"的中断类型时直接在此挂载。
+// 回退方式（若未来某类中断需要恢复模态弹窗）：
+//   1. 在本文件直接按 useHitlStore 的 currentItem.kind 条件渲染对应 Dialog；
+//   2. 恢复下方注释模板中的挂载逻辑（弹窗组件文件均完整保留）；
+//   3. 无需恢复任何 surface 决策层——inline/dialog 的取舍直接在此组件表达。
 // ============================================================
 
 // import { useHitlStore } from '@/stores/hitlStore'
 // import { useChatStore } from '@/stores/chatStore'
-// import { resolveHitlSurface } from '@/lib/hitl-surface'
 // import { HitlToolConfirmDialog } from './HitlToolConfirmDialog'
 
 export function HitlHost() {
@@ -30,7 +29,7 @@ export function HitlHost() {
   return null
 }
 
-/* —— 回退模板（审批重新改回模态弹窗时恢复此实现）——
+/* —— 回退模板（某类中断重新需要模态弹窗时在此按 kind 条件挂载）——
 import { ListChecks } from 'lucide-react'
 
 export function HitlHost() {
@@ -39,8 +38,9 @@ export function HitlHost() {
   const queueLength = useHitlStore((s) => s.pendingQueue.length)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
 
-  const surface = resolveHitlSurface(currentItem, status, currentSessionId)
-  if (surface !== 'dialog' || !currentItem) return null
+  // 归属校验：非当前会话的暂停项不在此弹窗（答复入口会先切换会话）
+  if (!currentItem || status === 'resolving' || status === 'idle') return null
+  if (currentSessionId && currentItem.sessionId !== currentSessionId) return null
 
   return (
     <>

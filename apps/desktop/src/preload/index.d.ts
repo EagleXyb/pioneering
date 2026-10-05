@@ -6,6 +6,7 @@
 import type {
   FileDialogOptions,
   FileWriteRequest,
+  DraftAssetWriteRequest,
   AgentEventEnvelope,
   LocalSessionListRequest,
   LocalSessionListResult,
@@ -20,6 +21,9 @@ import type {
   SecureKeyListResult,
   SecureKeySetRequest,
   SecureKeySetResult,
+  ModelSecretSetRequest,
+  ModelSecretGetResult,
+  ModelSecretListResult,
   HotkeyOverrides,
   HotkeyApplyResult
 } from '../shared/ipc-channels'
@@ -89,8 +93,24 @@ declare global {
     delete: (key: string) => Promise<boolean>
   }
 
+  /** 草稿图片资产（T9）：与 preload draftAssetApi 一一对应 */
+  interface DraftAssetApi {
+    write: (
+      req: DraftAssetWriteRequest
+    ) => Promise<{ success: boolean; error?: string }>
+    read: (
+      id: string
+    ) => Promise<{ success: boolean; base64?: string; error?: string }>
+    delete: (id: string) => Promise<{ success: boolean; error?: string }>
+  }
+
   /** Agent 本地运行时（云边双模阶段 1）：与 preload agentApi 一一对应 */
   interface AgentApi {
+    /**
+     * T22：仅浏览器 mock 置 true，表示该通道在当前环境不可用。
+     * 真实 preload 不提供此字段；可用性检测据此排除 mock 桩。
+     */
+    unavailable?: boolean
     send: (runId: string, request: SendMessageRequest) => Promise<{ ok: boolean; error?: string }>
     resume: (runId: string, request: ResumeRequest) => Promise<{ ok: boolean; error?: string }>
     abort: (
@@ -102,8 +122,10 @@ declare global {
     onEvent: (callback: (envelope: AgentEventEnvelope) => void) => () => void
   }
 
-  /** 本地会话/消息持久化（云边双模阶段 2）：与 preload localChatApi 一一对应 */
+  /** 本地会话/消息持久化（云边双模阶段 2：SQLite DAO）：与 preload localChatApi 一一对应 */
   interface LocalChatApi {
+    /** T22：仅浏览器 mock 置 true（含义同 AgentApi.unavailable） */
+    unavailable?: boolean
     listSessions: (
       req?: LocalSessionListRequest
     ) => Promise<LocalSessionListResult | LocalDaoResult>
@@ -131,6 +153,16 @@ declare global {
     delete: (name: string) => Promise<LocalDaoResult>
   }
 
+  /** 模型配置密钥（T6）：与 preload modelSecretApi 一一对应；明文密钥不回传 */
+  interface ModelSecretApi {
+    set: (
+      req: ModelSecretSetRequest
+    ) => Promise<{ ok: boolean; error?: string }>
+    get: (id: string) => Promise<ModelSecretGetResult>
+    list: () => Promise<ModelSecretListResult>
+    delete: (id: string) => Promise<LocalDaoResult>
+  }
+
   /** 快捷键治理：与 preload hotkeysApi 一一对应（浏览器模式由 electron-mock 降级桩兜底） */
   interface HotkeysApi {
     get: () => Promise<HotkeyApplyResult>
@@ -146,9 +178,11 @@ declare global {
     clipboard: ClipboardApi
     shell: ShellApi
     store: StoreApi
+    draftAsset: DraftAssetApi
     agent: AgentApi
     localChat: LocalChatApi
     secureKeys: SecureKeyApi
+    modelSecret: ModelSecretApi
     hotkeys: HotkeysApi
   }
 

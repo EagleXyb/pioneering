@@ -1,7 +1,9 @@
 // ============================================================
-// image-attachments — 图片附件系统（对应文档 §6）
-// 负责 ImageAttachment 类型与「File -> base64 dataUrl」读取。
-// 后端暂未实现视觉通道，但附件在 UI 层完整可用（缩略图/预览/拖拽/粘贴）。
+// image-attachments — 图片附件的数据层（对应文档 §6）
+// 本文件只负责：ImageAttachment 类型、「File -> base64 dataUrl」读取、
+// 三入口（粘贴 / 拖拽 / 按钮选择）共用的类型白名单与大小校验。
+// 缩略图渲染、放大预览、粘贴/拖拽/按钮入口交互在 InputArea 中实现。
+// 后端暂未实现视觉通道，但附件在 UI 层完整可用。
 // ============================================================
 
 import { genId } from '@/lib/genId'
@@ -15,7 +17,7 @@ export interface ImageAttachment {
   mediaType: string
 }
 
-/** 接受粘贴/拖拽的图片类型 */
+/** 接受粘贴 / 拖拽 / 按钮选择三个入口的图片类型（白名单三入口共用） */
 export const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
 /** 单个图片大小上限：20MB */
@@ -26,7 +28,7 @@ export const QUEUED_IMAGE_ONLY_TEXT = '[User attached images without additional 
 
 /** 将 File 对象读取为 base64 ImageAttachment（异步）。 */
 export async function fileToImageAttachment(file: File): Promise<ImageAttachment> {
-  // P4: 入口校验大小（MAX_IMAGE_SIZE 此前已定义却未使用）。
+  // 入口校验大小（MAX_IMAGE_SIZE 此前已定义却未使用）。
   // 超大图 base64 后内存翻倍并随草稿持久化，可能 OOM / IPC 大对象。
   // 超限直接拒绝，由调用方捕获并向用户提示后丢弃。
   if (typeof file.size === 'number' && file.size > MAX_IMAGE_SIZE) {

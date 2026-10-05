@@ -43,8 +43,10 @@ function resolveInitialMode(): AgentTransportMode {
   return readStoredMode() ?? readEnvMode() ?? 'http'
 }
 
+// T22（修复任务清单 T22）：浏览器 mock 虽注册了 window.api.agent，但带
+// unavailable=true 标记；检测时必须排除，否则 ipc 模式永不回退 http。
 function isIpcAvailable(): boolean {
-  return typeof window !== 'undefined' && !!window.api?.agent
+  return typeof window !== 'undefined' && !!window.api?.agent && !window.api.agent.unavailable
 }
 
 let warnedIpcUnavailable = false

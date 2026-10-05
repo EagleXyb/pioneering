@@ -25,28 +25,13 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/stores/chatStore'
-import type { Attachment } from '@shared/types'
+import type { Attachment, TraceNode } from '@shared/types'
 import { fileApi } from '@/services/ipc'
 import { detectArtifactPreview, getFileExtension } from '@/lib/artifact-preview'
 import { useArtifactPreview } from '@/hooks/useArtifactPreview'
+import { planStepNodesToTodos, type PlanTodoItem } from '@/lib/trace-utils'
 
-interface TodoItem {
-  id: string
-  text: string
-  completed: boolean
-}
-
-interface TaskMonitorProps {
-  todoItems?: TodoItem[]
-}
-
-// 示例待办数据（真实任务待办后续可由 plan/state_delta 事件注入，这里暂时沿用默认值）
-const DEFAULT_TODO_ITEMS: TodoItem[] = [
-  { id: '1', text: '搜索今日（2026-08-16）AI Agent 相关新闻', completed: true },
-  { id: '2', text: '深入抓取重点文章核实细节按专题整理', completed: true },
-  { id: '3', text: '汇总撰写Markdown 文档中文新闻综述', completed: true },
-  { id: '4', text: '生成并展示 AI Agent 新闻日报文档', completed: true },
-]
+type TodoItem = PlanTodoItem
 
 interface SectionRowProps {
   title: string
@@ -275,11 +260,48 @@ function ArtifactItem({ artifact }: { artifact: Attachment }) {
   )
 }
 
-export function TaskMonitor({ todoItems = DEFAULT_TODO_ITEMS }: TaskMonitorProps) {
+export function TaskMonitor() {
   // 从 chatStore 取当前会话历史，收集所有 assistant 消息的 attachments（即 ARTIFACT_CREATED 写入的产物）
   const currentSessionId = useChatStore((s) => s.currentSessionId)
   const messages = useChatStore((s) => s.messages)
   const streamingAttachments = useChatStore((s) => s.streamingAttachments)
+  // T3 修复（修复任务清单 T3 / 报告 §2.6）：待办不再使用硬编码示例，
+  // 消费 Plan-and-Execute 已落地的 plan-step TraceNode（STATE_DELTA 经 stream-handler 写入）。
+  const streamingTraceNodes = useChatStore((s) => s.streamingTraceNodes)
+  const streamingTraceRootOrder = useChatStore((s) => s.streamingTraceRootOrder)
+
+  // 待办数据源：
+  //   - 流式期间：实时 trace 快照中的 plan-step 节点（步骤状态随 STATE_DELTA 同步）；
+  //   - 空闲/历史：当前会话最后一条含 plan-step 的 assistant 消息轨迹。
+  //   - 普通 react_agent 会话不产生 plan-step 节点 → 空数组 → 展示「暂无待办项」空态。
+  const todoItems: TodoItem[] = useMemo(() => {
+    // 流式快照非空即代表当前有进行中的 run：只反映本次 run 的 plan-step，
+    // 本次 run 非 plan_execute 时不回退历史，避免把上一轮待办误显示为当前任务
+    // （HITL 暂停时流式快照保留，计划待办继续可见）。
+    if (streamingTraceRootOrder.length > 0) {
+      const streamingOrdered = streamingTraceRootOrder
+        .map((id) => streamingTraceNodes[id])
+        .filter((n): n is TraceNode => !!n)
+      return streamingOrdered.some((n) => n.kind === 'plan-step')
+        ? planStepNodesToTodos(streamingOrdered)
+        : []
+    }
+    if (!currentSessionId) return []
+    const list = messages[currentSessionId] ?? []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i]!
+      if (m.role !== 'assistant') continue
+      const traceNodes = m.traceNodes
+      if (!traceNodes) continue
+      const ordered: Array<TraceNode | undefined> = m.traceRootOrder?.length
+        ? m.traceRootOrder.map((id) => traceNodes[id])
+        : Object.values(traceNodes)
+      if (ordered.some((n) => n?.kind === 'plan-step')) {
+        return planStepNodesToTodos(ordered)
+      }
+    }
+    return []
+  }, [currentSessionId, messages, streamingTraceNodes, streamingTraceRootOrder])
 
   const artifacts: Attachment[] = useMemo(() => {
     const collected: Attachment[] = []

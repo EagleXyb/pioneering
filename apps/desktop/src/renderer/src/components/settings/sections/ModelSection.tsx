@@ -7,7 +7,7 @@
 //     · 三列表格：模型（带图标）/ 服务商 / 操作（编辑/删除/开关）
 // ============================================================
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Plus,
   Pencil,
@@ -17,12 +17,15 @@ import {
   BrainCircuit,
   Sparkles,
   Zap,
-  Network
+  Network,
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn, pxToRem } from '@/lib/utils'
 import {
   useAppStore,
+  drainLegacyModelSecrets,
   type ModelConfigItem
 } from '@/stores/useAppStore'
 import {
@@ -35,6 +38,7 @@ import {
 } from '@/components/ui/dialog'
 import { openConfirmDialogAtom } from '@/stores/atoms'
 import { useSetAtom } from 'jotai'
+import { modelSecretApi, notificationApi } from '@/services/ipc'
 
 // ---- 图标映射（按 iconKey） ----
 const MODEL_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -53,7 +57,14 @@ const MODEL_ICON_COLOR: Record<string, string> = {
   minimax: 'text-amber-500'
 }
 
+// T6：表单不再承载 apiKey（密钥独立于 safeStorage 存储），仅保留非敏感配置
 type ModelFormData = Omit<ModelConfigItem, 'enabled'> & { enabled: boolean }
+
+/** 密钥展示态（modelSecretApi.list 的本地映射） */
+interface SecretState {
+  hasApiKey: boolean
+  masked: string
+}
 
 const DEFAULT_PROVIDER_OPTIONS = [
   'DeepSeek',
@@ -70,8 +81,7 @@ const EMPTY_FORM: ModelFormData = {
   iconKey: 'deepseek',
   enabled: true,
   value: '',
-  apiBase: '',
-  apiKey: ''
+  apiBase: ''
 }
 
 /** 根据 provider 推断默认 iconKey */
@@ -89,21 +99,66 @@ export function ModelSection() {
   const upsertModelConfig = useAppStore((s) => s.upsertModelConfig)
   const removeModelConfig = useAppStore((s) => s.removeModelConfig)
   const toggleModelEnabled = useAppStore((s) => s.toggleModelEnabled)
+  const defaultModel = useAppStore((s) => s.defaultModel)
+  const setDefaultModel = useAppStore((s) => s.setDefaultModel)
   const openConfirmDialog = useSetAtom(openConfirmDialogAtom)
 
   // 编辑/新增弹窗
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ModelFormData>(EMPTY_FORM)
+  // T6：密钥输入与展示态（明文只存在于本次会话的输入框内，不落 localStorage）
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [editingHasKey, setEditingHasKey] = useState(false)
+  const [editingMasked, setEditingMasked] = useState('')
+  const [saving, setSaving] = useState(false)
+  // 各模型已保存密钥的状态表（id → 是否配置/掩码）
+  const [secretMap, setSecretMap] = useState<Record<string, SecretState>>({})
 
   const isEditing = editingId !== null
   const dialogTitle = isEditing ? '编辑模型' : '添加模型'
 
   const rows = useMemo(() => modelConfigs, [modelConfigs])
 
+  // T6：输入框模型下拉的候选项（enabled 模型，value 为实际下发的 model 字段）
+  const enabledOptions = useMemo(
+    () =>
+      modelConfigs
+        .filter((m) => m.enabled)
+        .map((m) => ({ label: m.name, value: m.value ?? m.name })),
+    [modelConfigs]
+  )
+
+  const refreshSecrets = useCallback(async () => {
+    const res = await modelSecretApi.list()
+    const next: Record<string, SecretState> = {}
+    for (const it of res.items ?? []) {
+      next[it.id] = { hasApiKey: it.hasApiKey, masked: it.masked }
+    }
+    setSecretMap(next)
+  }, [])
+
+  // 首次挂载：① 转存旧版 localStorage 中的明文密钥到 safeStorage；② 拉取密钥状态
+  useEffect(() => {
+    const legacy = drainLegacyModelSecrets()
+    void (async () => {
+      for (const item of legacy) {
+        try {
+          await modelSecretApi.set({ id: item.id, apiKey: item.apiKey })
+        } catch {
+          /* 浏览器环境等无 safeStorage：旧明文密钥随 v2 迁移已从 localStorage 剥离 */
+        }
+      }
+      await refreshSecrets()
+    })()
+  }, [refreshSecrets])
+
   const openAddDialog = () => {
     setEditingId(null)
     setForm({ ...EMPTY_FORM, id: `custom-${Date.now()}` })
+    setApiKeyInput('')
+    setEditingHasKey(false)
+    setEditingMasked('')
     setDialogOpen(true)
   }
 
@@ -116,15 +171,24 @@ export function ModelSection() {
       iconKey: item.iconKey,
       enabled: item.enabled,
       value: item.value ?? '',
-      apiBase: item.apiBase ?? '',
-      apiKey: item.apiKey ?? ''
+      apiBase: item.apiBase ?? ''
     })
+    setApiKeyInput('')
+    setEditingHasKey(false)
+    setEditingMasked('')
     setDialogOpen(true)
+    // 拉取密钥状态（只回传掩码，永不回传明文）
+    void modelSecretApi.get(item.id).then((res) => {
+      if (res.ok) {
+        setEditingHasKey(!!res.hasApiKey)
+        setEditingMasked(res.masked ?? '')
+      }
+    })
   }
 
   const handleSave = () => {
     const name = form.name.trim()
-    if (!name) return
+    if (!name || saving) return
     const next: ModelConfigItem = {
       id: form.id,
       name,
@@ -132,23 +196,54 @@ export function ModelSection() {
       iconKey: providerToIcon(form.provider),
       enabled: form.enabled,
       value: (form.value ?? '').trim() || name,
-      apiBase: (form.apiBase ?? '').trim() || undefined,
-      apiKey: (form.apiKey ?? '').trim() || undefined
+      apiBase: (form.apiBase ?? '').trim() || undefined
     }
-    upsertModelConfig(next)
-    setDialogOpen(false)
+    const key = apiKeyInput.trim()
+    void (async () => {
+      setSaving(true)
+      try {
+        // 编辑态留空表示保持原密钥不变；新增态留空表示暂不配置
+        if (key) {
+          const res = await modelSecretApi.set({ id: next.id, apiKey: key })
+          if (!res.ok) {
+            notificationApi.show({
+              title: '密钥未保存',
+              body: res.error ?? '系统密钥库不可用，模型配置已保存但 API Key 未加密存储'
+            })
+          }
+        }
+        upsertModelConfig(next)
+        setDialogOpen(false)
+        await refreshSecrets()
+      } finally {
+        setSaving(false)
+      }
+    })()
+  }
+
+  const handleClearKey = () => {
+    if (!editingId) return
+    void modelSecretApi.set({ id: editingId, apiKey: '' }).then(() => {
+      setEditingHasKey(false)
+      setEditingMasked('')
+      setApiKeyInput('')
+      void refreshSecrets()
+    })
   }
 
   const handleDelete = (item: ModelConfigItem) => {
     openConfirmDialog({
       id: `del-model-${item.id}`,
       title: '删除模型',
-      description: `确定要删除模型「${item.name}」吗？删除后将无法使用该模型发起对话。`,
+      description: `确定要删除模型「${item.name}」吗？删除后将无法使用该模型发起对话，已保存的 API Key 也会一并清除。`,
       confirmText: '删除',
       cancelText: '取消',
       confirmVariant: 'destructive',
       icon: 'danger',
-      onConfirm: () => removeModelConfig(item.id)
+      onConfirm: () => {
+        removeModelConfig(item.id)
+        void modelSecretApi.delete(item.id).then(() => refreshSecrets())
+      }
     })
   }
 
@@ -164,12 +259,30 @@ export function ModelSection() {
         </p>
       </div>
 
-      {/* 添加按钮 */}
-      <div>
+      {/* 添加按钮 + 默认模型（T6：defaultModel 此前无任何消费入口，输入框下拉以此为选中值） */}
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" size="sm" onClick={openAddDialog} className="gap-1.5">
           <Plus className="size-4" />
           添加模型
         </Button>
+        <label className="flex items-center gap-2 text-[#595959]" style={{ fontSize: pxToRem(12) }}>
+          <ShieldCheck className="size-3.5 text-[#8c8c8c]" />
+          默认模型
+          <select
+            value={enabledOptions.some((m) => m.value === defaultModel) ? defaultModel : 'Auto'}
+            onChange={(e) => setDefaultModel(e.target.value)}
+            className="input-field"
+            style={{ width: 200 }}
+            aria-label="选择输入框默认模型"
+          >
+            <option value="Auto">Auto（由后端决定）</option>
+            {enabledOptions.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {/* 提示条 */}
@@ -216,7 +329,7 @@ export function ModelSection() {
                 key={item.id}
                 className="grid grid-cols-[1fr_240px_120px] items-center px-4 py-[10px] transition-colors hover:bg-[#fafafa]"
               >
-                {/* 模型列：图标 + 名称 */}
+                {/* 模型列：图标 + 名称 + 密钥状态（T6：密钥经系统密钥库加密存储） */}
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div
                     className="flex size-6 shrink-0 items-center justify-center rounded-[6px]"
@@ -224,11 +337,23 @@ export function ModelSection() {
                   >
                     <IconComp className={cn('size-3.5', iconColor)} />
                   </div>
-                  <span
-                    className="truncate font-medium"
-                    style={{ color: '#262626', fontSize: pxToRem(13) }}
-                  >
-                    {item.name}
+                  <span className="flex min-w-0 flex-col">
+                    <span
+                      className="truncate font-medium"
+                      style={{ color: '#262626', fontSize: pxToRem(13) }}
+                    >
+                      {item.name}
+                    </span>
+                    <span
+                      className="mt-0.5 flex shrink-0 items-center gap-1 truncate"
+                      style={{ fontSize: pxToRem(11), color: '#8c8c8c' }}
+                      title={secretMap[item.id]?.hasApiKey ? `已保存密钥：${secretMap[item.id]?.masked ?? ''}` : '未配置 API Key，使用后端默认密钥'}
+                    >
+                      <KeyRound className="size-3 shrink-0" />
+                      {secretMap[item.id]?.hasApiKey
+                        ? `密钥已保存 ${secretMap[item.id]?.masked ?? ''}`
+                        : '使用默认密钥'}
+                    </span>
                   </span>
                 </div>
 
@@ -313,14 +438,31 @@ export function ModelSection() {
               className="input-field"
             />
 
+            {/* T6：apiKey 经系统密钥库加密存储，编辑时只显示掩码、明文不回填 */}
             <Label>API Key</Label>
-            <input
-              type="password"
-              value={form.apiKey ?? ''}
-              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-              placeholder="可选，未填则使用后端默认配置"
-              className="input-field"
-            />
+            <div className="flex flex-col gap-1.5">
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder={
+                  isEditing && editingHasKey
+                    ? `已保存 ${editingMasked}（留空保持不变）`
+                    : '可选，未填则使用后端默认配置'
+                }
+                className="input-field"
+                autoComplete="off"
+              />
+              {isEditing && editingHasKey && (
+                <button
+                  type="button"
+                  onClick={handleClearKey}
+                  className="self-start text-[12px] text-[#ff4d4f] hover:text-[#d9363e]"
+                >
+                  清除已保存的密钥
+                </button>
+              )}
+            </div>
 
             <Label>启用</Label>
             <div className="flex items-center h-9">
@@ -341,9 +483,9 @@ export function ModelSection() {
             <Button
               size="sm"
               onClick={handleSave}
-              disabled={!form.name.trim()}
+              disabled={!form.name.trim() || saving}
             >
-              保存
+              {saving ? '保存中…' : '保存'}
             </Button>
           </DialogFooter>
         </DialogContent>

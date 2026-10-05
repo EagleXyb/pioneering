@@ -79,11 +79,29 @@ export function GeneralSection() {
     setFontSize
   } = useAppStore()
   const hotkeyOverrides = useAppStore((s) => s.hotkeys)
+  const syncHotkeys = useAppStore((s) => s.syncHotkeys)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setSettingsCategory = useSetAtom(settingsCategoryAtom)
-  const [transcribeHotkey, setTranscribeHotkey] = useState(true)
-  const [linkOpen, setLinkOpen] = useState('always-ask')
-  const [storagePath, setStoragePath] = useState('C:\\Users\\Administrator\\AppData\\Roaming\\Pioneering\\workspace')
+
+  // T19（修复任务清单 T19）：
+  // ① 语音转录快捷键——真实接线：开关状态派生自快捷键覆盖表
+  //    （resolveBinding 返回 null = 显式禁用），切换经 HOTKEYS_SET 提交主进程 SOT；
+  // ② 本地链接打开方式 / ③ 产物存储路径——当前无消费方/无目录选择 IPC，
+  //    禁用控件并明示「即将开放」，不再用局部 useState 假装可改。
+  const transcribeEnabled = resolveBinding('toggle-record', hotkeyOverrides) !== null
+  const toggleTranscribeHotkey = async (enabled: boolean) => {
+    // 禁用 = 显式 null 覆盖；启用 = 删除覆盖键（回归注册表默认绑定）
+    const next: typeof hotkeyOverrides = { ...hotkeyOverrides }
+    if (enabled) delete next['toggle-record']
+    else next['toggle-record'] = null
+    try {
+      const result = await window.api.hotkeys.set(next)
+      if (result.ok) syncHotkeys(result.overrides)
+    } catch {
+      // 纯浏览器环境等无主进程：设置不生效，保持原状态（与快捷键页同一降级策略）
+    }
+  }
+
   /** 当前字体档位的 1rem 像素基准（13/14/16），注入 Select 使 portal 下拉同步缩放 */
   const shellRemPx = FONT_SIZE_PX[fontSize]
 
@@ -146,8 +164,8 @@ export function GeneralSection() {
           control={
             <div className="flex items-center gap-2">
               <Switch
-                checked={transcribeHotkey}
-                onCheckedChange={setTranscribeHotkey}
+                checked={transcribeEnabled}
+                onCheckedChange={(v) => void toggleTranscribeHotkey(v)}
               />
               {/* live 渲染实际生效绑定（快捷键设置页改绑后此处同步刷新） */}
               <HotkeyTag
@@ -178,16 +196,22 @@ export function GeneralSection() {
         <SettingRow
           index={1}
           title="本地链接的默认打开方式"
-          subtitle="点击终端中的本地链接时，是否自动使用内置浏览器打开"
+          subtitle="点击终端中的本地链接时，是否自动使用内置浏览器打开（即将开放，当前链接统一在系统浏览器打开）"
           control={
-            <Select value={linkOpen} options={LINK_OPEN_OPTIONS} remBasePx={shellRemPx} onChange={setLinkOpen} />
+            <Select
+              value="always-ask"
+              options={LINK_OPEN_OPTIONS}
+              remBasePx={shellRemPx}
+              onChange={() => {}}
+              disabled
+            />
           }
         />
         <SettingRow
           index={2}
           title="自定义产物存储路径"
-          subtitle="新建任务和工作空间将保存在此（该更改不会修改已有的文件路径）"
-          control={<PathPicker value={storagePath} onChange={setStoragePath} />}
+          subtitle="即将开放：当前产物统一保存在应用数据目录，可在「关于 → 当前版本」查看数据目录位置"
+          control={<PathPicker value="" disabled />}
           last
         />
       </SectionCard>
@@ -298,7 +322,8 @@ function Select<T extends string>({
   value,
   options,
   onChange,
-  remBasePx
+  remBasePx,
+  disabled = false
 }: {
   value: T
   options: { value: T; label: string }[]
@@ -306,6 +331,8 @@ function Select<T extends string>({
   /** 当前字体档位的 rem 基准（13/14/16）。dropdown 经 portal 挂到 body，
       不继承弹壳的 font-size，需显式注入使下拉文字与 trigger 同步缩放。 */
   remBasePx: number
+  /** T19：能力未接线时整体禁用（下拉不可打开，视觉灰显） */
+  disabled?: boolean
 }) {
   // 状态机（纯逻辑，见 lib/select-list.ts）：open / activeIdx
   const valueIdx = Math.max(0, options.findIndex((o) => o.value === value))
@@ -381,12 +408,15 @@ function Select<T extends string>({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() =>
-          open
-            ? dispatch({ type: 'CLOSE' })
-            : dispatch({ type: 'OPEN', selectedIndex: valueIdx })
-        }
+        disabled={disabled}
+        onClick={() => {
+          // T19：禁用态不响应任何打开操作
+          if (disabled) return
+          if (open) dispatch({ type: 'CLOSE' })
+          else dispatch({ type: 'OPEN', selectedIndex: valueIdx })
+        }}
         onKeyDown={(e) => {
+          if (disabled) return
           // 聚焦 trigger 时 ↓/Enter/Space 开下拉，随后交给列表区键盘导航
           if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault()
@@ -407,7 +437,7 @@ function Select<T extends string>({
             }
           }
         }}
-        className="flex items-center justify-between w-full px-3 bg-white text-left transition-colors hover:border-[#bfbfbf] focus:outline-none focus:ring-2 focus:ring-[#1677ff]/30"
+        className="flex items-center justify-between w-full px-3 bg-white text-left transition-colors hover:border-[#bfbfbf] focus:outline-none focus:ring-2 focus:ring-[#1677ff]/30 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-[#d9d9d9]"
         style={{
           height: 30,
           border: '1px solid #d9d9d9',
@@ -585,10 +615,13 @@ function HotkeyTag({ keys }: { keys: string[] }) {
 // ==================================================
 function PathPicker({
   value,
-  onChange
+  onChange,
+  disabled = false
 }: {
   value: string
-  onChange: (v: string) => void
+  onChange?: (v: string) => void
+  /** T19：自定义路径能力未接线时禁用（不再弹 window.prompt 假装可改） */
+  disabled?: boolean
 }) {
   return (
     // 期望 340px，但绝不允许超出所在行宽：maxWidth 兜底 + 允许 flex 收缩
@@ -602,17 +635,21 @@ function PathPicker({
           borderRight: 'none',
           borderRadius: '8px 0 0 8px',
           fontSize: pxToRem(12),
-          color: '#595959'
+          color: '#595959',
+          opacity: disabled ? 0.55 : 1
         }}
-        title={value}
+        title={value || '应用数据目录（默认）'}
       >
         <FolderOpen size={13} stroke="#8c8c8c" strokeWidth={1.8} className="shrink-0" />
-        <span className="truncate min-w-0 flex-1">{value}</span>
+        <span className="truncate min-w-0 flex-1">
+          {value || '应用数据目录（默认，即将支持自定义）'}
+        </span>
       </div>
       <Button
         size="sm"
         variant="outline"
         className="shrink-0"
+        disabled={disabled}
         style={{
           height: 30,
           paddingLeft: 14,
@@ -624,6 +661,7 @@ function PathPicker({
           fontSize: pxToRem(13)
         }}
         onClick={() => {
+          if (disabled || !onChange) return
           const next = window.prompt('请输入新的存储路径', value)
           if (typeof next === 'string' && next.trim()) onChange(next.trim())
         }}

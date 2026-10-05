@@ -44,6 +44,9 @@ export function ChatArea() {
   const isStreaming = useChatStore((s) => s.isStreaming)
   const agentMode = useChatStore((s) => s.agentMode)
   const setAgentMode = useChatStore((s) => s.setAgentMode)
+  // T10：Composer 计划模式（新会话 plan_execute）
+  const planMode = useChatStore((s) => s.planMode)
+  const setPlanMode = useChatStore((s) => s.setPlanMode)
   const error = useChatStore((s) => s.error)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
@@ -259,6 +262,8 @@ export function ChatArea() {
                   disabled={false}
                   agentMode={agentMode}
                   onToggleAgent={() => setAgentMode(!agentMode)}
+                  planMode={planMode}
+                  onTogglePlan={() => setPlanMode(!planMode)}
                   isWelcome={true}
                   mode={isHitlPaused ? 'hitl' : 'normal'}
                   hitl={hitlInput}
@@ -342,6 +347,8 @@ export function ChatArea() {
         disabled={false}
         agentMode={agentMode}
         onToggleAgent={() => setAgentMode(!agentMode)}
+        planMode={planMode}
+        onTogglePlan={() => setPlanMode(!planMode)}
         isWelcome={false}
         mode={isHitlPaused ? 'hitl' : 'normal'}
         hitl={hitlInput}

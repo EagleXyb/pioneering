@@ -27,16 +27,20 @@ export interface NavItem {
   extra?: string
 }
 
+// T18 修复（修复任务清单 T18 / 报告附录 A.4-1）：
+// placeholder 标记必须与页面实际渲染一致——
+//   · 插件市场 / 自动化：完整实现页（PluginsPage / AutomationPage），标记 false；
+//   · 助理 / 我的文件 / 更多：占位页（页面文案为「开发中，即将上线」），标记 true。
 export const NAV_ITEMS: NavItem[] = [
-  { key: 'assistant', label: '助理', icon: SquareUser, route: '/assistant', placeholder: false },
+  { key: 'assistant', label: '助理', icon: SquareUser, route: '/assistant', placeholder: true },
   {
     key: 'plugins',
     label: '插件',
     icon: LayoutDashboard,
     route: '/plugins',
-    placeholder: true
+    placeholder: false
   },
-  { key: 'automation', label: '自动化', icon: Clock4, route: '/automation', placeholder: true },
+  { key: 'automation', label: '自动化', icon: Clock4, route: '/automation', placeholder: false },
   {
     key: 'my-files',
     label: '我的文件',

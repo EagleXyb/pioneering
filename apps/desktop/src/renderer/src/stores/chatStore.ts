@@ -37,7 +37,10 @@ import {
   type StreamHandlerOptions
 } from '../services/stream-handler'
 import { buildTraceFromContentBlocks } from '../services/trace-builder'
-import { useHitlStore, type HitlItem } from './hitlStore'
+// T8 修复（修复任务清单 T8）：不再顶层 import hitlStore（消除双向循环依赖），
+// 类型仅用 type-only import（编译期擦除），运行时经 hitl-bridge 惰性获取。
+import type { HitlItem } from './hitlStore'
+import { getHitlStore } from './hitl-bridge'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'
@@ -138,6 +141,13 @@ export interface ChatState {
 
   /** UI 层 Agent 模式开关（true = 走 Agent 端点）；实际发送时以当前会话的 agentMode 为准 */
   agentMode: boolean
+  /**
+   * T10（修复任务清单 T10）：Composer「计划模式」开关。
+   * 开启后新建会话以 agentMode='plan_execute' 创建（内核 Plan-Execute 图：
+   * planner → step_dispatch）；对已存在的会话不生效（会话模式创建时确定）。
+   * 计划模式隐含 Agent 通道，故开启时 agentMode 一并置 true。
+   */
+  planMode: boolean
   error: string | null
 
   loadSessions: () => Promise<void>
@@ -145,7 +155,13 @@ export interface ChatState {
   resetSessions: () => void
   /** 进入「新建任务」draft 态：不创建后端会话、不在列表落库，等待首条消息发送时才真正创建 */
   startNewTask: () => void
-  createSession: (title?: string) => Promise<ChatSession>
+  /**
+   * 创建会话。
+   * @param title 会话标题
+   * @param agentModeOverride 显式指定图模式（'plan_execute' 等）；
+   *   缺省时按 composer 计划模式/Agent 模式开关解析。
+   */
+  createSession: (title?: string, agentModeOverride?: string) => Promise<ChatSession>
   setSessionTitle: (sessionId: string, title: string) => void
   renameSession: (sessionId: string, title: string) => Promise<void>
   selectSession: (sessionId: string) => void
@@ -157,6 +173,8 @@ export interface ChatState {
   ) => Promise<void>
   stopStreaming: () => void
   setAgentMode: (mode: boolean) => void
+  /** T10：切换计划模式（开启隐含开启 Agent 模式；关闭不影响 Agent 模式） */
+  setPlanMode: (mode: boolean) => void
   // ===== HITL（阶段二 2.4）=====
   /**
    * 答复暂停项：resume 续写同一条 assistant 消息。
@@ -412,6 +430,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   hitlPausedSessionId: null,
   hitlPausedMessageId: null,
   agentMode: false,
+  planMode: false,
   error: null,
 
   loadSessions: async () => {
@@ -480,7 +499,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 
-  createSession: async (title) => {
+  createSession: async (title, agentModeOverride) => {
     set({ error: null })
     // 守卫：当前会话若是未命名的空白会话（标题仍为默认「新对话」），直接复用，
     // 避免反复点击「新建任务」/快捷键在列表堆积大量空会话。
@@ -496,7 +515,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
     try {
-      const isAgent = get().agentMode
+      // T10：会话图模式解析——显式入参 > 计划模式开关 > Agent 模式开关。
+      // plan_execute 为 Agent 图的一种，requestedMode 非空即走 Agent 会话创建分支。
+      const requestedMode =
+        agentModeOverride ??
+        (get().planMode
+          ? 'plan_execute'
+          : get().agentMode
+            ? DEFAULT_AGENT_MODE_VALUE
+            : undefined)
       // 云边双模阶段 2：本地运行时激活（IPC 模式 + 本地 DAO 可达）时，
       // 新会话归属 local——落本地 SQLite，后续发送/恢复恒走 IPC Transport。
       if (isLocalRuntimeActive()) {
@@ -504,7 +531,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           title: title ?? DEFAULT_SESSION_TITLE,
           // 本地模式所有会话均由主进程内嵌 agent 承载（无独立纯聊天通道）；
           // agentMode 仅作 UI 展示标记，保留用户的模式开关选择
-          agentMode: isAgent ? DEFAULT_AGENT_MODE_VALUE : undefined
+          agentMode: requestedMode
         })
         const chatSession: ChatSession = {
           id: session.id,
@@ -515,7 +542,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           createdAt: session.createdAt || new Date().toISOString(),
           updatedAt: session.updatedAt || new Date().toISOString(),
           messageCount: session.messageCount,
-          agentMode: session.agentMode,
+          agentMode: session.agentMode ?? requestedMode,
           runtime: 'local'
         }
         set((state) => ({
@@ -525,10 +552,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }))
         return chatSession
       }
-      const session = isAgent
+      const session = requestedMode
         ? await agentService.createSession({
             title: title ?? DEFAULT_SESSION_TITLE,
-            agentMode: DEFAULT_AGENT_MODE_VALUE
+            agentMode: requestedMode
           })
         : await chatService.createSession({
             title: title ?? DEFAULT_SESSION_TITLE
@@ -542,7 +569,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         createdAt: session.createdAt || new Date().toISOString(),
         updatedAt: session.updatedAt || new Date().toISOString(),
         messageCount: session.messageCount,
-        agentMode: isAgent ? DEFAULT_AGENT_MODE_VALUE : undefined
+        agentMode: requestedMode
       }
       set((state) => ({
         sessions: [chatSession, ...state.sessions],
@@ -602,7 +629,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       currentSessionId: sessionId,
       isDraftNewSession: false,
-      agentMode: isAgentSession(session)
+      agentMode: isAgentSession(session),
+      // T10：徽标随会话实际模式同步（计划会话显示「计划模式」）
+      planMode: session?.agentMode === 'plan_execute'
     })
     const state = get()
     const needLoad = !state.messages[sessionId]
@@ -614,7 +643,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (needLoad) {
         await get().loadMessages(sessionId)
       }
-      await useHitlStore.getState().recover(sessionId, session?.runtime)
+      await getHitlStore().getState().recover(sessionId, session?.runtime)
     })()
   },
 
@@ -678,6 +707,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       abortController.abort()
       const sid = currentSessionId
       if (sid) {
+        // T1 修复（修复任务清单 T1 / 报告 §3.1-11）：抢占发送必须同时通知后端/主进程
+        // 终止旧 run。仅 abort() 只是渲染端静默退订（IPC transport 的 abort 语义），
+        // 本地 IPC 模式下主进程 executeSend 会继续跑到自然结束，成为烧 token 的孤儿 run。
+        // 通道分流与 stopStreaming（本文件停止按钮路径）保持一致：
+        //   Agent 通道（local 会话 / Agent 会话 / 全局 Agent 模式）走 transport.stop，
+        //   普通聊天走 chatService.stopGeneration；best-effort，失败不阻断新发送。
+        const preemptSession = get().sessions.find((s) => s.id === sid)
+        const preemptUseAgent =
+          isLocalSession(preemptSession) ||
+          isAgentSession(preemptSession) ||
+          globalAgentMode
+        if (preemptUseAgent) {
+          void getTransportForRuntime(preemptSession?.runtime)
+            .stop(sid)
+            .catch(() => {})
+        } else {
+          void chatService.stopGeneration?.(sid).catch(() => {})
+        }
         set((state) => {
           const list = state.messages[sid]
           if (!list || list.length === 0) return state
@@ -897,7 +944,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({ hitlPending: p })
         // 阶段2 观测：澄清类暂停项入队（clarifying/choice）；重复计数由指标层按会话+类型去重
         trackClarifyTriggered(p.session_id, p.kind)
-        useHitlStore.getState().enqueue(toHitlItem(p))
+        getHitlStore().getState().enqueue(toHitlItem(p))
       },
       onRunPaused: () => {
         const st = get()
@@ -916,7 +963,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         persistAssistant(abortedPatch)
         set({ hitlPausedSessionId: null, hitlPausedMessageId: null, hitlPending: null })
         // 当前弹窗对应的暂停项已收敛，出队展示队列下一项（若有）
-        useHitlStore.getState().dequeue()
+        getHitlStore().getState().dequeue()
       }
     })
 
@@ -926,7 +973,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessionId: _sessionId,
       message: buildSendText(content),
       stream: true,
-      model: model && model !== '配置模型' ? model : undefined,
+      // T6：'Auto' 表示由后端决定，归一化为不下发 model（原实现把字面量 'Auto' 原样发给云端）。
+      // 本地 IPC 模式该字段会被 validateSendRequest 白名单丢弃，以 LLM_DEFAULT_MODEL 为准。
+      model: model && model !== 'Auto' ? model : undefined,
       // 云边对齐（P1）：外层图模式透传（plan_execute → Plan-Execute 图）。
       // 云端由 AgentChatRequestSchema 校验；本地由 agent-runtime 白名单归一化。
       agentMode: targetSession?.agentMode === 'plan_execute' ? 'plan_execute' : undefined
@@ -955,7 +1004,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // 若只调 abortHitl 会留下悬空弹窗（后续批准必定失败）。
     const { currentSessionId: _currentSessionId, hitlPausedSessionId } = get()
     if (hitlPausedSessionId && hitlPausedSessionId === _currentSessionId) {
-      const hitl = useHitlStore.getState()
+      const hitl = getHitlStore().getState()
       // 有展示项 → dismiss（关窗 + 中止 + 出队）；无展示项（恢复失败等）→ 直接中止收尾
       if (hitl.currentItem) hitl.dismiss()
       else void get().abortHitl(_currentSessionId)
@@ -1043,7 +1092,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 
-  setAgentMode: (mode) => set({ agentMode: mode }),
+  setAgentMode: (mode) =>
+    // T10：关闭 Agent 模式时计划模式无依托，一并关闭；开启时不自动带计划模式
+    set(mode ? { agentMode: true } : { agentMode: false, planMode: false }),
+
+  setPlanMode: (mode) =>
+    // 计划模式隐含 Agent 通道（plan_execute 是 Agent 图）；
+    // 关闭计划模式不回退 Agent 模式，用户可继续停留在普通 Agent 对话。
+    set(mode ? { planMode: true, agentMode: true } : { planMode: false }),
 
   // ===== HITL（阶段二 2.4/2.5）：resume / abort =====
   // 与 sendMessage 同构：复用 createStreamHandler 续写同一条 assistant 消息。
@@ -1141,7 +1197,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
         set((state) => finalizeStreamingMessage(state, _sessionId, assistantMsgId, resumeDonePatch))
         persistResumeTerminal(resumeDonePatch)
-        useHitlStore.getState().dequeue()
+        getHitlStore().getState().dequeue()
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder, attachments }) => {
         const resumeErrorPatch: Partial<Message> = {
@@ -1163,14 +1219,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           error
         }))
         persistResumeTerminal(resumeErrorPatch)
-        useHitlStore.getState().dequeue()
+        getHitlStore().getState().dequeue()
       },
       // ===== HITL：resume 流上的暂停/中止处理（多次 interrupt 串行）=====
       onHumanInputRequest: (p) => {
         set({ hitlPending: p })
         // 阶段2 观测：澄清类暂停项入队（clarifying/choice）；重复计数由指标层按会话+类型去重
         trackClarifyTriggered(p.session_id, p.kind)
-        useHitlStore.getState().enqueue(toHitlItem(p))
+        getHitlStore().getState().enqueue(toHitlItem(p))
       },
       onRunPaused: () => {
         const st = get()
@@ -1187,7 +1243,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => finalizeStreamingMessage(s, _sessionId, assistantMsgId, abortedPatch))
         persistResumeTerminal(abortedPatch)
         set({ hitlPausedSessionId: null, hitlPausedMessageId: null, hitlPending: null })
-        useHitlStore.getState().dequeue()
+        getHitlStore().getState().dequeue()
       }
     })
 
@@ -1375,7 +1431,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
           agentMode:
             state.currentSessionId === sessionId
               ? isAgentSession(remaining[0])
-              : state.agentMode
+              : state.agentMode,
+          // T10：删除当前会话后计划徽标随剩余选中会话收敛
+          planMode:
+            state.currentSessionId === sessionId
+              ? remaining[0]?.agentMode === 'plan_execute'
+              : state.planMode
         }
       })
     } catch (err) {
@@ -1438,9 +1499,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const clearHitl = {
         hitlPending: null as UserQuestionRequestPayload | null,
         hitlPausedSessionId: null as string | null,
-        hitlPausedMessageId: null as string | null
+        hitlPausedMessageId: null as string | null,
+        // T10：登出/切号复位模式开关
+        agentMode: false,
+        planMode: false
       }
-      useHitlStore.getState().reset()
+      getHitlStore().getState().reset()
       return {
         sessions: state.sessions.filter((s) => s.runtime === 'local'),
         sessionsLoading: false,

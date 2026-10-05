@@ -59,6 +59,12 @@ export enum IpcChannel {
   STORE_SET = 'store:set',
   STORE_DELETE = 'store:delete',
 
+  // 草稿图片资产（T9：≤20MB 图片 base64 外置为 userData/draft-assets 下的二进制文件，
+  // 草稿 JSON 仅存引用，避免大 base64 随 electron-store 做 JSON 往返 + 同步整档落盘）
+  DRAFT_ASSET_WRITE = 'draftAsset:write',
+  DRAFT_ASSET_READ = 'draftAsset:read',
+  DRAFT_ASSET_DELETE = 'draftAsset:delete',
+
   // ---- Agent 本地运行时（云边双模阶段 1）----
   // 渲染端 → 主进程：启动/恢复/中止/查询（语义对齐 backend-ts /agent/* REST 端点）
   AGENT_SEND = 'agent:send',
@@ -87,7 +93,13 @@ export enum IpcChannel {
   // electron-store，主进程启动 Agent 前解密注入 process.env。
   SECURE_KEY_LIST = 'secureKey:list',
   SECURE_KEY_SET = 'secureKey:set',
-  SECURE_KEY_DELETE = 'secureKey:delete'
+  SECURE_KEY_DELETE = 'secureKey:delete',
+
+  // ---- 模型配置密钥（T6：per-model apiKey 经 safeStorage 加密，localStorage 不再存明文）----
+  MODEL_SECRET_SET = 'modelSecret:set',
+  MODEL_SECRET_GET = 'modelSecret:get',
+  MODEL_SECRET_LIST = 'modelSecret:list',
+  MODEL_SECRET_DELETE = 'modelSecret:delete'
 }
 
 // ---- 文件对话框 ----
@@ -127,6 +139,31 @@ export interface FileWriteRequest {
   filePath: string
   content: string
   encoding?: BufferEncoding
+}
+
+// ---- 草稿图片资产（T9）----
+
+/** 写入请求：渲染端传 data URL，主进程解码为二进制落 userData/draft-assets/<id> */
+export interface DraftAssetWriteRequest {
+  /** 资产 id（复用图片附件 id；仅允许字母/数字/下划线/连字符） */
+  id: string
+  /** MIME 类型（image/png | image/jpeg | image/gif | image/webp） */
+  mediaType: string
+  /** data:image/...;base64,xxx 形式的 data URL */
+  dataUrl: string
+}
+
+/** 草稿资产写/删结果 */
+export interface DraftAssetResult {
+  success: boolean
+  error?: string
+}
+
+/** 读取结果：base64 为二进制文件内容（渲染端按草稿中的 mediaType 重组 data URL） */
+export interface DraftAssetReadResult {
+  success: boolean
+  base64?: string
+  error?: string
 }
 
 // ---- Agent 本地运行时（云边双模阶段 1）----
@@ -238,6 +275,44 @@ export interface SecureKeySetRequest {
 export interface SecureKeySetResult {
   ok: boolean
   error?: string
+}
+
+// ---- 模型配置密钥（T6）----
+
+/**
+ * 模型密钥/端点写入请求。
+ * - apiKey：undefined=不修改；''=清除已存密钥；非空=加密保存
+ * - apiBase：undefined=不修改；''=清除；非空=明文保存（端点非敏感，与 LLM_BASE_URL 同级）
+ */
+export interface ModelSecretSetRequest {
+  /** 模型配置 id（仅字母/数字/下划线/连字符） */
+  id: string
+  apiKey?: string
+  apiBase?: string
+}
+
+/** 单个模型密钥的展示态（明文永不回传渲染端） */
+export interface ModelSecretInfo {
+  id: string
+  /** 是否已保存 apiKey */
+  hasApiKey: boolean
+  /** 密钥掩码（无密钥为空串） */
+  masked: string
+}
+
+/** GET 返回：编辑表单回填用（apiBase 非敏感可回传；apiKey 仅回传掩码） */
+export interface ModelSecretGetResult {
+  ok: boolean
+  id?: string
+  apiBase?: string
+  hasApiKey?: boolean
+  masked?: string
+  error?: string
+}
+
+/** LIST 返回：全部模型密钥的展示态 */
+export interface ModelSecretListResult {
+  items: ModelSecretInfo[]
 }
 
 // ---- 快捷键治理（云边双模 · 快捷键功能）----

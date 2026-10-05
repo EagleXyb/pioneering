@@ -338,6 +338,35 @@ describe('getHitlState / abortPending', () => {
     expect((await getHitlState('s1')).pending).toBe(false)
   })
 
+  // T2：plan_confirm 的 artifacts 必须随状态查询透传（恢复时用于构造产物文件列表）
+  it('T2：plan_confirm 的 artifacts 原样透传', async () => {
+    const artifacts = [
+      { name: 'spec.md', path: '/out/spec.md', mediaType: 'text/markdown', size: 128 },
+      { name: 'tasks.md', path: '/out/tasks.md', mediaType: 'text/markdown', size: 64 }
+    ]
+    kernel.interruptState = {
+      session_id: 's1',
+      user_id: 'local_user',
+      kind: 'plan_confirm',
+      question: '是否按方案执行？',
+      artifacts
+    }
+    const st = await getHitlState('s1')
+    expect(st.pending).toBe(true)
+    expect(st.kind).toBe('plan_confirm')
+    expect(st.artifacts).toEqual(artifacts)
+  })
+
+  it('T2：无 artifacts 字段时缺省为 undefined（不污染其他类型）', async () => {
+    kernel.interruptState = {
+      session_id: 's1',
+      user_id: 'local_user',
+      kind: 'tool_confirm'
+    }
+    const st = await getHitlState('s1')
+    expect(st.artifacts).toBeUndefined()
+  })
+
   it('abortPending：无暂停项 → no_pending_interrupt', async () => {
     const r = await abortPending('s1', 'user_cancel')
     expect(r).toEqual({ message: 'no_pending_interrupt', aborted: false })

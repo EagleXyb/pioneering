@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import {
   parseAccelerator,
   matchesAccelerator,
@@ -6,6 +6,17 @@ import {
   formatBindingForDisplay
 } from '@renderer/lib/match-accelerator'
 import { resolveBinding, findConflicts, isDangerousBinding, HOTKEY_DEFINITIONS } from '@shared/hotkey-registry'
+
+// T16 修复（修复任务清单 T16 / 报告 §2.7-测试债）：
+// 这些用例断言的是 Windows/Linux 语义（Ctrl 命中 CmdOrCtrl、显示 'Ctrl+Comma'）。
+// 引擎经 navigator.platform/userAgent 读真实平台，直接在开发机（macOS）跑会漂移。
+// 这里统一注入 Windows 平台，使测试跨平台稳定；macOS 分支另有独立 describe 覆盖。
+function stubPlatform(platform: string, userAgent = '') {
+  vi.stubGlobal('navigator', { platform, userAgent })
+}
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 // 构造 KeyboardEvent 的最小模拟（匹配引擎只读 code/key/四个修饰键）
 function ke(partial: {
@@ -66,6 +77,9 @@ describe('parseAccelerator', () => {
 })
 
 describe('matchesAccelerator', () => {
+  // T16：本组按 Windows/Linux 语义断言（CmdOrCtrl ↔ Ctrl）
+  beforeEach(() => stubPlatform('Win32'))
+
   it('Enter（无修饰键）命中 send-message 默认绑定', () => {
     expect(matchesAccelerator(ke({ key: 'Enter', code: 'Enter' }), 'Enter')).toBe(true)
   })
@@ -142,6 +156,9 @@ describe('matchesAccelerator', () => {
 })
 
 describe('eventToAccelerator', () => {
+  // T16：录制存储统一为 CmdOrCtrl，本组断言 Windows 下 Ctrl → CmdOrCtrl
+  beforeEach(() => stubPlatform('Win32'))
+
   it('Ctrl+D → CmdOrCtrl+D（Windows 语义统一存储）', () => {
     expect(eventToAccelerator(ke({ key: 'd', code: 'KeyD', ctrlKey: true }))).toBe('CmdOrCtrl+D')
   })
@@ -169,13 +186,46 @@ describe('eventToAccelerator', () => {
   })
 })
 
-describe('formatBindingForDisplay', () => {
+describe('formatBindingForDisplay（Windows 展示）', () => {
+  // T16：本组断言 Windows 符号（Ctrl / + 连接）
+  beforeEach(() => stubPlatform('Win32'))
+
   it('null → 未绑定', () => {
     expect(formatBindingForDisplay(null)).toBe('未绑定')
   })
 
   it('Ctrl+Comma → Ctrl+Comma 展示', () => {
     expect(formatBindingForDisplay('Ctrl+Comma')).toBe('Ctrl+Comma')
+  })
+
+  it('CmdOrCtrl+Shift+K → Ctrl+Shift+K 展示', () => {
+    expect(formatBindingForDisplay('CmdOrCtrl+Shift+K')).toBe('Ctrl+Shift+K')
+  })
+})
+
+// T16：macOS 平台语义独立成组（注入 MacIntel），防止平台分支无测试覆盖
+describe('平台分支：macOS', () => {
+  beforeEach(() => stubPlatform('MacIntel'))
+
+  it('Cmd(meta)+B 命中 CmdOrCtrl+B，Ctrl 不命中', () => {
+    expect(
+      matchesAccelerator(ke({ key: 'b', code: 'KeyB', metaKey: true }), 'CmdOrCtrl+B')
+    ).toBe(true)
+    expect(
+      matchesAccelerator(ke({ key: 'b', code: 'KeyB', ctrlKey: true }), 'CmdOrCtrl+B')
+    ).toBe(false)
+  })
+
+  it('录制：Cmd(meta)+K → CmdOrCtrl+K', () => {
+    expect(eventToAccelerator(ke({ key: 'k', code: 'KeyK', metaKey: true }))).toBe('CmdOrCtrl+K')
+  })
+
+  it('展示：CmdOrCtrl+Comma → ⌘Comma（mac 符号，无连接符）', () => {
+    expect(formatBindingForDisplay('CmdOrCtrl+Comma')).toBe('⌘Comma')
+  })
+
+  it('展示：Ctrl+Comma → ⌃Comma（mac 下 Ctrl 显示为 ⌃）', () => {
+    expect(formatBindingForDisplay('Ctrl+Comma')).toBe('⌃Comma')
   })
 })
 

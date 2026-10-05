@@ -18,7 +18,6 @@ import {
   type ChatState
 } from '@renderer/stores/chatStore'
 import { useHitlStore } from '@renderer/stores/hitlStore'
-import { resolveHitlSurface } from '@renderer/lib/hitl-surface'
 import {
   getClarifyMetrics,
   resetClarifyMetrics,
@@ -377,9 +376,11 @@ describe('澄清端到端组合链路（阶段0/2/4 串联）', () => {
       origin: 'live'
     })
 
-    // 阶段4：澄清由输入框内联澄清条承载（不占用模态弹窗）
+    // 阶段4：澄清由输入框内联澄清条承载（不占用模态弹窗）；
+    // 暂停项入队后 currentItem/status 即处于可答复态
     const st = useHitlStore.getState()
-    expect(resolveHitlSurface(st.currentItem, st.status, 's1')).toBe('inline')
+    expect(st.currentItem?.kind).toBe('clarifying')
+    expect(st.status).toBe('paused')
 
     // 用户在内联条作答（ChatArea.handleHitlAnswer 的等价调用）
     const ok = await useHitlStore.getState().resolve({

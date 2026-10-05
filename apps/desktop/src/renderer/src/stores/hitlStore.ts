@@ -21,6 +21,7 @@ import {
   trackClarifySkipped
 } from '../services/clarify-metrics'
 import { useChatStore } from './chatStore'
+import { bindHitlStore } from './hitl-bridge'
 
 /**
  * 状态机：idle=无待答复项；paused=暂停项等待答复；
@@ -310,3 +311,8 @@ export const useHitlStore = create<HitlState>((set, get) => ({
     set({ pendingQueue: [], currentItem: null, status: 'idle', error: null })
   }
 }))
+
+// T8：模块求值时把自己注册进 hitl-bridge。
+// 依赖方向此时为 hitlStore → chatStore（单向保留），chatStore 仅静态依赖
+// 无反向依赖的 hitl-bridge，stores 目录不再存在 import 环。
+bindHitlStore(useHitlStore)

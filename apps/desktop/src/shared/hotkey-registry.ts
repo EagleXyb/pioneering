@@ -1,6 +1,8 @@
 // ============================================================
 // hotkey-registry — 快捷键命令注册表（默认绑定单一数据源）
-// 首版范围（修订版方案）：15 条可配置命令 + OS 编辑键只读展示。
+// 当前范围：14 条注册表项 = 13 条 renderer（含 2 条组件内自行匹配的
+// send-message / newline-on-input）+ 1 条 global（toggle-main-window）；
+// OS 编辑键只读展示。
 // 注意：menu-template.ts 中 macOS 原生菜单的 accelerator 仍保留静态值
 // （OS 编辑键全部只读，无需动态化；quit/closeWindow/devTools 为
 // 平台惯例键，也不开放改绑）。

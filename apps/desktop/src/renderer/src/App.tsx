@@ -6,7 +6,6 @@ import { HitlHost } from '@/components/hitl/HitlHost'
 import { RootLayout } from './layouts/RootLayout'
 import { HomePage } from './pages/HomePage'
 import { ChatPage } from './pages/ChatPage'
-import { WorkspacePage } from './pages/WorkspacePage'
 import { AssistantPage } from './pages/AssistantPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { AutomationPage } from './pages/AutomationPage'
@@ -137,7 +136,9 @@ function App() {
           <Route element={<RootLayout />}>
             <Route index element={<ChatPage />} />
             <Route path="/home" element={<HomePage />} />
-            <Route path="/workspace" element={<WorkspacePage />} />
+            {/* T15（修复任务清单 T15）：/workspace 空转路由已摘除——
+                页面永远停在空态、openFile 零调用、FILE_WRITE 未接线，
+                无导航入口可达。工作区能力重新排期后再恢复路由与页面。 */}
             <Route path="/assistant" element={<AssistantPage />} />
             <Route path="/plugins" element={<PluginsPage />} />
             <Route path="/skills" element={<Navigate to="/plugins" replace />} />

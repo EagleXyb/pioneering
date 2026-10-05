@@ -11,11 +11,12 @@ import {
   clipboard,
   shell,
   screen,
+  safeStorage,
   Notification,
   type SaveDialogOptions,
   type OpenDialogOptions
 } from 'electron'
-import { readFile, writeFile, stat } from 'fs/promises'
+import { readFile, writeFile, stat, mkdir, unlink } from 'fs/promises'
 import { realpathSync, readFileSync } from 'fs'
 import os from 'node:os'
 import path from 'path'
@@ -26,6 +27,9 @@ import type {
   FileDialogResult,
   FileReadResult,
   FileWriteRequest,
+  DraftAssetWriteRequest,
+  DraftAssetResult,
+  DraftAssetReadResult,
   NotificationOptions,
   AgentRunRequestPayload,
   LocalSessionListRequest,
@@ -40,7 +44,10 @@ import type {
   LocalDaoResult,
   SecureKeySetRequest,
   SecureKeySetResult,
-  SecureKeyInfo
+  SecureKeyInfo,
+  ModelSecretSetRequest,
+  ModelSecretGetResult,
+  ModelSecretListResult
 } from '../shared/ipc-channels'
 import {
   ensureAgentEnv,
@@ -56,7 +63,7 @@ import {
   type AgentEventSender
 } from './agent-runtime'
 import { getLocalChatStore, type LocalChatStore } from './local-store'
-import { getKeyStore, MANAGED_KEYS } from './key-store'
+import { getKeyStore, MANAGED_KEYS, maskValue } from './key-store'
 import { getHotkeyManager } from './hotkey-main'
 import type { AbortRequest, HitlStateResponse } from '../shared/types'
 import type { HotkeyOverrides, HotkeyApplyResult } from '../shared/hotkey-protocol'
@@ -98,6 +105,56 @@ function getAllowedRoots(): string[] {
 
 // H3: 文件读取/写入的最大字节数（10MB），防止超大文件占满内存（P1）。
 const MAX_FILE_BYTES = 10 * 1024 * 1024
+
+// ---- T9：草稿图片资产收窄通道 ----
+// 图片附件（≤20MB）外置到固定目录 userData/draft-assets/<id>，不沿用通用
+// FILE_WRITE/FILE_READ（两者 10MB 上限且按文本编码读写，无法承载图片二进制）。
+// 安全收窄：目录固定不可指定、id 白名单（无路径分隔符）、MIME 四选一、≤20MB。
+const DRAFT_ASSET_MEDIA_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp'
+])
+const DRAFT_ASSET_MAX_BYTES = 20 * 1024 * 1024
+const DRAFT_ASSET_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
+const DRAFT_DATA_URL_PATTERN = /^data:([\w.+-]+\/[\w.+-]+);base64,([\s\S]*)$/
+
+/** 校验资产 id 并拼出 draft-assets 内的目标路径；非法 id 返回 null */
+function resolveDraftAssetPath(draftAssetsDir: string, id: unknown): string | null {
+  if (typeof id !== 'string' || !DRAFT_ASSET_ID_PATTERN.test(id)) return null
+  const target = path.resolve(draftAssetsDir, id)
+  // 双保险：归一化后必须正好等于目录/id（id 白名单已排除分隔符与 '..'）
+  if (target !== path.join(draftAssetsDir, id)) return null
+  return target
+}
+
+// ---- T6：per-model 密钥（safeStorage 加密后落 electron-store）----
+// apiKey 与本地运行时受管密钥同级加密（DPAPI/Keychain/libsecret）；
+// apiBase 非敏感（对齐 key-store 对 LLM_BASE_URL 的明文处理）。
+// 注意：这些密钥不注入 process.env（不影响本地 Agent 的 LLM_DEFAULT_MODEL 链路），
+// 仅作模型配置的安全存储；键空间固定前缀 + id 白名单，杜绝任意键写入。
+const MODEL_SECRET_PREFIX = 'model.secret.'
+const MODEL_SECRET_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+const MODEL_SECRET_KEY_SUFFIX = '.key'
+const MODEL_SECRET_BASE_SUFFIX = '.base'
+const MODEL_SECRET_ENC_PREFIX = 'enc:v1:'
+
+function isValidModelSecretId(id: unknown): id is string {
+  return typeof id === 'string' && MODEL_SECRET_ID_PATTERN.test(id)
+}
+
+function decryptModelKey(stored: unknown): string | null {
+  if (typeof stored !== 'string' || !stored.startsWith(MODEL_SECRET_ENC_PREFIX)) return null
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null
+    return safeStorage.decryptString(
+      Buffer.from(stored.slice(MODEL_SECRET_ENC_PREFIX.length), 'base64')
+    )
+  } catch {
+    return null
+  }
+}
 
 // 基础路径安全检查：非空、长度受限、禁止空字节与 '..' 目录遍历
 function isValidFilePath(filePath: string): boolean {
@@ -522,6 +579,77 @@ export function registerIpcHandlers(): void {
     return true
   })
 
+  // ---- 草稿图片资产（T9）----
+  // 图片 data URL 在主进程解码为二进制，异步写入 userData/draft-assets/<id>；
+  // 不经过 electron-store（无 JSON 往返、无同步整档落盘），草稿 JSON 仅保存引用。
+  const draftAssetsDir = path.join(app.getPath('userData'), 'draft-assets')
+
+  ipcMain.handle(
+    IpcChannel.DRAFT_ASSET_WRITE,
+    async (event, req: DraftAssetWriteRequest): Promise<DraftAssetResult> => {
+      if (!isTrustedSender(event)) return { success: false, error: 'Forbidden: untrusted sender' }
+      if (!req || typeof req.id !== 'string' || typeof req.dataUrl !== 'string') {
+        return { success: false, error: 'Invalid payload' }
+      }
+      const target = resolveDraftAssetPath(draftAssetsDir, req.id)
+      if (!target) return { success: false, error: 'Invalid asset id' }
+      if (!DRAFT_ASSET_MEDIA_TYPES.has(req.mediaType)) {
+        return { success: false, error: 'Unsupported media type' }
+      }
+      const match = DRAFT_DATA_URL_PATTERN.exec(req.dataUrl)
+      if (!match || match[1] !== req.mediaType) {
+        return { success: false, error: 'Invalid data URL' }
+      }
+      const buffer = Buffer.from(match[2]!, 'base64')
+      if (buffer.length === 0 || buffer.length > DRAFT_ASSET_MAX_BYTES) {
+        return { success: false, error: 'Image exceeds maximum allowed size' }
+      }
+      try {
+        await mkdir(draftAssetsDir, { recursive: true })
+        // 异步写：即使 20MB 也不阻塞主进程（electron-store 的同步写只承载小体积草稿 JSON）
+        await writeFile(target, buffer)
+        return { success: true }
+      } catch (err) {
+        return { success: false, error: normalizeFileError(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.DRAFT_ASSET_READ,
+    async (event, id: string): Promise<DraftAssetReadResult> => {
+      if (!isTrustedSender(event)) return { success: false, error: 'Forbidden: untrusted sender' }
+      const target = resolveDraftAssetPath(draftAssetsDir, id)
+      if (!target) return { success: false, error: 'Invalid asset id' }
+      try {
+        const buffer = await readFile(target)
+        if (buffer.length > DRAFT_ASSET_MAX_BYTES) {
+          return { success: false, error: 'Image exceeds maximum allowed size' }
+        }
+        return { success: true, base64: buffer.toString('base64') }
+      } catch (err) {
+        return { success: false, error: normalizeFileError(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.DRAFT_ASSET_DELETE,
+    async (event, id: string): Promise<DraftAssetResult> => {
+      if (!isTrustedSender(event)) return { success: false, error: 'Forbidden: untrusted sender' }
+      const target = resolveDraftAssetPath(draftAssetsDir, id)
+      if (!target) return { success: false, error: 'Invalid asset id' }
+      try {
+        await unlink(target)
+        return { success: true }
+      } catch (err) {
+        // 资产已不存在视为删除成功（幂等），其余错误归一化返回
+        if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return { success: true }
+        return { success: false, error: normalizeFileError(err) }
+      }
+    }
+  )
+
   // ---- Agent 本地运行时（云边双模阶段 1）----
   // 语义逐条对齐 backend-ts routes/agent.ts 的 REST 端点；
   // 流式事件不走 invoke 返回值，而由主进程经 AGENT_EVENT 主动推送。
@@ -832,6 +960,101 @@ export function registerIpcHandlers(): void {
       if (ok) invalidateAgentGraphCache()
       return Promise.resolve({ ok })
     },
+  )
+
+  // ---- 模型配置密钥（T6：apiKey 加密、apiBase 明文；渲染端永不取回明文密钥）----
+
+  ipcMain.handle(
+    IpcChannel.MODEL_SECRET_SET,
+    (event, req: ModelSecretSetRequest): { ok: boolean; error?: string } => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Forbidden: untrusted sender' }
+      if (!req || !isValidModelSecretId(req.id)) {
+        return { ok: false, error: 'Invalid model id' }
+      }
+      const keyStoreKey = `${MODEL_SECRET_PREFIX}${req.id}${MODEL_SECRET_KEY_SUFFIX}`
+      const keyStoreBase = `${MODEL_SECRET_PREFIX}${req.id}${MODEL_SECRET_BASE_SUFFIX}`
+
+      // apiKey：undefined=不变；''=清除；非空=加密
+      if (req.apiKey !== undefined) {
+        if (req.apiKey === '') {
+          appStore.delete(keyStoreKey)
+        } else {
+          if (!safeStorage.isEncryptionAvailable()) {
+            return { ok: false, error: '系统密钥库不可用（safeStorage），无法安全保存密钥' }
+          }
+          const enc =
+            MODEL_SECRET_ENC_PREFIX +
+            safeStorage.encryptString(req.apiKey).toString('base64')
+          appStore.set(keyStoreKey, enc)
+        }
+      }
+      // apiBase：undefined=不变；''=清除；非空=明文（端点非敏感）
+      if (req.apiBase !== undefined) {
+        if (req.apiBase === '') {
+          appStore.delete(keyStoreBase)
+        } else {
+          appStore.set(keyStoreBase, req.apiBase)
+        }
+      }
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.MODEL_SECRET_GET,
+    (event, id: string): ModelSecretGetResult => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Forbidden: untrusted sender' }
+      if (!isValidModelSecretId(id)) return { ok: false, error: 'Invalid model id' }
+      const key = decryptModelKey(
+        appStore.get(`${MODEL_SECRET_PREFIX}${id}${MODEL_SECRET_KEY_SUFFIX}`)
+      )
+      const apiBase = appStore.get(`${MODEL_SECRET_PREFIX}${id}${MODEL_SECRET_BASE_SUFFIX}`)
+      return {
+        ok: true,
+        id,
+        apiBase: typeof apiBase === 'string' ? apiBase : '',
+        hasApiKey: key !== null,
+        masked: key ? maskValue(key) : ''
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.MODEL_SECRET_LIST,
+    (event): ModelSecretListResult | { ok: false; error: string } => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Forbidden: untrusted sender' }
+      // electron-store .store 为全量只读快照，按固定前缀枚举已配置的模型 id
+      const all = appStore.store as Record<string, unknown>
+      const ids = new Set<string>()
+      for (const k of Object.keys(all)) {
+        if (!k.startsWith(MODEL_SECRET_PREFIX)) continue
+        const rest = k.slice(MODEL_SECRET_PREFIX.length)
+        const id = rest.endsWith(MODEL_SECRET_KEY_SUFFIX)
+          ? rest.slice(0, -MODEL_SECRET_KEY_SUFFIX.length)
+          : rest.endsWith(MODEL_SECRET_BASE_SUFFIX)
+            ? rest.slice(0, -MODEL_SECRET_BASE_SUFFIX.length)
+            : null
+        if (id && MODEL_SECRET_ID_PATTERN.test(id)) ids.add(id)
+      }
+      const items = [...ids].sort().map((id) => {
+        const key = decryptModelKey(
+          all[`${MODEL_SECRET_PREFIX}${id}${MODEL_SECRET_KEY_SUFFIX}`]
+        )
+        return { id, hasApiKey: key !== null, masked: key ? maskValue(key) : '' }
+      })
+      return { items }
+    }
+  )
+
+  ipcMain.handle(
+    IpcChannel.MODEL_SECRET_DELETE,
+    (event, id: string): LocalDaoResult => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Forbidden' }
+      if (!isValidModelSecretId(id)) return { ok: false, error: 'Invalid model id' }
+      appStore.delete(`${MODEL_SECRET_PREFIX}${id}${MODEL_SECRET_KEY_SUFFIX}`)
+      appStore.delete(`${MODEL_SECRET_PREFIX}${id}${MODEL_SECRET_BASE_SUFFIX}`)
+      return { ok: true }
+    }
   )
 
   // 渲染端销毁（刷新/关闭）时中止其在途的本地 run，避免僵尸 LLM 调用。

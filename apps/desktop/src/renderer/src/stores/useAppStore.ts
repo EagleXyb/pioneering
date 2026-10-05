@@ -38,10 +38,26 @@ export interface ModelConfigItem {
   enabled: boolean
   /** 实际发送到后端的模型标识（可与 name 不一致） */
   value?: string
-  /** 自定义 API Base（可选；OpenAI Compatible 模式必填） */
+  /** 自定义 API Base（可选；OpenAI Compatible 模式必填，非敏感随配置持久化） */
   apiBase?: string
-  /** API Key（可选；未填时走后端默认） */
-  apiKey?: string
+  // T6 修复（修复任务清单 T6）：apiKey 不再保存在 localStorage，
+  // 经 window.api.modelSecret（主进程 safeStorage 加密）独立存储，明文不回传。
+}
+
+/** T6：v1 持久化结构中残留的明文密钥（迁移期间临时承接，flush 后清空） */
+interface LegacyModelSecret {
+  id: string
+  apiKey: string
+  apiBase?: string
+}
+const legacyModelSecrets: LegacyModelSecret[] = []
+
+/**
+ * T6：取走上一次持久化迁移（v1 → v2）中剥离的明文模型密钥（一次性）。
+ * 由模型设置页挂载时调用，转存进主进程 safeStorage；浏览器环境转存失败则丢弃。
+ */
+export function drainLegacyModelSecrets(): LegacyModelSecret[] {
+  return legacyModelSecrets.splice(0, legacyModelSecrets.length)
 }
 
 interface AppState {
@@ -228,6 +244,32 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'pioneering-app',
+      // T6：v2 起 modelConfigs 不再含 apiKey（明文密钥迁往 safeStorage）
+      version: 2,
+      migrate: (persistedState: unknown, version) => {
+        const s = (persistedState ?? {}) as Record<string, unknown>
+        if (version < 2 && Array.isArray(s.modelConfigs)) {
+          const migrated: unknown[] = []
+          for (const raw of s.modelConfigs as Array<Record<string, unknown>>) {
+            if (!raw || typeof raw !== 'object') {
+              migrated.push(raw)
+              continue
+            }
+            const { apiKey, ...rest } = raw as { apiKey?: unknown } & Record<string, unknown>
+            // 暂存待 ModelSection 挂载后转存进系统密钥库；浏览器环境转存失败即丢弃
+            if (typeof apiKey === 'string' && apiKey && typeof rest.id === 'string') {
+              legacyModelSecrets.push({
+                id: rest.id,
+                apiKey,
+                apiBase: typeof rest.apiBase === 'string' ? rest.apiBase : undefined
+              })
+            }
+            migrated.push(rest)
+          }
+          s.modelConfigs = migrated
+        }
+        return s
+      },
       partialize: (state) => ({
         theme: state.theme,
         language: state.language,

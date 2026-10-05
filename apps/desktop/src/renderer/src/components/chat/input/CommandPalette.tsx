@@ -18,10 +18,10 @@ import {
   ClipboardCheck,
   Eraser,
   HelpCircle,
+  Image as ImageIcon,
   ListChecks,
   Paperclip,
   Search,
-  Sparkles,
   Terminal,
   Zap,
   type LucideIcon
@@ -37,8 +37,14 @@ export type PaletteGroupId = 'add' | 'command'
 
 /** 动作型命令的行为标识（insert 型直接插入 token，无需 actionId） */
 export type PaletteActionId =
+  | 'attach-image'
   | 'attach-file'
   | 'toggle-agent'
+  // T10：切换 Composer 计划模式（新会话以 plan_execute 图创建）
+  | 'toggle-plan'
+  // T11：清空当前对话（等价新建）/ 打开帮助（设置-关于）
+  | 'clear-conversation'
+  | 'open-help'
   // dev-only：在当前会话模拟一次 plan_confirm 方案确认门（UI 预览，生产构建不注册）
   | 'mock-plan-confirm'
 
@@ -76,12 +82,26 @@ export const PALETTE_GROUPS: PaletteGroupDef[] = [
  */
 export const PALETTE_COMMANDS: PaletteCommand[] = [
   {
+    // T4a/T17 修复（修复任务清单 T4a/T17 / 报告 §2.4）：
+    // 图片走真正的附件通道（隐藏 <input type=file> → addImages → 缩略图），
+    // 与粘贴/拖拽入口行为一致；HITL 精简态同样保留本动作。
+    id: 'attach-image',
+    group: 'add',
+    icon: ImageIcon,
+    label: '上传图片',
+    hint: '添加图片附件（PNG / JPG / GIF / WebP）',
+    keywords: ['图片', '图像', '照片', '截图', '附件', '上传', 'image', 'picture', 'png', 'jpg'],
+    kind: 'action',
+    actionId: 'attach-image'
+  },
+  {
+    // 通用文件仍走 @{path} 引用 token（FileSearchPopover「浏览文件…」复用同一动作）
     id: 'attach-file',
     group: 'add',
     icon: Paperclip,
-    label: '上传文件或图片',
-    hint: '选择本地文件或图片',
-    keywords: ['文件', '图片', '附件', '上传', 'file', 'attach'],
+    label: '上传文件',
+    hint: '选择本地文件，以 @路径 引用',
+    keywords: ['文件', '引用', '附件', '上传', 'file', 'attach'],
     kind: 'action',
     actionId: 'attach-file'
   },
@@ -96,55 +116,56 @@ export const PALETTE_COMMANDS: PaletteCommand[] = [
     actionId: 'toggle-agent'
   },
   {
+    // T11：/clear 为真实动作（清空当前对话内容与草稿，等价新建任务）
     id: 'clear',
     group: 'command',
     icon: Eraser,
     label: '/clear',
-    hint: '清空当前对话',
+    hint: '清空当前对话（等价新建任务）',
     slashName: '/clear',
     keywords: ['清空', '清除', 'clear', '重置对话'],
-    kind: 'insert'
+    kind: 'action',
+    actionId: 'clear-conversation'
   },
   {
+    // T10 修复（修复任务清单 T10 / 报告 §4-A-5）：/plan 收口为真实动作，
+    // 切换 Composer 计划模式（新会话 agentMode=plan_execute，走 Plan-Execute 图）
     id: 'plan',
     group: 'command',
     icon: ListChecks,
     label: '/plan',
-    hint: '进入计划模式',
+    hint: '切换计划模式（新会话按计划分步执行）',
     slashName: '/plan',
-    keywords: ['计划', 'plan', '计划模式'],
-    kind: 'insert'
+    keywords: ['计划', 'plan', '计划模式', '规划', '分步'],
+    kind: 'action',
+    actionId: 'toggle-plan'
   },
   {
+    // T11：/agent 收口为真实动作（复用「+」面板的 toggle-agent）
     id: 'agent',
     group: 'command',
     icon: Terminal,
     label: '/agent',
     hint: '切换 Agent 模式',
     slashName: '/agent',
-    keywords: ['agent', '智能体', '技能'],
-    kind: 'insert'
+    keywords: ['agent', '智能体'],
+    kind: 'action',
+    actionId: 'toggle-agent'
   },
   {
+    // T11：/help 打开设置「关于」页（帮助文档/反馈入口在该页）
     id: 'help',
     group: 'command',
     icon: HelpCircle,
     label: '/help',
-    hint: '查看使用帮助',
+    hint: '查看帮助与关于',
     slashName: '/help',
-    keywords: ['帮助', 'help', '使用说明'],
-    kind: 'insert'
-  },
-  {
-    id: 'optimize',
-    group: 'command',
-    icon: Sparkles,
-    label: '/optimize',
-    hint: '优化当前提示词',
-    slashName: '/optimize',
-    keywords: ['优化', '提示词', 'optimize', '润色'],
-    kind: 'insert'
+    keywords: ['帮助', 'help', '使用说明', '关于'],
+    kind: 'action',
+    actionId: 'open-help'
   }
+  // T11：/optimize 已移除——无后端优化能力，注册表里不再保留死命令
+  // （「仅收录已落地能力」）；提示词润色能力排期后再加回。
 ]
 
 // dev-only：plan_confirm 方案确认门 UI 预览入口。

@@ -459,6 +459,10 @@ export async function getHitlState(threadId: string): Promise<HitlStateResponse>
     message: (state['message'] as string) ?? '',
     question: (state['question'] as string) ?? undefined,
     options: (state['options'] as HitlStateResponse['options']) ?? undefined,
+    // T2 修复（修复任务清单 T2 / 报告 §4-A-2）：plan_confirm 的产物列表必须透传，
+    // 与云端 agent-bridge GET /agent/state（HitlStateResponse 已含 artifacts）对齐；
+    // 渲染端 hitlStore.recover 已支持该字段（恢复时构造方案确认卡的产物文件列表）。
+    artifacts: (state['artifacts'] as HitlStateResponse['artifacts']) ?? undefined,
     next_nodes: (state['next_nodes'] as string[]) ?? [],
     pending_tool_calls: (state['pending_tool_calls'] as Array<Record<string, unknown>>) ?? [],
     tool_requires_approval: (state['tool_requires_approval'] as boolean) ?? false,

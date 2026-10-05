@@ -29,6 +29,16 @@ import {
 } from 'lucide-react'
 import { cn, pxToRem } from '@/lib/utils'
 
+// T7 修复（修复任务清单 T7 / 报告 §2.7）：
+// 本页 10 组开关/输入仅为组件 state，无持久化、无任何主进程联动，
+// 与真实安全实现（IPC trusted sender 校验 / 文件路径白名单 / 产物 iframe sandbox /
+// CSP / Markdown sanitize）零耦合。真实开关逐项落地前整页锁定为「规划中」：
+//   - 顶部公告明示「当前设置不会生效」；
+//   - 内容区禁用全部交互（pointer-events-none）并整体灰显；
+//   - 开关强制渲染为关闭态，避免「沙箱安全默认开」构成安全错觉；
+//   - 装饰性「已开启」标签改为「规划中」。
+const SECURITY_CENTER_PLANNING = true
+
 // ================================================================
 // 主组件
 // ================================================================
@@ -47,6 +57,29 @@ export function SecuritySection() {
 
   return (
     <div className="flex flex-col w-full" style={{ maxWidth: 780 }}>
+      {/* T7：规划中公告（真实安全开关逐项接线后移除本公告与下方锁定态） */}
+      <div
+        className="flex items-start gap-2 rounded-lg border px-3 py-2.5 leading-[1.55] mb-2"
+        style={{
+          background: 'rgba(250,173,20,0.08)',
+          borderColor: 'rgba(250,173,20,0.3)',
+          color: '#ad6800',
+          fontSize: pxToRem(12)
+        }}
+      >
+        <Info className="mt-[1px] shrink-0 size-4" />
+        <span>
+          安全中心正在规划中：以下开关与配置当前仅作展示，不会保存、也不会改变应用的实际安全行为。
+          当前已生效的安全能力包括进程间调用校验、文件路径白名单、产物沙箱预览与内容安全过滤。
+        </span>
+      </div>
+
+      <div
+        // 锁定层：禁用整页交互 + 整体灰显（公告本身在锁定层之外，保持可读）
+        className="pointer-events-none select-none"
+        style={{ opacity: 0.55 }}
+        aria-disabled={true}
+      >
       {/* ============ ① 沙箱安全 ============ */}
       <GroupHeader label="沙箱安全" />
       <SectionCard>
@@ -107,16 +140,16 @@ export function SecuritySection() {
           icon={<ShieldCheck size={14} strokeWidth={1.8} />}
           title="安全网关"
           subtitle="工作空间出入流量统一经过安全网关安全处理"
-          tag="已开启"
-          tagVariant="success"
+          tag="规划中"
+          tagVariant="default"
         />
         <StatusTagRow
           index={1}
           icon={<Lock size={14} strokeWidth={1.8} />}
           title="传输加密"
           subtitle="本地与云端通信使用端到端加密通道"
-          tag="已开启"
-          tagVariant="success"
+          tag="规划中"
+          tagVariant="default"
         />
         <SwitchRow
           index={2}
@@ -220,15 +253,16 @@ export function SecuritySection() {
             />
           </div>
         </div>
-        {/* 日志条目（示例 1 条） */}
+        {/* 日志条目（示例 1 条；T7：标注「演示数据」，审计中心尚未接入真实记录） */}
         <LogRow
           index={0}
-          tag="[命令安全]"
+          tag="[演示数据]"
           content='沙箱内执行命令：ls "C:\\Users\\Administrator\\WorkBuddy\\2026-08...'
           timestamp="2026/9/1 17:31:52"
           last
         />
       </SectionCard>
+      </div>
     </div>
   )
 }
@@ -728,22 +762,27 @@ function Switch({
   disabled?: boolean
   onCheckedChange: (v: boolean) => void
 }) {
+  // T7：规划期开关强制渲染为关闭+禁用态，避免「沙箱安全默认开」的安全错觉
+  const locked = SECURITY_CENTER_PLANNING
+  const effectiveDisabled = locked || disabled
+  const effectiveChecked = locked ? false : checked
   return (
     <button
       type="button"
       role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => !disabled && onCheckedChange(!checked)}
+      aria-checked={effectiveChecked}
+      aria-label={locked ? '该能力规划中，暂不可用' : undefined}
+      disabled={effectiveDisabled}
+      onClick={() => !effectiveDisabled && onCheckedChange(!checked)}
       className={cn(
         'relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200',
-        disabled && 'cursor-not-allowed opacity-60',
-        !disabled && 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1677ff]/40'
+        effectiveDisabled && 'cursor-not-allowed opacity-60',
+        !effectiveDisabled && 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1677ff]/40'
       )}
       style={{
         width: 30,
         height: 17,
-        background: checked ? '#52c41a' : '#d9d9d9'
+        background: effectiveChecked ? '#52c41a' : '#d9d9d9'
       }}
     >
       <span
@@ -752,7 +791,7 @@ function Switch({
           width: 13,
           height: 13,
           marginLeft: 2,
-          transform: `translateX(${checked ? 13 : 0}px)`,
+          transform: `translateX(${effectiveChecked ? 13 : 0}px)`,
           boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
         }}
       />

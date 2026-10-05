@@ -111,7 +111,9 @@ export function ConversationList({ selectionEnabled = true }: ConversationListPr
                           handleSelect(session.id)
                         }}
                         className={cn(
-                          'group flex items-center gap-2 h-[32px] px-2.5 rounded-[8px] cursor-pointer transition-colors',
+                          // T21（修复任务清单 T21）：行高必须等于虚拟化 estimateSize
+                          // 使用的 CONVERSATION_ROW_HEIGHT（34px），消除累积滚动误差与抖动
+                          'group flex items-center gap-2 h-[34px] px-2.5 rounded-[8px] cursor-pointer transition-colors',
                           // 功能页路由（助理/技能/插件等）时 selectionEnabled=false，
                           // 强制不显示会话行高亮，避免与导航项双高亮互抢焦点
                           selectionEnabled && currentSessionId === session.id

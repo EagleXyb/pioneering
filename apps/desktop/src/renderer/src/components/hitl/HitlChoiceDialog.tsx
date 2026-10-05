@@ -2,8 +2,9 @@
 // HitlChoiceDialog — HITL 多选确认弹窗（图2）
 // RadioGroup 单选（一期）或多选，选项来自 item.options，确认 → resolve()。
 //
-// 阶段四：多选确认已改由输入框上方内联澄清条承载（见 lib/hitl-surface.ts），
-// 本组件保留作为降级/回退通道（回退方式见 HitlHost 头部注释）。
+// 阶段四：多选确认已改由输入框上方内联澄清条承载（见 ChatArea/InputArea 的
+// hitl 内联条），本组件当前无挂载点、保留作为回退组件
+//（回退方式见 HitlHost 头部注释；T20：原 hitl-surface 决策层已删除）。
 //
 // 阶段三补强：
 //   - 回答以 answerId（选项 id）回传，语义与工具审批 feedback 解耦

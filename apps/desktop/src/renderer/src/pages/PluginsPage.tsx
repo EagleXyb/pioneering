@@ -9,7 +9,7 @@
 // 当前为纯前端静态数据，安装与管理状态仅维护在本页本地。
 // ============================================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   AppWindow,
@@ -48,8 +48,13 @@ import {
 } from 'lucide-react'
 import { useAtomValue } from 'jotai'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { storeApi } from '@/services/ipc'
 import { sidebarVisibleAtom } from '@/stores/atoms'
+
+// T13（修复任务清单 T13）：安装态持久化键（electron-store；浏览器 mock 下落 localStorage）
+const INSTALLED_PLUGINS_KEY = 'plugins.installedNames'
 
 type TabKey = 'plugins' | 'skills' | 'partners'
 
@@ -353,13 +358,26 @@ export function PluginsPage() {
   const [category, setCategory] = useState('精选')
   const [keyword, setKeyword] = useState('')
   const [manageMode, setManageMode] = useState(false)
-  const [installedNames, setInstalledNames] = useState<Set<string>>(
-    () => new Set(['飞书'])
-  )
+  // T13：安装态初始为空（不再默认预装「飞书」），挂载后从持久化层恢复
+  const [installedNames, setInstalledNames] = useState<Set<string>>(() => new Set())
 
   // 侧边栏折叠时，左上角会浮显「展开侧边栏 / 新建任务」按钮，
   // 顶栏内容需让出位置避免重叠（macOS 额外避让红绿灯）。
   const sidebarVisible = useAtomValue(sidebarVisibleAtom)
+
+  // T13：进入页面恢复已安装插件名（切路由/重启后状态不再丢失）
+  useEffect(() => {
+    void storeApi.get<string[]>(INSTALLED_PLUGINS_KEY)?.then((saved) => {
+      if (Array.isArray(saved) && saved.length > 0) {
+        setInstalledNames(new Set(saved.filter((n) => typeof n === 'string')))
+      }
+    })
+  }, [])
+
+  const persistInstalled = (next: Set<string>) => {
+    // best-effort：持久化失败不回滚 UI（与其他 STORE_SET 消费方一致）
+    void storeApi.set(INSTALLED_PLUGINS_KEY, [...next])
+  }
 
   const filteredPlugins = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
@@ -376,6 +394,7 @@ export function PluginsPage() {
       const next = new Set(prev)
       if (next.has(name)) next.delete(name)
       else next.add(name)
+      persistInstalled(next) // T13：安装/移除即时持久化
       return next
     })
   }
@@ -434,13 +453,23 @@ export function PluginsPage() {
               <SlidersHorizontal className="size-3.5" strokeWidth={1.8} />
               管理
             </Button>
-            <Button
-              size="sm"
-              className="h-8 rounded-full px-3.5 text-[13px] font-normal"
-            >
-              <Plus className="size-4" strokeWidth={2} />
-              添加
-            </Button>
+            {/* T13：本地导入插件能力未就绪，禁用并明示，不再是无响应死按钮 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    size="sm"
+                    disabled
+                    aria-disabled
+                    className="h-8 rounded-full px-3.5 text-[13px] font-normal pointer-events-none"
+                  >
+                    <Plus className="size-4" strokeWidth={2} />
+                    添加
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>本地导入插件即将开放</TooltipContent>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -451,6 +480,11 @@ export function PluginsPage() {
         /* ================================================ */
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="px-8 pb-12">
+            {/* T13：目录与「X 万人在用」为静态演示数据，安装态已支持本地持久化；
+                插件市场后端联动上线前以角标如实标注。 */}
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-700">
+              演示数据：插件目录展示中，安装状态仅保存在本机
+            </div>
             {/* 分类胶囊行 */}
             <div className="flex items-center gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {CATEGORIES.map((c) => {
