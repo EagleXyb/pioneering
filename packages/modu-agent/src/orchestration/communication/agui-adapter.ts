@@ -1,6 +1,10 @@
 // 对应 Python: orchestration/communication/agui_adapter.py
-// AGUIStreamAdapter + AGUIStateMachine + 19 种 AG-UI 事件类型
+// AGUIStreamAdapter + AGUIStateMachine
+// 事件类型共 24 种（见下方 AGUIEventType；数量由 AGUI_EVENT_TYPE_COUNT 派生，
+// 不再手写常量，避免注释与实现漂移）
 import { randomUUID } from 'crypto'
+// T3-4：文档产物判定单一事实源（与 graph/nodes.ts 共用）
+import { detectDocArtifact } from '../../tools/doc-writer-artifact.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[agui] ${msg}`, ...args),
@@ -10,7 +14,8 @@ const logger = {
 }
 
 // ============================================================
-// AGUIEventType（对应 Python str, Enum —— 20 种 AG-UI 事件类型）
+// AGUIEventType（对应 Python str, Enum）
+// T4-4：原注释写"19 种"/"20 种"，与实际 24 种不符，已改为派生常量。
 // ============================================================
 
 export const AGUIEventType = {
@@ -41,6 +46,14 @@ export const AGUIEventType = {
   HITL_ABORTED: 'HITL_ABORTED',
 } as const
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType]
+
+/**
+ * T4-4：事件类型总数（由 `AGUIEventType` 派生）。
+ *
+ * 此前文件头与常量区注释分别写着"19 种"与"20 种"，而对象实际已扩展到 24 种 ——
+ * 手写数字必然漂移。改为从对象派生并导出，供测试与文档引用。
+ */
+export const AGUI_EVENT_TYPE_COUNT: number = Object.keys(AGUIEventType).length
 
 // ============================================================
 // P9.3.1: AGUIEvent payload 强类型映射（按事件类型区分 payload 结构）
@@ -1326,36 +1339,25 @@ export class AGUIStreamAdapter {
 
             events.push(...sm.emit_tool_result(tool_call_id, tool_name, content, 'success'))
 
-            // 检测 doc_writer 成功结果，发出 ARTIFACT_CREATED 事件（用 content 结构判定，不再只依赖 tool_name）
-            const isDocWriterSuccess =
-              tool_name === 'doc_writer' ||
-              (parsed && typeof parsed === 'object' &&
-               parsed['status'] === 'success' &&
-               typeof (parsed['data'] ?? {})['format'] === 'string' &&
-               (parsed['data'] ?? {})['format'] === 'md' &&
-               typeof (parsed['data'] ?? {})['path'] === 'string' &&
-               String((parsed['data'] ?? {})['path']).endsWith('.md'))
+            // T3-4：ARTIFACT_CREATED 判定改用**单一事实源**
+            // （`tools/doc-writer-artifact.ts`），与 graph/nodes.ts 写 state.artifacts
+            // 共用同一实现，消除两份几乎逐字重复、却各有细微差异的判定逻辑。
+            const detectedArtifact = detectDocArtifact(tool_name, content)
 
-            if (isDocWriterSuccess && parsed && typeof parsed === 'object') {
-              try {
-                if (parsed.status === 'success' && parsed?.data?.name) {
-                  const ad = parsed.data
-                  events.push(sm.emit_artifact_created({
-                    artifactId: tool_call_id || randomUUID(),
-                    name: ad.name ?? '',
-                    path: ad.path ?? '',
-                    absolutePath: ad.absolute_path ?? '',
-                    size: ad.size ?? 0,
-                    format: ad.format ?? 'md',
-                    type: 'document',
-                    operation: ad.operation ?? 'create',
-                    summary: ad.summary,
-                    title: ad.title,
-                  }))
-                }
-              } catch {
-                // 解析失败时忽略，不影响主流程
-              }
+            if (detectedArtifact !== null) {
+              const ad = detectedArtifact
+              events.push(sm.emit_artifact_created({
+                artifactId: tool_call_id || randomUUID(),
+                name: ad.name,
+                path: ad.path,
+                absolutePath: ad.absolute_path,
+                size: ad.size,
+                format: ad.format,
+                type: ad.type,
+                operation: ad.operation,
+                summary: ad.summary,
+                title: ad.title,
+              }))
             }
           }
         }
@@ -1424,26 +1426,22 @@ export class AGUIStreamAdapter {
          typeof (parsedResult['data'] ?? {})['path'] === 'string' &&
          String((parsedResult['data'] ?? {})['path']).endsWith('.md'))
 
-      if (isDocWriterSuccess && parsedResult && typeof parsedResult === 'object') {
-        try {
-          if (parsedResult.status === 'success' && parsedResult?.data?.name) {
-            const ad = parsedResult.data
-            events.push(sm.emit_artifact_created({
-              artifactId: tc_id || randomUUID(),
-              name: ad.name ?? '',
-              path: ad.path ?? '',
-              absolutePath: ad.absolute_path ?? '',
-              size: ad.size ?? 0,
-              format: ad.format ?? 'md',
-              type: 'document',
-              operation: ad.operation ?? 'create',
-              summary: ad.summary,
-              title: ad.title,
-            }))
-          }
-        } catch {
-          // 解析失败时忽略，不影响主流程
-        }
+      // T3-4：同 messages 分支，收敛到单一事实源判定
+      const detectedSseArtifact = detectDocArtifact(tc_name, result_content)
+      if (detectedSseArtifact !== null) {
+        const ad = detectedSseArtifact
+        events.push(sm.emit_artifact_created({
+          artifactId: tc_id || randomUUID(),
+          name: ad.name,
+          path: ad.path,
+          absolutePath: ad.absolute_path,
+          size: ad.size,
+          format: ad.format,
+          type: ad.type,
+          operation: ad.operation,
+          summary: ad.summary,
+          title: ad.title,
+        }))
       }
 
       return events

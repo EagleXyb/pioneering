@@ -85,6 +85,10 @@ import {
 } from '../tools/tool-guardrails.js'
 // P0（T-04）: 安全审计事件发布（此前 12 类事件仅 1 类有发布者）
 import { publish_security_audit_event_sync } from '../perception/security/audit.js'
+// T3-4：文档产物判定单一事实源（与 agui-adapter 共用，消除重复实现）
+import { detectDocArtifact } from '../tools/doc-writer-artifact.js'
+// T3-5：自适应终止建议埋点（仅可观测性，不改变路由）
+import { get_metrics_registry } from '../observability/metrics.js'
 // P3-C: 输入策略消费（PolicyEngine input 阶段；gated，fail-open）
 import { applyInputPolicy } from '../perception/security/policy-consumers.js'
 // P2-3: 动态工具编排
@@ -454,10 +458,39 @@ export function makeMemoryUpdateNode(
       return { memory_update_status: 'skipped_no_messages' }
     }
 
+    // T3-6 修复：**增量写入**。
+    // 修复前每轮都把**整段 history 原文**重新写一遍（key 为秒级时间戳），于是
+    //   第 1 轮写入 [u1,a1]、第 2 轮写入 [u1,a1,u2,a2]、第 N 轮写入全量……
+    // 存储量随会话轮数**平方级增长**，且 recall top5 命中的多为内容高度重叠的
+    // 同一段历史的不同快照，长期记忆信噪比随会话数快速恶化。
+    // 现仅写入"上次持久化之后新增"的消息（游标 `memory_persisted_count`）。
+    const persistedCount = Number(state.memory_persisted_count ?? 0)
+    // 游标有效性判定。注意：**不能**简单 clamp 到 messages.length ——
+    // 若游标因 messages 被裁剪/重建而**大于**当前长度，clamp 后 slice 为空 →
+    // 直接跳过，等于静默丢掉全部新内容（正是本修复要避免的）。
+    // 故：游标越界视为无效 → 置 0 → 本轮全量写入（宁可重复也不丢数据）。
+    const cursorValid = Number.isFinite(persistedCount) && persistedCount >= 0
+      && persistedCount <= messages.length
+    const safeCursor = cursorValid ? Math.floor(persistedCount) : 0
+    if (!cursorValid && persistedCount > 0) {
+      logger.warning(
+        '[T3-6] memory_persisted_count=%d exceeds messages.length=%d (messages trimmed?), falling back to full write',
+        persistedCount, messages.length,
+      )
+    }
+    const deltaMessages = safeCursor > 0 ? messages.slice(safeCursor) : messages
+    if (deltaMessages.length === 0) {
+      // 本轮无新增消息 → 无需重复写入（修复前每次都会重复写全量）
+      return {
+        memory_update_status: 'skipped_no_new_messages',
+        memory_persisted_count: messages.length,
+      }
+    }
+
     try {
-      // 构建对话历史文本
+      // 构建**新增片段**文本
       const historyParts: string[] = []
-      for (const msg of messages) {
+      for (const msg of deltaMessages) {
         let role: string
         let content: any
         if (msg instanceof HumanMessage) {
@@ -479,12 +512,34 @@ export function makeMemoryUpdateNode(
       }
 
       if (historyParts.length > 0) {
-        const historyText = historyParts.join('\n')
-        const key = `${sessionId}_${Math.floor(Date.now() / 1000)}`
+        let historyText = historyParts.join('\n')
+
+        // T3-6：单条写入长度上限（默认 8000 字符，可配；<=0 关闭）。
+        // 增量写入后单条记录已不含历史累积，但仍需防止单轮超长内容
+        // （如大段工具输出）灌入长期记忆。
+        let maxChars = 8000
+        try {
+          const cfgRaw = Number(getConfig().get('memory.max_persist_chars', 8000))
+          if (Number.isFinite(cfgRaw)) maxChars = Math.floor(cfgRaw)
+        } catch {
+          maxChars = 8000
+        }
+        let truncated = false
+        if (maxChars > 0 && historyText.length > maxChars) {
+          historyText = historyText.slice(0, maxChars)
+          truncated = true
+        }
+
+        // key 加会话内序号后缀，避免同一秒内多次写入互相覆盖
+        const seq = safeCursor
+        const key = `${sessionId}_${Math.floor(Date.now() / 1000)}_${seq}`
         const payload = {
           content: historyText,
           session_id: sessionId,
-          message_count: messages.length,
+          message_count: deltaMessages.length,
+          // 累计已持久化条数（便于排查与去重诊断）
+          total_persisted: messages.length,
+          truncated,
           timestamp: Math.floor(Date.now() / 1000),
         }
 
@@ -502,7 +557,12 @@ export function makeMemoryUpdateNode(
             payload,
           )
         }
-        return { memory_update_status: 'success', memory_update_key: key }
+        // 回写游标：下一轮只持久化新增部分
+        return {
+          memory_update_status: 'success',
+          memory_update_key: key,
+          memory_persisted_count: messages.length,
+        }
       }
     } catch (e) {
       logger.error('Memory update error: %s', String(e))
@@ -1129,18 +1189,12 @@ export function makeAgentNode(
 
     // 低置信度保守模式：检测置信度并调整温度
     const confidence = state.confidence ?? 1.0
-    let effectiveTemperature = _defaultTemperature
 
-    // P0-2: config_overrides 中的 temperature 优先级高于默认值
-    if (overrideTemperature !== undefined && overrideTemperature !== null) {
-      effectiveTemperature = Number(overrideTemperature)
-    }
-
-    // P0-1: 基于 complexity_assessment.tier 动态调整温度
-    // 优先级：config_overrides > 低置信度保守 > tier 映射 > 默认值
+    // P0-1: 基于 complexity_assessment.tier 动态调整温度（作为**基础值**）
     // tier_1 高温快速直答，tier_3 低温深思
     const tierAssessment = state.complexity_assessment
     let tierApplied = false
+    let effectiveTemperature = _defaultTemperature
     if (tierAssessment && tierAssessment.tier) {
       const tierTemp = TIER_TEMPERATURE_MAP[tierAssessment.tier as ComplexityTier]
       if (typeof tierTemp === 'number') {
@@ -1149,21 +1203,30 @@ export function makeAgentNode(
       }
     }
 
+    // T3-3 修复：优先级链**注释与实现倒置**，此处按声明语义对齐为
+    //   config_overrides（per-session 显式指令）> 低置信度保守 > tier 映射 > 默认值
+    //
+    // 修复前实际顺序是「低置信度保守 > config_overrides > tier」：进化循环
+    // （ParameterTuneStrategy）产出的 per-session 温度在低置信轮次会被保守模式
+    // 无声覆盖，导致"参数层进化"在最有需要的场景下不生效 —— 与 §2.11
+    // 「config_overrides 真实生效」的结论矛盾。
+    // 安全性：config_overrides 的温度本身由质量反馈产出，且高工具失败率时
+    // 会主动下调（parameter-tune.ts:107-117），优先级提高不引入失控风险。
+    const hasOverride = overrideTemperature !== undefined && overrideTemperature !== null
     let needCustomTemp = false
 
-    if (confidence < confidenceThreshold) {
-      // 低置信度保守模式优先级最高，覆盖 tier 映射
+    if (hasOverride) {
+      // 最高优先级：per-session / 进化循环下发的显式覆盖
+      effectiveTemperature = Number(overrideTemperature)
+      needCustomTemp = true
+      logger.debug('Using config_overrides temperature: %.2f', effectiveTemperature)
+    } else if (confidence < confidenceThreshold) {
+      // 次高：低置信度保守模式（仅在无显式覆盖时生效）
       effectiveTemperature = conservativeTemperature
       needCustomTemp = true
       logger.info(
         'Low confidence (%.2f < %.2f), using conservative temperature %.2f',
         confidence, confidenceThreshold, conservativeTemperature,
-      )
-    } else if (overrideTemperature !== undefined && overrideTemperature !== null) {
-      needCustomTemp = true
-      logger.debug(
-        'Using config_overrides temperature: %.2f',
-        overrideTemperature,
       )
     } else if (tierApplied) {
       // tier 映射生效（与默认温度不同时才需克隆 LLM）
@@ -1223,8 +1286,9 @@ export function makeAgentNode(
         target = baseForTemp
       }
     }
+    // T3-7：传入 AbortSignal，超时真实中断 provider 请求
     response = await _invokeWithTimeout(
-      target.invoke(messages),
+      (signal) => target.invoke(messages, { signal } as any),
       llmTimeoutMs,
       'agent LLM invoke',
     )
@@ -1283,6 +1347,15 @@ export function makeAgentNode(
           '[P0-4] Termination advice (advisory): action=%s confidence=%.2f gain=%.2f reason=%s',
           decision.action, decision.confidence, decision.information_gain, decision.reason,
         )
+        // T3-5：埋点（仅补可观测性，**不改变路由**）。
+        // 第二阶段（让 advice 参与 routeAfterAgent）的准入门槛是
+        // false_positive_rate < 5%，而 advice 仅写进 state（随 checkpoint 持久化），
+        // 无法跨请求聚合 —— 此计数器是第二阶段决策所必需的数据来源。
+        try {
+          get_metrics_registry().record_termination_advice(decision.action)
+        } catch (e) {
+          logger.debug('record_termination_advice failed: %s', String(e))
+        }
       } catch (e: any) {
         // 采集异常不阻断主流程
         logger.warning('[P0-4] Termination assessment failed, skipping: %s', String(e?.message ?? e))
@@ -1455,35 +1528,17 @@ export function makeToolResultProcessor(
           }
         }
 
-        // Artifact 产物收集：检测 doc_writer 成功结果（toolName 识别 + content 结构双保险）
-        const isDocWriterResult =
-          toolName === 'doc_writer' ||
-          (typeof parsedContent === 'object' && parsedContent !== null &&
-           typeof (parsedContent['data'] ?? {})['format'] === 'string' &&
-           (parsedContent['data'] ?? {})['format'] === 'md' &&
-           typeof (parsedContent['data'] ?? {})['path'] === 'string' &&
-           String((parsedContent['data'] ?? {})['path']).endsWith('.md'))
-
-        if (isDocWriterResult &&
-            typeof parsedContent === 'object' && parsedContent !== null &&
-            parsedContent['status'] === 'success') {
-          const artifactData = parsedContent['data'] ?? {}
-          if (artifactData['name'] && artifactData['path']) {
-            newArtifacts.push({
-              id: toolCallId,
-              name: artifactData['name'],
-              path: artifactData['path'],
-              absolute_path: artifactData['absolute_path'] ?? '',
-              size: artifactData['size'] ?? 0,
-              format: artifactData['format'] ?? 'md',
-              type: 'document',
-              operation: artifactData['operation'] ?? 'create',
-              summary: artifactData['summary'] ?? '',
-              title: artifactData['title'] ?? '',
-              tool: 'doc_writer',
-              created_at: Date.now(),
-            })
-          }
+        // T3-4：Artifact 产物收集改为调用**单一事实源**判定
+        // （`tools/doc-writer-artifact.ts`），与 agui-adapter 的 ARTIFACT_CREATED
+        // 共用同一实现，消除两份几乎逐字重复、却各有细微差异的判定逻辑。
+        const detectedArtifact = detectDocArtifact(toolName, content)
+        if (detectedArtifact !== null) {
+          newArtifacts.push({
+            id: toolCallId,
+            ...detectedArtifact,
+            tool: 'doc_writer',
+            created_at: Date.now(),
+          })
         }
       }
     }
@@ -2568,9 +2623,9 @@ export function makeSubagentNode(
         let content: string
 
         if (subgraph) {
-          // v1.4 §4.4 建议2+6：子图执行 + 超时
+          // T3-7：AbortSignal 透传，超时真实中断子图
           const subgraphResult = await _invokeWithTimeout(
-            subgraph.invoke(
+            (signal) => subgraph.invoke(
               {
                 task_id: taskId,
                 task_type: taskType,
@@ -2579,7 +2634,7 @@ export function makeSubagentNode(
                 trace_id: traceId,
               },
               // P1-17：子图独立 10 轮（或配置值）上限，经 invoke config 真正生效
-              { recursionLimit },
+              { recursionLimit, signal } as any,
             ),
             timeoutMs,
             `Subagent (task_id=${taskId})`,
@@ -2601,7 +2656,7 @@ export function makeSubagentNode(
             new HumanMessage({ content: fullPromptText }),
           ]
           const response = await _invokeWithTimeout(
-            boundLlm.invoke(messages),
+            (signal) => boundLlm.invoke(messages, { signal } as any),
             timeoutMs,
             `Subagent (task_id=${taskId})`,
           )
@@ -2713,24 +2768,59 @@ function _filterToolsByTaskType(tools: any[], taskType: string, intent?: string 
 }
 
 /**
- * v1.4 §4.4 建议6：带超时的 invoke 包装。
+ * v1.4 §4.4 建议6：带超时的 invoke 包装（T3-7：真实取消底层调用）。
  *
- * 使用 Promise.race 实现，超时后抛出 TimeoutError。
- * 注意：超时不会真正中断底层 LLM 调用（JS 无法取消 Promise），
- * 但能释放主流程不被阻塞——子 Agent 慢时 consensus 仍可继续。
+ * 原实现用 `Promise.race` 释放主流程，但**底层 LLM / 子图调用继续跑**，
+ * 超时后仍消耗 provider 配额与 CPU（孤儿调用）。
+ *
+ * 现改为接收**工厂函数**并传入 `AbortSignal`：
+ *   - 超时触发 `controller.abort()`，LangChain `invoke(input, { signal })`
+ *     会向下透传到 provider 的 fetch，从而真正中断网络请求；
+ *   - 底层若不支持 signal（自定义 Runnable），退化为原 race 行为——
+ *     主流程仍被释放，不产生回归。
+ *
+ * 无论成功/超时/失败都清理 timer 与 abort 监听，避免定时器泄漏。
+ *
+ * @param invoke    接收 signal 的调用工厂
+ * @param timeoutMs 超时毫秒（<=0 表示不限制，此时不创建 controller）
+ * @param label     日志标签
  */
 async function _invokeWithTimeout<T>(
-  promise: Promise<T>,
+  invoke: (signal: AbortSignal) => Promise<T> | T,
   timeoutMs: number,
   label: string,
 ): Promise<T> {
-  if (timeoutMs <= 0) return promise
+  if (timeoutMs <= 0) {
+    // 不限时：仍用 never-abort 的 controller，保持调用形态一致
+    return await invoke(new AbortController().signal)
+  }
+
+  const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let timedOut = false
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+    timer = setTimeout(() => {
+      timedOut = true
+      // T3-7：真实取消底层调用（provider 支持 signal 时生效）
+      try {
+        controller.abort()
+      } catch {
+        /* 忽略 abort 失败：退化为纯 race 释放 */
+      }
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
   })
+
   try {
-    return await Promise.race([promise, timeoutPromise])
+    return await Promise.race([invoke(controller.signal), timeoutPromise])
+  } catch (e) {
+    if (timedOut) {
+      logger.info(
+        '[timeout] %s aborted after %dms (underlying call cancelled if provider supports AbortSignal)',
+        label, timeoutMs,
+      )
+    }
+    throw e
   } finally {
     // 修复（定时器泄漏）：race 结束后无论谁先完成都必须清理，
     // 原实现中先完成的分支会让 timer 一直驻留到超时时刻才释放。

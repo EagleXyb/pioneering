@@ -22,15 +22,24 @@
 //      Agent 启动（复用 `perception/pipeline.ts` 与 `skills/loader.ts` 的隔离范式）。
 //
 // 已知取舍（开启开关后可见）：
-//   - `perception.routing.text.pipeline` 默认含 `llm_parser`，而 T-23 **只**注册纯本地
-//     `TextPreprocessor` → 管线每轮会为 `llm_parser` 输出一条 "processor not found,
-//     skip" 告警。属预期噪声（`pipeline.ts:86,154` 既有行为），待 `LLMParser` 是否
-//     启用决策后再消除。
+//   - T3-1 修复：此前**只**注册 `text_preprocessor`，而 routing 默认还声明了
+//     `llm_parser` / `image_processor` / `audio_processor` → 开关开启后 text 管道
+//     第二段恒产生 "processor not found, skip" 告警，`perception.routing` 形同虚设。
+//     现按 routing 声明**逐个注册**（四者均无构造期外部依赖，缺依赖时各自降级）。
+//   - OCR / ASR 仍是"方向预留"：`image_processor` 无 OCR 库时降级为 metadata-only，
+//     `audio_processor` 无 Whisper 时走 fallback。这是**能力缺失**而非接线缺失，
+//     需接入 tesseract.js / Whisper 才算落地（见 T3-8）。
+//   - `LLMParser` 以 `llmAdapter=null` 注册（避免装配层循环依赖），宿主可经
+//     `setLlmAdapter()` 或直接注册自己的实例覆盖；未注入时只用本地方法。
 //   - 处理器语言固定 `'zh'`（`TextPreprocessor` 的构造默认值）：`perception.*` 段
 //     **无**语言配置键，故不做配置化（如需多语言须新增键并登记进能力注册表与 L7 审计）。
 import type { RuntimeConfig } from '../config/runtime-config.js'
 import type { ComponentRegistry } from '../core/registry.js'
+import type { BasePerception } from '../core/interfaces/perception.js'
 import { TextPreprocessor } from './text/rule-based.js'
+import { LLMParser } from './text/llm-parser.js'
+import { ImageProcessor } from './vision/image-processor.js'
+import { AudioProcessor } from './audio/asr-processor.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[perception.builtin] ${msg}`, ...args),
@@ -47,11 +56,70 @@ export const BUILTIN_PERCEPTION_PROCESSORS_ENABLED_KEY =
 export const BUILTIN_PERCEPTION_PROCESSOR_NAME = 'text_preprocessor'
 
 /**
+ * T3-1：内置处理器注册名 → 构造函数。
+ *
+ * 修复前**只注册 `text_preprocessor`**，而 `perception.routing.*.pipeline` 默认还声明了
+ * `llm_parser` / `image_processor` / `audio_processor` → 开关开启后 text 管道第二段
+ * 恒产生 "processor not found, skip" 告警，配置形同虚设。
+ *
+ * 四个处理器均可在**无外部依赖**时构造并自降级：
+ *   - `LLMParser`：`_llmAdapter=null` 时仅用本地方法（llm-parser.ts:212,249-251）
+ *   - `ImageProcessor`：OCR 引擎不可用时降级为 metadata-only（image-processor.ts:69-72）
+ *   - `AudioProcessor`：Whisper 不可用时走 fallback（asr-processor.ts:69-70）
+ * 因此这里统一注册，缺依赖的影响交由各处理器的降级分支承担。
+ */
+const _BUILTIN_FACTORIES: Record<string, (config: RuntimeConfig) => BasePerception> = {
+  text_preprocessor: (config) => {
+    const raw = Number(config.get('perception.max_length', 2048))
+    const maxLength = Number.isFinite(raw) && raw > 0 ? raw : 2048
+    const enableGuard = Boolean(config.get('perception.security.enable_guard', true))
+    // 'zh' = `TextPreprocessor` 的构造默认值（`perception.*` 无语言配置键）
+    return new TextPreprocessor('zh', maxLength, null, enableGuard)
+  },
+  llm_parser: () => new LLMParser(null),
+  image_processor: () => new ImageProcessor(),
+  audio_processor: () => new AudioProcessor(),
+}
+
+/**
+ * 读取 `perception.routing.*.pipeline` 声明的处理器名（去重、保序）。
+ *
+ * 找不到配置时回退到 DEFAULT_CONFIG 的三条默认管道，保证行为可预期。
+ */
+function _declaredProcessorNames(config: RuntimeConfig): string[] {
+  const names: string[] = []
+  const push = (v: unknown): void => {
+    if (Array.isArray(v)) {
+      for (const n of v) {
+        if (typeof n === 'string' && n && !names.includes(n)) names.push(n)
+      }
+    }
+  }
+  try {
+    const routing = config.get('perception.routing', {}) as Record<string, any>
+    for (const inputType of ['text', 'image', 'audio']) {
+      push(routing?.[inputType]?.pipeline)
+    }
+    // default_processor 也可能在没有 routing 时被 pipeline 兜底取用
+    const fallback = config.get('perception.default_processor', BUILTIN_PERCEPTION_PROCESSOR_NAME)
+    if (typeof fallback === 'string' && fallback && !names.includes(fallback)) {
+      names.push(fallback)
+    }
+  } catch (e) {
+    logger.warning('failed to read perception.routing, falling back to defaults: %s', String(e))
+    names.push(BUILTIN_PERCEPTION_PROCESSOR_NAME, 'llm_parser')
+  }
+  // 配置缺失时的最小兜底：至少保证 text_preprocessor 存在
+  if (names.length === 0) names.push(BUILTIN_PERCEPTION_PROCESSOR_NAME)
+  return names
+}
+
+/**
  * 注册内置感知处理器（受 `perception.builtin_processors.enabled` 门控）。
  *
- * 当前仅注册**纯本地**的 `TextPreprocessor`（无网络 / 无 LLM 调用）。语义型处理器
- * （`LLMParser`，依赖 `LLMAdapter` 与 `perception.deep_parsing.*`）**不在本轮范围**，
- * 其相关配置键保留在 `DECLARED_UNCONSUMED_KEYS` 基线中，待后续单独决策。
+ * T3-1：按 `perception.routing.*.pipeline` 的**声明**逐个注册（此前只注册
+ * `text_preprocessor` 一个，导致 routing 里其余处理器永远 "not found"）。
+ * 逐项 try/catch 隔离 + 不覆盖宿主注册，语义与原实现一致。
  *
  * @returns 实际注册的处理器数量（0 = 开关关闭 / 宿主已注册 / 全部失败）
  */
@@ -70,31 +138,49 @@ export function registerBuiltinPerceptionProcessors(
     return 0
   }
 
-  const name = BUILTIN_PERCEPTION_PROCESSOR_NAME
-  if (registry.getPerception(name) !== undefined) {
-    logger.info("perception '%s' already registered, skip (host registration wins)", name)
-    return 0
+  const declared = _declaredProcessorNames(config)
+  const registered: string[] = []
+  const skipped: string[] = []
+  const unavailable: string[] = []
+
+  for (const name of declared) {
+    // 设计约束 2：不覆盖宿主注册（装配层只"填补缺失"）
+    if (registry.getPerception(name) !== undefined) {
+      skipped.push(`${name}(host)`)
+      continue
+    }
+    const factory = _BUILTIN_FACTORIES[name]
+    if (!factory) {
+      // routing 声明了本次未提供的处理器 → 明确记录，避免静默 "not found" 噪声
+      unavailable.push(name)
+      continue
+    }
+    try {
+      registry.registerPerception(name, factory(config))
+      registered.push(name)
+    } catch (e: any) {
+      logger.error("failed to register perception '%s': %s", name, String(e?.message ?? e))
+      unavailable.push(name)
+    }
   }
 
-  let count = 0
-  try {
-    // `perception.max_length`：文本最大字符数（此前**零消费**，T-23 接线）。
-    const raw = Number(config.get('perception.max_length', 2048))
-    const maxLength = Number.isFinite(raw) && raw > 0 ? raw : 2048
-    // `perception.security.enable_guard`：是否启用注入 / PII 安全检测。
-    // 注：在 `create_agent` 注册时读取一次并固化到处理器实例；运行期改配置不影响
-    // 已注册实例（与 `TextPreprocessor` 的不可变构造语义一致）。
-    const enableGuard = Boolean(config.get('perception.security.enable_guard', true))
-
-    // 'zh' = `TextPreprocessor` 的构造默认值（`perception.*` 无语言配置键）
-    registry.registerPerception(name, new TextPreprocessor('zh', maxLength, null, enableGuard))
-    count += 1
-  } catch (e: any) {
-    logger.error("failed to register perception '%s': %s", name, String(e?.message ?? e))
+  // 显式汇总（替代此前"每轮一条 not found"的隐式噪声）
+  if (skipped.length > 0) {
+    logger.info('perception already registered by host, skipped: %s', skipped.join(', '))
   }
-
-  if (count > 0) {
-    logger.info('builtin perception processors registered: %d', count)
+  if (unavailable.length > 0) {
+    logger.warning(
+      'declared in perception.routing but no builtin implementation available: %s',
+      unavailable.join(', '),
+    )
   }
-  return count
+  logger.info(
+    'builtin perception processors registered: %d (declared=%d)',
+    registered.length,
+    declared.length,
+  )
+  if (registered.length > 0) {
+    logger.info('registered perception processors: %s', registered.join(', '))
+  }
+  return registered.length
 }

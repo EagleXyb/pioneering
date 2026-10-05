@@ -665,9 +665,22 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
 
   // 记忆查询后进入 agent / supervisor / planner
   // v1.2 #6: 组合模式（plan_execute + multi_agent）下 plan_execute 优先
+  //
+  // T0-2 修复：补充 supervisor 目标。修复前 targets 只声明 {agent, planner}，而
+  // routeAfterMemoryQuery 可能返回 'supervisor'（当 mode_router 命中
+  // multi_agent.enabled 规则时；该规则修复前位于首条，见 runtime-config.ts 的
+  // T0-2 配套说明）→ 组合模式下 LangGraph 因目标未注册抛 unknown destination 崩溃。
+  // 补键后即"router 可能返回的每个值都有已注册目标"，与 mode_router 顺序解耦：
+  // 无论宿主如何自定义 mode_router 规则顺序，都不会因缺目标而崩溃。
+  // 无需动态 targets 工厂：buildFromSpec（_resolveEdgeTargets）会自动剔除未启用
+  // 节点的目标，故 plan_execute 单开（supervisor 节点未挂载）时该键被自动过滤，
+  // 拓扑与行为与修复前逐字节一致（零回归）。
   edges.push({
     from: 'memory_query',
-    to: { router: routeAfterMemoryQuery, targets: { agent: 'agent', planner: 'planner' } },
+    to: {
+      router: routeAfterMemoryQuery,
+      targets: { agent: 'agent', planner: 'planner', supervisor: 'supervisor' },
+    },
     when: (p) => p.planExecuteEnabled,
   })
   edges.push({

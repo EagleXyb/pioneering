@@ -110,8 +110,10 @@ export class ScenarioHost {
     const prior = this.registry.getPrompt(template.id)
     this.registry.registerPrompt(template)
     this.track(() => {
+      // T2-1：改用 registry 的强依赖卸载原语（原 `getPromptRegistry().unregister?.()`
+      // 为可选调用，方法缺失时静默失败 → 回滚不彻底）。
       if (prior) this.registry.registerPrompt(prior)
-      else getPromptRegistry().unregister?.(template.id)
+      else this.registry.unregisterPrompt(template.id)
     })
   }
 
@@ -160,6 +162,21 @@ export class ScenarioHost {
     this.track(() => {
       if (prior) this.registry.registerTool(prior)
       else this.registry.unregisterTool(name)
+    })
+  }
+
+  /**
+   * T2-1：注册感知器（同名覆盖，作用域内可回滚）。
+   *
+   * 此前 ScenarioHost 未提供感知器注册入口，而 `registerPerception` 又没有
+   * 卸载原语 —— 该扩展点既无法被场景包使用、也无法被回滚。两侧补齐后契约完整。
+   */
+  registerPerception(name: string, perception: any): void {
+    const prior = this.registry.getPerception(name)
+    this.registry.registerPerception(name, perception)
+    this.track(() => {
+      if (prior) this.registry.registerPerception(name, prior)
+      else this.registry.unregisterPerception(name)
     })
   }
 

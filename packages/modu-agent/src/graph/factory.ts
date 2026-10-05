@@ -647,7 +647,54 @@ export async function create_agent(
   }
 
   const toolNames = configurable['tools'] ?? null
-  const tools = build_langchain_tools(null, toolNames, runtimeConfig)
+  let tools = build_langchain_tools(null, toolNames, runtimeConfig)
+
+  // T2-2（fail-closed）：高风险工具的审批保护此前**依赖运行时 HITL 开关**。
+  // `human_review` 节点仅在 `tools.human_in_loop.enabled=true` 时挂载
+  // （graph.ts 的 `when: p.hitlEnabled`），故 HITL 关闭时 `requiresApproval()`
+  // 只是一句无人执行的声明 —— code_executor 实际裸奔（"弱沙箱"的黑名单可绕行，
+  // 且 macOS 上 rlimit 不生效，见 §7.5）。
+  //
+  // 这里在**装配期**做 fail-closed 裁剪：若某工具无条件要求审批（requiresApproval()
+  // 恒 true）而 HITL 未开启，则将其从绑定集剔除 —— 该能力对本次 agent 实例不可用，
+  // 优于"注册了却随时可能被无审批调用"。
+  // 仅在确实存在此类工具时裁剪；未注册高风险工具的宿主零行为变化。
+  {
+    const hitlEnabled = Boolean(
+      runtimeConfig.get('tools.human_in_loop.enabled', false) ||
+      runtimeConfig.get('perception.clarification.enabled', false),
+    )
+    if (!hitlEnabled && tools.length > 0) {
+      const blocked: string[] = []
+      const kept = tools.filter((t: any) => {
+        try {
+          const name = typeof t?.name === 'string' ? t.name : ''
+          const moduTool = name ? getRegistry().getTool(name) : undefined
+          // 仅当工具在注册表中存在**且**显式声明恒需审批时才裁剪
+          const alwaysNeedsApproval =
+            moduTool != null && typeof moduTool.requiresApproval === 'function'
+              ? moduTool.requiresApproval() === true
+              : false
+          if (alwaysNeedsApproval) {
+            blocked.push(name || '(unnamed)')
+            return false
+          }
+          return true
+        } catch {
+          // 判定异常 → 保守放行（不因检测失败改变工具集，交由既有审批链路处理）
+          return true
+        }
+      })
+      if (blocked.length > 0) {
+        tools = kept
+        logger.error(
+          '[T2-2] 高风险工具因未开启人工审批而不可用（fail-closed）: %s；' +
+          '请开启 tools.human_in_loop.enabled=true，或移除这些工具注册。',
+          blocked.join(', '),
+        )
+      }
+    }
+  }
 
   // 先绑定工具再应用重试，避免 RunnableRetry 不支持 bind_tools
   let boundLlm = tools.length > 0 ? llm.bindTools(tools) : llm
@@ -896,10 +943,28 @@ export async function create_agent(
       // 路由模型此前两者皆缺（网络异常不重试、metrics 开启时不计量），此处补齐，
       // 使路由路径与默认路径的包装语义一致。
       const routedReadyCache = new Map<string, any>()
+      // T3-2：ComplexityTier → RouteRuleCondition.estimated_complexity 的映射。
+      // router 的 `_matchCondition` 要求 'low' | 'medium' | 'high'，而
+      // ComplexityAssessment.tier 是 'tier_1' | 'tier_2' | 'tier_3'，此前**未做映射**
+      // 且装配层根本不传该字段 → `estimated_complexity` / `cost_budget_max` 两类
+      // 规则永不命中，实际只有 `task_type` 生效。
+      const TIER_TO_COMPLEXITY: Record<string, 'low' | 'medium' | 'high'> = {
+        tier_1: 'low',
+        tier_2: 'medium',
+        tier_3: 'high',
+      }
       llmRouteResolver = (state: any) => {
         try {
+          const tier = (state?.complexity_assessment as any)?.tier
+          const estimatedComplexity =
+            typeof tier === 'string' ? TIER_TO_COMPLEXITY[tier] : undefined
           const routed = llmRouter.route({
             taskType: (state?.task_type ?? undefined) as string | undefined,
+            // T3-2：透传复杂度，使 complexity 维度规则可命中
+            estimatedComplexity,
+            // 注：`costBudget` 暂不传 —— cost-tracker.ts 当前只有开关
+            // （is_cost_tracking_enabled），无累计成本数据源；不编造来源。
+            // 待 cost 统计落地后在此接入即可（router 侧已支持该条件）。
             sessionId: state?.session_id ?? undefined,
           })
           const lc = unwrap_modu_llm(routed)

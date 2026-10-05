@@ -35,6 +35,9 @@ export class MetricsRegistry {
   private _evolution_count: any = null
   private _consensus_failures: any = null
   private _active_sessions: any = null
+  // T3-5：自适应终止建议（advisory）计数与按 action 维度分布
+  private _termination_advice_total: any = null
+  private _termination_advice_by_action: any = null
   // 对应文档 §2.4 建议3：带维度的指标（新增，不修改原有指标）
   private _tool_calls: any = null
   private _llm_token_usage: any = null
@@ -89,6 +92,18 @@ export class MetricsRegistry {
       this._active_sessions = new Gauge({
         name: 'modu_active_sessions',
         help: 'Number of active sessions',
+        registers: [this._registry],
+      })
+      // T3-5：第二阶段准入依据（false_positive_rate 需跨请求聚合）
+      this._termination_advice_total = new Counter({
+        name: 'modu_termination_advice_total',
+        help: 'Total number of adaptive-termination advices (advisory stage, not routing yet)',
+        registers: [this._registry],
+      })
+      this._termination_advice_by_action = new Counter({
+        name: 'modu_termination_advice_by_action_total',
+        help: 'Adaptive-termination advice count grouped by advised action',
+        labelNames: ['action'],
         registers: [this._registry],
       })
 
@@ -166,6 +181,29 @@ export class MetricsRegistry {
       this._consensus_failures.inc()
     } catch (e) {
       logger.debug('record_consensus_failure failed: %s', String(e))
+    }
+  }
+
+  /**
+   * T3-5：记录一次自适应终止**建议**（advisory，第一阶段）。
+   *
+   * 用途：第二阶段（让 `termination_advice` 真正参与 `routeAfterAgent` 路由）的
+   * 准入门槛是 `false_positive_rate < 5%`，而 advice 目前只写进
+   * `state.termination_advice`（随 checkpoint 持久化），**无法跨请求聚合统计**。
+   * 本指标提供可聚合的计数，是第二阶段决策所必需的数据来源。
+   *
+   * @param action 建议动作（'continue' / 'terminate' / 'insufficient_information' 等，
+   *                取自 `termination-engine` 的 decision.action）
+   */
+  record_termination_advice(action: string = 'unknown'): void {
+    if (!this.enabled) return
+    try {
+      this._termination_advice_total.inc()
+      if (action) {
+        this._termination_advice_by_action.labels({ action }).inc()
+      }
+    } catch (e) {
+      logger.debug('record_termination_advice failed: %s', String(e))
     }
   }
 

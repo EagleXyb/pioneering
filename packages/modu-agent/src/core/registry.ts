@@ -410,6 +410,26 @@ export class ComponentRegistry {
     return getPromptRegistry().get(id)
   }
 
+  /**
+   * T2-1：移除已注册 Prompt 模板；不存在返回 false。
+   *
+   * 此前 `registerPrompt` 无对应卸载原语，场景包只能借道
+   * `getPromptRegistry().unregister?.()`（可选调用 → 静默失败），
+   * 破坏"扩展点均可注册可反注册"契约。此处补齐为强依赖契约方法。
+   */
+  unregisterPrompt(id: string): boolean {
+    // `PromptRegistry.unregister` 在接口上为可选成员（宿主可注入只读实现），
+    // 故此处防御性收窄；缺失时视为"无可卸载项"返回 false，不抛错。
+    const unregister = getPromptRegistry().unregister
+    if (typeof unregister !== 'function') {
+      logger.warning('unregisterPrompt: active PromptRegistry has no unregister, skipped (%s)', id)
+      return false
+    }
+    const removed = unregister.call(getPromptRegistry(), id)
+    if (removed) logger.info('Unregistered prompt: %s', id)
+    return removed
+  }
+
   /** 列出已注册模板（可按 taskType 过滤）。 */
   listPrompts(taskType?: string): PromptTemplate[] {
     return getPromptRegistry().list(taskType)
@@ -604,6 +624,18 @@ export class ComponentRegistry {
   unregisterTool(name: string): boolean {
     const existed = this._tools.delete(name)
     if (existed) logger.info('Unregistered tool: %s', name)
+    return existed
+  }
+
+  /**
+   * T2-1：移除已注册感知器；不存在返回 false。
+   *
+   * 此前 `registerPerception` 无对应卸载原语，场景包回滚时感知器会残留，
+   * 破坏"扩展点均可注册可反注册"契约。
+   */
+  unregisterPerception(name: string): boolean {
+    const existed = this._perceptions.delete(name)
+    if (existed) logger.info('Unregistered perception: %s', name)
     return existed
   }
 

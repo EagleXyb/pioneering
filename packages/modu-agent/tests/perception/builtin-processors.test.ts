@@ -76,12 +76,23 @@ describe('P3/T-23 内置感知处理器注册', () => {
   it('开启后注册 TextPreprocessor（名字与 routing.pipeline / default_processor 对齐）', () => {
     const reg = getRegistry()
     const n = registerBuiltinPerceptionProcessors(reg, enabledConfig())
-    expect(n).toBe(1)
+    // T3-1：改为按 `perception.routing.*.pipeline` 声明注册，注册数量随声明变化，
+    // 故不再硬编码具体数值（原断言 `toBe(1)` 锁定的是"只注册 text_preprocessor"
+    // 这一修复前行为）；改为断言"至少注册了 routing 声明的全部处理器"。
+    const routing = new RuntimeConfig().get('perception.routing', {}) as any
+    const declared = new Set<string>([
+      ...(routing.text.pipeline as string[]),
+      ...(routing.image.pipeline as string[]),
+      ...(routing.audio.pipeline as string[]),
+    ])
+    expect(n).toBe(declared.size)
+    for (const name of declared) {
+      expect(reg.getPerception(name), `routing 声明的 ${name} 应已注册`).toBeTruthy()
+    }
 
     const p = reg.getPerception(BUILTIN_PERCEPTION_PROCESSOR_NAME)
     expect(p).toBeInstanceOf(TextPreprocessor)
     // 名字与路由配置一致（否则管线仍会 skip）
-    const routing = new RuntimeConfig().get('perception.routing', {}) as any
     expect(routing.text.pipeline).toContain(BUILTIN_PERCEPTION_PROCESSOR_NAME)
     expect(new RuntimeConfig().get('perception.default_processor', null)).toBe(
       BUILTIN_PERCEPTION_PROCESSOR_NAME,
@@ -90,7 +101,9 @@ describe('P3/T-23 内置感知处理器注册', () => {
 
   it('幂等：重复调用不重复注册', () => {
     const reg = getRegistry()
-    expect(registerBuiltinPerceptionProcessors(reg, enabledConfig())).toBe(1)
+    const first = registerBuiltinPerceptionProcessors(reg, enabledConfig())
+    expect(first).toBeGreaterThan(0)
+    // 幂等的真正判据：第二次调用不再注册任何处理器
     expect(registerBuiltinPerceptionProcessors(reg, enabledConfig())).toBe(0)
   })
 
@@ -99,7 +112,10 @@ describe('P3/T-23 内置感知处理器注册', () => {
     const hostProcessor = new TextPreprocessor('en', 4096, null, false)
     reg.registerPerception(BUILTIN_PERCEPTION_PROCESSOR_NAME, hostProcessor)
 
-    expect(registerBuiltinPerceptionProcessors(reg, enabledConfig())).toBe(0)
+    // T3-1：宿主只占用 text_precessor，其余 routing 处理器仍会补齐，
+    // 故返回值不再是 0（原断言锁定了"仅一个处理器"这一修复前行为）。
+    registerBuiltinPerceptionProcessors(reg, enabledConfig())
+    // 关键断言：宿主注册未被覆盖
     expect(reg.getPerception(BUILTIN_PERCEPTION_PROCESSOR_NAME)).toBe(hostProcessor)
   })
 

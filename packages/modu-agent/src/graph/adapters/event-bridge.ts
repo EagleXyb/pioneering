@@ -207,7 +207,13 @@ export class LangGraphEventBridge {
       }
 
       // 发送到 EvolutionSignalCollector
-      if (this._evolutionCollector) {
+      //
+      // T1-2 去重：EventBus 订阅（EvolutionSignalCollector.attachEventBus）已覆盖
+      // 上面 publish 的同一事件。若此处再直接投递，同一 event 会被计数两次
+      // （counter 双增、环形缓冲占用翻倍）。
+      // 故仅在 collector **未订阅总线**时保留直投——该分支兼容宿主注入独立
+      // collector（未 attach）的旧用法，保证既有行为不丢。
+      if (this._evolutionCollector && this._evolutionCollector.attached !== true) {
         try {
           this._evolutionCollector.onAgentEvent(agentEvent)
         } catch (e: any) {

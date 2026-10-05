@@ -268,7 +268,8 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       ],
       conditionalEdges: [
         { from: 'perception', targets: ['memory_query', 'finalize_response'] },
-        { from: 'memory_query', targets: ['agent', 'planner'] },
+        // T0-2：组合模式下 supervisor 已挂载，故 memory_query 入口边注册 supervisor 目标
+        { from: 'memory_query', targets: ['agent', 'planner', 'supervisor'] },
         { from: 'planner', targets: ['step_dispatch', 'finalize_response'] },
         {
           from: 'step_dispatch',

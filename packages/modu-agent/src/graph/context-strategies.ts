@@ -1,4 +1,8 @@
-// P2（T-15）: 内置上下文策略（`agentNode` 迁移前 7 段内联注入的声明式等价物）。
+// P2（T-15）: 内置上下文策略（`agentNode` 迁移前 6 段内联注入的声明式等价物）。
+//
+// T4-1 修正：本文件首行原写"7 段"，但下方迁移对照表与实际 fragments 数组均为
+// **6 段**（文件内自相矛盾）。现已核对 `DEFAULT_AGENT_CONTEXT_STRATEGY.fragments`
+// 的实际长度，注释与实现对齐为 6。
 //
 // 迁移对照（`graph/nodes.ts` agentNode，迁移前行号）：
 //   :1033-1044 感知上下文          → ctx.perception      （anchor, offset 0, priority 10）

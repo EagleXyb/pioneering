@@ -229,6 +229,33 @@ function _isVirtualEndpoint(name: string): boolean {
   return name === 'START' || name === '__start__' || name === 'END' || name === '__end__'
 }
 
+/**
+ * 解析并过滤条件边目标（`buildFromSpec` 与 `describeGraphSpec` **共用**）。
+ *
+ * 口径说明（修复前二者不一致，导致 golden 快照失真）：
+ *   - `targets` 为工厂时，按"已启用节点集合"求值；
+ *   - **剔除指向未启用节点的条目**（等价改造前 `...(clarifyNode ? {...} : {})` 的写法），
+ *     保留虚拟端点 `__end__` / `END`；
+ *   - 数组形态原样返回（LangGraph 允许 `string[]`）。
+ *
+ * 抽成共用函数是为杜绝"编译期过滤、快照期不过滤"再次漂移：快照必须反映
+ * `addConditionalEdges` 的真实入参，否则快照对比失去意义。
+ */
+function _resolveEdgeTargets(
+  targets: EdgeTargets,
+  has: NodePredicate,
+): Record<string, string> | string[] {
+  const resolved = typeof targets === 'function' ? targets(has) : targets
+  if (Array.isArray(resolved)) return resolved
+  const filtered: Record<string, string> = {}
+  for (const [key, value] of Object.entries(resolved)) {
+    if (value === '__end__' || value === 'END' || has(value)) {
+      filtered[key] = value
+    }
+  }
+  return filtered
+}
+
 /** 读取宿主注册的扩展声明（registry 未实现该扩展或抛错时安全返回空列表）。 */
 function _listRegistered<T>(method: string): T[] {
   if (!deps_extensionEnabled()) return []
@@ -385,22 +412,8 @@ export function buildFromSpec(spec: GraphSpec, deps: ModuGraphDeps): CompiledSta
       continue
     }
     const { router, targets } = edge.to
-    let resolvedTargets: Record<string, string> | string[]
-    if (typeof targets === 'function') {
-      resolvedTargets = targets(has)
-    } else {
-      resolvedTargets = targets
-    }
-    // 条件边目标过滤：剔除未启用节点（等价改造前的 `...(clarifyNode ? {...} : {})` 写法）
-    if (!Array.isArray(resolvedTargets)) {
-      const filtered: Record<string, string> = {}
-      for (const [key, value] of Object.entries(resolvedTargets)) {
-        if (value === '__end__' || value === 'END' || has(value)) {
-          filtered[key] = value
-        }
-      }
-      resolvedTargets = filtered
-    }
+    // 条件边目标解析 + 过滤（与 describeGraphSpec 共用 _resolveEdgeTargets）
+    const resolvedTargets = _resolveEdgeTargets(targets, has)
     graph.addConditionalEdges(from, router, resolvedTargets as any)
     conditionalEdgeCount += 1
   }
@@ -529,8 +542,8 @@ export function describeGraphSpec(
       staticEdges.push(`${edge.from}→${edge.to}`)
       continue
     }
-    const raw = typeof edge.to.targets === 'function' ? edge.to.targets(has) : edge.to.targets
-    const targets = Array.isArray(raw) ? [...raw] : Object.values(raw)
+    const resolved = _resolveEdgeTargets(edge.to.targets, has)
+    const targets = Array.isArray(resolved) ? [...resolved] : Object.values(resolved)
     conditionalEdges.push({ from: edge.from, targets })
   }
   return { nodes, staticEdges, conditionalEdges }

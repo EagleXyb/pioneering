@@ -75,6 +75,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     checkpointer_max_threads: 100,
     store_type: 'chroma',
     chroma_persist_path: null,
+    // T3-6：单次写入长期记忆的最大字符数（0 = 不截断）。
+    // 增量写入后单条不再累积历史，但需防止单轮超长内容（大段工具输出）灌入。
+    max_persist_chars: 8000,
   },
   orchestration: {
     engine: 'langgraph',
@@ -95,10 +98,17 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     // 路由分叉配置化（对应文档 §2.3 建议4）
     // 按顺序匹配，首个命中规则胜出；无规则命中时按内置默认优先级回退
     // 运行时新增模式只需追加规则，无需改源码
+    //
+    // T0-2 配套：plan_execute 规则前置于 multi_agent。
+    // 原顺序（multi_agent 在首）使组合模式下 routeAfterMemoryQuery 恒返回
+    // 'supervisor'，与 graph.ts「plan_execute 优先入口」的声明相反，且会让
+    // plan_execute 在组合模式下被完全绕过（规划节点永不进入）。
+    // 前置后：单开任一开关的路由结果不变；双开时按「先 plan 入口、再按
+    // task_type=delegation 步骤委托 supervisor」执行（dispatcher.ts:239-251）。
     mode_router: [
-      { when: { config_key: 'orchestration.multi_agent.enabled', config_value: true }, route: 'supervisor' },
       { when: { configurable_key: 'plan_execute_enabled', configurable_value: true }, route: 'planner' },
       { when: { config_key: 'plan_execute.enabled', config_value: true }, route: 'planner' },
+      { when: { config_key: 'orchestration.multi_agent.enabled', config_value: true }, route: 'supervisor' },
     ],
   },
   // P4 Plan-and-Execute 模式（默认关闭，零侵入；与 multi_agent 互斥，multi_agent 优先）
@@ -300,6 +310,19 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     evolution_threshold: 0.6,
     enable_evolution: true,
     min_sample_size: 10,
+    // T1-2：组件层进化（热替换 + 自动回滚）开关。
+    // 默认 **false**：组件替换影响运行中状态，风险高于参数层（config_overrides）。
+    // 消费点：evolution/evolution-orchestrator.ts（仅在开启时实例化
+    // ComponentSwapStrategy / RollbackMechanism / VersionedComponentStore 并参与
+    // evaluateAndEvolve）。关闭时与本项引入前行为逐字节一致（零回归）。
+    enable_component_swap: false,
+    // 候选版本平均分需超过当前版本多少才触发替换（对应 ComponentSwapStrategy 阈值）。
+    component_swap_threshold: 0.05,
+    // 组件质量分低于该值触发回滚到最近一个达标版本（对应 RollbackMechanism 阈值）。
+    auto_rollback_threshold: 0.7,
+    enable_auto_rollback: false,
+    // 版本快照存储目录（VersionedComponentStore）。
+    version_store_path: 'evolution/versions',
     quality_monitor_mode: 'rule',
     quality_monitor_llm_timeout: 10.0,
     quality_monitor_llm_provider: null,

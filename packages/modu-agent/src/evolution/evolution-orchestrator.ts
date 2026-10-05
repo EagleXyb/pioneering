@@ -6,6 +6,11 @@ import { EvolutionSignalCollector } from '../feedback/evolution-signal.js'
 import { FeedbackLoop } from '../feedback/loop-controller.js'
 import { QualityMonitor } from '../feedback/quality-monitor.js'
 import { ParameterTuneStrategy } from './parameter-tune.js'
+// T1-2：组件层进化（此前三者仅被 index.ts 导出与单测引用，运行时装配从未实例化）
+import { ComponentSwapStrategy } from './component-swap.js'
+import { RollbackMechanism } from './rollback-mechanism.js'
+import { VersionedComponentStore } from './versioned-store.js'
+import { getRegistry } from '../core/registry.js'
 // P0（T-02）: 指标埋点（进化触发计数）
 import { get_metrics_registry } from '../observability/metrics.js'
 
@@ -36,6 +41,10 @@ export class EvolutionOrchestrator {
   private _evolutionCollector: EvolutionSignalCollector
   private _feedbackLoop: FeedbackLoop
   private _parameterTune: ParameterTuneStrategy | null
+  // T1-2：组件层进化三件套。默认 null（开关关闭 → 与引入前行为逐字节一致）。
+  private _componentSwap: ComponentSwapStrategy | null = null
+  private _rollback: RollbackMechanism | null = null
+  private _versionStore: VersionedComponentStore | null = null
 
   /**
    * 初始化进化编排器。
@@ -57,6 +66,21 @@ export class EvolutionOrchestrator {
     this._evolutionCollector = evolutionCollector ?? new EvolutionSignalCollector(
       config.get('perception.evolution_report_interval', 100),
     )
+
+    // T1-1 修复（接线）：此前 collector 仅由 event-bridge 主动投递，而
+    // consensus 失败、guardrail 命中等信号是**直接 publish 到 EventBus** 的
+    // （consensus.ts / perception/security/audit.ts），从不经过 event-bridge
+    // → 事件"发而不收"，进化闭环实际断开。
+    // 此处订阅全局总线，使非流式路径的事件同样进入信号收集。
+    // 失败不阻断构造（attachEventBus 内部已兜底为空操作）。
+    try {
+      this._evolutionCollector.attachEventBus()
+    } catch (e) {
+      logger.warning(
+        'EvolutionSignalCollector.attachEventBus failed (进化信号将仅来自 event-bridge): %s',
+        String(e),
+      )
+    }
 
     // P2-7: 按 config 构造 QualityMonitor（支持 LLM-as-Judge）
     if (feedbackLoop === null || feedbackLoop === undefined) {
@@ -83,6 +107,68 @@ export class EvolutionOrchestrator {
         logger.warning('ParameterTuneStrategy init failed: %s', String(e))
         this._parameterTune = null
       }
+    }
+
+    // T1-2 修复（接线）：组件层进化三件套此前**从未被实例化** ——
+    // ComponentSwapStrategy 只做决策不执行、RollbackMechanism /
+    // VersionedComponentStore 连构造都没有调用方（仅 evolution/index.ts 导出
+    // 与单测引用），导致"组件层进化"完全不存在。
+    // 按仓库既有 feature-flag 纪律**默认关闭**：关闭时下方全部为 null，
+    // evaluateAndEvolve 跳过组件层，行为与引入前完全一致。
+    this._initComponentLayer(config)
+  }
+
+  /**
+   * T1-2：按配置实例化组件层进化（热替换 + 版本回滚）。
+   *
+   * 分两个独立开关：
+   *   - `feedback.enable_component_swap`：记录质量分并在满足阈值时执行替换
+   *   - `feedback.enable_auto_rollback`：质量分低于阈值时回滚到最近达标版本
+   * 各自失败只降级为 null（该子能力不可用），不影响另一子能力与主闭环。
+   */
+  private _initComponentLayer(config: RuntimeConfig): void {
+    const swapEnabled = Boolean(config.get('feedback.enable_component_swap', false))
+    const rollbackEnabled = Boolean(config.get('feedback.enable_auto_rollback', false))
+    if (!swapEnabled && !rollbackEnabled) {
+      return
+    }
+    try {
+      const registry = getRegistry()
+      if (rollbackEnabled) {
+        try {
+          this._versionStore = new VersionedComponentStore(
+            String(config.get('feedback.version_store_path', 'evolution/versions')),
+          )
+          this._rollback = new RollbackMechanism(
+            this._versionStore,
+            registry,
+            Number(config.get('feedback.auto_rollback_threshold', 0.7)),
+          )
+        } catch (e) {
+          logger.warning('RollbackMechanism init failed (component rollback disabled): %s', String(e))
+          this._rollback = null
+          this._versionStore = null
+        }
+      }
+      if (swapEnabled) {
+        try {
+          this._componentSwap = new ComponentSwapStrategy(
+            registry,
+            this._evolutionCollector,
+            Number(config.get('feedback.component_swap_threshold', 0.05)),
+          )
+        } catch (e) {
+          logger.warning('ComponentSwapStrategy init failed (component swap disabled): %s', String(e))
+          this._componentSwap = null
+        }
+      }
+      logger.info(
+        'Component layer evolution wired: swap=%s rollback=%s',
+        this._componentSwap !== null,
+        this._rollback !== null,
+      )
+    } catch (e) {
+      logger.warning('Component layer init failed, parameter layer unaffected: %s', String(e))
     }
   }
 
@@ -206,6 +292,11 @@ export class EvolutionOrchestrator {
           } catch (e) {
             logger.debug('record_evolution failed: %s', String(e))
           }
+          // T1-2：组件层进化（开关关闭时 `_componentLayerStep` 直接返回 null）
+          const componentAction = this._componentLayerStep(evaluation, context)
+          if (componentAction !== null) {
+            result['component_action'] = componentAction
+          }
         }
       } catch (e) {
         logger.error('Evolution adjustment failed: %s', String(e))
@@ -216,6 +307,105 @@ export class EvolutionOrchestrator {
     return result
   }
 
+  /**
+   * T1-2：组件层进化的一步（记录质量分 → 尝试替换/回滚）。
+   *
+   * 触发条件：两个开关均默认关闭，故宿主需显式开启
+   * `feedback.enable_component_swap` / `feedback.enable_auto_rollback`。
+   *
+   * 保守契约（重要）：**不猜测宿主意图**。宿主需在 `context` 中显式声明
+   * 可参与组件层进化的组件：
+   *   - `context.evolution_component`     = { name, category, current_version, candidate_version }
+   *     或
+   *   - `context.evolution_candidates`    = [{ name, category, current_version, candidate_version }]
+   * 未声明时本步返回 null（不做任何猜测性替换），避免替换掉不该被替换的运行中组件。
+   *
+   * @returns 组件层动作结果；未启用/无声明/无动作时返回 null
+   */
+  private _componentLayerStep(
+    evaluation: Record<string, any>,
+    context: Record<string, any>,
+  ): Record<string, any> | null {
+    if (this._componentSwap === null && this._rollback === null) {
+      return null
+    }
+    // 显式声明的候选组件（保守：仅宿主明确给出时才动手）
+    const rawCandidates = context?.['evolution_candidates']
+    const single = context?.['evolution_component']
+    const candidates: Array<Record<string, any>> = Array.isArray(rawCandidates)
+      ? rawCandidates
+      : (single ? [single] : [])
+    if (candidates.length === 0) {
+      return null
+    }
+
+    const qualityScore = Number(evaluation?.['quality_score'])
+    if (!Number.isFinite(qualityScore)) {
+      logger.debug('component layer skipped: quality_score not finite')
+      return null
+    }
+
+    const actions: Array<Record<string, any>> = []
+    for (const cand of candidates) {
+      const name = String(cand?.['name'] ?? '')
+      const category = String(cand?.['category'] ?? '')
+      const currentVersion = String(cand?.['current_version'] ?? '')
+      const candidateVersion = String(cand?.['candidate_version'] ?? '')
+      if (!name || !category || !currentVersion || !candidateVersion) {
+        logger.warning('component layer skipped: incomplete candidate %o', cand)
+        continue
+      }
+
+      // 1) 记录当前版本质量分（两条路径共用）
+      if (this._componentSwap !== null) {
+        try {
+          this._componentSwap.recordScore(name, currentVersion, qualityScore)
+          this._componentSwap.recordScore(name, candidateVersion, qualityScore)
+        } catch (e) {
+          logger.warning('recordScore failed for %s: %s', name, String(e))
+        }
+      }
+
+      // 2) 替换：仅当宿主提供了候选实例时执行
+      if (this._componentSwap !== null && cand['candidate_component'] != null) {
+        try {
+          const swapped = this._componentSwap.applySwap(
+            name,
+            category,
+            {
+              current: currentVersion,
+              candidate: candidateVersion,
+              components: {
+                current: null,
+                candidate: cand['candidate_component'],
+              },
+            },
+          )
+          actions.push({ type: 'swap', component: name, applied: swapped })
+        } catch (e) {
+          logger.error('component swap failed for %s: %s', name, String(e))
+          actions.push({ type: 'swap', component: name, applied: false, error: String(e) })
+        }
+      }
+
+      // 3) 回滚：质量低于阈值时回退到最近达标版本
+      if (this._rollback !== null) {
+        try {
+          const rolledBack = this._rollback.recordAndCheck(name, currentVersion, qualityScore)
+          actions.push({ type: 'rollback', component: name, applied: rolledBack })
+        } catch (e) {
+          logger.error('component rollback failed for %s: %s', name, String(e))
+          actions.push({ type: 'rollback', component: name, applied: false, error: String(e) })
+        }
+      }
+    }
+
+    if (actions.length === 0) {
+      return null
+    }
+    return { quality_score: qualityScore, actions }
+  }
+
   /** 获取累积指标统计。 */
   getCumulativeMetrics(): Record<string, number> {
     return this._feedbackLoop.getCumulativeMetrics()
@@ -224,5 +414,21 @@ export class EvolutionOrchestrator {
   /** 重置累积数据。 */
   reset(): void {
     this._feedbackLoop.reset()
+  }
+
+  /**
+   * T1-1：释放 EventBus 订阅。
+   *
+   * EventBus 是**全局单例**且按 domain 做并集分发，collector 订阅后即长驻；
+   * 若 orchestrator 被反复重建（create_agent 多次 / 测试场景）而不释放，
+   * 旧 collector 会持续接收事件 → 信号重复计数 + 内存泄漏。
+   * 宿主在销毁 agent 实例时应调用本方法。
+   */
+  dispose(): void {
+    try {
+      this._evolutionCollector.detachEventBus()
+    } catch (e) {
+      logger.debug('dispose: detachEventBus failed: %s', String(e))
+    }
   }
 }

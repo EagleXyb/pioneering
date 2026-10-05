@@ -86,6 +86,8 @@ export interface ModuAgentState {
   memory_update_status?: string
   memory_update_key?: string
   memory_update_error?: string
+  /** T3-6：已持久化的 messages 长度（增量写入游标；避免每轮重写全量 history） */
+  memory_persisted_count?: number
 
   // 反馈评估与进化（P0-1: feedback/evolution 闭环）
   evaluation?: Record<string, any> | null
@@ -249,6 +251,10 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   memory_update_status: Annotation<string>(_lw(() => '')),
   memory_update_key: Annotation<string>(_lw(() => '')),
   memory_update_error: Annotation<string>(_lw(() => '')),
+  // T3-6：已持久化到长期记忆的 messages 长度（memory_update 节点自增）。
+  // 用于**增量写入**：修复前每轮都把整段 history 原文重写一遍（key 为秒级时间戳），
+  // 造成存储平方级增长、recall top5 大量冗余重叠。
+  memory_persisted_count: Annotation<number>(_lw(() => 0)),
 
   // 反馈评估与进化
   evaluation: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
@@ -463,6 +469,8 @@ export function makeInitialState(
     memory_update_status: '',
     memory_update_key: '',
     memory_update_error: '',
+    // T3-6：增量写入游标初始值
+    memory_persisted_count: 0,
     evaluation: null,
     should_evolve: false,
     evolution_action: null,

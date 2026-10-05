@@ -4,6 +4,14 @@
 import type { ComponentRegistry } from '../core/registry.js'
 import type { EvolutionSignalCollector } from '../feedback/evolution-signal.js'
 
+// T1-2：applySwap 需要日志（此前本文件无 logger 定义，决策路径完全静默）
+const logger = {
+  info: (msg: string, ...args: any[]) => console.info(`[component-swap] ${msg}`, ...args),
+  warning: (msg: string, ...args: any[]) => console.warn(`[component-swap] ${msg}`, ...args),
+  error: (msg: string, ...args: any[]) => console.error(`[component-swap] ${msg}`, ...args),
+  debug: (msg: string, ...args: any[]) => console.debug(`[component-swap] ${msg}`, ...args),
+}
+
 /**
  * 基于质量对比的组件热替换策略。
  *
@@ -83,5 +91,63 @@ export class ComponentSwapStrategy {
     }
 
     return candidateAvg > currentAvg + effectiveThreshold
+  }
+
+  /**
+   * T1-2：**执行**组件热替换（`shouldSwap` 此前只做决策、从不落地）。
+   *
+   * 原设计缺口：`shouldSwap` 纯计算，真正写入注册表的 `registry.swapComponent`
+   * 全仓无调用方 → 组件层"进化"实际从未发生。本方法补齐执行侧。
+   *
+   * @param componentName 组件名（注册表中的键）
+   * @param category      注册表分类（`swapComponent` 的 category 参数，见
+   *                      `registry.ts` 的 11 类映射：tool/perception/memory/... ）
+   * @param versions      形如 `{ current, candidate, components: { current, candidate } }`：
+   *                      `components` 给出两个版本对应的**组件实例**，用于写入注册表
+   * @returns 是否发生了替换
+   */
+  applySwap(
+    componentName: string,
+    category: string,
+    versions: {
+      current: string
+      candidate: string
+      components: { current: any; candidate: any }
+    },
+    threshold?: number | null,
+  ): boolean {
+    if (!this.shouldSwap(componentName, versions.current, versions.candidate, threshold)) {
+      return false
+    }
+    const candidate = versions.components?.candidate
+    if (candidate === undefined || candidate === null) {
+      logger.error(
+        'applySwap aborted: candidate component instance missing for %s/%s',
+        category,
+        componentName,
+      )
+      return false
+    }
+    const success = this._registry.swapComponent(category, componentName, candidate)
+    if (success) {
+      logger.info(
+        'Applied component swap: %s/%s %s -> %s',
+        category,
+        componentName,
+        versions.current,
+        versions.candidate,
+      )
+    }
+    return success
+  }
+
+  /**
+   * T1-2：暴露受保护的注册表（供编排层在**记录分数前**抓取当前版本实例）。
+   *
+   * 此前 `_registry` 仅在构造时注入却从不使用；组件替换需要"当前实例"才能
+   * 构造完整快照，故提供只读访问器而非改动既有可见性。
+   */
+  get registry(): ComponentRegistry {
+    return this._registry
   }
 }
