@@ -27,13 +27,10 @@ function getSystemTheme(): ResolvedTheme {
 }
 
 /**
- * 将实际生效的主题同步到 documentElement。
- * 1) 我们自己的设计 Token：system 模式移除 data-theme，交给 tokens.css 的
- *    `@media (prefers-color-scheme: dark)` 媒体查询接管；显式模式写入 data-theme。
- * 2) TDesign 组件库（ChatSender / ChatMessage / Button / Select / Radio 等）的暗色
- *    并非由 data-theme 驱动，而是识别 html 上的 `theme-mode="dark"` 属性或
- *    `t-theme-dark` 类。必须显式给出 resolved 结果（含 system 跟随系统的实际情况），
- *    否则聊天输入框、消息气泡等 TDesign 内部组件永远不会变暗。
+ * 将主题同步到 documentElement（阶段 5 起全站唯一机制 = data-theme）：
+ * - system：移除 data-theme，tokens.css 的手写变量与 tailwind.css 的 shadcn
+ *   令牌都通过 `@media (prefers-color-scheme: dark)` + :not() 兜底跟随系统
+ * - 显式 light/dark：写入 data-theme
  */
 function syncDomAttr(resolved: ResolvedTheme, mode: ThemeMode) {
   const root = document.documentElement;
@@ -41,14 +38,6 @@ function syncDomAttr(resolved: ResolvedTheme, mode: ThemeMode) {
     root.removeAttribute('data-theme');
   } else {
     root.setAttribute('data-theme', resolved);
-  }
-
-  if (resolved === 'dark') {
-    root.setAttribute('theme-mode', 'dark');
-    root.classList.add('t-theme-dark');
-  } else {
-    root.removeAttribute('theme-mode');
-    root.classList.remove('t-theme-dark');
   }
 }
 

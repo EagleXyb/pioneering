@@ -1,6 +1,9 @@
+/**
+ * 聊天消息列表（阶段 4.4）
+ * 自动滚动/顶部历史分页逻辑零改动；TDesign ChatMessage 等待动画换为自绘三点。
+ */
 import { useRef, useEffect } from 'react';
-import type { ChatStatus } from '../../../types/tdesign';
-import { ChatMessage } from '@tdesign-react/chat';
+import type { ChatStatus } from '../../../types/chat';
 import type { ChatMessageData } from '../../../api/converter';
 import { ChatMessageItem } from './ChatMessageItem';
 
@@ -14,6 +17,18 @@ interface Props {
   loadingMoreHistory?: boolean;
   /** 加载更早历史消息的回调 */
   onLoadMoreHistory?: () => void;
+}
+
+function TypingDots() {
+  return (
+    <div className="chat-msg-row chat-msg-row--ai">
+      <div className="chat-typing" aria-label="正在输入">
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+  );
 }
 
 export function ChatMessageList({
@@ -33,14 +48,16 @@ export function ChatMessageList({
     const el = bottomRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { isNearBottomRef.current = entry.isIntersecting; },
+      ([entry]) => {
+        isNearBottomRef.current = entry.isIntersecting;
+      },
       { threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  // 顶部哨兵：当用户滚动到顶部时加载更早的历史消息
+  // 顶部哨兵：滚动到顶部时加载更早消息
   useEffect(() => {
     if (!hasMoreHistory || loadingMoreHistory || !onLoadMoreHistory) return;
     const el = topSentinelRef.current;
@@ -57,19 +74,29 @@ export function ChatMessageList({
     return () => observer.disconnect();
   }, [hasMoreHistory, loadingMoreHistory, onLoadMoreHistory]);
 
-  // 计算最后一条消息的文本总长度，作为流式内容增长的依赖项。
-  // 仅依赖 messages.length 无法捕获流式增量；依赖 messages 引用则过于频繁。
-  const lastContentLen = messages.length > 0
-    ? (messages[messages.length - 1].content?.reduce(
-        (sum: number, c: any) => sum + (typeof c.data === 'string' ? c.data.length : 0), 0,
-      ) ?? 0)
-    : 0;
+  // 最后一条消息的文本长度（含 reasoning），作为流式增长的自动滚动依赖
+  const lastContentLen =
+    messages.length > 0
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((messages[messages.length - 1].content as any[] | undefined)?.reduce(
+          (sum: number, c: any) => {
+            if (typeof c?.data === 'string') return sum + c.data.length;
+            if (Array.isArray(c?.data)) {
+              return (
+                sum +
+                c.data.reduce(
+                  (n: number, d: { data?: string }) =>
+                    n + (typeof d.data === 'string' ? d.data.length : 0),
+                  0,
+                )
+              );
+            }
+            return sum;
+          },
+          0,
+        ) ?? 0)
+      : 0;
 
-  // 仅在以下情况自动滚动到底部：
-  //   1. 新消息加入（messages.length 变化）
-  //   2. 流式内容增长（lastContentLen 变化）
-  //   3. 状态切换（如 pending → streaming）
-  // 且仅当用户在底部附近时才滚动，避免打断用户向上翻阅历史。
   useEffect(() => {
     if (isNearBottomRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -78,7 +105,6 @@ export function ChatMessageList({
 
   return (
     <div className="chat-messages">
-      {/* 顶部加载更多哨兵：用户滚动到顶部时触发加载更早消息 */}
       {hasMoreHistory && (
         <div ref={topSentinelRef} className="chat-load-more-top">
           {loadingMoreHistory ? (
@@ -91,15 +117,7 @@ export function ChatMessageList({
       {messages.map((msg) => (
         <ChatMessageItem key={msg.id} message={msg} onReplay={onReplay} />
       ))}
-      {status === 'pending' && (
-        <ChatMessage
-          role="assistant"
-          avatar=""
-          variant="base"
-          content={[]}
-          animation="dots"
-        />
-      )}
+      {status === 'pending' && <TypingDots />}
       <div ref={bottomRef} />
     </div>
   );

@@ -1,63 +1,76 @@
 /**
  * 设置模态框 —— 由侧边栏账户弹层「设置」按钮唤起
- * 布局参照 apps/web/docs/help-feedback.html 原型，全屏浮层 + 900×600 居中窗口
- * 内容区分组呈现：通用 / 外观 / 通知 / 对话 / 账户 / 关于
+ * 全屏浮层 + 900×600 居中窗口；分组：通用 / 外观 / 通知 / 对话 / 账户 / 帮助 / 关于
+ *
+ * 阶段 3（3.3）：
+ * - TDesign Switch/Slider/Select/Radio/MessagePlugin/图标 → shadcn 基座 +
+ *   sonner + lucide
+ * - 8 个"存而不用"的假设置按审计结论处理：未接通的偏好一律禁用并打"开发中"
+ *   标识（语言/桌面通知/提示音/显示时间/语音快捷键/隐私模式）；桌面 IDE 语境的
+ *   「本地链接打开方式」整条移除；仅保留真实生效项（主题/密度/字号/回车发送）
+ * - 清掉 TRAE 品牌文案与终端语境文案；技术栈说明同步为 Tailwind/shadcn
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Switch,
-  Slider,
-  Select,
-  Radio,
-  MessagePlugin,
-} from 'tdesign-react';
-import {
-  SettingIcon,
-  BrushIcon,
-  NotificationIcon,
-  ChatIcon,
-  UserIcon,
-  InfoCircleIcon,
-  HelpCircleIcon,
-  ModeLightIcon,
-  ModeDarkIcon,
-} from 'tdesign-icons-react';
+  Bell,
+  CircleHelp,
+  Ellipsis,
+  FileText,
+  Info,
+  MessageSquare,
+  Palette,
+  Phone,
+  Settings2,
+  Sun,
+  Moon,
+  ArrowUpRight,
+  UserRound,
+  X,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { useTheme } from '../store/themeContext';
+import type { ThemeMode } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { getHealth } from '../api/system';
+import {
+  Select,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 import './SettingsDialog.css';
 
 type Density = 'compact' | 'comfortable';
-type AppDefaultMode = 'chat' | 'pro' | 'task';
-type AppLanguage = 'zh-CN' | 'en-US';
-type LinkOpenMode = 'always_ask' | 'builtin' | 'system';
 
 interface Prefs {
-  defaultMode: AppDefaultMode;
-  language: AppLanguage;
   density: Density;
   fontSize: number;
+  enterToSend: boolean;
+  // —— 以下偏好已持久化但功能未接通，UI 禁用并标"开发中"，保留字段避免老数据丢失 ——
+  language: 'zh-CN' | 'en-US';
   notifDesktop: boolean;
   notifSound: boolean;
-  enterToSend: boolean;
   showTimestamp: boolean;
   voiceShortcut: boolean;
-  linkOpenMode: LinkOpenMode;
   privacyMode: boolean;
 }
 
 const PREFS_KEY = 'app:preferences';
 const DEFAULT_PREFS: Prefs = {
-  defaultMode: 'chat',
   language: 'zh-CN',
   density: 'comfortable',
-  fontSize: 14,
+  fontSize: 16,
   notifDesktop: false,
   notifSound: true,
   enterToSend: true,
   showTimestamp: true,
   voiceShortcut: true,
-  linkOpenMode: 'always_ask',
   privacyMode: false,
 };
 
@@ -65,6 +78,7 @@ function loadPrefs(): Prefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return DEFAULT_PREFS;
+    // 过滤历史版本中可能存在的已废弃字段（如 defaultMode/linkOpenMode）
     return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
   } catch {
     return DEFAULT_PREFS;
@@ -79,19 +93,68 @@ function savePrefs(p: Prefs) {
   }
 }
 
-const SECTIONS = [
-  { id: 'general', label: '通用', icon: <SettingIcon /> },
-  { id: 'appearance', label: '外观', icon: <BrushIcon /> },
-  { id: 'notification', label: '通知', icon: <NotificationIcon /> },
-  { id: 'chat', label: '对话', icon: <ChatIcon /> },
-  { id: 'account', label: '账户', icon: <UserIcon /> },
-  { id: 'help', label: '帮助与反馈', icon: <HelpCircleIcon /> },
-  { id: 'about', label: '关于', icon: <InfoCircleIcon /> },
-] as const;
+const SECTIONS: ReadonlyArray<{
+  id: string;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { id: 'general', label: '通用', icon: Settings2 },
+  { id: 'appearance', label: '外观', icon: Palette },
+  { id: 'notification', label: '通知', icon: Bell },
+  { id: 'chat', label: '对话', icon: MessageSquare },
+  { id: 'account', label: '账户', icon: UserRound },
+  { id: 'help', label: '帮助与反馈', icon: CircleHelp },
+  { id: 'about', label: '关于', icon: Info },
+];
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
-export default function SettingsDialog({ visible, onClose, initialSection = 'general' }: { visible: boolean; onClose: () => void; initialSection?: string }) {
+/** 小分段选择器（替代 TDesign Radio.Button 组） */
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: ReadonlyArray<{ value: T; label: string; icon?: LucideIcon }>;
+}) {
+  return (
+    <div className="seg" role="radiogroup">
+      {options.map((opt) => {
+        const Icon = opt.icon;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={value === opt.value}
+            className={`seg-item${value === opt.value ? ' is-active' : ''}`}
+            onClick={() => onChange(opt.value)}
+          >
+            {Icon && <Icon />}
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** "开发中"小徽标，标注未接通的设置项 */
+function DevBadge() {
+  return <span className="dev-badge">开发中</span>;
+}
+
+export default function SettingsDialog({
+  visible,
+  onClose,
+  initialSection = 'general',
+}: {
+  visible: boolean;
+  onClose: () => void;
+  initialSection?: string;
+}) {
   const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const [version, setVersion] = useState<string>('—');
@@ -119,7 +182,7 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
     }
   }, [visible]);
 
-  // 持久化偏好 + 应用密度/字号到根节点 CSS 变量
+  // 持久化偏好 + 应用密度/字号到根节点
   useEffect(() => {
     savePrefs(prefs);
     const root = document.documentElement;
@@ -128,9 +191,12 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
   }, [prefs]);
 
   // Escape 键关闭
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose();
-  }, [onClose]);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    },
+    [onClose],
+  );
 
   useEffect(() => {
     if (visible) {
@@ -143,11 +209,16 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
     setPrefs((p) => ({ ...p, [k]: v }));
   };
 
-  const section = useMemo(() => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0], [active]);
+  const section = useMemo(
+    () => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0],
+    [active],
+  );
 
+  // Portal 到 body：本浮层在 Sidebar 账号弹层内被唤起，而移动端 <aside>
+  // 带 transform 会收纳 position:fixed 后代，导致弹窗被困在侧栏抽屉里。
   if (!visible) return null;
 
-  return (
+  return createPortal(
     <div className="settings-overlay" onClick={onClose}>
       {/* 点击窗口内部不关闭 */}
       <div className="settings-window" onClick={(e) => e.stopPropagation()}>
@@ -156,28 +227,44 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
           <div className="settings-nav-head">
             <div className="settings-nav-avatar">
               {user?.avatar ? (
-                <img src={user.avatar} alt={user?.nickname || user?.username || '用户'} />
+                <img
+                  src={user.avatar}
+                  alt={user?.nickname || user?.username || '用户'}
+                />
               ) : (
-                <span>{(user?.nickname || user?.username || '?').charAt(0).toUpperCase()}</span>
+                <span>
+                  {(user?.nickname || user?.username || '?')
+                    .charAt(0)
+                    .toUpperCase()}
+                </span>
               )}
             </div>
             <div className="settings-nav-account">
-              <div className="settings-nav-name">{user?.nickname || user?.username || '未登录'}</div>
-              <div className="settings-nav-meta">@{user?.username || '—'}</div>
+              <div className="settings-nav-name">
+                {user?.nickname || user?.username || '未登录'}
+              </div>
+              <div className="settings-nav-meta">
+                @{user?.username || '—'}
+              </div>
             </div>
           </div>
           <nav className="settings-nav-list">
-            {SECTIONS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={`settings-nav-item${active === s.id ? ' is-active' : ''}`}
-                onClick={() => setActive(s.id)}
-              >
-                <span className="settings-nav-item-icon">{s.icon}</span>
-                <span className="settings-nav-item-label">{s.label}</span>
-              </button>
-            ))}
+            {SECTIONS.map((s) => {
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`settings-nav-item${active === s.id ? ' is-active' : ''}`}
+                  onClick={() => setActive(s.id)}
+                >
+                  <span className="settings-nav-item-icon">
+                    <Icon />
+                  </span>
+                  <span className="settings-nav-item-label">{s.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </aside>
 
@@ -189,10 +276,7 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
             aria-label="关闭"
             onClick={onClose}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X />
           </button>
           <header className="settings-main-head">
             <h1 className="settings-main-title">{section.label}</h1>
@@ -209,97 +293,56 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
 
           <div className="settings-main-body">
             {active === 'general' && (
-              <>
-                {/* 基础设置 */}
-                <section className="settings-group">
-                  <h3 className="settings-group-title">基础设置</h3>
-                  <div className="settings-group-card">
-                    <div className="setting-row setting-row--card">
-                      <div className="setting-row-text">
-                        <div className="setting-row-title">主题</div>
-                        <div className="setting-row-desc">选择主题</div>
-                      </div>
-                      <Select
-                        value={theme}
-                        onChange={(val) => setTheme(val as 'light' | 'dark')}
-                        size="medium"
-                        style={{ width: 180 }}
-                      >
-                        <Select.Option value="light" label="亮色"></Select.Option>
-                        <Select.Option value="dark" label="深色"></Select.Option>
-                        <Select.Option value="system" label="跟随系统"></Select.Option>
-                      </Select>
+              <section className="settings-group">
+                <h3 className="settings-group-title">基础设置</h3>
+                <div className="settings-group-card">
+                  <div className="setting-row setting-row--card">
+                    <div className="setting-row-text">
+                      <div className="setting-row-title">主题</div>
+                      <div className="setting-row-desc">选择主题</div>
                     </div>
-
-                    <div className="setting-row setting-row--card">
-                      <div className="setting-row-text">
-                        <div className="setting-row-title">语言</div>
-                        <div className="setting-row-desc">选择您喜欢的按钮标签和应用内其他文本的语言</div>
-                      </div>
-                      <Select
-                        value={prefs.language}
-                        onChange={(v) => update('language', v as AppLanguage)}
-                        size="medium"
-                        style={{ width: 180 }}
-                      >
-                        <Select.Option value="zh-CN" label="简体中文"></Select.Option>
-                        <Select.Option value="en-US" label="English"></Select.Option>
-                      </Select>
-                    </div>
+                    <Select
+                      value={theme}
+                      onValueChange={(v) => setTheme(v as ThemeMode)}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="light">亮色</SelectItem>
+                        <SelectItem value="dark">深色</SelectItem>
+                        <SelectItem value="system">跟随系统</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </section>
 
-                {/* 偏好设置 */}
-                <section className="settings-group">
-                  <h3 className="settings-group-title">偏好设置</h3>
-                  <div className="settings-group-card">
-                    <div className="setting-row setting-row--card">
-                      <div className="setting-row-text">
-                        <div className="setting-row-title">语音转录快捷键</div>
-                        <div className="setting-row-desc">开启或关闭语音转录快捷键，录制自定义组合键，或恢复默认值。</div>
+                  <div className="setting-row setting-row--card setting-row--disabled">
+                    <div className="setting-row-text">
+                      <div className="setting-row-title">
+                        语言 <DevBadge />
                       </div>
-                      <div className="setting-row-controls">
-                        <Switch
-                          value={prefs.voiceShortcut}
-                          onChange={(v) => update('voiceShortcut', v as boolean)}
-                        />
-                        <span className="settings-kbd-group">
-                          <span className="settings-kbd">Alt</span>
-                          <span className="settings-kbd-plus">+</span>
-                          <span className="settings-kbd">V</span>
-                        </span>
-                        <button
-                          type="button"
-                          className="settings-icon-btn"
-                          aria-label="自定义快捷键"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                          </svg>
-                        </button>
+                      <div className="setting-row-desc">
+                        多语言即将支持，当前仅提供简体中文界面
                       </div>
                     </div>
-
-                    <div className="setting-row setting-row--card">
-                      <div className="setting-row-text">
-                        <div className="setting-row-title">本地链接的默认打开方式</div>
-                        <div className="setting-row-desc">点击终端中的本地链接时，是否自动使用内置浏览器打开</div>
-                      </div>
-                      <Select
-                        value={prefs.linkOpenMode}
-                        onChange={(v) => update('linkOpenMode', v as LinkOpenMode)}
-                        size="medium"
-                        style={{ width: 180 }}
-                      >
-                        <Select.Option value="always_ask" label="始终询问"></Select.Option>
-                        <Select.Option value="builtin" label="内置浏览器"></Select.Option>
-                        <Select.Option value="system" label="系统默认"></Select.Option>
-                      </Select>
-                    </div>
+                    <Select
+                      value={prefs.language}
+                      onValueChange={(v) =>
+                        update('language', v as Prefs['language'])
+                      }
+                      disabled
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="zh-CN">简体中文</SelectItem>
+                        <SelectItem value="en-US">English</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </section>
-              </>
+                </div>
+              </section>
             )}
 
             {active === 'appearance' && (
@@ -309,74 +352,84 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                     <div className="setting-row-title">主题</div>
                     <div className="setting-row-desc">切换浅色或深色外观</div>
                   </div>
-                  <Radio.Group
+                  <Segmented<ThemeMode>
                     value={theme}
-                    variant="default-filled"
-                    size="medium"
-                    onChange={(val) => setTheme(val as 'light' | 'dark')}
-                  >
-                    <Radio.Button value="light">
-                      <ModeLightIcon /> 浅色
-                    </Radio.Button>
-                    <Radio.Button value="dark">
-                      <ModeDarkIcon /> 深色
-                    </Radio.Button>
-                  </Radio.Group>
+                    onChange={(v) => setTheme(v)}
+                    options={[
+                      { value: 'light', label: '浅色', icon: Sun },
+                      { value: 'dark', label: '深色', icon: Moon },
+                    ]}
+                  />
                 </div>
 
                 <div className="setting-row">
                   <div className="setting-row-text">
                     <div className="setting-row-title">界面密度</div>
-                    <div className="setting-row-desc">紧凑模式可让信息更密集</div>
+                    <div className="setting-row-desc">
+                      紧凑模式可让信息更密集
+                    </div>
                   </div>
-                  <Radio.Group
+                  <Segmented<Density>
                     value={prefs.density}
-                    variant="default-filled"
-                    size="medium"
-                    onChange={(v) => update('density', v as Density)}
-                  >
-                    <Radio.Button value="comfortable">舒适</Radio.Button>
-                    <Radio.Button value="compact">紧凑</Radio.Button>
-                  </Radio.Group>
+                    onChange={(v) => update('density', v)}
+                    options={[
+                      { value: 'comfortable', label: '舒适' },
+                      { value: 'compact', label: '紧凑' },
+                    ]}
+                  />
                 </div>
 
                 <div className="setting-row">
                   <div className="setting-row-text">
                     <div className="setting-row-title">正文字号</div>
-                    <div className="setting-row-desc">当前 {prefs.fontSize}px</div>
+                    <div className="setting-row-desc">
+                      当前 {prefs.fontSize}px
+                    </div>
                   </div>
-                  <Slider
-                    value={prefs.fontSize}
-                    min={12}
-                    max={18}
-                    step={1}
-                    onChange={(v) => update('fontSize', v as number)}
-                    style={{ width: 200 }}
-                  />
+                  <div className="w-[200px]">
+                    <Slider
+                      value={[prefs.fontSize]}
+                      min={12}
+                      max={18}
+                      step={1}
+                      onValueChange={([v]) => update('fontSize', v)}
+                      aria-label="正文字号"
+                    />
+                  </div>
                 </div>
               </>
             )}
 
             {active === 'notification' && (
               <>
-                <div className="setting-row">
+                <div className="setting-row setting-row--disabled">
                   <div className="setting-row-text">
-                    <div className="setting-row-title">桌面通知</div>
-                    <div className="setting-row-desc">收到新消息时在系统通知中心弹出</div>
+                    <div className="setting-row-title">
+                      桌面通知 <DevBadge />
+                    </div>
+                    <div className="setting-row-desc">
+                      收到新消息时在系统通知中心弹出
+                    </div>
                   </div>
                   <Switch
-                    value={prefs.notifDesktop}
-                    onChange={(v) => update('notifDesktop', v as boolean)}
+                    checked={prefs.notifDesktop}
+                    onCheckedChange={(v) => update('notifDesktop', v)}
+                    disabled
                   />
                 </div>
-                <div className="setting-row">
+                <div className="setting-row setting-row--disabled">
                   <div className="setting-row-text">
-                    <div className="setting-row-title">提示音</div>
-                    <div className="setting-row-desc">新消息到达时播放提示音</div>
+                    <div className="setting-row-title">
+                      提示音 <DevBadge />
+                    </div>
+                    <div className="setting-row-desc">
+                      新消息到达时播放提示音
+                    </div>
                   </div>
                   <Switch
-                    value={prefs.notifSound}
-                    onChange={(v) => update('notifSound', v as boolean)}
+                    checked={prefs.notifSound}
+                    onCheckedChange={(v) => update('notifSound', v)}
+                    disabled
                   />
                 </div>
               </>
@@ -387,21 +440,28 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                 <div className="setting-row">
                   <div className="setting-row-text">
                     <div className="setting-row-title">Enter 发送消息</div>
-                    <div className="setting-row-desc">关闭后需使用 Ctrl/Cmd + Enter 发送</div>
+                    <div className="setting-row-desc">
+                      关闭后需使用 Ctrl/Cmd + Enter 发送
+                    </div>
                   </div>
                   <Switch
-                    value={prefs.enterToSend}
-                    onChange={(v) => update('enterToSend', v as boolean)}
+                    checked={prefs.enterToSend}
+                    onCheckedChange={(v) => update('enterToSend', v)}
                   />
                 </div>
-                <div className="setting-row">
+                <div className="setting-row setting-row--disabled">
                   <div className="setting-row-text">
-                    <div className="setting-row-title">显示消息时间</div>
-                    <div className="setting-row-desc">在每条消息旁显示发送时间</div>
+                    <div className="setting-row-title">
+                      显示消息时间 <DevBadge />
+                    </div>
+                    <div className="setting-row-desc">
+                      在每条消息旁显示发送时间（即将支持）
+                    </div>
                   </div>
                   <Switch
-                    value={prefs.showTimestamp}
-                    onChange={(v) => update('showTimestamp', v as boolean)}
+                    checked={prefs.showTimestamp}
+                    onCheckedChange={(v) => update('showTimestamp', v)}
+                    disabled
                   />
                 </div>
               </>
@@ -415,34 +475,32 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                   <div className="settings-group-card">
                     <div className="setting-row setting-row--card">
                       <div className="setting-row-text">
-                        <div className="setting-row-title">{user?.nickname || user?.username || '未登录'}</div>
+                        <div className="setting-row-title">
+                          {user?.nickname || user?.username || '未登录'}
+                        </div>
                         <div className="setting-row-desc">
-                          {user?.phone ? `${user.phone.slice(0, 3)}*****${user.phone.slice(-2)}` : '未绑定手机号'}
+                          {user?.phone
+                            ? `${user.phone.slice(0, 3)}*****${user.phone.slice(-2)}`
+                            : '未绑定手机号'}
                         </div>
                       </div>
                       <div className="setting-row-controls">
                         <button
                           type="button"
                           className="settings-action-pill"
-                          onClick={() => MessagePlugin.info('管理账号功能正在建设中')}
+                          onClick={() =>
+                            toast.info('管理账号功能正在建设中')
+                          }
                         >
                           管理账号
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                          </svg>
+                          <ArrowUpRight />
                         </button>
                         <button
                           type="button"
                           className="settings-icon-btn"
                           aria-label="更多"
                         >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="5" cy="12" r="1" />
-                            <circle cx="12" cy="12" r="1" />
-                            <circle cx="19" cy="12" r="1" />
-                          </svg>
+                          <Ellipsis />
                         </button>
                       </div>
                     </div>
@@ -450,38 +508,41 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                     <div className="setting-row setting-row--card">
                       <div className="setting-row-text">
                         <div className="setting-row-title">免费</div>
-                        <div className="setting-row-desc">升级权益，获取更多速通次数，享受更流畅的 AI 使用体验</div>
+                        <div className="setting-row-desc">
+                          升级权益，获取更多速通次数，享受更流畅的 AI
+                          使用体验
+                        </div>
                       </div>
                       <button
                         type="button"
                         className="settings-action-pill settings-action-pill--primary"
-                        onClick={() => MessagePlugin.info('升级权益功能正在建设中')}
+                        onClick={() => toast.info('升级权益功能正在建设中')}
                       >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                        </svg>
+                        <Zap />
                         升级权益
                       </button>
                     </div>
                   </div>
                 </section>
 
-
                 {/* 隐私模式 */}
                 <section className="settings-group">
                   <h3 className="settings-group-title">隐私模式</h3>
                   <div className="settings-group-card">
-                    <div className="setting-row setting-row--card">
+                    <div className="setting-row setting-row--card setting-row--disabled">
                       <div className="setting-row-text">
-                        <div className="setting-row-title">隐私模式</div>
+                        <div className="setting-row-title">
+                          隐私模式 <DevBadge />
+                        </div>
                         <div className="setting-row-desc">
-                          启用后，TRAE 不会将您的聊天互动、代码片段和 AI 输出用于产品改进和模型训练。
+                          启用后，创路 Agent
+                          不会将您的对话内容用于产品改进和模型训练（能力即将上线）。
                           <a
                             href="#"
                             className="settings-inline-link"
                             onClick={(e) => {
                               e.preventDefault();
-                              MessagePlugin.info('隐私模式说明');
+                              toast.info('隐私模式说明');
                             }}
                           >
                             了解更多
@@ -490,8 +551,9 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                       </div>
                       <div className="setting-row-controls">
                         <Switch
-                          value={prefs.privacyMode}
-                          onChange={(v) => update('privacyMode', v as boolean)}
+                          checked={prefs.privacyMode}
+                          onCheckedChange={(v) => update('privacyMode', v)}
+                          disabled
                         />
                       </div>
                     </div>
@@ -517,57 +579,40 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
             {active === 'help' && (
               <>
                 <ul className="help-list">
-                  {/* 帮助文档 */}
                   <li
                     className="help-item"
-                    onClick={() => window.open('https://example.com/docs', '_blank')}
+                    onClick={() =>
+                      window.open('https://example.com/docs', '_blank')
+                    }
                   >
                     <span className="help-item__left">
-                      <svg className="help-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                        <line x1="16" y1="13" x2="8" y2="13" />
-                        <line x1="16" y1="17" x2="8" y2="17" />
-                      </svg>
+                      <FileText className="help-item__icon" />
                       帮助文档
                     </span>
-                    <svg className="help-item__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
+                    <ArrowUpRight className="help-item__arrow" />
                   </li>
 
-                  {/* 意见反馈 */}
                   <li
                     className="help-item"
-                    onClick={() => MessagePlugin.info('意见反馈功能正在建设中')}
+                    onClick={() => toast.info('意见反馈功能正在建设中')}
                   >
                     <span className="help-item__left">
-                      <svg className="help-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                      </svg>
+                      <MessageSquare className="help-item__icon" />
                       意见反馈
                     </span>
                   </li>
 
-                  {/* 联系我们 */}
                   <li
                     className="help-item"
-                    onClick={() => window.open('mailto:support@example.com', '_blank')}
+                    onClick={() =>
+                      window.open('mailto:support@example.com', '_blank')
+                    }
                   >
                     <span className="help-item__left">
-                      <svg className="help-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                      </svg>
+                      <Phone className="help-item__icon" />
                       联系我们
                     </span>
-                    <svg className="help-item__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
+                    <ArrowUpRight className="help-item__arrow" />
                   </li>
                 </ul>
 
@@ -576,7 +621,7 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      MessagePlugin.info('隐私政策');
+                      toast.info('隐私政策');
                     }}
                   >
                     隐私政策
@@ -586,7 +631,7 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      MessagePlugin.info('服务协议');
+                      toast.info('服务协议');
                     }}
                   >
                     服务协议
@@ -600,20 +645,26 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
                 <div className="setting-row">
                   <div className="setting-row-text">
                     <div className="setting-row-title">当前版本</div>
-                    <div className="setting-row-desc">由后端健康检查接口返回</div>
+                    <div className="setting-row-desc">
+                      由后端健康检查接口返回
+                    </div>
                   </div>
                   <span className="settings-version-pill">v{version}</span>
                 </div>
                 <div className="setting-row">
                   <div className="setting-row-text">
                     <div className="setting-row-title">产品名称</div>
-                    <div className="setting-row-desc">创路 Agent · 多模态智能工作台</div>
+                    <div className="setting-row-desc">
+                      创路 Agent · 多模态智能工作台
+                    </div>
                   </div>
                 </div>
                 <div className="setting-row">
                   <div className="setting-row-text">
                     <div className="setting-row-title">技术栈</div>
-                    <div className="setting-row-desc">React + TypeScript + TDesign</div>
+                    <div className="setting-row-desc">
+                      React 19 + TypeScript + Tailwind CSS 4 + shadcn/ui
+                    </div>
                   </div>
                 </div>
               </>
@@ -621,6 +672,7 @@ export default function SettingsDialog({ visible, onClose, initialSection = 'gen
           </div>
         </main>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

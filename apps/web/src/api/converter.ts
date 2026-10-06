@@ -1,9 +1,9 @@
 /**
  * 消息格式转换工具
- * 将后端 Message 格式转换为 @tdesign-react/chat 的 ChatMessagesData 格式
+ * 将后端 Message 格式转换为前端统一的 ChatMessagesData 格式（types/chat.ts）
  */
 import type { Message, FeedbackType } from '../api/types';
-import type { ChatMessagesData } from '../types/tdesign';
+import type { ChatMessagesData } from '../types/chat';
 
 /**
  * 扩展的聊天消息类型，添加前端需要的反馈字段。
@@ -34,7 +34,7 @@ export function convertMessages(messages: Message[]): ChatMessageData[] {
         } as ChatMessageData;
       }
 
-      // assistant 消息：从 contentBlocks 提取思考内容
+      // assistant 消息：从 contentBlocks 提取思考内容与联网搜索来源
       const content: any[] = [];
       if (m.contentBlocks && Array.isArray(m.contentBlocks)) {
         const block = (m.contentBlocks as any[]).find((b) => b.reasoningContent);
@@ -46,6 +46,19 @@ export function convertMessages(messages: Message[]): ChatMessageData[] {
             data: [{ type: 'text' as const, data: block.reasoningContent, status: 'complete' as const }],
             status: 'complete' as const,
             ext: { collapsed: true },
+          });
+        }
+
+        // 联网搜索结构化来源（与 SSE WEB_SEARCH_SOURCES 产物一致），
+        // 供消息操作栏"N 篇来源"入口与右侧来源面板使用
+        const sourcesBlock = (m.contentBlocks as any[]).find(
+          (b) => Array.isArray(b.sources) && b.sources.length > 0,
+        );
+        if (sourcesBlock) {
+          content.push({
+            type: 'search' as const,
+            data: { references: sourcesBlock.sources },
+            status: 'complete' as const,
           });
         }
       }

@@ -1,4 +1,4 @@
-import type { ChatStatus } from '../../../types/tdesign';
+import type { ChatStatus } from '../../../types/chat';
 import { ArrowUp, Mic, Square } from 'lucide-react';
 import { useTaskInput } from '../hooks/useTaskInput';
 import { TaskInputMoreMenu } from './TaskInputMoreMenu';

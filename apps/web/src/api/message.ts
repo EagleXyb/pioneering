@@ -53,9 +53,10 @@ export function regenerateMessage(
   messageId: string,
   data?: RegenerateRequest,
 ): Promise<Message> {
+  // body 必填（后端 schema 要求请求体存在），无可选参数时发送 {} 占位
   return post<Message>(
     `/chat/messages/${messageId}/regenerate`,
-    data,
+    data ?? {},
   );
 }
 

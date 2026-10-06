@@ -15,7 +15,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import React from 'react';
 import { TaskMessageList } from './TaskMessageList';
 import { useArtifactStore } from '@/store/artifactStore';
-import type { ChatMessagesData } from '@/types/tdesign';
+import type { ChatMessagesData } from '@/types/chat';
 
 // 构造消息的辅助函数
 function makeMessage(over: Partial<ChatMessagesData> & { id: string; role: 'user' | 'assistant' }): ChatMessagesData {

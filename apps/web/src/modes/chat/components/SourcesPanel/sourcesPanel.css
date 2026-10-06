@@ -1,0 +1,254 @@
+/* ===== 参考来源右侧面板（应用级第三列，结构对齐任务模式右侧栏） =====
+ * 直接作为 .main-area 的 flex 子列，与中间主列等高、标题栏置顶；
+ * 固定 48px 标题栏 + 独立内容区（bg-card）。
+ * 宽度由 appStore.sourcesWidth 内联控制；左侧 1px 分隔线由 .sources-resizer 提供。 */
+.sources-panel {
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+/* 中间栏与面板之间的分隔：布局上只占 1px（与任务模式一致的细分隔线），
+ * 另用悬浮热区把可拖拽命中区放宽到 7px，不再占用列间空白（无间隔） */
+.sources-resizer {
+  width: 1px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  background: var(--border-light);
+  cursor: col-resize;
+  transition: background var(--transition-fast);
+}
+.sources-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 7px;
+  cursor: col-resize;
+}
+.sources-resizer:hover,
+.sources-resizer:active {
+  background: var(--accent-blue);
+}
+
+/* ===== 标题栏（固定 48px，与 pro/task 右侧面板标题栏对齐） ===== */
+.sources-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  user-select: none;
+}
+.sources-panel-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sources-panel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.sources-panel-btn:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+/* ===== 内容区（独立滚动 / 承载 iframe） ===== */
+.sources-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-card);
+}
+.sources-panel-list {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px 10px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 来源卡片 */
+.source-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.source-card:hover {
+  background: var(--bg-input);
+}
+.source-card-index {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.source-card:hover .source-card-index {
+  background: var(--accent-blue-light);
+  color: var(--accent-blue);
+}
+.source-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.source-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.source-card-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-card-snippet {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* favicon */
+.sources-favicon {
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.sources-favicon--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 600;
+  user-select: none;
+}
+
+/* ===== 阅读态（标题栏仍为 48px 单行；正文区独立） ===== */
+.source-reader-title {
+  font-size: 14px;
+}
+.source-reader-body {
+  background: #fff;
+}
+.source-reader-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  background: #fff;
+}
+.source-reader-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  background: var(--bg-card);
+}
+.source-reader-spinner {
+  animation: sources-spin 0.9s linear infinite;
+  color: var(--accent-blue);
+}
+@keyframes sources-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.source-reader-error-card {
+  gap: 12px;
+}
+.source-reader-error-msg {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.source-reader-error-snippet {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.source-reader-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: var(--accent-blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.source-reader-open-link:hover {
+  opacity: 0.92;
+}

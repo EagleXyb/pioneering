@@ -66,7 +66,7 @@ export default function TaskMode() {
   }
 
   return (
-    <div className="task-mode tw-scope">
+    <div className="task-mode">
       <div className="task-main">
         <TaskTopBar />
         <TaskMessageList messages={messages} status={status} />

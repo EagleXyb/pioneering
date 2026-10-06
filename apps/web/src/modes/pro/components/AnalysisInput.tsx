@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowUp, Mic, Square } from 'lucide-react';
-import type { ChatStatus } from '../../../types/tdesign';
+import type { ChatStatus } from '../../../types/chat';
 import { ProInputMoreMenu } from './ProInputMoreMenu';
 // 分析模式输入区使用 pro.css 中的 .pro-input-* 独立样式，不依赖 task.css
 

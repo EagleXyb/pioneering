@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { ChatMessagesData } from '../../../types/tdesign';
+import type { ChatMessagesData } from '../../../types/chat';
 import { useConversationStore } from '../../../store/conversationStore';
 import { generateTitle } from '../../../api/session';
 

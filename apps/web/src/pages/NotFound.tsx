@@ -1,7 +1,7 @@
 /**
  * 404 页面 — 路径未匹配时展示
  */
-import { useNavigate } from 'react-router';
+import { useNavigate } from 'react-router-dom';
 
 export default function NotFoundPage() {
   const navigate = useNavigate();

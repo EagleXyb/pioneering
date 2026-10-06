@@ -18,7 +18,7 @@ export function TaskTopBar() {
 
   return (
     <nav
-      className="tw-scope task-top-bar"
+      className="task-top-bar"
       onClick={toggleSidebar}
       role="button"
       tabIndex={0}

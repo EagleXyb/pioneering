@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
-import type { ChatMessagesData, ChatStatus } from '../../../types/tdesign';
+import type { ChatMessagesData, ChatStatus } from '../../../types/chat';
 import { getAuthHeader } from '../../../api/client';
+import { parseAguiStream } from '../../../lib/parseAguiStream';
 import { usePlanExecuteStore } from '../../../store/planExecuteStore';
 import { getMessages } from '../../../api/message';
 import { convertMessages } from '../../../api/converter';
@@ -109,11 +110,12 @@ export function usePlanExecuteChat(activeId: string | null) {
         );
       };
 
-      let eventCount = 0;
-      const eventTypes = new Set<string>();
-
       try {
-        console.info('[task.plan_execute] fetch.start session=%s prompt_len=%d', activeId, params.prompt.length);
+        console.info(
+          '[task.plan_execute] fetch.start session=%s prompt_len=%d',
+          activeId,
+          params.prompt.length,
+        );
         const response = await fetch('/api/agent/completions', {
           method: 'POST',
           headers: {
@@ -130,141 +132,124 @@ export function usePlanExecuteChat(activeId: string | null) {
           signal: controller.signal,
         });
 
-        console.info(
-          '[task.plan_execute] fetch.response status=%d ok=%s content_type=%s',
-          response.status, response.ok, response.headers.get('content-type'),
-        );
-
         if (!response.ok) {
           // 输出响应体便于排查 401/500 等错误
           const errText = await response.text().catch(() => '<read body failed>');
           console.error(
             '[task.plan_execute] fetch.not_ok status=%d body=%s',
-            response.status, errText.slice(0, 500),
+            response.status,
+            errText.slice(0, 500),
           );
           throw new Error(`HTTP ${response.status}: ${errText.slice(0, 200)}`);
         }
 
-        if (!response.body) {
-          throw new Error('response.body 为空（无 SSE 流）');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.info('[task.plan_execute] stream.done total_events=%d types=%j', eventCount, [...eventTypes]);
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          // 保留最后未完成的行
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const dataStr = line.slice(6).trim();
-            if (!dataStr) continue;
-
-            let data: any;
-            try {
-              data = JSON.parse(dataStr);
-            } catch (e) {
-              console.warn('[task.plan_execute] parse.fail data=%s err=%s', dataStr.slice(0, 200), String(e));
-              continue;
-            }
-
-            eventCount++;
-            const eventType = data.type ?? '';
-            eventTypes.add(eventType);
-
-            // 调试日志：首次出现某事件类型时输出完整字段，便于排查字段不匹配
-            if (!eventTypes.has(eventType + '_logged')) {
-              console.info(
-                '[task.plan_execute] event.first type=%s keys=%j sample=%s',
-                eventType, Object.keys(data), JSON.stringify(data).slice(0, 300),
-              );
-              eventTypes.add(eventType + '_logged');
-            }
-
-            switch (eventType) {
-              case 'STATE_DELTA': {
-                // Plan-Execute 核心事件：plan 阶段全量替换，execute 阶段增量更新
-                const phase = data.phase ?? '';
-                if (phase === 'plan') {
-                  console.info(
-                    '[task.plan_execute] STATE_DELTA[plan] steps=%d',
-                    Array.isArray(data.plan) ? data.plan.length : 0,
-                  );
-                } else if (phase === 'execute' && data.step_update) {
-                  console.info(
-                    '[task.plan_execute] STATE_DELTA[execute] %s → %s',
-                    data.step_update.id, data.step_update.status,
-                  );
-                }
-                applyPlanDelta({
-                  phase,
-                  plan: data.plan,
-                  step_update: data.step_update,
-                });
-                break;
-              }
-              case 'TEXT_MESSAGE_CONTENT': {
-                accumulatedText += data.delta ?? '';
-                updateAssistantContent(accumulatedText);
-                break;
-              }
-              case 'TEXT_MESSAGE_END': {
-                // assistant 文本结束，保留内容不变
-                break;
-              }
-              case 'RUN_FINISHED': {
-                console.info('[task.plan_execute] RUN_FINISHED text_len=%d', accumulatedText.length);
-                setStatus('complete');
-                setPhase('done');
-                // 流结束后异步回传用户折叠状态快照，确保历史恢复时视觉细节一致
-                // 仅当本次产生过 plan（planExecuteStore 有 items）才回传，避免无谓请求
-                void persistCollapsedSnapshot(activeId);
-                break;
-              }
-              case 'RUN_ERROR': {
-                const errMsg = data.message ?? '执行失败';
-                console.error(
-                  '[task.plan_execute] RUN_ERROR code=%s msg=%s',
-                  data.code ?? '', errMsg,
+        // SSE 解析统一走共享解析器（阶段 4.2 收敛）
+        const loggedTypes = new Set<string>();
+        const result = await parseAguiStream(
+          response,
+          {
+            onEvent: (event) => {
+              const eventType = event.type;
+              // 首次出现某事件类型时输出一次样例，便于排查字段不匹配
+              if (!loggedTypes.has(eventType)) {
+                loggedTypes.add(eventType);
+                console.info(
+                  '[task.plan_execute] event.first type=%s sample=%s',
+                  eventType,
+                  JSON.stringify(event).slice(0, 300),
                 );
-                setStatus('error');
-                setPhase('error', errMsg);
-                if (!accumulatedText) {
-                  updateAssistantContent(`错误: ${errMsg}`);
-                }
-                break;
               }
-            }
+            },
+            onStateDelta: (event) => {
+              // Plan-Execute 核心事件：plan 阶段全量替换，execute 阶段增量更新
+              const phase = (event.phase as string) ?? '';
+              if (phase === 'plan') {
+                console.info(
+                  '[task.plan_execute] STATE_DELTA[plan] steps=%d',
+                  Array.isArray(event.plan) ? event.plan.length : 0,
+                );
+              } else if (phase === 'execute' && event.step_update) {
+                const step = event.step_update as { id?: string; status?: string };
+                console.info(
+                  '[task.plan_execute] STATE_DELTA[execute] %s → %s',
+                  step.id,
+                  step.status,
+                );
+              }
+              // 协议负载结构由后端保证，此处整体透传
+              applyPlanDelta({
+                phase,
+                plan: event.plan,
+                step_update: event.step_update,
+              } as Parameters<typeof applyPlanDelta>[0]);
+            },
+            onTextDelta: (delta) => {
+              accumulatedText += delta;
+              updateAssistantContent(accumulatedText);
+            },
+            onRunFinished: () => {
+              console.info(
+                '[task.plan_execute] RUN_FINISHED text_len=%d',
+                accumulatedText.length,
+              );
+              setStatus('complete');
+              setPhase('done');
+              // 异步回传用户折叠状态快照，确保历史恢复时视觉细节一致
+              void persistCollapsedSnapshot(activeId);
+            },
+            onRunError: (event) => {
+              const errMsg = (event.message as string) || '执行失败';
+              console.error(
+                '[task.plan_execute] RUN_ERROR code=%s msg=%s',
+                String(event.code ?? ''),
+                errMsg,
+              );
+              setStatus('error');
+              setPhase('error', errMsg);
+              if (!accumulatedText) {
+                updateAssistantContent(`错误: ${errMsg}`);
+              }
+            },
+          },
+          controller.signal,
+        );
+
+        console.info(
+          '[task.plan_execute] stream.end reason=%s total_events=%d types=%j',
+          result.reason,
+          result.eventCount,
+          result.eventTypes,
+        );
+
+        if (result.reason === 'error-event' || result.reason === 'aborted') {
+          // error-event 的状态落地已在 onRunError 处理；
+          // abort 时保留已累积内容并收尾为 complete
+          if (result.reason === 'aborted') {
+            setStatus('complete');
+            updateAssistantContent(accumulatedText);
           }
+          return;
         }
 
-        // 流正常结束但未收到 RUN_FINISHED 事件时兜底
-        // 使用 controller.signal.aborted 判断是否被中断，避免误判
-        if (!controller.signal.aborted) {
+        // 流正常关闭但未收到 RUN_FINISHED 时兜底
+        if (result.reason === 'closed') {
           setStatus((prev) => (prev === 'streaming' ? 'complete' : prev));
-          // setPhase 是 Zustand 直接 set 不支持函数式更新，需先读取当前状态
           const currentPhase = usePlanExecuteStore.getState().phase;
           if (currentPhase === 'planning' || currentPhase === 'executing') {
-            console.info('[task.plan_execute] stream.end no RUN_FINISHED, fallback to done');
+            console.info(
+              '[task.plan_execute] stream.end no RUN_FINISHED, fallback to done',
+            );
             setPhase('done');
           }
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error(
-          '[task.plan_execute] catch.error name=%s msg=%s stack=%s events=%d types=%j',
-          e?.name, String(e), e?.stack, eventCount, [...eventTypes],
+          '[task.plan_execute] catch.error name=%s msg=%s stack=%s',
+          (e as { name?: string })?.name,
+          String(e),
+          (e as { stack?: string })?.stack,
         );
-        if (e.name === 'AbortError') {
+        if ((e as { name?: string })?.name === 'AbortError') {
           // 用户主动中止，保留已累积的内容
           setStatus('complete');
           updateAssistantContent(accumulatedText);

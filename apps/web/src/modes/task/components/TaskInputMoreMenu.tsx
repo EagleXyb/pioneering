@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ComponentType } from 'react';
 import {
   Camera,
   ChevronRight,
@@ -8,6 +7,7 @@ import {
   History,
   Image,
   Library,
+  type LucideIcon,
   MessageSquare,
   NotebookText,
   Paperclip,
@@ -17,18 +17,16 @@ import {
   Zap,
 } from 'lucide-react';
 
-type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
-
 interface SubItem {
   id: string;
   label: string;
-  icon: IconComponent;
+  icon: LucideIcon;
 }
 
 interface MainItem {
   id: string;
   label: string;
-  icon: IconComponent;
+  icon: LucideIcon;
   sub?: SubItem[];
 }
 
@@ -83,7 +81,6 @@ const MAIN_ITEMS: MainItem[] = [
 const ITEM_H = 40; // 每个菜单项高度
 const MAIN_PADDING = 6; // 主菜单上下内边距
 const POPOVER_OFFSET = 8; // 弹层与按钮的间距
-const POPOVER_GAP = 4; // 主菜单与子菜单的间距
 
 interface Props {
   /** 点击某个菜单项后的回调，便于接入后续真实动作（上传/截图/引用等） */

@@ -306,68 +306,11 @@
   display: block;
 }
 
-/* 下拉菜单 */
-.sidebar-item-dropdown {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 4px;
-  min-width: 130px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  z-index: 100;
-  padding: 4px;
-  animation: dropdownIn 0.12s ease-out;
-}
-
-@keyframes dropdownIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.sidebar-item-dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
+/* 会话行下拉菜单（shadcn DropdownMenu 已提供容器/浮层/动画样式，
+   这里只微调宽度与字号，贴合侧栏密度） */
+.sidebar-item-menu [role='menu'] {
+  min-width: 132px;
   font-size: 13px;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  white-space: nowrap;
-}
-
-.sidebar-item-dropdown-item:hover {
-  background: var(--bg-sidebar-hover);
-}
-
-.sidebar-item-dropdown-item svg {
-  flex-shrink: 0;
-  color: var(--text-tertiary);
-}
-
-.sidebar-item-dropdown-item-danger {
-  color: var(--accent-red);
-}
-
-.sidebar-item-dropdown-item-danger:hover {
-  background: var(--accent-red-light);
-}
-
-.sidebar-item-dropdown-item-danger svg {
-  color: var(--accent-red);
-}
-
-.sidebar-item-dropdown-divider {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--border-light);
 }
 
 /* Footer / Account */
@@ -426,37 +369,11 @@
   color: var(--text-sidebar-dim);
 }
 
-/* Account Popover (TDesign Popup 内容容器) */
+/* Account 下拉菜单（挂在 shadcn DropdownMenuContent 上，
+   容器底色/边框/浮层动画由 shadcn 提供，这里只定宽度与弹出原点） */
 .account-popover {
-  background: var(--bg-card);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  padding: 6px;
-  box-shadow: var(--shadow-lg);
   min-width: 210px;
   transform-origin: bottom left;
-  animation: popIn 0.16s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 让 Popup 外层包裹透明，卡片外观完全由 .account-popover 负责 */
-.account-popover-overlay .t-popup__content {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-}
-
-/* 头像沿用原有渐变风格（TDesign Avatar） */
-.sidebar-avatar.t-avatar {
-  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-  color: #fff;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-@keyframes popIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .account-popover-item {
@@ -662,14 +579,6 @@
 .account-info-refresh svg {
   width: 16px;
   height: 16px;
-}
-
-.account-info-refresh .is-spinning {
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* 加载态 */

@@ -4,7 +4,7 @@
  * 这里仍保留 init() 调用作为兜底，处理 hydration 之后才写入 token 的边缘场景
  */
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth';
 import { getToken } from '../../api/client';
 

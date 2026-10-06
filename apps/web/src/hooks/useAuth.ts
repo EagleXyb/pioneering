@@ -3,7 +3,7 @@
  * 消费 auth store + auth-api，对齐后端实际接口
  */
 import { useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth';
 import { loginApi, logoutApi } from '../api/auth-api';
 import { getRefreshToken } from '../api/client';

@@ -10,11 +10,20 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   margin: 5px 5px 5px 5px;
   border-radius: 8px;
   background-color: var(--bg-sidebar);
+}
+
+/* 中间主列：TopNav（如有）+ 模式内容；右侧打开应用级面板时自适应收窄 */
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .main-content {

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useMemo, useCallback } from 'react';
-import type { ChatMessagesData, ChatStatus } from '../../../types/tdesign';
+import type { ChatMessagesData, ChatStatus } from '../../../types/chat';
 import { useScrollToMessage } from '@/hooks/useScrollToMessage';
 import { extractCodeBlocks, isPreviewable } from '@/components/ArtifactPreview/extractCodeBlocks';
 import { Markdown } from '@/components/Markdown';
@@ -41,14 +41,10 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
   const openArtifact = useArtifactStore((s) => s.openArtifact);
   const isAssistant = msg.role === 'assistant';
 
-  // 用户消息：保持纯文本
-  if (!isAssistant) {
-    return <div className="task-message-text">{text}</div>;
-  }
-
   // 助手消息：扫描代码块，文本段走 markdown 渲染，代码块走预览卡片
+  // 注意：hooks 必须在任何早返回之前调用（react-hooks/rules-of-hooks）
   const segments = useMemo(() => {
-    if (!text) return null;
+    if (!isAssistant || !text) return null;
     const blocks = extractCodeBlocks(text);
     if (blocks.length === 0) return null;
 
@@ -66,12 +62,7 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
       segs.push({ type: 'text', value: text.slice(cursor) });
     }
     return segs;
-  }, [text]);
-
-  // 无代码块：整体 markdown 渲染
-  if (!segments) {
-    return <Markdown content={text} />;
-  }
+  }, [isAssistant, text]);
 
   const handlePreview = useCallback(
     (lang: string, code: string) => {
@@ -84,6 +75,16 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
     },
     [msg.id, openArtifact],
   );
+
+  // 用户消息：保持纯文本
+  if (!isAssistant) {
+    return <div className="task-message-text">{text}</div>;
+  }
+
+  // 无代码块：整体 markdown 渲染
+  if (!segments) {
+    return <Markdown content={text} />;
+  }
 
   return (
     <div className="task-message-markdown">

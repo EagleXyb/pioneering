@@ -53,6 +53,8 @@ interface UseTaskInputOptions {
   onSend: (text: string) => void;
   /** 停止回调（用于 Escape 键） */
   onStop: () => void;
+  /** 草稿存储键前缀（任务模式与 chat 模式各自隔离） */
+  draftKeyPrefix?: string;
 }
 
 export function useTaskInput({
@@ -60,6 +62,7 @@ export function useTaskInput({
   isStreaming,
   onSend,
   onStop,
+  draftKeyPrefix = 'task-input-draft',
 }: UseTaskInputOptions) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -75,7 +78,7 @@ export function useTaskInput({
   // 应用偏好（仅在挂载时读取一次；用户在设置中切换后需刷新生效，符合现有项目模式）
   const prefs = useMemo(readPrefs, []);
 
-  const draftKey = chatId ? `task-input-draft-${chatId}` : null;
+  const draftKey = chatId ? `${draftKeyPrefix}-${chatId}` : null;
 
   // ---- 草稿加载：chatId 变化时从 sessionStorage 恢复 ----
   useEffect(() => {
@@ -137,11 +140,19 @@ export function useTaskInput({
     }
     const windowScrollY = window.scrollY;
 
-    // 2. 重置高度 → 读 scrollHeight → 写回（带 min/max 限制）
+    // 2. 重置高度 → 读 scrollHeight → 写回（min/max 以 CSS 计算值为单一事实来源，
+    //    使响应式断点下的 min-height/max-height 自动生效；常量仅作兜底）
     el.style.height = '';
-    let height = el.scrollHeight;
-    if (height < TEXTAREA_MIN_HEIGHT) height = TEXTAREA_MIN_HEIGHT;
-    if (height > TEXTAREA_MAX_HEIGHT) height = TEXTAREA_MAX_HEIGHT;
+    const cs = window.getComputedStyle(el);
+    const cssMin = parseFloat(cs.minHeight);
+    const cssMax = parseFloat(cs.maxHeight);
+    const min = Number.isFinite(cssMin) && cssMin > 0 ? cssMin : TEXTAREA_MIN_HEIGHT;
+    const max = Number.isFinite(cssMax) && cssMax > 0 ? cssMax : TEXTAREA_MAX_HEIGHT;
+    // 空内容直接取最小高度：窄屏下折行的 placeholder 会被部分浏览器计入
+    // scrollHeight，空框绝不能被占位文案撑高
+    let height = el.value ? el.scrollHeight : min;
+    if (height < min) height = min;
+    if (height > max) height = max;
     el.style.height = `${height}px`;
 
     // 3. 恢复被布局变动影响的祖先 scroll
@@ -156,6 +167,20 @@ export function useTaskInput({
   useEffect(() => {
     resize();
   }, [value, resize]);
+
+  // 视口尺寸变化（跨越响应式断点）后按新的 CSS min-height 重新校正
+  useEffect(() => {
+    let raf = 0;
+    const onResize = () => {
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(resize);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.cancelAnimationFrame(raf);
+    };
+  }, [resize]);
 
   // ---- 挂载后自动聚焦（延迟一帧，避免与首次渲染的 scroll 校正冲突） ----
   useEffect(() => {

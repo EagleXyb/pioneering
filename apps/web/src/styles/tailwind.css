@@ -1,112 +1,435 @@
 /*
- * Tailwind 入口 + shadcn token 映射
+ * Tailwind 4 入口 + shadcn/desktop 对齐令牌
  *
- * 隔离策略：
- * - preflight 已在 tailwind.config.ts 关闭，@tailwind base 输出为空
- * - shadcn 变量定义在 .tw-scope 选择器下，仅任务模式子树可见
- * - 变量值映射到现有 tokens.css 语义变量，自动跟随 light/dark/system 三态切换
- *   （tokens.css 已通过 [data-theme="dark"] 与 @media prefers-color-scheme 处理）
- *
- * 颜色格式：HSL 通道分量（如 "210 40% 98%"），与 shadcn 默认主题一致，
- * 便于后续直接复用 shadcn/ui 官方组件而无需重写 className
+ * 阶段 2（TW3→TW4）变更：
+ * - CSS-first 配置（@theme inline），不再有 tailwind.config.ts / postcss
+ * - 废除 .tw-scope 作用域与 important 提升策略，Tailwind 全站生效（与 desktop 一致）
+ * - tailwindcss-animate 由 tw-animate-css 替代（animate-in/out 等工具类同名可用）
+ * - 令牌值对齐 apps/desktop/src/renderer/src/index.css 的中性 oklch 色板与圆角，
+ *   保证 desktop 的 shadcn 组件可直接移植
+ * - 暗色机制沿用 web 既有的 data-theme：显式暗色走 [data-theme="dark"]，
+ *   system 模式（无 data-theme）由 @media prefers-color-scheme 兜底
+ *   （组件统一消费令牌变量，两种暗色都自动跟随）
  */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
-/* ============================================================
- * shadcn token 映射 —— 亮色（默认）
- * 数值来源：将 tokens.css 的 HEX 值转为 HSL 通道分量
- * ============================================================ */
-.tw-scope {
-  --background: 210 40% 98%;        /* --bg-primary #f8f9fb */
-  --foreground: 220 14% 12%;        /* --text-primary #1a1d23 */
+@custom-variant dark (&:is([data-theme='dark'] *), [data-theme='dark']&);
 
-  --card: 0 0% 100%;                /* --bg-card #ffffff */
-  --card-foreground: 220 14% 12%;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 
-  --popover: 0 0% 100%;             /* --bg-card */
-  --popover-foreground: 220 14% 12%;
+  /* 字体沿用 web tokens.css 的系统中文栈（不引入 desktop 的 Public Sans） */
+  --font-family-sans: var(--font-sans);
+  --font-family-mono: var(--font-mono);
 
-  --primary: 38 92% 50%;            /* --accent-amber #f59e0b */
-  --primary-foreground: 0 0% 100%;
-
-  --secondary: 210 20% 96%;         /* --bg-input #f0f2f5 */
-  --secondary-foreground: 220 14% 12%;
-
-  --muted: 210 20% 96%;
-  --muted-foreground: 217 11% 62%;  /* --text-secondary #6b7280 */
-
-  --accent: 38 92% 95%;             /* --accent-amber-light #fef3c7 */
-  --accent-foreground: 38 92% 30%;
-
-  --destructive: 0 84% 60%;         /* --accent-red #ef4444 */
-  --destructive-foreground: 0 0% 100%;
-
-  --border: 220 13% 91%;            /* --border-light #e5e7eb */
-  --input: 220 13% 91%;
-  --ring: 38 92% 50%;               /* 焦点环跟随 primary */
-
-  --radius: 0.625rem;               /* --radius-md 10px */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
 /* ============================================================
- * 暗色覆盖：跟随 [data-theme="dark"]
- * （tokens.css 中 --bg-* / --text-* / --accent-* 已自动切换，
- *   这里只需把 shadcn 变量重新指向暗色语义值）
- * ============================================================ */
-[data-theme="dark"] .tw-scope,
-[data-theme="dark"].tw-scope {
-  --background: 220 14% 12%;        /* --bg-primary dark */
-  --foreground: 210 20% 96%;
+   亮色（默认）—— 对齐 desktop 的 Vega/Neutral 中性色板
+   ============================================================ */
+:root {
+  --radius: 0.375rem; /* 与 desktop shadcn 基准一致 */
+  --radius-control: 6px; /* desktop 平台控件圆角（web 固定取 mac 档） */
+  --scrollbar-size: 10px; /* ScrollArea 滚动条粗细 */
 
-  --card: 220 14% 16%;
-  --card-foreground: 210 20% 96%;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
 
-  --popover: 220 14% 16%;
-  --popover-foreground: 210 20% 96%;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
 
-  --primary: 38 92% 55%;
-  --primary-foreground: 220 14% 12%;
-
-  --secondary: 220 14% 20%;
-  --secondary-foreground: 210 20% 96%;
-
-  --muted: 220 14% 20%;
-  --muted-foreground: 217 11% 65%;
-
-  --accent: 38 50% 25%;
-  --accent-foreground: 38 92% 90%;
-
-  --destructive: 0 70% 50%;
-  --destructive-foreground: 0 0% 100%;
-
-  --border: 220 14% 25%;
-  --input: 220 14% 25%;
-  --ring: 38 92% 55%;
+  /* 侧栏令牌（desktop DeepSeek 冷灰蓝，供 3.4 Sidebar 移植使用） */
+  --sidebar: #e6e9ef;
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: #d9dce5;
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
-/* 系统暗色（无 data-theme 属性时跟随 prefers-color-scheme） */
+/* ============================================================
+   暗色 —— 显式 data-theme="dark"
+   ============================================================ */
+[data-theme='dark'] {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+
+  --sidebar: oklch(0.21 0.012 255);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* system 模式（无 data-theme）跟随系统暗色 */
 @media (prefers-color-scheme: dark) {
-  .tw-scope:not([data-theme="light"]):not([data-theme="dark"]) {
-    --background: 220 14% 12%;
-    --foreground: 210 20% 96%;
-    --card: 220 14% 16%;
-    --card-foreground: 210 20% 96%;
-    --popover: 220 14% 16%;
-    --popover-foreground: 210 20% 96%;
-    --primary: 38 92% 55%;
-    --primary-foreground: 220 14% 12%;
-    --secondary: 220 14% 20%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 220 14% 20%;
-    --muted-foreground: 217 11% 65%;
-    --accent: 38 50% 25%;
-    --accent-foreground: 38 92% 90%;
-    --destructive: 0 70% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 220 14% 25%;
-    --input: 220 14% 25%;
-    --ring: 38 92% 55%;
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-foreground: oklch(0.985 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+
+    --sidebar: oklch(0.21 0.012 255);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+}
+
+/* shadcn 基座默认边框色（TW4 canonical） */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+}
+
+/* ============================================================
+   对话区 Markdown 排版（阶段 4.4，与 desktop chat-markdown 同源，
+   暗色走 data-theme；hljs token 为 plain CSS 不依赖 tailwind 变量）
+   ============================================================ */
+@layer components {
+  .chat-markdown {
+    width: 100%;
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    word-break: break-word;
+  }
+
+  .chat-markdown > :first-child {
+    margin-top: 0;
+  }
+  .chat-markdown > :last-child {
+    margin-bottom: 0;
+  }
+  .chat-markdown p {
+    margin: 8px 0;
+  }
+  .chat-markdown h1 {
+    margin: 16px 0 8px;
+    font-size: 1.35em;
+    font-weight: 600;
+  }
+  .chat-markdown h2 {
+    margin: 15px 0 7px;
+    font-size: 1.22em;
+    font-weight: 600;
+  }
+  .chat-markdown h3,
+  .chat-markdown h4 {
+    margin: 13px 0 6px;
+    font-size: 1.08em;
+    font-weight: 600;
+  }
+  .chat-markdown ul,
+  .chat-markdown ol {
+    margin: 8px 0;
+    padding-left: 1.4em;
+  }
+  .chat-markdown li {
+    margin: 3px 0;
+  }
+  .chat-markdown a {
+    color: var(--accent-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .chat-markdown blockquote {
+    margin: 10px 0;
+    border-left: 3px solid var(--border-medium);
+    padding: 2px 0 2px 12px;
+    color: var(--text-secondary);
+  }
+  .chat-markdown table {
+    margin: 12px 0;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    display: block;
+    overflow-x: auto;
+  }
+  .chat-markdown th,
+  .chat-markdown td {
+    border: 1px solid var(--border-light);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  .chat-markdown th {
+    background: var(--bg-input);
+    font-weight: 600;
+  }
+  .chat-markdown tr:nth-child(2n) td {
+    background: color-mix(in srgb, var(--bg-input) 45%, transparent);
+  }
+  .chat-markdown hr {
+    margin: 16px 0;
+    border: 0;
+    border-top: 1px solid var(--border-light);
+  }
+  /* 行内代码 */
+  .chat-markdown :not(pre) > code {
+    border-radius: 4px;
+    background: var(--bg-input);
+    padding: 0.12em 0.4em;
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--accent-purple);
+  }
+
+  /* 围栏代码块卡片（Markdown.tsx 自定义渲染） */
+  .chat-code-block {
+    margin: 12px 0;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-card);
+  }
+  .chat-code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+    padding: 0 10px;
+    background: var(--bg-input);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .chat-code-block-lang {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+  .chat-code-block-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+  }
+  .chat-code-block-copy:hover {
+    background: var(--bg-sidebar-hover);
+    color: var(--text-primary);
+  }
+  .chat-code-block-pre {
+    margin: 0;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  /* hljs 高亮：GitHub Light（暗色由下方 data-theme 覆盖） */
+  .hljs-comment,
+  .hljs-quote {
+    color: #6a737d;
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-section,
+  .hljs-link {
+    color: #d73a49;
+  }
+  .hljs-function .hljs-keyword {
+    color: #6f42c1;
+  }
+  .hljs-subst {
+    color: #24292e;
+  }
+  .hljs-string,
+  .hljs-attr,
+  .hljs-template-tag,
+  .hljs-template-variable,
+  .hljs-addition {
+    color: #032f62;
+  }
+  .hljs-title,
+  .hljs-title.function_,
+  .hljs-name {
+    color: #6f42c1;
+  }
+  .hljs-type,
+  .hljs-class .hljs-title,
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-built_in,
+  .hljs-builtin-name {
+    color: #005cc5;
+  }
+  .hljs-variable,
+  .hljs-meta,
+  .hljs-tag {
+    color: #24292e;
+  }
+  .hljs-attribute {
+    color: #005cc5;
+  }
+  .hljs-property,
+  .hljs-params {
+    color: #24292e;
+  }
+  .hljs-operator,
+  .hljs-punctuation {
+    color: #24292e;
+  }
+
+  [data-theme='dark'] .hljs-comment,
+  [data-theme='dark'] .hljs-quote {
+    color: #8b949e;
+  }
+  [data-theme='dark'] .hljs-keyword,
+  [data-theme='dark'] .hljs-selector-tag,
+  [data-theme='dark'] .hljs-literal,
+  [data-theme='dark'] .hljs-section,
+  [data-theme='dark'] .hljs-link {
+    color: #ff7b72;
+  }
+  [data-theme='dark'] .hljs-function [data-theme='dark'] .hljs-keyword,
+  [data-theme='dark'] .hljs-title,
+  [data-theme='dark'] .hljs-title.function_,
+  [data-theme='dark'] .hljs-name {
+    color: #d2a8ff;
+  }
+  [data-theme='dark'] .hljs-subst,
+  [data-theme='dark'] .hljs-variable,
+  [data-theme='dark'] .hljs-meta,
+  [data-theme='dark'] .hljs-tag,
+  [data-theme='dark'] .hljs-property,
+  [data-theme='dark'] .hljs-params,
+  [data-theme='dark'] .hljs-operator,
+  [data-theme='dark'] .hljs-punctuation {
+    color: #c9d1d9;
+  }
+  [data-theme='dark'] .hljs-string,
+  [data-theme='dark'] .hljs-attr,
+  [data-theme='dark'] .hljs-template-tag,
+  [data-theme='dark'] .hljs-template-variable,
+  [data-theme='dark'] .hljs-addition {
+    color: #a5d6ff;
+  }
+  [data-theme='dark'] .hljs-type,
+  [data-theme='dark'] .hljs-number,
+  [data-theme='dark'] .hljs-symbol,
+  [data-theme='dark'] .hljs-bullet,
+  [data-theme='dark'] .hljs-built_in,
+  [data-theme='dark'] .hljs-builtin-name,
+  [data-theme='dark'] .hljs-attribute {
+    color: #79c0ff;
+  }
+  [data-theme='dark'] .chat-code-block,
+  [data-theme='dark'] .chat-code-block-pre {
+    background: oklch(0.18 0 0);
   }
 }

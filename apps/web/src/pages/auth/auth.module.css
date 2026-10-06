@@ -267,47 +267,74 @@
   display: block;
 }
 
-/* TDesign Form 间距优化 */
-.formSection :global(.t-form__item) {
+/* ===== shadcn 表单字段（阶段 3 替换 TDesign Form 后使用） ===== */
+.field {
   margin-bottom: 16px;
 }
 
-.formSection :global(.t-form__label) {
+.fieldLabel {
+  display: block;
   padding-bottom: 8px;
   font-size: 14px;
   font-weight: 500;
   color: var(--auth-text-label);
 }
 
-.formSection :global(.t-form__label label) {
-  font-size: 14px;
+.fieldError {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--accent-red);
 }
 
-/* 去掉 TDesign 输入框自带的浅灰背景色，去除"框中框"观感 */
-.formSection :global(.t-input) {
-  background-color: transparent !important;
-}
-
-.formSection :global(.t-input--focused) {
-  background-color: transparent !important;
-}
-
-.formSection :global(.t-input__inner) {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
-
-/* 自定义 TDesign 输入框 focus 状态，对齐品牌蓝 */
-.formSection :global(.t-input.t-is-focused),
-.formSection :global(.t-input__inner:focus) {
-  border-color: var(--accent-blue);
-  box-shadow: var(--auth-focus-ring);
-  background-color: transparent !important;
-}
-
-/* 公共输入框类 — 替代内联 style */
+/* 公共输入框类 — 对齐原型规格 */
 .formInput {
   height: 48px;
+  border-radius: 8px;
+  background-color: transparent;
+}
+
+/* 聚焦态对齐品牌蓝（覆盖 shadcn 的中性 ring） */
+.formInput:focus-visible {
+  border-color: var(--accent-blue);
+  box-shadow: var(--auth-focus-ring);
+}
+
+.formInputError,
+.formInputError:focus-visible {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+/* 密码可见性切换按钮 */
+.inputWrap {
+  position: relative;
+}
+
+.inputWithAction {
+  padding-right: 40px;
+}
+
+.eyeBtn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.eyeBtn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-input);
 }
 
 /* 公共提交按钮类 — 统一 Login/Register 规格 */

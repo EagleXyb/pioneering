@@ -1,205 +1,176 @@
-import React from 'react';
+/**
+ * Markdown 统一渲染器（阶段 4.4）
+ *
+ * 替换原 206 行零依赖正则渲染器：react-markdown + remark-gfm（表格/删除线/
+ * 任务列表）+ rehype-highlight（代码高亮）+ rehype-sanitize（XSS 白名单）。
+ * 与 apps/desktop 的 MarkdownRenderer 同源策略（sanitize schema / SafeLink /
+ * 代码块复制），chat 与 task/pro 的消息渲染共用本组件。
+ *
+ * 视觉样式见 tailwind.css 的 .chat-markdown 层。
+ */
+import { memo, useState, useCallback, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeSanitize from 'rehype-sanitize';
+import { defaultSchema, type Schema as SanitizeSchema } from 'hast-util-sanitize';
+import { Check, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface MarkdownProps {
   content: string;
   className?: string;
 }
 
-// 行内语法：**加粗**、`行内代码`、*斜体*
-const INLINE_RE = /(\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*)/g;
+// 自定义 sanitize schema：默认白名单 + 放开 code/span 的 className
+// （rehype-highlight 的语言标识与 hljs token 着色依赖），href 收紧为
+// http(s)/mailto，剥离 on* 事件与危险协议。
+const sanitizeSchema: SanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [
+      ...(((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
+        '*'
+      ] as string[] | undefined) ?? []),
+      'className',
+    ],
+    code: [
+      ...(((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
+        'code'
+      ] as string[] | undefined) ?? []),
+      'className',
+    ],
+    span: [
+      ...(((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
+        'span'
+      ] as string[] | undefined) ?? []),
+      'className',
+    ],
+    a: [
+      ...(((defaultSchema.attributes as Record<string, unknown> | undefined)?.[
+        'a'
+      ] as string[] | undefined) ?? []),
+      'href',
+      'target',
+      'rel',
+    ],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: ['http', 'https', 'mailto'],
+  },
+};
 
-function renderInline(text: string, keyBase: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  let last = 0;
-  let i = 0;
-  let m: RegExpExecArray | null;
-  INLINE_RE.lastIndex = 0;
-  while ((m = INLINE_RE.exec(text)) !== null) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
-    if (m[2] !== undefined) {
-      nodes.push(<strong key={`${keyBase}-b${i}`}>{m[2]}</strong>);
-    } else if (m[3] !== undefined) {
-      nodes.push(<code key={`${keyBase}-c${i}`} className="md-code">{m[3]}</code>);
-    } else if (m[4] !== undefined) {
-      nodes.push(<em key={`${keyBase}-i${i}`}>{m[4]}</em>);
-    }
-    last = INLINE_RE.lastIndex;
-    i++;
+/** 链接白名单：仅放行 http(s)，其余降级为纯文本，阻断 javascript: 等 XSS */
+function SafeLink({
+  href,
+  children,
+  node: _node,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+  // react-markdown v9 会注入 node 对象，必须解构剔除，否则会被透传成
+  // DOM 上的 node="[object Object]" 游离属性
+  node?: unknown;
+}) {
+  const safe = typeof href === 'string' && /^https?:\/\//i.test(href);
+  if (!safe) {
+    return <span>{children}</span>;
   }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
+      {children}
+    </a>
+  );
 }
 
-const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
+/** 代码块：语言标识 + 一键复制；pre 透传避免双重包裹 */
+function CodeBlock({
+  className,
+  children,
+  raw,
+}: {
+  className?: string;
+  children: ReactNode;
+  raw: string;
+}) {
+  const [copied, setCopied] = useState(false);
 
-/**
- * 轻量 markdown 渲染器（零依赖，契合项目"不引入 react-markdown"的约定）。
- *
- * 支持本项目 AI 回复中常见的语法：
- *   - 标题 # ~ ######
- *   - 加粗 **x** / 斜体 *x* / 行内代码 `x`
- *   - 无序列表 - * + / 有序列表 1.
- *   - 分割线 --- *** ___
- *   - 引用 > x
- *   - 围栏代码块 ```lang
- *   - 开头的原始 JSON（如规划 plan）自动渲染为代码块
- *
- * 不支持表格、嵌套结构等高级语法，足以覆盖对话场景。
- */
-export function Markdown({ content, className }: MarkdownProps) {
-  const lines = content.replace(/\r\n/g, '\n').split('\n');
-  const blocks: React.ReactNode[] = [];
-  let i = 0;
-  let key = 0;
-
-  const isHeading = (l: string) => /^(#{1,6})\s+/.test(l);
-  const isList = (l: string) => /^[-*+]\s+/.test(l);
-  const isOrdered = (l: string) => /^\d+\.\s+/.test(l);
-  const isQuote = (l: string) => /^>\s?/.test(l);
-  const isFence = (l: string) => /^```/.test(l);
-  const isHr = (l: string) => /^\s*([-*_])(\s*\1){2,}\s*$/.test(l);
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // 围栏代码块
-    if (isFence(line)) {
-      const lang = line.slice(3).trim();
-      const buf: string[] = [];
-      i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
-        buf.push(lines[i]);
-        i++;
-      }
-      i++; // 跳过结束围栏
-      blocks.push(
-        <pre key={key++} className="md-pre">
-          <code className={lang ? `language-${lang}` : undefined}>{buf.join('\n')}</code>
-        </pre>,
-      );
-      continue;
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(raw);
+      setCopied(true);
+      toast.success('代码已复制');
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('复制失败');
     }
+  }, [raw]);
 
-    // 标题
-    const hm = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (hm) {
-      const level = Math.min(hm[1].length, 6) - 1;
-      const Tag = HEADING_TAGS[level];
-      blocks.push(
-        <Tag key={key++} className={`md-h md-h${level + 1}`}>
-          {renderInline(hm[2], `h${key}`)}
-        </Tag>,
-      );
-      i++;
-      continue;
-    }
+  const language = /language-([\w-]+)/.exec(className || '')?.[1] ?? '';
 
-    // 分割线
-    if (isHr(line)) {
-      blocks.push(<hr key={key++} className="md-hr" />);
-      i++;
-      continue;
-    }
-
-    // 无序列表
-    if (isList(line)) {
-      const items: string[] = [];
-      while (i < lines.length && isList(lines[i])) {
-        items.push(lines[i].replace(/^[-*+]\s+/, ''));
-        i++;
-      }
-      blocks.push(
-        <ul key={key++} className="md-ul">
-          {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it, `ul${key}-${idx}`)}</li>
-          ))}
-        </ul>,
-      );
-      continue;
-    }
-
-    // 有序列表
-    if (isOrdered(line)) {
-      const items: string[] = [];
-      while (i < lines.length && isOrdered(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s+/, ''));
-        i++;
-      }
-      blocks.push(
-        <ol key={key++} className="md-ol">
-          {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it, `ol${key}-${idx}`)}</li>
-          ))}
-        </ol>,
-      );
-      continue;
-    }
-
-    // 引用
-    if (isQuote(line)) {
-      const buf: string[] = [];
-      while (i < lines.length && isQuote(lines[i])) {
-        buf.push(lines[i].replace(/^>\s?/, ''));
-        i++;
-      }
-      blocks.push(
-        <blockquote key={key++} className="md-quote">
-          {renderInline(buf.join(' '), `q${key}`)}
-        </blockquote>,
-      );
-      continue;
-    }
-
-    // 原始 JSON（如规划 plan）渲染为代码块
-    if (line.trim().startsWith('{')) {
-      const buf: string[] = [];
-      let j = i;
-      while (j < lines.length && lines[j].trim() !== '') {
-        buf.push(lines[j]);
-        j++;
-      }
-      const raw = buf.join('\n');
-      try {
-        JSON.parse(raw);
-        blocks.push(
-          <pre key={key++} className="md-pre md-pre-json">
-            <code>{raw}</code>
-          </pre>,
-        );
-        i = j;
-        continue;
-      } catch {
-        // 非合法 JSON，按普通段落处理
-      }
-    }
-
-    // 空行
-    if (line.trim() === '') {
-      i++;
-      continue;
-    }
-
-    // 段落
-    const para: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== '' &&
-      !isHeading(lines[i]) &&
-      !isList(lines[i]) &&
-      !isOrdered(lines[i]) &&
-      !isQuote(lines[i]) &&
-      !isFence(lines[i]) &&
-      !isHr(lines[i])
-    ) {
-      para.push(lines[i]);
-      i++;
-    }
-    blocks.push(
-      <p key={key++} className="md-p">
-        {renderInline(para.join('\n'), `p${key}`)}
-      </p>,
-    );
-  }
-
-  return <div className={className ? `markdown-body ${className}` : 'markdown-body'}>{blocks}</div>;
+  return (
+    <div className="chat-code-block">
+      <div className="chat-code-block-header">
+        <span className="chat-code-block-lang">{language || 'text'}</span>
+        <button
+          type="button"
+          className="chat-code-block-copy"
+          onClick={handleCopy}
+          aria-label={copied ? '已复制' : '复制代码'}
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+        </button>
+      </div>
+      <pre className="chat-code-block-pre">
+        <code className={className}>{children}</code>
+      </pre>
+    </div>
+  );
 }
+
+/** 从 ReactMarkdown code 组件 props 中提取原始文本 */
+function nodeToText(node: unknown): string {
+  if (node == null) return '';
+  const n = node as { value?: string; children?: Array<{ value?: string }> };
+  if (typeof n.value === 'string') return n.value;
+  if (Array.isArray(n.children)) {
+    return n.children.map((c) => c.value ?? '').join('');
+  }
+  return '';
+}
+
+export const Markdown = memo(function Markdown({
+  content,
+  className,
+}: MarkdownProps) {
+  return (
+    <div className={`chat-markdown${className ? ` ${className}` : ''}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight, [rehypeSanitize, sanitizeSchema]]}
+        components={{
+          a: SafeLink,
+          // pre 直接吐出子节点：围栏代码由自定义 code 渲染成卡片，
+          // 避免 pre>div 的非法嵌套
+          pre: ({ children }) => <>{children}</>,
+          code: ({ node, className: cls, children }) => {
+            const raw = nodeToText(node);
+            const hasLang = /language-/.test(cls || '');
+            const isBlock = hasLang || raw.includes('\n');
+            if (!isBlock) {
+              return <code className={cls}>{children}</code>;
+            }
+            return (
+              <CodeBlock className={cls} raw={raw.replace(/\n$/, '')}>
+                {children}
+              </CodeBlock>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+});

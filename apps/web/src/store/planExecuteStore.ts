@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PersistedPlanStep, PlanSnapshot } from '../api/plan';
+import type { PlanSnapshot } from '../api/plan';
 
 /**
  * Plan-and-Execute 任务模式状态管理

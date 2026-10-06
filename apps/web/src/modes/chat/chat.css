@@ -344,62 +344,647 @@
   color: var(--accent-blue);
 }
 
-/* 深度思考按钮 */
-.chat-deep-think-btn {
+/* 输入框左下工具按钮组（+ 上传 / 分隔线 / 深度思考 / 联网搜索） */
+.chat-input-tools {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 30px;
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  gap: 6px;
+}
+
+/* + 上传按钮：默认透明、深色图标；悬停浮现浅灰圆底 + 深色气泡提示（对齐豆包） */
+.chat-upload-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
   background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
+  /* 默认与「深度思考 / 联网搜索」同为次级灰；hover 才变深 */
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+.chat-upload-btn:hover:not(:disabled),
+.chat-upload-btn:focus-visible:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-input);
+}
+.chat-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 悬停气泡：深色胶囊（纯 CSS，pointer-events 穿透，不挡点击） */
+.chat-upload-btn::before,
+.chat-upload-btn::after {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  z-index: 60;
+}
+.chat-upload-btn::after {
+  content: attr(data-tooltip);
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(28, 31, 38, 0.92);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
   white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.chat-upload-btn:hover:not(:disabled)::after,
+.chat-upload-btn:focus-visible:not(:disabled)::after {
+  opacity: 1;
+}
+/* 菜单展开后隐藏气泡，避免与上弹的下拉菜单重叠。
+   需带 :hover 以压过上方 :hover::after{opacity:1} 的更高特异性 */
+.chat-upload-btn[aria-expanded='true']::after,
+.chat-upload-btn[aria-expanded='true']:hover::after,
+.chat-upload-btn[aria-expanded='true']:focus-visible::after {
+  opacity: 0;
+}
+/* + 与开关按钮之间的竖向分隔线 */
+.chat-tools-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-medium);
+  margin: 0 2px;
+  flex: none;
 }
 
-.chat-deep-think-btn:hover {
-  border-color: var(--accent-blue);
+/* ===== 附件预览条 ===== */
+.chat-attachment-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* 附件条 → 输入区的层次间距（与操作栏间距同令牌） */
+  margin-bottom: var(--ci-gap);
+}
+.chat-attachment-card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+.chat-attachment-card.is-error {
+  border-color: color-mix(in srgb, var(--accent-red) 45%, var(--border-light));
+}
+.chat-attachment-thumb {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-input);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+.chat-attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-attachment-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff;
+}
+.chat-attachment-file-icon {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.chat-attachment-spinner {
+  animation: chat-attachment-spin 0.9s linear infinite;
+}
+.chat-attachment-spinner--corner {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  background: var(--bg-card);
+  border-radius: 50%;
   color: var(--accent-blue);
 }
-
-.chat-deep-think-btn.active {
-  border-color: var(--accent-blue);
-  color: var(--accent-blue);
-  background: rgba(59, 130, 246, 0.08);
+@keyframes chat-attachment-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.chat-attachment-meta {
+  min-width: 0;
+  flex: 1;
+}
+.chat-attachment-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.chat-attachment-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.chat-attachment-card.is-error .chat-attachment-sub {
+  color: var(--accent-red);
+}
+.chat-attachment-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+.chat-attachment-remove:hover {
+  color: var(--text-primary);
+  background: var(--bg-input);
 }
 
-/* 联网查询按钮 */
+/* 左下工具按钮（深度思考 / 联网搜索）—— 无边框胶囊，选中为绿色填充 */
+.chat-deep-think-btn,
 .chat-web-search-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 30px;
+  /* 功能胶囊 32px 高，在 36px 操作行内垂直居中（对齐豆包） */
+  height: 32px;
   padding: 0 12px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   background: transparent;
-  border: 1px solid var(--border-light);
+  border: none;
   border-radius: 16px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
   white-space: nowrap;
 }
 
+.chat-deep-think-btn:hover,
 .chat-web-search-btn:hover {
-  border-color: var(--accent-blue);
+  color: var(--text-primary);
+  background: var(--bg-input);
+}
+
+.chat-deep-think-btn.active,
+.chat-web-search-btn.active {
+  color: var(--accent-green);
+  background: color-mix(in srgb, var(--accent-green) 12%, transparent);
+}
+
+.chat-deep-think-btn.active:hover,
+.chat-web-search-btn.active:hover {
+  color: var(--accent-green);
+  background: color-mix(in srgb, var(--accent-green) 16%, transparent);
+}
+
+/* ===== 消息行（阶段 4.4 自建，替代 TDesign ChatMessage） ===== */
+.chat-msg-row {
+  display: flex;
+  width: 100%;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+.chat-msg-row--user {
+  justify-content: flex-end;
+}
+.chat-msg-row--ai {
+  justify-content: flex-start;
+}
+
+.chat-msg-user-bubble {
+  max-width: 80%;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* 含附件的用户消息：Markdown 接管渲染（图片/链接），收尾段不留多余间距 */
+.chat-msg-user-bubble .chat-markdown {
+  white-space: normal;
+}
+.chat-msg-user-bubble .chat-markdown img {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  margin: 6px 0 2px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.chat-msg-user-bubble .chat-markdown > :first-child {
+  margin-top: 0;
+}
+.chat-msg-user-bubble .chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-msg-ai-body {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 深度思考折叠块（豆包风格：无边框纯文本行 + 四瓣花图标 + 旋转箭头） */
+.chat-reasoning {
+  margin: 2px 0 10px;
+}
+.chat-reasoning-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  /* 向左外扩点击热区，视觉上图标仍与正文对齐 */
+  padding: 4px 8px 4px 2px;
+  margin-left: -2px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+.chat-reasoning-header:hover {
+  color: var(--text-primary);
+  background: var(--bg-input);
+}
+.chat-reasoning-icon {
+  flex: none;
+}
+/* 流式生成中：图标呼吸提示 */
+.chat-reasoning.is-streaming .chat-reasoning-icon {
+  animation: chat-reasoning-pulse 1.4s ease-in-out infinite;
+}
+@keyframes chat-reasoning-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.chat-reasoning-chevron {
+  flex: none;
+  margin-left: 2px;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-fast);
+}
+.chat-reasoning.is-open .chat-reasoning-chevron {
+  transform: rotate(90deg);
+}
+/* 展开/折叠容器：grid 0fr→1fr 高度过渡 + 淡入下滑（双向平滑） */
+.chat-reasoning-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    grid-template-rows 0.22s ease,
+    opacity 0.18s ease,
+    transform 0.22s ease;
+}
+.chat-reasoning.is-open .chat-reasoning-body-wrap {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+.chat-reasoning-body-inner {
+  overflow: hidden;
+  min-height: 0;
+  /* 垂直留白随高度动画一起伸缩，折叠后不留空隙 */
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.chat-reasoning-body {
+  /* 思考正文与正文回复同左缘对齐（不跟随标题图标缩进） */
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1.75;
+}
+/* Markdown 渲染层继承思考正文的浅灰色 */
+.chat-reasoning-body .chat-markdown {
+  color: var(--text-tertiary);
+}
+/* 尊重系统"减少动态效果"设置：关闭位移，仅保留瞬时状态切换 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-reasoning-body-wrap {
+    transition: none;
+    transform: none;
+  }
+  .chat-reasoning-chevron {
+    transition: none;
+  }
+  .chat-reasoning.is-streaming .chat-reasoning-icon {
+    animation: none;
+  }
+}
+
+/* 操作栏 */
+.chat-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.chat-msg-row--ai:hover .chat-action-bar,
+.chat-action-bar:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chat-action-bar {
+    opacity: 1;
+  }
+}
+.chat-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+.chat-action-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-sidebar-hover);
+}
+.chat-action-btn.is-active {
   color: var(--accent-blue);
 }
 
-.chat-web-search-btn.active {
+/* 有参考来源时操作栏常驻可见（"N 篇来源"是主操作之一，不应只在 hover 时出现） */
+.chat-action-bar.has-sources {
+  opacity: 1;
+}
+.chat-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* "N 篇来源"聚合入口（对齐主流 AI 搜索产品：favicon 叠放 + 文案） */
+.chat-sources-chip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 15px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+.chat-sources-chip:hover,
+.chat-sources-chip.is-active {
   border-color: var(--accent-blue);
   color: var(--accent-blue);
   background: rgba(59, 130, 246, 0.08);
+}
+.chat-sources-favicons {
+  display: inline-flex;
+  align-items: center;
+}
+.chat-sources-favicons .sources-favicon {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--bg-secondary);
+  border-radius: 50%;
+  background: var(--bg-secondary);
+}
+.chat-sources-favicons .sources-favicon + .sources-favicon {
+  margin-left: -6px;
+}
+
+/* 等待输入三点 */
+.chat-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 2px;
+}
+.chat-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  animation: chat-typing-bounce 1.2s infinite ease-in-out;
+}
+.chat-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.chat-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes chat-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* 流式空文本占位（保持行高） */
+.chat-streaming-placeholder {
+  display: inline-block;
+  min-height: 1.7em;
+}
+
+/* ===== 输入卡片（豆包 guidance-input 三层布局模型） ===== */
+/* 三层间距（经豆包网页 DOM 实测，桌面整卡高 100px）：
+   ① 卡片外边距层 --ci-pad-*：内容盒到卡片边框，桌面 10px
+   ② 输入行内缩层 --ci-edit-*：输入行相对操作行额外内缩（上 6 / 左右 10），
+      故占位文字距上 16、距左右 20，而操作按钮距边框仅 10——文字比按钮多缩进一级
+   ③ 层间间隔带 --ci-gap：输入区 ↔ 操作行 14px
+   高度构成：10 +(6+24 输入行)+ 14 + 36 操作行 + 10 = 100
+   断点：桌面默认 / ≤720px 平板 / ≤480px 手机逐级收敛 */
+.chat-input-card {
+  --ci-pad-y: 10px;
+  --ci-pad-x: 10px;
+  --ci-gap: 14px;
+  --ci-edit-pt: 6px;
+  --ci-edit-px: 10px;
+
+  margin: 0 24px;
+  /* 豆包规范：1px 中性灰发丝边（亮色合成约 #e4，明暗主题自适应） */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  border-radius: 22px;
+  background: var(--bg-card);
+  /* 贴边短阴影：近缘一层实阴影 + 一层约 8px 的柔和扩散 */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: var(--ci-pad-y) var(--ci-pad-x);
+  transition: box-shadow var(--transition-fast);
+}
+/* 焦点/失焦样式统一：边框颜色与阴影保持一致，不出现蓝色描边光晕 */
+.chat-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+/* 暗色主题：暗底上加重阴影，保持同等的悬浮层次 */
+[data-theme='dark'] .chat-input-card,
+[data-theme='dark'] .chat-input-card:focus-within {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.chat-input-textarea {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  /* 输入行内缩层：相对操作行顶部多 6、左右各多 10；min-height = 6 + 24 单行 */
+  padding: var(--ci-edit-pt) var(--ci-edit-px) 0;
+  min-height: 30px;
+  max-height: 200px;
+  box-sizing: border-box;
+}
+.chat-input-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+.chat-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* 输入区 → 操作栏的层次间距（统一取自卡片间距令牌） */
+  margin-top: var(--ci-gap);
+}
+.chat-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 主操作按钮 36×36，与左侧 ＋ 按钮共同撑满操作行 */
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #000;
+  color: #fff;
+  cursor: pointer;
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+.chat-send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+.chat-send-btn:disabled {
+  background: var(--bg-input);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+.chat-send-btn--stop {
+  background: var(--text-secondary);
+}
+
+/* ===== 输入卡片响应式：断点与本文件其他区块（720/480）保持一致 =====
+   页面外页边距（卡片 margin / 消息行 padding）是独立于卡片内边距的一套尺度，
+   这里只同步收敛二者以保持左右对齐；卡片内部三层间距各自收敛 */
+/* 平板：卡片内边距 10→8、输入行内缩 10→8、层间 14→12，整卡约 94px */
+@media (max-width: 720px) {
+  .chat-input-card {
+    --ci-pad-y: 8px;
+    --ci-pad-x: 8px;
+    --ci-gap: 12px;
+    --ci-edit-px: 8px;
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+  .chat-msg-row {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+/* 手机：卡片内边距 8、输入行上内缩 6→4、层间 12→8，整卡 90px（含 2px 边框） */
+@media (max-width: 480px) {
+  .chat-input-card {
+    --ci-gap: 8px;
+    --ci-edit-pt: 4px;
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+  /* 单行基准随上内缩同步：4 + 24 = 28 */
+  .chat-input-textarea {
+    min-height: 28px;
+  }
+  .chat-msg-row {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
 }
 
 /* 版权声明 */

@@ -1,19 +1,48 @@
-/* ===== Global Reset ===== */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+/*
+ * Global Reset（@layer base）
+ *
+ * 阶段 2 起必须分层：Tailwind 4 的工具类全部位于 @layer utilities，
+ * 未分层样式会无条件压过分层样式——裸写 `button { border:none; background:none }`
+ * 会击穿 shadcn 按钮/Checkbox/Switch 等基于 <button> 的工具类。
+ * 收入 @layer base 后：shadcn utilities > base reset；
+ * TDesign 自带样式未分层，仍天然压过本 reset，行为不变。
+ */
+@layer base {
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 
-html, body, #root {
-  height: 100%;
-  font-family: var(--font-sans);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  html {
+    /* 设置弹窗「正文字号」写入 --app-font-size（12–18px）；
+       shadcn 组件以 rem 为单位随之缩放，px 定义的旧布局不受影响 */
+    font-size: var(--app-font-size, 16px);
+  }
+
+  html, body, #root {
+    height: 100%;
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  button {
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: inherit;
+  }
+
+  input, textarea {
+    font-family: inherit;
+    outline: none;
+  }
 }
 
-button { cursor: pointer; border: none; background: none; font-family: inherit; }
-input, textarea { font-family: inherit; outline: none; }
-
-/* ===== Scrollbar ===== */
+/* ===== Scrollbar（伪元素不参与组件层，保持顶层安全默认） ===== */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 3px; }

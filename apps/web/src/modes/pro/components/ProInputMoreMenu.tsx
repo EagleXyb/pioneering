@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ComponentType } from 'react';
 import {
   Camera,
   ChevronRight,
@@ -8,6 +7,7 @@ import {
   History,
   Image,
   Library,
+  type LucideIcon,
   MessageSquare,
   NotebookText,
   Paperclip,
@@ -17,18 +17,16 @@ import {
   Zap,
 } from 'lucide-react';
 
-type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
-
 interface SubItem {
   id: string;
   label: string;
-  icon: IconComponent;
+  icon: LucideIcon;
 }
 
 interface MainItem {
   id: string;
   label: string;
-  icon: IconComponent;
+  icon: LucideIcon;
   sub?: SubItem[];
 }
 

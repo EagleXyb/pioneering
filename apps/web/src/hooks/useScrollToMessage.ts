@@ -26,7 +26,8 @@ const HIGHLIGHT_DURATION_MS = 1500;
 const HIGHLIGHT_CLASS = 'task-message--highlight';
 
 export function useScrollToMessage<T extends HTMLElement>(
-  containerRef: React.RefObject<T>,
+  // React 19 起 useRef<T>(null) 返回 RefObject<T | null>
+  containerRef: React.RefObject<T | null>,
 ) {
   const highlightMessageId = useArtifactStore((s) => s.highlightMessageId);
   const clearHighlight = useArtifactStore((s) => s.clearHighlight);

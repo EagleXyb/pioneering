@@ -23,7 +23,9 @@
 /* ===== 居中窗口（原型 .window） ===== */
 .settings-window {
   width: 900px;
+  max-width: calc(100vw - 48px);
   height: 600px;
+  max-height: calc(100vh - 48px);
   background: var(--bg-card);
   border-radius: 12px;
   box-shadow: 0 16px 56px rgba(0, 0, 0, 0.14);
@@ -526,26 +528,70 @@
   max-width: 420px;
 }
 
-/* 控件与文字的视觉对齐 */
-.setting-row > .t-select,
-.setting-row > .t-slider,
-.setting-row > .t-switch,
-.setting-row > .t-radio-group {
+/* 未接通设置行整体弱化 */
+.setting-row--disabled .setting-row-title {
+  color: var(--text-secondary);
+}
+.setting-row--disabled .setting-row-desc {
+  opacity: 0.85;
+}
+
+/* "开发中"徽标 */
+.dev-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-input);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+/* 分段选择器（主题/密度，替代 TDesign Radio.Button） */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-input);
+  border-radius: 8px;
   flex-shrink: 0;
 }
 
-/* 主题/密度切换紧凑化 */
-.setting-row .t-radio-group {
-  gap: 4px;
-}
-.setting-row .t-radio-button {
-  border-radius: 8px;
+.seg-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
-.setting-row .t-radio-button .t-icon {
-  font-size: 16px;
+
+.seg-item svg {
+  width: 15px;
+  height: 15px;
+}
+
+.seg-item:hover {
+  color: var(--text-primary);
+}
+
+.seg-item.is-active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
 }
 
 
@@ -661,4 +707,17 @@ html[data-density='compact'] .settings-main {
 html[data-density='compact'] .settings-main-head {
   padding: 0 0 12px;
   margin-bottom: 16px;
+}
+
+/* ===== 窄视口响应式（阶段 3.3）=====
+   必须置于 .settings-window/.settings-nav 基础规则之后，同特异性下后者生效。
+   Portal 已保证浮层脱离带 transform 的侧栏抽屉，fixed 相对视口定位。 */
+@media (max-width: 720px) {
+  .settings-window {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+  .settings-nav {
+    width: 180px;
+  }
 }
