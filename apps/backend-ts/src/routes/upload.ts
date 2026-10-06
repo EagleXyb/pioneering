@@ -23,7 +23,9 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     app.addHook('preHandler', authGuard)
 
     // 对应 Python: @router.post("")
-    app.post('/upload', { schema: { tags: ['upload'], summary: '上传文件', security: [{ BearerAuth: [] }], response: { '2xx': { type: 'object' } } } }, async (req, reply) => {
+    // 注意：不声明 response schema —— fast-json-stringize 对无 properties 的
+    // { type:'object' } 会把返回体序列化为 {}，吞掉 id/url 等字段。
+    app.post('/upload', { schema: { tags: ['upload'], summary: '上传文件', security: [{ BearerAuth: [] }] } }, async (req, reply) => {
       const data = await req.file()
       if (!data) {
         throw new BadRequestError('未提供文件')
@@ -76,7 +78,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     // 对应 Python: @router.delete("/{file_id}")
-    app.delete('/upload/:fileId', { schema: { tags: ['upload'], summary: '删除文件', security: [{ BearerAuth: [] }], response: { '2xx': { type: 'object' } } } }, async (req, reply) => {
+    app.delete('/upload/:fileId', { schema: { tags: ['upload'], summary: '删除文件', security: [{ BearerAuth: [] }] } }, async (req, reply) => {
       const { fileId } = req.params as { fileId: string }
 
       const dbFile = await fastify.prisma.file.findFirst({

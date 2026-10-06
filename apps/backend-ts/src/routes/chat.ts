@@ -9,6 +9,12 @@ import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
 import { llmService } from '../core/llm.js'
 import {
+  webSearch,
+  formatSearchContext,
+  toSourceItems,
+  type WebSourceItem,
+} from '../core/web-search.js'
+import {
   CreateSessionRequestSchema,
   UpdateSessionRequestSchema,
   ChatCompletionRequestSchema,
@@ -646,6 +652,28 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         // 含刚写入的 userMsg，无需再 push，避免重复发送用户消息）
         const messages = await buildMessageContext(sessionId, dto.systemPrompt ?? undefined)
 
+        // 联网搜索：开启后先抓取实时搜索结果，以 system 消息注入到最后一条用户消息之前，
+        // 模型基于搜索结果作答。搜索失败不阻断主流程，降级为普通对话。
+        // 结构化来源同时通过 SSE 事件 WEB_SEARCH_SOURCES 独立下发给前端，
+        // 用于操作栏"N 篇来源"入口与右侧来源面板（不依赖正文里的链接）。
+        let searchSources: WebSourceItem[] = []
+        if (dto.netSearch) {
+          try {
+            const outcome = await webSearch(dto.message, 6)
+            if (outcome && outcome.results.length > 0) {
+              const lastUser = messages.pop()
+              messages.push({ role: 'system', content: formatSearchContext(dto.message, outcome) })
+              if (lastUser) messages.push(lastUser)
+              searchSources = toSourceItems(outcome)
+              req.log.info({ source: outcome.source, count: searchSources.length }, 'web search injected')
+            } else {
+              req.log.warn('web search returned no results, fallback to normal chat')
+            }
+          } catch (e) {
+            req.log.warn({ err: String(e) }, 'web search failed, fallback to normal chat')
+          }
+        }
+
         // ===== 非流式 =====
         if (dto.stream === false) {
           let resultData: Record<string, unknown>
@@ -756,6 +784,11 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         // 1) RUN_STARTED（对齐 Python）
         reply.raw.write(`data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: sessionId, runId })}\n\n`)
 
+        // 1.5) 联网搜索结果（结构化来源，独立于正文，前端用于"N 篇来源"入口与来源面板）
+        if (searchSources.length > 0) {
+          reply.raw.write(`data: ${JSON.stringify({ type: 'WEB_SEARCH_SOURCES', sources: searchSources })}\n\n`)
+        }
+
         // 2) 流式输出 AG-UI 事件（对齐 Python: async for sse_str in llm_service.stream_agui(...)）
         try {
           for await (const sseStr of llmService.streamAgui(
@@ -808,9 +841,14 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         const fullContent = collectedContent.join('')
         const fullReasoning = collectedReasoning.join('')
         if (fullContent || fullReasoning) {
-          const contentBlocks = fullReasoning
-            ? [{ reasoningContent: fullReasoning }]
-            : Prisma.JsonNull
+          // contentBlocks：思考块 + 联网搜索结构化来源（历史消息加载时还原来源面板）
+          const blocks: unknown[] = []
+          if (fullReasoning) blocks.push({ reasoningContent: fullReasoning })
+          if (searchSources.length > 0) blocks.push({ sources: searchSources })
+          const contentBlocks: Prisma.InputJsonValue[] | typeof Prisma.JsonNull =
+            blocks.length > 0
+              ? (blocks as Prisma.InputJsonValue[])
+              : Prisma.JsonNull
 
           // P1-6 修复：优先使用上游真实 usage 的 completionTokens，回退到 length/4 估算
           const realCompletionTokens = usageRef.current?.completionTokens

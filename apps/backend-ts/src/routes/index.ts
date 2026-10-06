@@ -6,6 +6,7 @@ import { userRoutes } from './user.js'
 import { chatRoutes } from './chat.js'
 import { uploadRoutes } from './upload.js'
 import { agentRoutes } from './agent.js'
+import { webRoutes } from './web.js'
 
 // 对应 Python: app.include_router(router, prefix=settings.API_PREFIX)
 // 但各路由文件内已自带 prefix，这里只做注册
@@ -16,4 +17,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(chatRoutes)
   await app.register(uploadRoutes)
   await app.register(agentRoutes)
+  await app.register(webRoutes)
 }
