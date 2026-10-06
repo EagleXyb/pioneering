@@ -945,6 +945,14 @@ export async function resume_sync(
     answer?: string | null
     /** 多选回答的选项 id（kind='choice'） */
     answerId?: string | null
+    /**
+     * 额外的 configurable 字段（与 stream_response 的 extraConfigurable 对齐）。
+     * resume 从 checkpoint 续跑时图节点已确定，但路由函数（如
+     * routeAfterMemoryQuery）仍读 config.configurable.plan_execute_enabled；
+     * 若 resume 的图是 Plan-Execute 图而此处不传，clarify→memory_query
+     * 之后会被错误路由到 agent。调用方按原图模式透传即可。
+     */
+    extraConfigurable?: Record<string, any> | null
   },
 ): Promise<Record<string, any>> {
   if (!traceId) {
@@ -952,6 +960,9 @@ export async function resume_sync(
   }
 
   const lgConfig = { configurable: { thread_id: sessionId } }
+  if (options?.extraConfigurable && Object.keys(options.extraConfigurable).length > 0) {
+    Object.assign((lgConfig as any).configurable, options.extraConfigurable)
+  }
   // P9.4.3: options.timeout=true 时在 payload 中携带 timeout 标记，
   // 供 human_review 节点识别超时场景并使用 TOOL_APPROVAL_TIMEOUT 错误码
   const resumePayload: Record<string, any> = {
@@ -1073,6 +1084,12 @@ export async function* resume_stream(
     answer?: string | null
     /** 多选回答的选项 id（kind='choice'） */
     answerId?: string | null
+    /**
+     * 额外的 configurable 字段（与 stream_response 的 extraConfigurable 对齐，
+     * 详见 resume_sync 的同名参数说明）：Plan-Execute 会话 resume 时必须透传
+     * { plan_execute_enabled: true }，否则 clarify→memory_query 路由丢 planner。
+     */
+    extraConfigurable?: Record<string, any> | null
   },
 ): AsyncGenerator<Record<string, any>> {
   if (!traceId) {
@@ -1080,6 +1097,9 @@ export async function* resume_stream(
   }
 
   const lgConfig = { configurable: { thread_id: sessionId } }
+  if (options?.extraConfigurable && Object.keys(options.extraConfigurable).length > 0) {
+    Object.assign((lgConfig as any).configurable, options.extraConfigurable)
+  }
   const resumePayload: Record<string, any> = {
     approved: Boolean(approved),
     feedback: String(feedback || ''),
