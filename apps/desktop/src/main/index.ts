@@ -116,6 +116,27 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
+  // ④修复：setWindowOpenHandler 只拦「新开窗口」，拦不住渲染层在同一窗口触发的
+  // 整页导航（location.href / 点击 <a target=_self>）。应用生产态为 file:// +
+  // HashRouter（无整页导航需求），一旦被注入内容导航到外部站点，contextBridge
+  // 暴露的 window.api 仍注入该页面，形成钓鱼/伪造 UI 面。
+  // 策略：同源导航放行（开发态 Vite 整页刷新/HMR 兜底）；跨源一律阻止，
+  // http(s) 外链转交系统浏览器（与 setWindowOpenHandler 同款处理）。
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const currentUrl = mainWindow.webContents.getURL()
+    let sameOrigin = false
+    try {
+      sameOrigin = new URL(navigationUrl).origin === new URL(currentUrl).origin
+    } catch {
+      sameOrigin = false
+    }
+    if (sameOrigin) return
+    event.preventDefault()
+    if (/^https?:\/\//i.test(navigationUrl)) {
+      shell.openExternal(navigationUrl)
+    }
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {

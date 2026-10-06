@@ -81,6 +81,51 @@ interface AgentRun {
 /** 进行中的 run 注册表（runId → run），供 stop/销毁清理 */
 const activeRuns = new Map<string, AgentRun>()
 
+/**
+ * 会话 → 该会话 send 时所用图实例的映射。
+ *
+ * 为什么需要：plan_execute 会话 send 时走 create_agent 新建带
+ * planner/step_dispatch/step_finalize 节点的图（不进 get_runner 缓存）；
+ * 而 resume/abort/getState 原固定取 get_runner() 的默认 ReAct 图——
+ * 在缺少 plan 节点的图上重放 plan 会话 checkpoint，批准续跑路由到
+ * step_finalize 时会命中不存在的编译期目标而报错。故按会话记录图句柄，
+ * 与「send 用哪张图，resume 就用哪张图」对齐。
+ *
+ * checkpointer 是内核模块级单例（跨图共享 checkpoint 数据），映射只解决
+ * 图拓扑匹配；容量按 LRU 收口防止长生命周期进程中句柄无界增长。
+ */
+type SessionGraph = Awaited<ReturnType<typeof create_agent>>
+const sessionGraphs = new Map<string, SessionGraph>()
+const SESSION_GRAPH_LIMIT = 16
+
+function rememberSessionGraph(sessionId: string, graph: SessionGraph): void {
+  // 重新插入到末尾，保持 LRU 顺序（最近使用排最后）
+  sessionGraphs.delete(sessionId)
+  sessionGraphs.set(sessionId, graph)
+  if (sessionGraphs.size > SESSION_GRAPH_LIMIT) {
+    const oldest = sessionGraphs.keys().next().value
+    if (oldest !== undefined) sessionGraphs.delete(oldest)
+  }
+}
+
+/**
+ * 解析会话续跑（resume/abort/getState）应使用的图：
+ *   - plan_execute 会话：复用 send 时记录的图，并告知调用方透传运行时
+ *     configurable（clarify→memory_query 路由仍需 plan_execute_enabled）；
+ *   - 其余/映射缺失（如重启后仅靠 checkpoint 恢复）：回退默认缓存图。
+ */
+async function resolveSessionGraph(sessionId: string): Promise<{
+  graph: SessionGraph
+  planExecute: boolean
+}> {
+  const remembered = sessionGraphs.get(sessionId)
+  if (remembered) {
+    rememberSessionGraph(sessionId, remembered)
+    return { graph: remembered, planExecute: true }
+  }
+  return { graph: await get_runner(), planExecute: false }
+}
+
 // ============================================================
 // 环境准备：LLM key 等环境变量加载
 // ============================================================
@@ -138,12 +183,36 @@ export function ensureAgentEnv(envFileCandidates: string[], readFile: (p: string
   }
 }
 
+/**
+ * 重置 .env 一次性加载标记，使下次 ensureAgentEnv 重新解析候选文件。
+ *
+ * ⑪修复：KeyStore.delete() 会同步 delete process.env[name]，而 envLoaded
+ * 为一次性布尔——若该键同时存在于 desktop/.env，删除受管密钥后当前进程
+ * 运行期间 .env 值不会重新注入（表现为「删密钥后请求 401，重启又好了」）。
+ * SECURE_KEY_DELETE 成功后调用本函数，下次 run 的
+ * applyToEnv（空）→ ensureAgentEnv（重新填未设值）即恢复 .env 兜底。
+ */
+export function resetAgentEnvState(): void {
+  envLoaded = false
+}
+
 // ============================================================
 // 请求校验（对齐 backend zod schema 的关键字段）
 // ============================================================
 
 /** 透传的外层图模式白名单（对齐云端 AgentChatRequestSchema，非法值归一化丢弃） */
 const ALLOWED_AGENT_MODES: ReadonlySet<string> = new Set(['react_agent', 'plan_execute'])
+
+/**
+ * ⑰修复：IPC history 纵深尺寸界（渲染端 buildIpcHistory 仅取最近 20 条，
+ * 主进程这里是被攻陷渲染端/异常场景的第二道闸）：
+ *   - 条数上限：渲染端正常路径为 20，内核侧留 5 倍余量；
+ *   - 单项 content 上限：与顶层 message 的 100k 对齐。
+ * 超限整单拒绝（validate 返回 null → IPC Invalid request），杜绝无界
+ * history 进入内核造成 token/内存放大。
+ */
+const MAX_HISTORY_ITEMS = 100
+const MAX_HISTORY_CONTENT_CHARS = 100_000
 
 export function validateSendRequest(request: unknown): SendMessageRequest | null {
   if (!request || typeof request !== 'object') return null
@@ -152,10 +221,14 @@ export function validateSendRequest(request: unknown): SendMessageRequest | null
   if (r.sessionId !== undefined && typeof r.sessionId !== 'string') return null
   if (r.history !== undefined) {
     if (!Array.isArray(r.history)) return null
+    // ⑰修复：条数与单项内容尺寸界（渲染端正常路径 20 条/正文消息，正常请求不受影响）
+    if (r.history.length > MAX_HISTORY_ITEMS) return null
     for (const h of r.history) {
       if (!h || typeof h !== 'object') return null
       if (typeof (h as { role?: unknown }).role !== 'string') return null
-      if (typeof (h as { content?: unknown }).content !== 'string') return null
+      const content = (h as { content?: unknown }).content
+      if (typeof content !== 'string') return null
+      if (content.length > MAX_HISTORY_CONTENT_CHARS) return null
     }
   }
   return {
@@ -274,6 +347,9 @@ async function executeSend(run: AgentRun, request: SendMessageRequest): Promise<
     const graph = enablePlanExecute
       ? await create_agent({ configurable: { plan_execute_enabled: true } })
       : await get_runner()
+    // 记录会话所用图：plan 图不进 get_runner 缓存，resume/abort/getState
+    // 必须复用同一图实例（拓扑含 planner/step_dispatch/step_finalize）。
+    if (enablePlanExecute) rememberSessionGraph(run.sessionId, graph)
     const adapter = new AGUIStreamAdapter(traceId)
     const inputData: Record<string, unknown> = { input_type: 'text', prompt: request.message }
     if (request.history && request.history.length > 0) {
@@ -309,15 +385,17 @@ async function executeResume(run: AgentRun, request: ResumeRequest): Promise<voi
   const traceId = randomUUID()
   try {
     ensureSensitiveToolsRegistered()
-    // resume 依赖 checkpointer 的 thread checkpoint：与 send 共用同一
-    // 缓存图实例（checkpointer 为内核模块级单例，跨图实例亦共享）。
-    const graph = await get_runner()
+    // resume 依赖 checkpointer 的 thread checkpoint（内核模块级单例，跨图共享数据），
+    // 但图拓扑必须与 send 一致：plan_execute 会话复用 send 时记录的 plan 图，
+    // 否则批准后续跑路由到 step_finalize 等 plan 专属节点会命中未注册目标。
+    const { graph, planExecute } = await resolveSessionGraph(run.sessionId)
     const adapter = new AGUIStreamAdapter(traceId)
     logger.info(
-      'resume.start runId=%s session=%s approved=%s modified_args=%d answer=%s',
+      'resume.start runId=%s session=%s approved=%s modified_args=%d answer=%s plan_execute=%s',
       run.runId, run.sessionId, request.approved,
       Object.keys(request.modifiedArgs ?? {}).length,
       request.answer ? 'yes' : 'no',
+      planExecute ? 'yes' : 'no',
     )
     for await (const dict of adapter.transform_langgraph_events(
       resume_stream(graph, run.sessionId, request.approved, request.feedback ?? '', traceId, {
@@ -325,6 +403,9 @@ async function executeResume(run: AgentRun, request: ResumeRequest): Promise<voi
         // 澄清回答透传给 clarify 节点（kind='clarifying' | 'choice'）
         answer: request.answer ?? undefined,
         answerId: request.answerId ?? undefined,
+        // plan 会话续跑需运行时路由开关：clarify 恢复后经 memory_query
+        // 路由时仍读 configurable.plan_execute_enabled，不传会丢 planner。
+        extraConfigurable: planExecute ? { plan_execute_enabled: true } : null,
       }),
     )) {
       if (run.controller.signal.aborted) break
@@ -411,7 +492,8 @@ export async function abortPending(
   sessionId: string,
   reason: string,
 ): Promise<{ message: string; aborted: boolean; error?: string }> {
-  const graph = await get_runner()
+  // 与 executeResume 同规则取图：plan 会话的拒绝续跑也必须在 plan 图上重放
+  const { graph, planExecute } = await resolveSessionGraph(sessionId)
   const state = await get_interrupt_state(graph, sessionId)
   const pending = state !== null && (!state['user_id'] || state['user_id'] === LOCAL_USER_ID)
   if (!pending) {
@@ -423,6 +505,7 @@ export async function abortPending(
     false,
     `user ${reason}`,
     `hitl-abort-${sessionId}-${Date.now()}`,
+    planExecute ? { extraConfigurable: { plan_execute_enabled: true } } : undefined,
   )
   if (result && result['status'] === 'error') {
     logger.error('abort.failed session=%s code=%s', sessionId, String(result['error_code'] ?? ''))
@@ -434,7 +517,8 @@ export async function abortPending(
 
 /** 查询待答复 HITL 状态（对齐 GET /agent/state/:threadId，含超时治理） */
 export async function getHitlState(threadId: string): Promise<HitlStateResponse> {
-  const graph = await get_runner()
+  // 与 send/resume 同规则取图（checkpointer 共享，图结构按会话模式匹配）
+  const { graph } = await resolveSessionGraph(threadId)
   // 超时治理：查询前先检查（超时则自动拒绝并返回已过期）
   try {
     const timeoutStatus = await checkInterruptTimeout(graph, threadId)
@@ -497,6 +581,9 @@ export function abortRunsForSender(sender: AgentEventSender): void {
 export function invalidateAgentGraphCache(): void {
   try {
     reset_runner_cache()
+    // 会话级 plan 图同样按旧密钥构建，必须一并丢弃；下次 send 重建、
+    // resume 在映射缺失时回退 get_runner() 新图。
+    sessionGraphs.clear()
     logger.info('graph_cache.invalidated')
   } catch (e) {
     logger.warn('graph_cache.invalidate_failed err=%s', String(e))

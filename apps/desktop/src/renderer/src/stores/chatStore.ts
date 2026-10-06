@@ -29,6 +29,7 @@ import {
   toPersistMessage
 } from '../services/localChat'
 import type { ImageAttachment } from '../lib/input/image-attachments'
+import { getSessionInputDraftKey, removeInputDraft } from '../lib/input/input-drafts'
 import { buildSendText } from '../lib/input/select-file-editor'
 import {
   createStreamHandler,
@@ -406,6 +407,32 @@ function isLocalSession(session: ChatSession | undefined): boolean {
   return session?.runtime === 'local'
 }
 
+/**
+ * 终止指定会话的在途 run：渲染端 abort（退订/中止 fetch）+ 通知后端/主进程
+ * stop（终止 IPC 孤儿 run / 云端生成）。
+ *
+ * 共用方：
+ *   - 抢占发送（T1）：新消息发送前终止旧 run；
+ *   - 流终态 onError（③修复）：idle 超时/RUN_ERROR 后若不联动取消，主进程
+ *     executeSend 循环会继续到图自然结束（孤儿 run 持续烧 token），且
+ *     finalizeStreamingMessage 已把 abortController 置 null，后续抢占也
+ *     无法清理。
+ * best-effort：停止通知失败不阻断调用方自己的状态收尾。
+ */
+function terminateActiveRun(sid: string): void {
+  const { abortController, sessions, agentMode: globalAgentMode } = useChatStore.getState()
+  if (abortController) abortController.abort()
+  const target = sessions.find((s) => s.id === sid)
+  const useAgent = isLocalSession(target) || isAgentSession(target) || globalAgentMode
+  if (useAgent) {
+    void getTransportForRuntime(target?.runtime)
+      .stop(sid)
+      .catch(() => {})
+  } else {
+    void chatService.stopGeneration?.(sid).catch(() => {})
+  }
+}
+
 let streamSeq = 0
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -704,27 +731,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     if (abortController) {
-      abortController.abort()
       const sid = currentSessionId
       if (sid) {
         // T1 修复（修复任务清单 T1 / 报告 §3.1-11）：抢占发送必须同时通知后端/主进程
         // 终止旧 run。仅 abort() 只是渲染端静默退订（IPC transport 的 abort 语义），
         // 本地 IPC 模式下主进程 executeSend 会继续跑到自然结束，成为烧 token 的孤儿 run。
-        // 通道分流与 stopStreaming（本文件停止按钮路径）保持一致：
-        //   Agent 通道（local 会话 / Agent 会话 / 全局 Agent 模式）走 transport.stop，
-        //   普通聊天走 chatService.stopGeneration；best-effort，失败不阻断新发送。
-        const preemptSession = get().sessions.find((s) => s.id === sid)
-        const preemptUseAgent =
-          isLocalSession(preemptSession) ||
-          isAgentSession(preemptSession) ||
-          globalAgentMode
-        if (preemptUseAgent) {
-          void getTransportForRuntime(preemptSession?.runtime)
-            .stop(sid)
-            .catch(() => {})
-        } else {
-          void chatService.stopGeneration?.(sid).catch(() => {})
-        }
+        // ③修复后与 onError 终态共用 terminateActiveRun（通道分流逻辑单点维护）。
+        terminateActiveRun(sid)
         set((state) => {
           const list = state.messages[sid]
           if (!list || list.length === 0) return state
@@ -914,6 +927,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder, attachments }) => {
+        // ③修复：错误终态（含 60s idle 超时）必须联动终止底层 run——
+        // 否则主进程 IPC 孤儿 run 继续跑到图自然结束持续烧 token；
+        // 且下方 finalize 会把 abortController 置 null，之后再发送也无法抢占清理。
+        // 必须在 set 收尾之前调用（终止逻辑需读取当前 abortController）。
+        terminateActiveRun(_sessionId)
         const textNode = traceNodes[makeTextNodeId(assistantMsgId)]
         const baseContent = textNode?.content ?? content
         const errorPatch: Partial<Message> = {
@@ -1200,6 +1218,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         getHitlStore().getState().dequeue()
       },
       onError: (error, { content, thinking, toolCalls, traceNodes, traceRootOrder, attachments }) => {
+        // ③修复：resume 流错误终态（含 idle 超时）同样联动终止底层 run
+        terminateActiveRun(_sessionId)
         const resumeErrorPatch: Partial<Message> = {
           id: assistantMsgId,
           sessionId: _sessionId,
@@ -1413,6 +1433,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } else {
         await chatService.deleteSession(sessionId, true)
       }
+      // ⑩修复：会话删除成功后同步清理其输入草稿（electron-store 键 +
+      // userData/draft-assets 外置图片）。原实现漏调，被删会话若有含图草稿，
+      // 存储键与二进制文件永久残留（磁盘单调增长 + 截图内容仍可寻）。
+      void removeInputDraft(getSessionInputDraftKey(sessionId)).catch(() => {})
       set((state) => {
         const { [sessionId]: _, ...restMessages } = state.messages
         const { [sessionId]: __, ...restCursors } = state.messagesNextCursor
@@ -1560,8 +1584,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     })
 
+    // ⑳修复：重新生成需沿用原 assistant 消息实际使用的模型（回执 meta.model），
+    // 否则一律走当前 defaultModel，多模型场景下结果不可复现。'Auto'/空值不透传
+    // （sendMessage 内部同样归一化）。selectedFiles/skill 未在消息结构中持久化，
+    // 无法在此恢复（用户消息 content 中的 @{} 文本标签仍随原文重发）。
     await get().sendMessage(userMsg.content, {
-      images: userMsg.images ? (userMsg.images as ImageAttachment[]) : undefined
+      images: userMsg.images ? (userMsg.images as ImageAttachment[]) : undefined,
+      model: assistantMsg.model || undefined
     })
   }
 }))

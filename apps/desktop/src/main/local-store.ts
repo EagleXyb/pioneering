@@ -451,16 +451,33 @@ export class LocalChatStore {
 let _store: LocalChatStore | null = null
 let _openError: string | null = null
 
-/** 惰性打开本地库；失败（原生模块缺失/磁盘不可写）时记录错误并持续返回 null */
+/**
+ * ⑨修复：区分永久性失败与瞬时故障。
+ *   - better-sqlite3 原生模块缺失（MODULE_NOT_FOUND）：进程生命周期内不会
+ *     恢复，保持粘性（每次 require 失败无意义且刷屏日志）；
+ *   - 其余打开失败（外置盘拔出/备份工具锁库/权限抖动等 EBUSY/EACCES/…）：
+ *     不置粘性标记，允许后续调用重试打开——原实现一旦失败整个生命周期
+ *     本地模式永久不可用。
+ */
+function isPermanentOpenError(e: unknown): boolean {
+  const code = (e as { code?: string } | null)?.code
+  return code === 'MODULE_NOT_FOUND'
+}
+
+/** 惰性打开本地库；原生模块缺失时持续返回 null，瞬时故障允许后续重试 */
 export function getLocalChatStore(dbPath: string): LocalChatStore | null {
   if (_store) return _store
   if (_openError) return null
   try {
     _store = LocalChatStore.open(dbPath)
+    _openError = null
     return _store
   } catch (e) {
-    _openError = String(e)
-    logger.error('open.failed db=%s err=%s', dbPath, _openError)
+    const msg = String(e)
+    logger.error('open.failed db=%s err=%s', dbPath, msg)
+    if (isPermanentOpenError(e)) {
+      _openError = msg
+    }
     return null
   }
 }

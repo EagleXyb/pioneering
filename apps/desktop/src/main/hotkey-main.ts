@@ -21,6 +21,11 @@ export class HotkeyManager {
     this.store = store
   }
 
+  /** 读取最近一次全局注册中失败（被系统/其它应用占用）的冲突列表 */
+  getConflicts(): string[] {
+    return [...this.conflicts]
+  }
+
   /** 读取持久化覆盖表（SOT） */
   getOverrides(): HotkeyOverrides {
     const raw = this.store.get(HOTKEYS_STORE_KEY)

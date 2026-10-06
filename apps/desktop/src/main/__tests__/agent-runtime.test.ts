@@ -38,11 +38,12 @@ vi.mock('@pioneering/modu-agent', () => {
   return {
     get_runner: vi.fn(async () => {
       kernel.getRunnerCalls++
-      return { fake: 'graph' }
+      // 默认 ReAct 缓存图：与 plan 图返回不同对象，便于断言 resume 选图
+      return { fake: 'react-graph' }
     }),
     create_agent: vi.fn(async (cfg?: unknown) => {
       kernel.createAgentConfigs.push(cfg)
-      return { fake: 'graph' }
+      return { fake: 'plan-graph' }
     }),
     reset_runner_cache: vi.fn(() => {
       kernel.resetCalls++
@@ -136,6 +137,32 @@ describe('validateSendRequest', () => {
       history: [{ role: 'user', content: '之前的问题' }]
     })
     expect(ok?.history).toEqual([{ role: 'user', content: '之前的问题' }])
+  })
+
+  it('history 超尺寸界时拒绝（⑰：条数 >100 / 单项 content >100k）', () => {
+    const oversizedItems = Array.from({ length: 101 }, (_, i) => ({
+      role: 'user',
+      content: `m${i}`
+    }))
+    expect(
+      validateSendRequest({ message: 'hi', history: oversizedItems })
+    ).toBeNull()
+    expect(
+      validateSendRequest({
+        message: 'hi',
+        history: [{ role: 'user', content: 'x'.repeat(100_001) }]
+      })
+    ).toBeNull()
+    // 边界内（100 条 / 恰好 100k）正常放行
+    expect(
+      validateSendRequest({
+        message: 'hi',
+        history: Array.from({ length: 100 }, () => ({
+          role: 'assistant',
+          content: 'x'.repeat(100_000)
+        }))
+      })
+    ).not.toBeNull()
   })
 
   it('agentMode 白名单：plan_execute / react_agent 保留，其余归一化为 undefined', () => {
@@ -263,6 +290,93 @@ describe('startSend / startResume', () => {
     expect(cfg.configurable?.plan_execute_enabled).toBe(true)
     const lastCall = vi.mocked(stream_response).mock.calls.at(-1)
     expect(lastCall?.[6]).toEqual({ plan_execute_enabled: true })
+  })
+
+  it('plan_execute 会话：resume 复用 send 时的 plan 图并透传 plan_execute_enabled', async () => {
+    // 回归缺陷①：send 走 create_agent 新建 plan 图（不入 get_runner 缓存），
+    // resume 原固定取默认 ReAct 图，批准续跑路由到 step_finalize 时命中
+    // 编译期不存在的目标而报错。修复后按会话复用图 + 透传运行时 configurable。
+    const sid = 'plan-resume-sess'
+    kernel.streamEvents = [agui({ type: 'RUN_PAUSED' })]
+    startSend(makeSender(), 'rp1', {
+      sessionId: sid,
+      message: 'hi',
+      agentMode: 'plan_execute'
+    })
+    await vi.waitFor(() => expect(kernel.createAgentConfigs.length).toBe(1))
+
+    const { resume_stream } = await import('@pioneering/modu-agent')
+    vi.mocked(resume_stream).mockClear()
+    kernel.resumeEvents = [agui({ type: 'RUN_FINISHED' })]
+    startResume(makeSender(), 'rp2', { sessionId: sid, approved: true })
+
+    await vi.waitFor(() => expect(vi.mocked(resume_stream).mock.calls.length).toBe(1))
+    const call = vi.mocked(resume_stream).mock.calls[0]!
+    expect(call[0]).toEqual({ fake: 'plan-graph' })
+    expect(call[1]).toBe(sid)
+    expect(call[5]).toMatchObject({
+      extraConfigurable: { plan_execute_enabled: true }
+    })
+  })
+
+  it('默认会话：resume 走 get_runner 缓存图且不带 plan_execute_enabled', async () => {
+    const sid = 'react-resume-sess'
+    kernel.streamEvents = [agui({ type: 'RUN_FINISHED' })]
+    startSend(makeSender(), 'rr1', { sessionId: sid, message: 'hi' })
+    await vi.waitFor(() => expect(kernel.getRunnerCalls).toBe(1))
+
+    const { resume_stream } = await import('@pioneering/modu-agent')
+    vi.mocked(resume_stream).mockClear()
+    kernel.resumeEvents = [agui({ type: 'RUN_FINISHED' })]
+    startResume(makeSender(), 'rr2', { sessionId: sid, approved: true })
+
+    await vi.waitFor(() => expect(vi.mocked(resume_stream).mock.calls.length).toBe(1))
+    const call = vi.mocked(resume_stream).mock.calls[0]!
+    expect(call[0]).toEqual({ fake: 'react-graph' })
+    expect(call[5]?.extraConfigurable ?? null).toBeNull()
+  })
+
+  it('plan_execute 会话：abortPending 在 plan 图上 resume_sync 并透传 configurable', async () => {
+    const sid = 'plan-abort-sess'
+    kernel.streamEvents = [agui({ type: 'RUN_PAUSED' })]
+    startSend(makeSender(), 'ra1', {
+      sessionId: sid,
+      message: 'hi',
+      agentMode: 'plan_execute'
+    })
+    await vi.waitFor(() => expect(kernel.createAgentConfigs.length).toBe(1))
+
+    kernel.interruptState = { session_id: sid, user_id: 'local_user' }
+    const { resume_sync } = await import('@pioneering/modu-agent')
+    vi.mocked(resume_sync).mockClear()
+    const r = await abortPending(sid, 'user_cancel')
+    expect(r.aborted).toBe(true)
+    expect(vi.mocked(resume_sync).mock.calls.length).toBe(1)
+    const call = vi.mocked(resume_sync).mock.calls[0]!
+    expect(call[0]).toEqual({ fake: 'plan-graph' })
+    expect(call[1]).toBe(sid)
+    expect(call[5]).toEqual({ extraConfigurable: { plan_execute_enabled: true } })
+  })
+
+  it('图缓存失效后：会话 plan 图映射一并清空，resume 回退默认缓存图', async () => {
+    const sid = 'plan-invalidate-sess'
+    kernel.streamEvents = [agui({ type: 'RUN_PAUSED' })]
+    startSend(makeSender(), 'ri1', {
+      sessionId: sid,
+      message: 'hi',
+      agentMode: 'plan_execute'
+    })
+    await vi.waitFor(() => expect(kernel.createAgentConfigs.length).toBe(1))
+
+    invalidateAgentGraphCache()
+
+    const { resume_stream } = await import('@pioneering/modu-agent')
+    vi.mocked(resume_stream).mockClear()
+    kernel.resumeEvents = [agui({ type: 'RUN_FINISHED' })]
+    startResume(makeSender(), 'ri2', { sessionId: sid, approved: true })
+    await vi.waitFor(() => expect(vi.mocked(resume_stream).mock.calls.length).toBe(1))
+    const call = vi.mocked(resume_stream).mock.calls[0]!
+    expect(call[0]).toEqual({ fake: 'react-graph' })
   })
 
   it('流异常 → 推送 RUN_ERROR 事件后收敛', async () => {

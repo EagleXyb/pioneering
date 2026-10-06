@@ -60,6 +60,7 @@ import {
   getHitlState,
   abortRunsForSender,
   invalidateAgentGraphCache,
+  resetAgentEnvState,
   type AgentEventSender
 } from './agent-runtime'
 import { getLocalChatStore, type LocalChatStore } from './local-store'
@@ -276,7 +277,9 @@ export function registerIpcHandlers(): void {
   const hotkeys = getHotkeyManager(appStore)
   ipcMain.handle(IpcChannel.HOTKEYS_GET, (event) => {
     if (!isTrustedSender(event)) return { ok: false, overrides: {}, conflicts: [] as string[] }
-    return { ok: true, overrides: hotkeys.getOverrides(), conflicts: [] as string[] }
+    // ⑧修复：启动注册（bootstrapHotkeys）与设置变更注册产生的冲突此前被硬编码
+    // 为 []，重启后被占用快捷键的黄条提示不可见。返回 HotkeyManager 的真实冲突。
+    return { ok: true, overrides: hotkeys.getOverrides(), conflicts: hotkeys.getConflicts() }
   })
   ipcMain.handle(
     IpcChannel.HOTKEYS_SET,
@@ -957,7 +960,12 @@ export function registerIpcHandlers(): void {
         return Promise.resolve({ ok: false, error: 'Invalid payload' })
       }
       const ok = getKeyStore(appStore).delete(name)
-      if (ok) invalidateAgentGraphCache()
+      if (ok) {
+        // ⑪修复：delete() 已清 process.env[name]，同步解除 .env 一次性加载锁，
+        // 下次 run 时若 .env 含同名键可重新回注（否则要重启才恢复）。
+        resetAgentEnvState()
+        invalidateAgentGraphCache()
+      }
       return Promise.resolve({ ok })
     },
   )

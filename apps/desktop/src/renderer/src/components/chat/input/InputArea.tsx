@@ -301,7 +301,10 @@ function ModelSelect({ disabled }: { disabled?: boolean }) {
 //   - 拒绝（approved=false 恢复，图走拒绝分支）/ 批准并继续（可携带 modifiedArgs）；
 //   - 右上 × = 放弃整个 run（等价旧弹窗点遮罩/ESC → abort）；
 //   - resume 进行中按钮禁用防重复提交；恢复失败原因由 error 展示，可重试。
-// 组件随审批项条件挂载/卸载，展开/改参等本地编辑状态天然按项隔离。
+// ⑲修复：组件在队列 A→B 直切（dequeue/recover/refresh 均可能无 null 中间态）
+// 时不会卸载，useState 初始化器不重跑，展开/改参状态会跨项残留。故挂载处
+// 用按 tool_call id 集合构造的稳定 key 显式声明身份，项切换即重建组件，
+// 不再依赖「条件挂载/卸载」的时序巧合。
 // ============================================================
 function HitlToolConfirmPanel({
   hitl,
@@ -1110,6 +1113,9 @@ export function InputArea({
               各分支显式 `&& hitl` 守卫，保证分支内 hitl 非空（嵌套三元不跨分支保留收窄）。 */}
           {hitl?.kind === 'tool_confirm' && hitl ? (
             <HitlToolConfirmPanel
+              // ⑲修复：按审批项工具调用 id 集合构造稳定 key，队列直切时强制
+              // 重建，杜绝 B 卡带上 A 的展开态/陈旧改参 JSON。
+              key={`tool_confirm|${(hitl.toolCalls ?? []).map((t) => t.id).sort().join(',')}`}
               hitl={hitl}
               error={hitlError}
               onApprove={async (modifiedArgs) => (await onHitlApprove?.(modifiedArgs)) ?? false}

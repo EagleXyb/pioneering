@@ -248,4 +248,56 @@ describe('sendMessage 抢占发送（T1）', () => {
     expect(stopSpy).not.toHaveBeenCalled()
     expect(stopGenerationSpy).not.toHaveBeenCalled()
   })
+
+  // ============================================================
+  // ③：错误终态（含 60s idle 超时）必须联动终止底层 run。
+  // 原实现 onError 只 finalize UI 并把 abortController 置 null，不调
+  // abort/stop——IPC 主进程孤儿 run 继续烧 token，之后抢占也清理不到。
+  // ============================================================
+  it('③ onError 终态联动 transport.stop + abort（idle 超时不留孤儿 run）', async () => {
+    seedStore({ agentMode: 'react_agent' })
+    // 起点无在途流，避免抢占分支的 stop 干扰计数；终止所需的 controller
+    // 由本次 sendMessage 启动后写入 store
+    useChatStore.setState({ abortController: null } as Partial<ChatState>)
+
+    let startedController: AbortController | null = null
+    const errorTransport = makeTransport({
+      sendMessage: ((_req: unknown, cb: { onError: (msg: string) => void }) => {
+        startedController = new AbortController()
+        // 模拟 RUN_ERROR / idle 超时终态：IPC/SSE 事件在真实链路中均异步
+        // 到达（此时 controller 已写入 store，终止逻辑才能取到并 abort）
+        queueMicrotask(() => cb.onError('Stream idle timeout (60s without data)'))
+        return startedController
+      }) as AgentTransport['sendMessage']
+    })
+    setAgentTransport(errorTransport)
+
+    const sendPromise = useChatStore.getState().sendMessage('触发超时的问题')
+    // 错误终态经微任务到达：停止联动与 UI 收尾均发生在 controller 注册之后
+    await vi.waitFor(() => expect(stopSpy).toHaveBeenCalledTimes(1))
+    await sendPromise
+
+    // 底层 run 被通知停止（按会话 id），渲染端 controller 被 abort
+    expect(stopSpy).toHaveBeenCalledWith('s1')
+    expect((startedController as AbortController | null)?.signal.aborted).toBe(true)
+    // UI 已收尾：无在途 controller、错误可见（证明终态路径本身未被破坏）
+    expect(useChatStore.getState().abortController).toBeNull()
+    expect(useChatStore.getState().error).toContain('idle timeout')
+  })
+
+  it('③ 普通聊天会话 onError 终态走 chatService.stopGeneration', async () => {
+    seedStore({})
+    useChatStore.setState({ abortController: null } as Partial<ChatState>)
+    sendStreamSpy.mockImplementation(((_req: unknown, cb: { onError: (msg: string) => void }) => {
+      queueMicrotask(() => cb.onError('Stream idle timeout (60s without data)'))
+      return new AbortController()
+    }) as unknown as typeof chatService.sendMessageStream)
+
+    const sendPromise = useChatStore.getState().sendMessage('普通聊天超时')
+    await vi.waitFor(() => expect(stopGenerationSpy).toHaveBeenCalledTimes(1))
+    await sendPromise
+
+    expect(stopGenerationSpy).toHaveBeenCalledWith('s1')
+    expect(stopSpy).not.toHaveBeenCalled()
+  })
 })
