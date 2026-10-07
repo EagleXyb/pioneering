@@ -36,7 +36,7 @@ describe('agent-tool-registry（T4.1）', () => {
     const t2 = {
       ...t1,
       description: () => 'new desc',
-    }
+    } as unknown as BaseTool
     registerAgentTool(t1)
     expect(() => registerAgentTool(t2)).not.toThrow()
     expect(getAgentTool('dup')?.description()).toBe('new desc')

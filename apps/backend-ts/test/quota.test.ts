@@ -1,7 +1,7 @@
 /**
  * 配额校验 / 用量记录单元测试（T2.5）
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 import { checkQuota, recordUsage } from '../src/core/quota.js'
 
@@ -11,7 +11,7 @@ type Overrides = {
 
 function mockPrisma(o: Overrides = {}) {
   const quotaUpdate = vi.fn(async () => ({}))
-  const tokenCreate = vi.fn(async () => ({}))
+  const tokenCreate = vi.fn(async (_arg: unknown) => ({}))
   const quotaRecordUpdate = vi.fn(async () => ({}))
 
   const prisma = {

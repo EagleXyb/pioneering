@@ -2,7 +2,7 @@
  * T4.2：Agent 搜索工具结果收敛为 WEB_SEARCH_SOURCES 事件
  */
 import { describe, it, expect } from 'vitest'
-import { AGUIStreamAdapter } from '@/orchestration/communication/agui-adapter.js'
+import { AGUIStreamAdapter } from '../../src/orchestration/communication/agui-adapter.js'
 
 /** 构造 SearchTool.invoke 返回值对应的 ToolMessage content */
 function searchToolContent(): string {
@@ -29,7 +29,7 @@ async function collect(toolNodeEvents: Array<Record<string, unknown>>) {
     }
   }
 
-  const adapter = new AGUIStreamAdapter('trace-1', 'msg-1', 'dict')
+  const adapter = new AGUIStreamAdapter('trace-1')
   const out: Array<Record<string, unknown>> = []
   for await (const ev of adapter.transform_langgraph_events(source() as never)) {
     // event dict: { type, data: <json string> }
