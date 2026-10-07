@@ -58,7 +58,7 @@ describe('T4.2 搜索收敛', () => {
     const sourcesEvent = events.find((e) => e.type === 'WEB_SEARCH_SOURCES')
     expect(sourcesEvent).toBeDefined()
 
-    const payload = JSON.parse(sourcesEvent!.raw.data as string)
+    const payload = JSON.parse((sourcesEvent!.raw as { data: string }).data)
     expect(payload.sources).toEqual([
       { title: '标题A', url: 'https://a.com', content: '摘要A', site: 'Bing' },
       { title: '标题B', url: 'https://b.com', content: '摘要B', site: 'Bing' },

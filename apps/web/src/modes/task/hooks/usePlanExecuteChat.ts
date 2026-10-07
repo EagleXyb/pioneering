@@ -5,6 +5,7 @@ import { usePlanExecuteStore } from '../../../store/planExecuteStore';
 import { getMessages } from '../../../api/message';
 import { fetchSessionMessages } from '../../../lib/load-session-messages';
 import { getMessagePlan, patchCollapsedSteps } from '../../../api/plan';
+import { useAppStore } from '../../../store/appStore';
 import { streamCompletion, streamResume, stopAgentCompletion } from '../../../api/agent';
 import {
   useHitlStore,
@@ -60,6 +61,10 @@ export function usePlanExecuteChat(activeId: string | null) {
   const hydrateFromHistory = usePlanExecuteStore((s) => s.hydrateFromHistory);
   const setHitlLock = usePlanExecuteStore((s) => s.setHitlLock);
 
+  // 右侧任务流水线：默认折叠，Agent 开始输出步骤时自动展开
+  const autoOpenPipeline = useAppStore((s) => s.autoOpenPipeline);
+  const resetPipelineForSession = useAppStore((s) => s.resetPipelineForSession);
+
   // 当前流引用
   const assistantMsgIdRef = useRef<string | null>(null);
   const assistantTextRef = useRef('');
@@ -109,6 +114,14 @@ export function usePlanExecuteChat(activeId: string | null) {
         plan: event.plan,
         step_update: event.step_update,
       } as Parameters<typeof applyPlanDelta>[0]);
+      // Agent 开始输出规划/步骤信息：自动展开右侧任务流水线
+      const hasPlan =
+        Array.isArray(event.plan) && event.plan.length > 0;
+      if (phase === 'plan' && hasPlan) {
+        autoOpenPipeline();
+      } else if (phase === 'execute' && event.step_update) {
+        autoOpenPipeline();
+      }
     },
     onTextDelta: (delta) => {
       assistantTextRef.current += delta;
@@ -250,6 +263,8 @@ export function usePlanExecuteChat(activeId: string | null) {
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setStatus('streaming');
       setPhase('planning');
+      // 新一轮任务：清除用户折叠意图并先保持折叠，待规划/步骤输出时再自动展开
+      resetPipelineForSession(false);
 
       try {
         const response = await streamCompletion(
@@ -385,7 +400,9 @@ export function usePlanExecuteChat(activeId: string | null) {
     setMessages([]);
     setStatus('idle');
     resetPlan();
-  }, [resetPlan]);
+    // temp 会话：无步骤信息，面板保持折叠
+    resetPipelineForSession(false);
+  }, [resetPlan, resetPipelineForSession]);
 
   /**
    * 切换会话时从后端恢复历史消息与 plan 时间轴快照。
@@ -401,6 +418,8 @@ export function usePlanExecuteChat(activeId: string | null) {
       setMessages([]);
       setStatus('idle');
       resetPlan();
+      // 进入会话先清除用户折叠意图并折叠，待确认有历史步骤后再展开
+      resetPipelineForSession(false);
 
       try {
         const { messages: mapped, rawMessages } = await fetchSessionMessages(sessionId);
@@ -414,12 +433,14 @@ export function usePlanExecuteChat(activeId: string | null) {
         const snapshot = await getMessagePlan(lastAssistant.id);
         if (snapshot.steps.length > 0) {
           hydrateFromHistory(snapshot);
+          // 历史含任务步骤：进入会话即展开任务流水线
+          resetPipelineForSession(true);
         }
       } catch (e) {
         console.error('[task.plan_execute] loadHistory.error', e);
       }
     },
-    [resetPlan, hydrateFromHistory],
+    [resetPlan, hydrateFromHistory, resetPipelineForSession],
   );
 
   return {

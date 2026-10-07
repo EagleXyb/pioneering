@@ -4,6 +4,7 @@ import type { ChatMessagesData } from '../../../types/chat';
 import { streamCompletion, streamResume, stopAgentCompletion } from '../../../api/agent';
 import { fetchSessionMessages } from '../../../lib/load-session-messages';
 import { contentBlocksToSteps } from './contentBlocksToSteps';
+import { useAppStore } from '../../../store/appStore';
 import {
   useHitlStore,
   type HitlItem,
@@ -94,6 +95,10 @@ export function useAgentChat(
   const hitl = useHitlStore((s) => s.currentItem);
   const hitlError = useHitlStore((s) => s.error);
   const hitlBusy = useHitlStore((s) => s.status === 'resolving');
+
+  // 右侧推理面板：默认折叠，有步骤输出时自动展开
+  const autoOpenPipeline = useAppStore((s) => s.autoOpenPipeline);
+  const resetPipelineForSession = useAppStore((s) => s.resetPipelineForSession);
 
   const sendControllerRef = useRef<AbortController | null>(null);
   const resumeControllerRef = useRef<AbortController | null>(null);
@@ -198,6 +203,8 @@ export function useAgentChat(
         },
       }));
       setCurrentStateKey(key);
+      // Agent 开始输出推理步骤：自动展开右侧面板
+      autoOpenPipeline();
     },
     onThinkingDelta: (delta) => {
       thinkingTextRef.current += delta;
@@ -243,6 +250,8 @@ export function useAgentChat(
         },
       }));
       setCurrentStateKey(key);
+      // 开始调用工具：自动展开右侧面板
+      autoOpenPipeline();
     },
     onToolCallArgs: (delta) => {
       const key = toolCallKeyRef.current;
@@ -431,6 +440,8 @@ export function useAgentChat(
       setStatus('pending');
       setStateMap({});
       setCurrentStateKey(null);
+      // 新一轮任务：清除用户折叠意图并先保持折叠，待步骤输出时再自动展开
+      resetPipelineForSession(false);
 
       (async () => {
         try {
@@ -535,9 +546,13 @@ export function useAgentChat(
       setMessages(mapped)
       // T3.3：从最后一条 assistant 消息的 contentBlocks 还原右侧过程面板
       const lastAssistant = [...rawMessages].reverse().find((m) => m.role === 'assistant')
+      let restoredSteps: Record<string, AgentStep> = {}
       if (lastAssistant) {
-        setStateMap(contentBlocksToSteps(lastAssistant.contentBlocks))
+        restoredSteps = contentBlocksToSteps(lastAssistant.contentBlocks)
+        setStateMap(restoredSteps)
       }
+      // 历史含推理步骤：进入会话即展开面板，否则保持折叠
+      resetPipelineForSession(Object.keys(restoredSteps).length > 0)
     } catch {
       // 失败静默降级为空态
     }

@@ -33,7 +33,7 @@ describe('agent-tool-registry（T4.1）', () => {
 
   it('同名重复注册不抛错并覆盖', () => {
     const t1 = makeTool('dup')
-    const t2: BaseTool = {
+    const t2 = {
       ...t1,
       description: () => 'new desc',
     }

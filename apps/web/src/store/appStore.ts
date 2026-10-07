@@ -33,10 +33,17 @@ function loadSourcesWidth(): number {
 interface AppStore {
   sidebarOpen: boolean;
   toggleSidebar: () => void;
-  /** 任务模式右侧面板（任务流水线 / Artifact）是否展开 */
+  /** 任务/分析模式右侧面板（任务流水线 / 推理过程 / Artifact）是否展开。
+   * 默认折叠；Agent 开始输出步骤信息时自动展开 */
   pipelineOpen: boolean;
   togglePipeline: () => void;
   setPipelineOpen: (open: boolean) => void;
+  /** 当前会话内用户是否手动折叠过面板：手动折叠后本次任务不再自动展开 */
+  pipelineUserDismissed: boolean;
+  /** Agent 有信息输出时调用：未被用户手动折叠则自动展开 */
+  autoOpenPipeline: () => void;
+  /** 切换会话时重置：空会话折叠、有历史步骤的会话由 hook 决定是否展开 */
+  resetPipelineForSession: (hasSteps: boolean) => void;
   /** 右侧面板宽度（px），可拖动调整 */
   pipelineWidth: number;
   setPipelineWidth: (w: number) => void;
@@ -48,9 +55,24 @@ interface AppStore {
 export const useAppStore = create<AppStore>((set) => ({
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  pipelineOpen: true,
-  togglePipeline: () => set((s) => ({ pipelineOpen: !s.pipelineOpen })),
+  // 默认折叠
+  pipelineOpen: false,
+  // 用户点折叠按钮：记录手动折叠意图（由展开→折叠时）
+  togglePipeline: () =>
+    set((s) => ({
+      pipelineOpen: !s.pipelineOpen,
+      pipelineUserDismissed: s.pipelineOpen ? true : s.pipelineUserDismissed,
+    })),
   setPipelineOpen: (open) => set({ pipelineOpen: open }),
+  pipelineUserDismissed: false,
+  autoOpenPipeline: () =>
+    set((s) =>
+      s.pipelineOpen || s.pipelineUserDismissed
+        ? s
+        : { pipelineOpen: true },
+    ),
+  resetPipelineForSession: (hasSteps) =>
+    set({ pipelineUserDismissed: false, pipelineOpen: hasSteps }),
   pipelineWidth: loadPipelineWidth(),
   setPipelineWidth: (w) => {
     const clamped = Math.min(MAX_PIPELINE_WIDTH, Math.max(MIN_PIPELINE_WIDTH, Math.round(w)));
