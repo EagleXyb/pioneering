@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { ThemeProvider } from './store/themeContext';
 import { Toaster } from './components/ui/sonner';
+// HITL 宿主接线（副作用：bindHitlHost）
+import './lib/agent-host';
 
 // 全局设计 Token
 import './styles/tokens.css';

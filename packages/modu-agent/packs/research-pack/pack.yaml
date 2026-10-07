@@ -1,0 +1,14 @@
+name: research-pack
+version: 0.1.0
+description: 研究分析领域包（pro / react_agent）——研究写作领域上下文 + 护栏 + SOP
+capabilities:
+  - domain
+  - guardrail
+  - sop
+config_profile:
+  graph_spec_extra:
+    research_pack_enabled: true
+  agent_overrides:
+    # 启用四层 Prompt 组装（消费 research_writer 领域层）与写操作护栏
+    react_optimization.prompt_composer.enabled: true
+    react_optimization.action_guardrails.enabled: true

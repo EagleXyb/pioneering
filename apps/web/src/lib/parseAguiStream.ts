@@ -9,7 +9,9 @@
  *   TEXT_MESSAGE_START / TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END
  *   THINKING_START / THINKING_TEXT_MESSAGE_CONTENT / THINKING_END
  *   TOOL_CALL_START / TOOL_CALL_ARGS / TOOL_CALL_END / TOOL_CALL_RESULT
- *   STATE_DELTA
+ *   STATE_DELTA / WEB_SEARCH_SOURCES
+ *   USER_QUESTION_REQUEST / RUN_PAUSED / HITL_ABORTED
+ *   ARTIFACT_CREATED / STATE_SNAPSHOT / MESSAGES_SNAPSHOT
  *
  * 纯函数：不持有 React 状态，所有副作用通过 handlers 回调由调用方注入；
  * 不做 fetch（HTTP 状态码处理留在 hook 层），只负责把 Response.body 解析成事件。
@@ -45,13 +47,34 @@ export interface AguiStreamHandlers {
   onStateDelta?: (event: AguiEvent) => void;
   /** 联网搜索结构化来源：{ sources: [{title,url,content,site}] } */
   onWebSearchSources?: (sources: unknown, event: AguiEvent) => void;
+  /** HITL：USER_QUESTION_REQUEST 中断请求（载荷 snake_case，pro/task 消费） */
+  onHumanInputRequest?: (event: AguiEvent) => void;
+  /** HITL：run 已暂停（调用方不 finalize，保留 streamingMessageId 供续写） */
+  onRunPaused?: (event: AguiEvent) => void;
+  /** HITL：待确认操作被中止（拒绝/超时），调用方需收尾 */
+  onHitlAborted?: (event: AguiEvent) => void;
+  /** Artifact 创建事件（W4 消费） */
+  onArtifactCreated?: (event: AguiEvent) => void;
+  /** 全量状态快照（预留） */
+  onStateSnapshot?: (event: AguiEvent) => void;
+  /** 全量消息快照（预留） */
+  onMessagesSnapshot?: (event: AguiEvent) => void;
 }
 
 export type AguiStreamEndReason =
   | 'finished' // 收到 RUN_FINISHED 且流正常关闭
   | 'closed' // 流正常关闭但未收到 RUN_FINISHED（后端协议兜底场景）
   | 'error-event' // 收到 RUN_ERROR
-  | 'aborted'; // 请求被 AbortController 中止
+  | 'aborted' // 请求被 AbortController 中止
+  | 'paused'; // 收到 RUN_PAUSED：HITL 中断待答复，调用方不 finalize
+
+/** 终态事件集合：收到任一事件即标记 terminal=true */
+export const TERMINAL_AGUI_EVENTS = [
+  'RUN_FINISHED',
+  'RUN_ERROR',
+  'RUN_PAUSED',
+  'HITL_ABORTED',
+] as const;
 
 export interface AguiStreamResult {
   reason: AguiStreamEndReason;
@@ -59,6 +82,8 @@ export interface AguiStreamResult {
   eventCount: number;
   /** 实际接收到的全部事件类型（去重，便于测试与排障） */
   eventTypes: string[];
+  /** 是否收到终态事件（RUN_FINISHED / RUN_ERROR / RUN_PAUSED / HITL_ABORTED） */
+  terminal: boolean;
 }
 
 /**
@@ -81,6 +106,8 @@ export async function parseAguiStream(
   let eventCount = 0;
   const eventTypes = new Set<string>();
   let sawRunFinished = false;
+  let sawRunPaused = false;
+  let sawHitlAborted = false;
   let streamError: AguiStreamResult['error'];
 
   const dispatch = (event: AguiEvent) => {
@@ -136,6 +163,26 @@ export async function parseAguiStream(
       case 'WEB_SEARCH_SOURCES':
         handlers.onWebSearchSources?.(event.sources, event);
         break;
+      case 'USER_QUESTION_REQUEST':
+        handlers.onHumanInputRequest?.(event);
+        break;
+      case 'RUN_PAUSED':
+        sawRunPaused = true;
+        handlers.onRunPaused?.(event);
+        break;
+      case 'HITL_ABORTED':
+        sawHitlAborted = true;
+        handlers.onHitlAborted?.(event);
+        break;
+      case 'ARTIFACT_CREATED':
+        handlers.onArtifactCreated?.(event);
+        break;
+      case 'STATE_SNAPSHOT':
+        handlers.onStateSnapshot?.(event);
+        break;
+      case 'MESSAGES_SNAPSHOT':
+        handlers.onMessagesSnapshot?.(event);
+        break;
       default:
         // 前向兼容：后端新增事件类型时不报错
         break;
@@ -175,6 +222,7 @@ export async function parseAguiStream(
           error: streamError,
           eventCount,
           eventTypes: [...eventTypes],
+          terminal: true,
         };
       }
     }
@@ -202,20 +250,25 @@ export async function parseAguiStream(
       error: streamError,
       eventCount,
       eventTypes: [...eventTypes],
+      terminal: true,
     };
   }
+
+  const terminal = sawRunFinished || sawRunPaused || sawHitlAborted;
 
   if (signal?.aborted) {
     return {
       reason: 'aborted',
       eventCount,
       eventTypes: [...eventTypes],
+      terminal,
     };
   }
 
   return {
-    reason: sawRunFinished ? 'finished' : 'closed',
+    reason: sawRunPaused ? 'paused' : sawRunFinished ? 'finished' : 'closed',
     eventCount,
     eventTypes: [...eventTypes],
+    terminal,
   };
 }

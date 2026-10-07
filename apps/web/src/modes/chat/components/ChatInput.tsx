@@ -25,8 +25,8 @@ import {
   FILE_ACCEPT_ATTR,
   IMAGE_ACCEPT_ATTR,
 } from '../../../api/upload';
-import { ChatAttachments } from './ChatAttachments';
-import { useChatAttachments } from '../hooks/useChatAttachments';
+import { AttachmentBar } from '@/components/attachments/AttachmentBar';
+import { useAttachments } from '@/hooks/useAttachments';
 
 interface Props {
   activeId: string | null;
@@ -60,7 +60,7 @@ export function ChatInput({
     addFiles,
     removeAttachment,
     takeMessageSuffix,
-  } = useChatAttachments();
+  } = useAttachments();
 
   /** 将文本与已完成附件的 Markdown 后缀组合为最终消息 */
   const composeWithAttachments = (text: string): string | null => {
@@ -114,7 +114,7 @@ export function ChatInput({
     <div className="chat-input-area">
       <div className="chat-input-card">
         {/* 附件预览条 */}
-        <ChatAttachments
+        <AttachmentBar
           attachments={attachments}
           onRemove={removeAttachment}
         />

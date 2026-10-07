@@ -1,0 +1,5 @@
+roles:
+  - fact_checker
+  - research_analyst
+plan_task_types:
+  - research

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useConversationStore } from '../../store/conversationStore';
 import { useAppStore } from '../../store/appStore';
 import { useAgentChat } from './hooks/useAgentChat';
@@ -7,6 +8,8 @@ import { AnalysisMessageList } from './components/AnalysisMessageList';
 import { AnalysisInput } from './components/AnalysisInput';
 import { ProcessPanel } from './components/ProcessPanel';
 import { TaskResizer } from '../task/components/TaskResizer';
+import { useHitlStore } from '@pioneering/agent-protocol';
+import { useSessionRuns } from '../../hooks/useSessionRuns';
 import './pro.css';
 
 export default function ProMode() {
@@ -14,10 +17,33 @@ export default function ProMode() {
   const create = useConversationStore((s) => s.create);
   const pipelineOpen = useAppStore((s) => s.pipelineOpen);
 
-  const { messages, status, stateMap, currentStateKey, sendMessage, abort } =
-    useAgentChat(activeId, false);
+  const {
+    messages,
+    status,
+    stateMap,
+    currentStateKey,
+    sendMessage,
+    abort,
+    loadHistory,
+    hitl,
+    hitlError,
+    hitlBusy,
+  } = useAgentChat(activeId, false);
+
+  // T5.5：按会话加载 run 记录（messageId → 执行轨迹）
+  const { byMessage: runByMessage } = useSessionRuns(activeId, status);
 
   useChatSync(activeId, messages);
+
+  // T3.1 + T1.6：会话切换时先恢复历史，再检测待答复项（暂停则补占位卡片）
+  useEffect(() => {
+    if (activeId && !activeId.startsWith('temp_')) {
+      void (async () => {
+        await loadHistory(activeId);
+        await useHitlStore.getState().recover(activeId);
+      })();
+    }
+  }, [activeId, loadHistory]);
 
   if (!activeId) {
     return (
@@ -35,9 +61,16 @@ export default function ProMode() {
   return (
     <AnalysisLayout>
       <AnalysisLayout.Main>
-        <AnalysisMessageList messages={messages} status={status} />
+        <AnalysisMessageList
+          messages={messages}
+          status={status}
+          runByMessage={runByMessage}
+        />
         <AnalysisInput
           status={status}
+          hitl={hitl}
+          hitlError={hitlError}
+          hitlBusy={hitlBusy}
           onSend={(text) => sendMessage({ prompt: text })}
           onStop={() => abort()}
         />

@@ -42,6 +42,8 @@ export interface Session {
   model: string;
   modelConfig?: ModelConfig;
   messageCount: number;
+  /** Agent 模式标记（T3.5）：后端权威字段，前端据此推导 pro/task */
+  agentMode?: 'react_agent' | 'plan_execute' | null;
   lastMessage?: MessagePreview;
   createdAt: string;
   updatedAt: string;

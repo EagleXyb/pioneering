@@ -721,3 +721,167 @@ html[data-density='compact'] .settings-main-head {
     width: 180px;
   }
 }
+
+/* ===== MCP 区块（T5.2）===== */
+.settings-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.settings-hint code {
+  padding: 1px 6px;
+  margin: 0 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.settings-inline-action {
+  margin-left: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-blue);
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.settings-inline-action:hover {
+  opacity: 0.8;
+}
+
+/* 连接状态徽标（圆点 + 文案） */
+.mcp-status-dot {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.mcp-status-dot::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.mcp-status-dot--on {
+  color: var(--accent-green);
+}
+
+.mcp-status-dot--on::before {
+  background: var(--accent-green);
+}
+
+/* server 块（行 + 可展开工具清单） */
+.mcp-server-block {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.mcp-server-block:last-child {
+  border-bottom: none;
+}
+
+.mcp-server-block .setting-row--card {
+  padding: 12px 0;
+  border-bottom: none;
+}
+
+.mcp-server-row {
+  gap: 10px;
+}
+
+/* 展开按钮 */
+.mcp-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.mcp-expand-btn:hover:not(:disabled) {
+  color: var(--text-secondary);
+}
+
+.mcp-expand-btn:disabled {
+  cursor: default;
+}
+
+.mcp-expand-btn--muted {
+  opacity: 0.35;
+}
+
+/* 启停按钮 */
+.mcp-power-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-medium);
+  border-radius: 6px;
+  background: var(--bg-sidebar-hover);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mcp-power-btn:hover:not(:disabled) {
+  background: var(--bg-sidebar-active);
+  color: var(--text-primary);
+}
+
+.mcp-power-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 工具清单 */
+.mcp-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 12px 30px;
+}
+
+.mcp-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.mcp-tool-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.mcp-tool-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  max-width: 400px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

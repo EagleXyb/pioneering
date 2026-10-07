@@ -426,6 +426,7 @@ export async function* stream_response(
   traceId?: string | null,
   eventBridge?: LangGraphEventBridge | null,
   extraConfigurable?: Record<string, any> | null,
+  signal?: AbortSignal | null,
 ): AsyncGenerator<Record<string, any>> {
   // P1-6: 入口层输入校验
   _validateInputData(inputData)
@@ -472,6 +473,8 @@ export async function* stream_response(
   const streamConfig = _withRecursionLimit(graph, {
     ...lgConfig,
     streamMode: ['messages', 'updates', 'values'],
+    // T2.3：AbortSignal 透传——中止时上游 LLM 请求真正取消
+    ...(signal ? { signal } : {}),
   })
   const rawStream = await graph.stream(initialState, streamConfig)
 
@@ -1091,6 +1094,7 @@ export async function* resume_stream(
      */
     extraConfigurable?: Record<string, any> | null
   },
+  signal?: AbortSignal | null,
 ): AsyncGenerator<Record<string, any>> {
   if (!traceId) {
     traceId = randomUUID()
@@ -1125,7 +1129,11 @@ export async function* resume_stream(
     // P9.1.4: 通过 ModuGraphInterface.stream() 调用，无需 as any
     const stream = await graph.stream(
       new Command({ resume: resumePayload }),
-      _withRecursionLimit(graph, { ...lgConfig, streamMode: ['messages', 'updates', 'values'] }),
+      _withRecursionLimit(graph, {
+        ...lgConfig,
+        streamMode: ['messages', 'updates', 'values'],
+        ...(signal ? { signal } : {}),
+      }),
     )
 
     for await (const event of stream) {

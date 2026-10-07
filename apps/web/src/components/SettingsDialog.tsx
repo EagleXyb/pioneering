@@ -28,6 +28,7 @@ import {
   UserRound,
   X,
   Zap,
+  Cable,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -44,6 +45,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import { McpSection } from './more-menu/McpSection';
 import './SettingsDialog.css';
 
 type Density = 'compact' | 'comfortable';
@@ -102,6 +104,7 @@ const SECTIONS: ReadonlyArray<{
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'notification', label: '通知', icon: Bell },
   { id: 'chat', label: '对话', icon: MessageSquare },
+  { id: 'mcp', label: 'MCP', icon: Cable },
   { id: 'account', label: '账户', icon: UserRound },
   { id: 'help', label: '帮助与反馈', icon: CircleHelp },
   { id: 'about', label: '关于', icon: Info },
@@ -285,6 +288,7 @@ export default function SettingsDialog({
               {active === 'appearance' && '主题、密度与文字大小'}
               {active === 'notification' && '新消息提醒方式'}
               {active === 'chat' && '对话交互的默认行为'}
+              {active === 'mcp' && 'Model Context Protocol 服务连接状态'}
               {active === 'account' && '账户信息、用量与隐私设置'}
               {active === 'help' && '产品使用指引与问题反馈'}
               {active === 'about' && '产品版本与说明'}
@@ -434,6 +438,8 @@ export default function SettingsDialog({
                 </div>
               </>
             )}
+
+            {active === 'mcp' && <McpSection />}
 
             {active === 'chat' && (
               <>

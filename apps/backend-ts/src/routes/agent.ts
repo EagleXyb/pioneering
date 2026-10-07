@@ -1,5 +1,6 @@
 // Agent 路由 —— 对应 Python app/api/v1/agent.py
 import { FastifyPluginAsync } from 'fastify'
+import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient, type ChatSession, type ChatMessage, type AgentToolExecution } from '@prisma/client'
 import { z } from 'zod'
 import { authGuard } from '../plugins/auth.js'
@@ -16,8 +17,22 @@ import {
   AgentAbortRequestSchema,
 } from '../schemas/agent.js'
 import { StopGenerationRequestSchema } from '../schemas/chat.js'
-import { StreamContext, streamAgentCompletion, streamAgentResume, getPendingAgentState, mergePlanSteps, collectMetadataFromEvent } from '../core/agent-bridge.js'
+import {
+  StreamContext,
+  streamAgentCompletion,
+  streamAgentResume,
+  getPendingAgentState,
+  mergePlanSteps,
+  collectMetadataFromEvent,
+  collectRunTimeline,
+  startAgentRun,
+  finishAgentRun,
+  type AgentRunStatus,
+} from '../core/agent-bridge.js'
 import { checkInterruptTimeout, get_runner, resume_sync } from '@pioneering/modu-agent'
+import { trackInterruptSession } from '../core/agent-scheduler.js'
+import { checkQuota, recordUsage } from '../core/quota.js'
+import { loadSessionHistoryByBudget } from '../core/context-budget.js'
 
 // ===== Agent 流式运行注册表（供 /agent/completions/stop 中止生成）=====
 // 对齐 chat.ts 的 runningRuns：注册当前用户的运行中生成任务，
@@ -94,31 +109,44 @@ function executionToDetail(e: AgentToolExecution) {
     outputSummary: e.outputSummary,
     outputResult: null,
     status: e.status ?? 'pending',
-    errorMessage: e.errorMessage,
-    durationMs: e.durationMs,
-    startTime: e.startTime,
-    endTime: e.endTime,
+  errorMessage: e.errorMessage,
+  durationMs: e.durationMs,
+  startTime: e.startTime,
+  endTime: e.endTime,
   }
 }
 
-// 对应 Python: _load_session_history
-// 从数据库加载会话历史消息，供 LLM 多轮上下文使用。
-// 最近 limit 条按时间倒序取，再反转为正序（旧→新）。
-async function loadSessionHistory(
-  prisma: PrismaClient,
-  sessionId: string,
-  limit = 20,
-): Promise<{ role: string; content: string }[]> {
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-  })
-  messages.reverse()
-  return messages.map((m) => ({
-    role: m.role,
-    content: m.content ?? '',
-  }))
+// T5.5：agent_run → 响应（含事件时间轴，供回放执行轨迹）
+function runToResponse(r: {
+  id: string
+  sessionId: string
+  messageId: string | null
+  agentMode: string
+  status: string
+  traceId: string
+  events: unknown
+  usage: unknown
+  errorCode: string | null
+  errorMessage: string | null
+  startedAt: Date
+  endedAt: Date | null
+  durationMs: number | null
+}) {
+  return {
+    id: r.id,
+    sessionId: r.sessionId,
+    messageId: r.messageId ?? null,
+    agentMode: r.agentMode,
+    status: r.status,
+    traceId: r.traceId,
+    events: Array.isArray(r.events) ? r.events : [],
+    usage: r.usage ?? null,
+    errorCode: r.errorCode ?? null,
+    errorMessage: r.errorMessage ?? null,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    durationMs: r.durationMs ?? null,
+  }
 }
 
 // 对应 Python: agent_completion 中的持久化逻辑
@@ -332,11 +360,23 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           data: { messageCount: { increment: 1 } },
         })
 
-        // 4. 加载会话历史（包含刚写入的用户消息，对齐 Python）
-        const history = await loadSessionHistory(fastify.prisma, sessionId)
+        // 4. 加载会话历史（token 预算内选择，包含刚写入的用户消息）
+        const history = await loadSessionHistoryByBudget(fastify.prisma, sessionId)
 
         // 使用后端配置的默认模型（对齐 Python: model=None 忽略会话 model）
         const systemPrompt = session?.systemPrompt ?? null
+
+        // T2.5：Agent 通道入口配额校验（超限抛 429）
+        await checkQuota(fastify.prisma, userId)
+
+        // T5.5：创建本次执行记录（running）；流结束后按 ctx 自动推导终态并收尾
+        const runId = randomUUID()
+        await startAgentRun(fastify.prisma, {
+          runId,
+          sessionId,
+          userId,
+          agentMode: dto.agentMode ?? 'react_agent',
+        })
 
         if (dto.stream) {
           // ===== 流式 SSE =====
@@ -360,6 +400,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           const ctx = new StreamContext()
           let streamError = false
           let sseCount = 0
+          let runMessageId: string | undefined
 
           // 注册运行（供 /completions/stop 中止本流），连接关闭时自动清理
           const stopController = new AbortController()
@@ -386,9 +427,15 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               history,
               // P4: 透传 agentMode 以启用 Plan-Execute 图
               agentMode: dto.agentMode,
+              // T2.3：stopController 信号透传到上游
+              signal: stopController.signal,
+              // T5.5：复用 handler 层 runId（= traceId）
+              runId,
             })) {
               if (stopController.signal.aborted) {
                 fastify.log.info({ sessionId }, '[agent.completions] stream aborted by /stop')
+                // T2.4：标记中止原因（persist 守卫据此跳过）
+                ctx.abortReason = 'user_cancel'
                 break
               }
               sseCount++
@@ -415,15 +462,26 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           // 流前异常时不持久化（对齐 Python: event_generator 抛错时持久化代码不执行）
           // HITL（阶段零 D2）：被 interrupt 暂停的 run 不持久化空/半截 assistant 消息，
           // 待 resume 后由 /agent/resume 落库为完整终态消息。
-          if (!streamError && !ctx.paused) {
+          if (!streamError && !ctx.paused && !ctx.abortReason) {
             try {
-              const { planStepsCount } = await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+              const { assistantMsg, planStepsCount } =
+                await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
+              runMessageId = assistantMsg.id
               if (planStepsCount > 0) {
                 fastify.log.info(
                   { sessionId, planStepsCount },
                   '[agent.completions] persist.plan_steps',
                 )
               }
+              // T2.5：记录用量（无真实 usage，走文本长度估算）
+              await recordUsage(fastify.prisma, {
+                userId,
+                sessionId,
+                messageId: assistantMsg.id,
+                model: session?.model ?? env.LLM_DEFAULT_MODEL,
+                promptText: dto.message,
+                completionText: ctx.answerContent,
+              })
             } catch (e: any) {
               // 持久化失败不影响已发送的 SSE 流
               fastify.log.error({ err: e, sessionId }, 'Failed to persist agent assistant message')
@@ -433,6 +491,16 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               { sessionId },
               '[agent.completions] skip_persist.run_paused',
             )
+            // T2.2：真暂停（等待用户答复）才注册 TTL sweep；HITL_ABORTED 不跟踪
+            if (ctx.runPaused) trackInterruptSession(sessionId)
+          }
+
+          // T5.5：收尾 agent_run（自动推导 completed/paused/cancelled/error）。
+          // 隔离收尾异常，不影响已写出的 SSE 与连接关闭。
+          try {
+            await finishAgentRun(fastify.prisma, { runId, ctx, messageId: runMessageId })
+          } catch (e: any) {
+            fastify.log.error({ err: e, runId }, 'Failed to finish agent run')
           }
 
           reply.raw.end()
@@ -451,6 +519,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           history,
           // P4: 透传 agentMode 以启用 Plan-Execute 图
           agentMode: dto.agentMode,
+          // T5.5：复用 handler 层 runId
+          runId,
         })) {
           // 仅消费，不输出
         }
@@ -462,6 +532,14 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             '[agent.completions] persist.plan_steps',
           )
         }
+
+        // T5.5：收尾 agent_run
+        try {
+          await finishAgentRun(fastify.prisma, { runId, ctx, messageId: assistantMsg.id })
+        } catch (e: any) {
+          fastify.log.error({ err: e, runId }, 'Failed to finish agent run')
+        }
+
         return messageToResponse(assistantMsg)
       })
 
@@ -508,6 +586,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           throw new NotFoundError('会话不存在待审批的暂停项')
         }
 
+        // T2.5：resume 入口同样校验配额
+        await checkQuota(fastify.prisma, userId)
+
         // 3. SSE 输出（与 /agent/completions 同款 hijack）
         const reqOrigin = req.headers.origin
         const corsHeaders: Record<string, string> = {}
@@ -527,6 +608,20 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         let sseCount = 0
         let streamError = false
         const ctx = new StreamContext()
+        let resumeMessageId: string | undefined
+
+        // T2.3：注册 stopController（供 /completions/stop 中止 resume 流）
+        const resumeStopController = new AbortController()
+        const resumeRunId = genId('arun_')
+        agentRunningRuns.set(resumeRunId, {
+          sessionId: dto.sessionId,
+          userId,
+          controller: resumeStopController,
+        })
+        reply.raw.on('close', () => {
+          agentRunningRuns.delete(resumeRunId)
+        })
+
         try {
           for await (const eventDict of streamAgentResume({
             sessionId: dto.sessionId,
@@ -537,11 +632,18 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             // 澄清回答透传给 clarify 节点（kind='clarifying' | 'choice'）
             answer: dto.answer ?? undefined,
             answerId: dto.answerId ?? undefined,
+            signal: resumeStopController.signal,
           })) {
+            if (resumeStopController.signal.aborted) {
+              ctx.abortReason = 'user_cancel'
+              break
+            }
             sseCount++
             reply.raw.write(`data: ${eventDict.data}\n\n`)
             // 复用 collectMetadataFromEvent 收集元数据（RUN_PAUSED 会再次置 ctx.paused）
             collectMetadataFromEvent(eventDict, ctx)
+            // T5.5：收集 resume 段事件时间轴
+            collectRunTimeline(eventDict, ctx)
           }
         } catch (e: any) {
           streamError = true
@@ -559,13 +661,23 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           '[agent.resume] stream.end',
         )
 
-        // resume 正常完成（未再次暂停、无错误）→ 落库完整终态 assistant 消息（阶段零 D2）
-        if (!streamError && !ctx.paused) {
+        // resume 正常完成（未再次暂停、无错误、未中止）→ 落库完整终态 assistant 消息
+        if (!streamError && !ctx.paused && !ctx.abortReason) {
           try {
-            await persistAssistantMessage(fastify.prisma, {
+            const { assistantMsg } = await persistAssistantMessage(fastify.prisma, {
               sessionId: dto.sessionId,
               userId,
               ctx,
+            })
+            resumeMessageId = assistantMsg.id
+            // T2.5：记录用量
+            await recordUsage(fastify.prisma, {
+              userId,
+              sessionId: dto.sessionId,
+              messageId: assistantMsg.id,
+              model: env.LLM_DEFAULT_MODEL,
+              promptText: dto.feedback ?? '',
+              completionText: ctx.answerContent,
             })
           } catch (e: any) {
             fastify.log.error({ err: e, sessionId: dto.sessionId }, 'Failed to persist resume assistant message')
@@ -576,6 +688,39 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             { sessionId: dto.sessionId },
             '[agent.resume] skip_persist.re_paused',
           )
+        }
+
+        // T5.5：若带 runId，按 resume 结果收尾原 run（合并首次 + resume 事件、seq 延续）
+        if (dto.runId) {
+          try {
+            const existing = await fastify.prisma.agentRun.findFirst({
+              where: { id: dto.runId, userId },
+            })
+            if (existing) {
+              const resumeStatus: AgentRunStatus = streamError
+                ? 'error'
+                : ctx.paused
+                  ? 'paused'
+                  : ctx.abortReason
+                    ? 'cancelled'
+                    : 'completed'
+              const baseEvents = Array.isArray(existing.events)
+                ? (existing.events as Record<string, any>[])
+                : []
+              await finishAgentRun(fastify.prisma, {
+                runId: dto.runId,
+                ctx,
+                status: resumeStatus,
+                messageId: resumeMessageId,
+                baseEvents,
+              })
+            }
+          } catch (e: any) {
+            fastify.log.error(
+              { err: e, runId: dto.runId },
+              'Failed to finish resumed agent run',
+            )
+          }
         }
 
         reply.raw.end()
@@ -652,11 +797,63 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           return { message: 'abort_failed', aborted: false, error: result['error_code'] ?? '' }
         }
 
+        // T5.5：拒绝后把该会话下属于当前用户的 paused run 收尾为 cancelled
+        try {
+          await fastify.prisma.agentRun.updateMany({
+            where: { sessionId: dto.sessionId, userId, status: 'paused' },
+            data: { status: 'cancelled', endedAt: new Date() },
+          })
+        } catch (e: any) {
+          fastify.log.warn(
+            { err: e },
+            '[agent.abort] failed to cancel paused runs',
+          )
+        }
+
         fastify.log.info(
-          { sessionId: dto.sessionId, reason: dto.reason },
+          { sessionId: dto.sessionId, reason: dto.reason},
           '[agent.abort] interrupted run rejected',
         )
         return { message: 'aborted', aborted: true }
+      })
+
+      // ========== Run 执行记录（T5.5）==========
+
+      // GET /agent/runs —— 列出当前用户的 run（可按 sessionId 过滤）
+      app.get('/runs', buildSchema({
+        querystring: z.object({
+          sessionId: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+        }),
+        tags: ['agent'],
+        summary: '列出 Agent 执行记录',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const q = req.query as { sessionId?: string; limit?: number }
+        const runs = await fastify.prisma.agentRun.findMany({
+          where: {
+            userId: req.user.id,
+            ...(q.sessionId ? { sessionId: q.sessionId } : {}),
+          },
+          orderBy: { startedAt: 'desc' },
+          take: q.limit ?? 50,
+        })
+        return { runs: runs.map(runToResponse) }
+      })
+
+      // GET /agent/runs/:runId —— 返回单个 run 元数据与事件时间轴（回放执行轨迹）
+      app.get('/runs/:runId', buildSchema({
+        params: z.object({ runId: z.string() }),
+        tags: ['agent'],
+        summary: '获取 Agent 执行记录与事件时间轴',
+        security: [{ BearerAuth: [] }],
+      }), async (req) => {
+        const { runId } = req.params as { runId: string }
+        const run = await fastify.prisma.agentRun.findFirst({
+          where: { id: runId, userId: req.user.id },
+        })
+        if (!run) throw new NotFoundError('执行记录不存在')
+        return runToResponse(run)
       })
 
       // ========== Plan 步骤时间轴恢复 ==========

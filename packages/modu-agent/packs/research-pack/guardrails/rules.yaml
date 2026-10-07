@@ -1,0 +1,5 @@
+rules:
+  - rule_id: research_doc_writer_approval
+    tool_name: doc_writer
+    description: 研究文稿落盘需经确认，确保论断有据可依
+    dry_run_supported: true

@@ -1,20 +1,20 @@
 /**
- * 输入区附件预览条
+ * 附件预览条（chat / pro / task 共用，T4.4 抽取自 ChatAttachments）
  *
  * 展示已选择/上传中的附件：
  *   - 图片：缩略图（上传中用本地 objectURL 即时预览，上传成功换为服务端 URL）
  *   - 文件（pdf/txt）：文件图标 + 文件名 + 大小
  *   - 每项可移除（上传中仅取消本地项；上传完成额外 best-effort 调 DELETE /upload）
  *
- * 纯受控组件：数据与上传编排由 ChatInput/useChatAttachments 管理。
+ * 纯受控组件：数据与上传编排由 useAttachments 管理。
  */
 import { FileText, Loader2, X } from 'lucide-react';
-import type { UploadedFile } from '../../../api/upload';
-import { formatFileSize, isImageType } from '../../../api/upload';
+import type { UploadedFile } from '../../api/upload';
+import { formatFileSize, isImageType } from '../../api/upload';
 
 export type AttachmentStatus = 'uploading' | 'done' | 'error';
 
-export interface ChatAttachment {
+export interface AttachmentItem {
   /** 前端临时唯一 id（上传中阶段使用） */
   tempId: string;
   fileName: string;
@@ -29,7 +29,7 @@ export interface ChatAttachment {
 }
 
 interface Props {
-  attachments: ChatAttachment[];
+  attachments: AttachmentItem[];
   onRemove: (tempId: string) => void;
 }
 
@@ -37,7 +37,7 @@ function AttachmentCard({
   item,
   onRemove,
 }: {
-  item: ChatAttachment;
+  item: AttachmentItem;
   onRemove: () => void;
 }) {
   const isImage = isImageType(item.fileType);
@@ -101,7 +101,7 @@ function AttachmentCard({
   );
 }
 
-export function ChatAttachments({ attachments, onRemove }: Props) {
+export function AttachmentBar({ attachments, onRemove }: Props) {
   if (attachments.length === 0) return null;
   return (
     <div className="chat-attachment-bar">

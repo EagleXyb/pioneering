@@ -178,11 +178,12 @@ export async function build_checkpointer(
   if (checkpointerType === 'sqlite') {
     try {
       // 动态导入 SQLite saver（可选依赖，可能未安装）
-      // @ts-expect-error — 可选依赖，可能不存在类型声明
-      const mod = await import('@langchain/langgraph-checkpoint-sqlite')
-      const SqliteSaver = mod.SqliteSaver ?? mod.default?.SqliteSaver
+      const { SqliteSaver } = await import('@langchain/langgraph-checkpoint-sqlite')
       if (SqliteSaver) {
-        return SqliteSaver.fromConnString('checkpoints.db')
+        const connString = String(
+          getConfig().get('memory.sqlite_path', 'checkpoints.db'),
+        )
+        return SqliteSaver.fromConnString(connString)
       }
       throw new Error('SqliteSaver not found in module')
     } catch (e: any) {

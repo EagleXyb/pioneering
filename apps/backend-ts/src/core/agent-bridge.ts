@@ -8,9 +8,11 @@ import { randomUUID } from 'crypto'
 
 import {
   create_agent,
+  get_runner,
   stream_response,
   resume_stream,
   get_interrupt_state,
+  getDomainAdapter,
   AGUIStreamAdapter,
   AGUIEncoder,
   AGUIEventType,
@@ -22,10 +24,17 @@ const logger = {
   error: (msg: string, ...args: any[]) => console.error(`[agent-bridge] ${msg}`, ...args),
 }
 
+// T5.3：模式 → 默认领域域名（宿主侧约定）。
+// 仅当对应场景包已激活（域名已注册）时才注入 configurable.domain，
+// 未激活时保持空 → 继续走 get_runner 缓存图，不破坏默认路径与 T2.6 缓存。
+const MODE_DOMAIN: Record<string, string> = {
+  react_agent: 'research_writer',
+  plan_execute: 'task_planner',
+}
+
 // ============================================================
 // StreamContext: 元数据收集（对应 Python StreamContext dataclass）
 // ============================================================
-
 export class StreamContext {
   answerContent = ''
   contentBlocks: Record<string, any>[] = []
@@ -44,6 +53,15 @@ export class StreamContext {
   planError: string | null = null
   // HITL: 本次 run 是否被 interrupt() 暂停（阶段零 D2——暂停的 run 不持久化空/半截消息）
   paused = false
+  // T2.2：仅 RUN_PAUSED（等待答复）为 true；HITL_ABORTED 不跟踪 TTL
+  runPaused = false
+  // T2.3：取消信号，透传给 LangGraph stream（上游真正中止）
+  signal: AbortSignal | null = null
+  // T2.4：中止原因（user_cancel / timeout / reject）——有值时不持久化半截消息
+  abortReason: 'user_cancel' | 'timeout' | 'reject' | null = null
+
+  // T5.5：本次 run 的事件时间轴（结构性里程碑，折叠流式分片），随 agent_run 落库
+  runEvents: Record<string, any>[] = []
 
   finish(): void {
     this.latencyMs = Date.now() - this.startTime
@@ -64,6 +82,10 @@ export interface StreamAgentCompletionOptions {
   history?: { role: string; content: string }[]
   // P4: 支持 per-request 切换 Plan-Execute 图
   agentMode?: 'react_agent' | 'plan_execute'
+  // T2.3：取消信号（透传至 LangGraph）
+  signal?: AbortSignal | null
+  // T5.5：显式 runId（= agent_runs.id / traceId）；省略时内部生成
+  runId?: string
 }
 
 /**
@@ -95,10 +117,20 @@ export async function* streamAgentCompletion(
     configurable.plan_execute_enabled = true
   }
 
-  // 有覆盖项时传 configurable，否则无参调用（走全局配置，行为不变）
-  const graph = Object.keys(configurable).length > 0
+  // T5.3：场景包已激活时按模式注入领域（供 PromptComposer 的 domain 层）。
+  // 域名未注册（无激活包）则跳过，保持 get_runner 缓存路径。
+  const domainName = MODE_DOMAIN[agentMode ?? 'react_agent']
+  if (domainName && getDomainAdapter(domainName) !== null) {
+    configurable.domain = domainName
+  }
+
+  // T2.6：图实例优先走 get_runner 缓存（避免每请求重建）。
+  // 仅当存在 build 期覆盖（model/system_prompt）时才 create_agent——
+  // 这两项在 build 时读取，无法经运行时 config 注入。
+  const hasBuildOverrides = Object.keys(configurable).length > 0
+  const graph = hasBuildOverrides
     ? await create_agent({ configurable })
-    : await create_agent()
+    : await get_runner()
 
   // 注入会话历史到 input_data
   const inputData: Record<string, any> = { input_type: 'text', prompt: message }
@@ -106,7 +138,7 @@ export async function* streamAgentCompletion(
     inputData.history = history
   }
 
-  const traceId = randomUUID()
+  const traceId = opts.runId ?? randomUUID()
   const adapter = new AGUIStreamAdapter(traceId)
 
   logger.info(
@@ -124,7 +156,16 @@ export async function* streamAgentCompletion(
     }
 
     for await (const eventDict of adapter.transform_langgraph_events(
-      stream_response(graph, userId, sessionId, inputData, traceId, null, extraConfigurable),
+      stream_response(
+        graph,
+        userId,
+        sessionId,
+        inputData,
+        traceId,
+        null,
+        extraConfigurable,
+        opts.signal ?? null,
+      ),
     )) {
       eventCount++
       const dataStr = eventDict.data ?? ''
@@ -136,15 +177,24 @@ export async function* streamAgentCompletion(
       )
       yield eventDict
       collectMetadataFromEvent(eventDict, ctx)
+      collectRunTimeline(eventDict, ctx)
     }
   } catch (e: any) {
     logger.error('Agent stream error: %s', String(e))
+    // T2.4：信号中止时记录原因，持久化据此跳过（不发 RUN_ERROR，流已被调用方 break）
+    if (e?.name === 'AbortError') {
+      ctx.abortReason = 'user_cancel'
+      return
+    }
     ctx.hasError = true
     ctx.errorInfo = { code: 'AGENT_ERROR', message: String(e) }
-    yield AGUIEncoder.toEventDict(AGUIEventType.RUN_ERROR, {
+    const errEventDict = AGUIEncoder.toEventDict(AGUIEventType.RUN_ERROR, {
       code: 'AGENT_ERROR',
       message: String(e),
     })
+    yield errEventDict
+    // RUN_ERROR 在循环外发出，手动补进时间轴
+    collectRunTimeline(errEventDict, ctx)
   }
 
   logger.info(
@@ -187,6 +237,8 @@ export interface ResumeAgentOptions {
   /** 需求澄清回答：多选选项 id（kind='choice'） */
   answerId?: string
   traceId?: string
+  // T2.3：取消信号
+  signal?: AbortSignal | null
 }
 
 /**
@@ -199,9 +251,11 @@ export interface ResumeAgentOptions {
 export async function* streamAgentResume(
   opts: ResumeAgentOptions,
 ): AsyncGenerator<Record<string, string>> {
-  const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId } = opts
+  const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId, signal } =
+    opts
   const trace = traceId ?? randomUUID()
-  const graph = await create_agent()
+  // T2.6：resume 复用缓存图（checkpointer 共享，能读取中断 checkpoint）
+  const graph = await get_runner()
 
   const adapter = new AGUIStreamAdapter(trace)
   logger.info(
@@ -210,11 +264,19 @@ export async function* streamAgentResume(
   )
 
   for await (const eventDict of adapter.transform_langgraph_events(
-    resume_stream(graph, sessionId, approved, feedback ?? '', trace, {
-      modifiedArgs,
-      answer,
-      answerId,
-    }),
+    resume_stream(
+      graph,
+      sessionId,
+      approved,
+      feedback ?? '',
+      trace,
+      {
+        modifiedArgs,
+        answer,
+        answerId,
+      },
+      signal ?? null,
+    ),
   )) {
     yield eventDict
   }
@@ -257,6 +319,91 @@ export async function getPendingAgentState(
     user_id: state['user_id'] ?? '',
     created_at: state['created_at'] ?? null,
   }
+}
+
+// ============================================================
+// T5.5：collectRunTimeline —— 构建 run 事件时间轴
+// ============================================================
+
+// 折叠的流式分片事件（不逐条进时间轴，避免被大量 delta 淹没）
+const TIMELINE_SKIP_EVENTS = new Set([
+  'TEXT_MESSAGE_CONTENT',
+  'THINKING_TEXT_MESSAGE_CONTENT',
+  'TOOL_CALL_ARGS',
+])
+const TIMELINE_MAX_EVENTS = 300
+// 提取到时间轴的短标量字段白名单
+const TIMELINE_SCALAR_KEYS = [
+  'role',
+  'toolCallId',
+  'toolCallName',
+  'phase',
+  'status',
+  'code',
+  'reason',
+  'message',
+]
+
+function safeJsonStringify(v: any): string {
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
+}
+
+function truncateTimelineValue(v: any, max: number = 300): any {
+  const s = typeof v === 'string' ? v : safeJsonStringify(v)
+  return s.length <= max ? s : `${s.slice(0, max)}…`
+}
+
+/**
+ * 从单个 AG-UI 事件提取结构性里程碑，追加到 ctx.runEvents。
+ * 流式分片（CONTENT delta）被折叠；结构化负载（工具参数/结果/计划）截断保留。
+ */
+export function collectRunTimeline(
+  eventDict: Record<string, string>,
+  ctx: StreamContext,
+): void {
+  if (ctx.runEvents.length >= TIMELINE_MAX_EVENTS) return
+  const dataStr = eventDict.data ?? ''
+  if (!dataStr) return
+
+  let data: Record<string, any>
+  try {
+    data = JSON.parse(dataStr)
+  } catch {
+    return
+  }
+  const type = data.type ?? ''
+  if (!type || TIMELINE_SKIP_EVENTS.has(type)) return
+
+  const ev: Record<string, any> = {
+    seq: ctx.runEvents.length + 1,
+    type,
+    ts: Date.now(),
+  }
+  for (const k of TIMELINE_SCALAR_KEYS) {
+    const v = data[k]
+    if (v != null && typeof v !== 'object') {
+      ev[k] = truncateTimelineValue(String(v), 200)
+    }
+  }
+  if (data.toolCallArgs != null) {
+    ev.toolCallArgs = truncateTimelineValue(data.toolCallArgs)
+  }
+  if (data.args != null && type === 'TOOL_CALL_START') {
+    ev.args = truncateTimelineValue(data.args)
+  }
+  if (
+    data.content != null &&
+    (type === 'TOOL_CALL_RESULT' || type === 'STEP_FINISHED')
+  ) {
+    ev.content = truncateTimelineValue(data.content)
+  }
+  if (Array.isArray(data.plan)) ev.planCount = data.plan.length
+
+  ctx.runEvents.push(ev)
 }
 
 // ============================================================
@@ -354,6 +501,7 @@ export function collectMetadataFromEvent(
   } else if (eventType === 'RUN_PAUSED') {
     // HITL（阶段零 D3）：run 被 interrupt 暂停——标记 ctx，路由层据此跳过空消息持久化
     ctx.paused = true
+    ctx.runPaused = true
   } else if (eventType === 'HITL_ABORTED') {
     // HITL：超时/用户取消后收尾——同样视为非正常完成，不持久化空消息
     ctx.paused = true
@@ -420,4 +568,104 @@ export function mergePlanSteps(
   }
   return Array.from(map.values())
 }
+
+// ============================================================
+// T5.5：agent_run 落库原语（start / finish）
+// ============================================================
+
+/** run 终态：running / completed / error / cancelled / paused */
+export type AgentRunStatus = 'running' | 'completed' | 'error' | 'cancelled' | 'paused'
+
+/** 创建一条 running 的 agent_run（prisma 由调用方注入）。 */
+export async function startAgentRun(
+  prisma: any,
+  args: {
+    runId: string
+    sessionId: string
+    userId: string
+    agentMode?: string | null
+  },
+): Promise<void> {
+  await prisma.agentRun.create({
+    data: {
+      id: args.runId,
+      sessionId: args.sessionId,
+      userId: args.userId,
+      agentMode: args.agentMode ?? 'react_agent',
+      status: 'running',
+      traceId: args.runId,
+      startedAt: new Date(),
+    },
+  })
+}
+
+/**
+ * 按 StreamContext 收尾 agent_run。
+ * 不传 status 时自动推导：error → error，runPaused/paused → paused，
+ * abortReason → cancelled，否则 completed。
+ */
+export async function finishAgentRun(
+  prisma: any,
+  args: {
+    runId: string
+    ctx: StreamContext
+    status?: AgentRunStatus
+    // 关联本次执行落库的 assistant 消息（completions persist 后传入）
+    messageId?: string
+    // resume 场景：首次 /completions 的已有事件，提供则与本次事件合并、seq 延续
+    baseEvents?: Record<string, any>[]
+  },
+): Promise<void> {
+  const { ctx } = args
+  let status: AgentRunStatus
+  let errorCode: string | null = null
+  let errorMessage: string | null = null
+
+  if (args.status) {
+    status = args.status
+  } else if (ctx.hasError) {
+    status = 'error'
+  } else if (ctx.runPaused || ctx.paused) {
+    status = 'paused'
+  } else if (ctx.abortReason) {
+    status = 'cancelled'
+  } else {
+    status = 'completed'
+  }
+
+  if (status === 'error') {
+    errorCode = ctx.errorInfo.code || 'AGENT_ERROR'
+    errorMessage = ctx.errorInfo.message || ''
+  }
+
+  // resume：baseEvents 与本次事件合并，seq 延续；否则只用本次事件
+  let mergedEvents: Record<string, any>[] = ctx.runEvents
+  if (args.baseEvents && args.baseEvents.length > 0) {
+    const baseLen = args.baseEvents.length
+    mergedEvents = [
+      ...args.baseEvents,
+      ...ctx.runEvents.map((e, i) => ({ ...e, seq: baseLen + i + 1 })),
+    ]
+  }
+
+  const data: Record<string, any> = {
+    status,
+    events: mergedEvents,
+  }
+  // paused：run 尚未结束，保留 endedAt 为空，等待 resume 收尾
+  if (status !== 'paused') {
+    data.endedAt = new Date()
+    data.durationMs = ctx.latencyMs
+    data.usage = {
+      promptTokens: ctx.promptTokens,
+      completionTokens: ctx.completionTokens,
+    }
+  }
+  if (errorCode) data.errorCode = errorCode
+  if (errorMessage) data.errorMessage = errorMessage
+  if (args.messageId) data.messageId = args.messageId
+
+  await prisma.agentRun.update({ where: { id: args.runId }, data })
+}
+
 

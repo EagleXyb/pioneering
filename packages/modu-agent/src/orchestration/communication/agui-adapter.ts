@@ -647,6 +647,17 @@ export class AGUIStateMachine {
     return this._emit(AGUIEventType.STATE_DELTA, data)
   }
 
+  /** T4.2：联网搜索结构化来源（payload 与 chat 通道一致） */
+  emit_web_search_sources(
+    sources: Array<{ title: string; url: string; content: string; site: string }>,
+  ): AGUIEvent | string {
+    // WEB_SEARCH_SOURCES 为前端消费事件，不在 AGUIEventType 枚举内，直接构造事件 dict
+    if (this.output_format === 'sse') {
+      return AGUIEncoder.toSse('WEB_SEARCH_SOURCES' as AGUIEventType, { sources })
+    }
+    return AGUIEncoder.toEventDict('WEB_SEARCH_SOURCES' as AGUIEventType, { sources })
+  }
+
   // ---- 产物事件 ----
 
   emit_artifact_created(artifact: {
@@ -1338,6 +1349,27 @@ export class AGUIStreamAdapter {
             }
 
             events.push(...sm.emit_tool_result(tool_call_id, tool_name, content, 'success'))
+
+            // T4.2：搜索工具结果收敛——产出 WEB_SEARCH_SOURCES（字段与 chat 通道一致），
+            // 前端来源面板据此渲染；历史恢复走 contentBlocks.sources。
+            const searchResults: unknown =
+              parsed && typeof parsed === 'object'
+                ? (parsed as Record<string, any>)?.data?.results
+                : undefined
+            if (Array.isArray(searchResults)) {
+              const sources = (searchResults as Array<Record<string, unknown>>)
+                .filter((r) => r && typeof r === 'object')
+                .map((r) => ({
+                  title: typeof r.title === 'string' ? r.title : '',
+                  url: typeof r.url === 'string' ? r.url : '',
+                  content: typeof r.snippet === 'string' ? r.snippet : '',
+                  site: typeof r.source === 'string' ? r.source : '',
+                }))
+                .filter((s) => s.title || s.content)
+              if (sources.length > 0) {
+                events.push(sm.emit_web_search_sources(sources))
+              }
+            }
 
             // T3-4：ARTIFACT_CREATED 判定改用**单一事实源**
             // （`tools/doc-writer-artifact.ts`），与 graph/nodes.ts 写 state.artifacts

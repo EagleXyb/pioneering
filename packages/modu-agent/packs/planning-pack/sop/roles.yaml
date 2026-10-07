@@ -1,0 +1,6 @@
+roles:
+  - planner
+  - executor
+plan_task_types:
+  - planning
+  - research

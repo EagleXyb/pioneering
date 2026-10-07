@@ -33,6 +33,9 @@ export {
   listFragmentIds,
 } from './context-builder.js'
 
+// ComplexityAssessor（T3.7 显式导出，供宿主侧按需使用）
+export { ComplexityAssessor } from './complexity-assessor.js'
+
 // P1-4: 四层 Prompt 解耦架构
 export { PromptComposer, type PromptComposerInput } from './prompt-composer.js'
 export {

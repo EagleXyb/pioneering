@@ -1,6 +1,7 @@
 import { useConversationStore } from '../../store/conversationStore';
 import { useArtifactStore } from '../../store/artifactStore';
 import { useAppStore } from '../../store/appStore';
+import { useHitlStore } from '@pioneering/agent-protocol';
 import { useChatSync } from './hooks/useChatSync';
 import { usePlanExecuteChat } from './hooks/usePlanExecuteChat';
 import { TaskMessageList } from './components/TaskMessageList';
@@ -10,6 +11,7 @@ import { TaskResizer } from './components/TaskResizer';
 import { ArtifactPanel } from '@/components/ArtifactPreview/ArtifactPanel';
 import '@/components/ArtifactPreview/artifactPanel.css';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
+import { useSessionRuns } from '@/hooks/useSessionRuns';
 import { useEffect } from 'react';
 import './task.css';
 
@@ -35,7 +37,20 @@ export default function TaskMode() {
   const showResizer = hasActiveArtifact || pipelineOpen;
 
   // P4: 替换 useChat 为 usePlanExecuteChat，支持 STATE_DELTA 事件
-  const { messages, status, sendMessage, abort, reset, loadHistory } = usePlanExecuteChat(activeId);
+  const {
+    messages,
+    status,
+    sendMessage,
+    abort,
+    reset,
+    loadHistory,
+    hitl,
+    hitlError,
+    hitlBusy,
+  } = usePlanExecuteChat(activeId);
+
+  // T5.5：按会话加载 run 记录（messageId → 执行轨迹）
+  const { byMessage: runByMessage } = useSessionRuns(activeId, status);
 
   useChatSync(activeId, messages);
 
@@ -45,7 +60,11 @@ export default function TaskMode() {
   useEffect(() => {
     resetArtifact();
     if (activeId && !activeId.startsWith('temp_')) {
-      void loadHistory(activeId);
+      // 先恢复历史（暂停的半截消息不在库中），再 recover：若仍暂停则补占位卡片
+      void (async () => {
+        await loadHistory(activeId);
+        await useHitlStore.getState().recover(activeId);
+      })();
     } else {
       reset();
     }
@@ -69,10 +88,17 @@ export default function TaskMode() {
     <div className="task-mode">
       <div className="task-main">
         <TaskTopBar />
-        <TaskMessageList messages={messages} status={status} />
+        <TaskMessageList
+          messages={messages}
+          status={status}
+          runByMessage={runByMessage}
+        />
         <TaskInput
           chatId={activeId}
           status={status}
+          hitl={hitl}
+          hitlError={hitlError}
+          hitlBusy={hitlBusy}
           onSend={(text) => sendMessage({ prompt: text })}
           onStop={abort}
         />

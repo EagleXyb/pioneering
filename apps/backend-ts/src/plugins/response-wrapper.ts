@@ -3,7 +3,7 @@
 import fp from 'fastify-plugin'
 import { randomUUID } from 'crypto'
 
-const SKIP_PATHS = new Set(['/docs', '/redoc', '/openapi.json', '/docs/', '/redoc/', '/chat/completions'])
+const SKIP_PATHS = new Set(['/docs', '/redoc', '/openapi.json', '/docs/', '/redoc/', '/chat/completions', '/observability/metrics'])
 
 function safeJsonParse(str: string): unknown {
   try {

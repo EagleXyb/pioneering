@@ -6,6 +6,8 @@ import { userRoutes } from './user.js'
 import { chatRoutes } from './chat.js'
 import { uploadRoutes } from './upload.js'
 import { agentRoutes } from './agent.js'
+import { mcpRoutes } from './mcp.js'
+import { observabilityRoutes } from './observability.js'
 import { webRoutes } from './web.js'
 
 // 对应 Python: app.include_router(router, prefix=settings.API_PREFIX)
@@ -17,5 +19,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(chatRoutes)
   await app.register(uploadRoutes)
   await app.register(agentRoutes)
+  await app.register(mcpRoutes)
+  await app.register(observabilityRoutes)
   await app.register(webRoutes)
 }

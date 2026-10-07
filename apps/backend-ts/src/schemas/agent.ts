@@ -4,7 +4,8 @@ import { z } from 'zod'
 // 对应 Python: CreateAgentSessionRequest
 export const CreateAgentSessionRequestSchema = z.object({
   // P4: 新增 plan_execute 模式，与前端任务模式对齐
-  agentMode: z.enum(['react_agent', 'rag_agent', 'plan_execute']).default('react_agent'),
+  // D4: 删除 rag_agent 死枚举（agent-bridge 无对应分支，实际仍跑 ReAct）
+  agentMode: z.enum(['react_agent', 'plan_execute']).default('react_agent'),
   title: z.string().nullable().optional(),
   // P1-12 修复：不设默认值，让 agent.ts 中 `dto.model || env.LLM_DEFAULT_MODEL` 生效
   model: z.string().nullable().optional(),
@@ -128,6 +129,8 @@ export const AgentResumeRequestSchema = z.object({
   // 需求澄清回答：自由文本 answer / 多选选项 id answerId（kind='clarifying' | 'choice'）
   answer: z.string().nullable().optional(),
   answerId: z.string().nullable().optional(),
+  // T5.5：首次 /completions 创建的 runId；提供则 resume 完成后把该 run 收尾
+  runId: z.string().nullable().optional(),
 })
 export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>
 

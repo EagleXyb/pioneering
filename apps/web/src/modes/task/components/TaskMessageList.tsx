@@ -4,10 +4,14 @@ import { useScrollToMessage } from '@/hooks/useScrollToMessage';
 import { extractCodeBlocks, isPreviewable } from '@/components/ArtifactPreview/extractCodeBlocks';
 import { Markdown } from '@/components/Markdown';
 import { useArtifactStore } from '@/store/artifactStore';
+import type { AgentRunData } from '@/api/agent';
+import { RunTrace } from '@/components/run-trace/RunTrace';
 
 interface Props {
   messages: ChatMessagesData[];
   status: ChatStatus;
+  /** messageId → 该消息对应的 run（执行轨迹） */
+  runByMessage?: ReadonlyMap<string, AgentRunData>;
 }
 
 /**
@@ -117,7 +121,7 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
   );
 }
 
-export function TaskMessageList({ messages, status }: Props) {
+export function TaskMessageList({ messages, status, runByMessage }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -158,6 +162,12 @@ export function TaskMessageList({ messages, status }: Props) {
           >
             <div className={`task-message-content${isUser ? ' task-message-content-user' : ''}`}>
               <MessageContent msg={msg} text={text} />
+              {!isUser && runByMessage?.has(msg.id) && (
+                <RunTrace
+                  runId={runByMessage.get(msg.id)!.id}
+                  initialRun={runByMessage.get(msg.id)}
+                />
+              )}
             </div>
           </div>
         );

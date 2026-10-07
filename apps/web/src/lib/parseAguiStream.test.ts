@@ -42,6 +42,17 @@ function spyHandlers() {
     onToolCallResult: (e) =>
       calls.push({ name: 'toolResult', payload: e }),
     onStateDelta: (e) => calls.push({ name: 'state', payload: e }),
+    onHumanInputRequest: (e) =>
+      calls.push({ name: 'humanInput', payload: e }),
+    onRunPaused: (e) => calls.push({ name: 'paused', payload: e }),
+    onHitlAborted: (e) =>
+      calls.push({ name: 'hitlAborted', payload: e }),
+    onArtifactCreated: (e) =>
+      calls.push({ name: 'artifactCreated', payload: e }),
+    onStateSnapshot: (e) =>
+      calls.push({ name: 'stateSnapshot', payload: e }),
+    onMessagesSnapshot: (e) =>
+      calls.push({ name: 'messagesSnapshot', payload: e }),
   };
   return { calls, handlers };
 }
@@ -202,5 +213,208 @@ describe('parseAguiStream', () => {
   it('response.body 为空时抛错', async () => {
     const res = new Response(null, { status: 200 });
     await expect(parseAguiStream(res, {})).rejects.toThrow(/无法读取/);
+  });
+});
+
+describe('parseAguiStream —— HITL / Artifact 扩展事件', () => {
+  it('USER_QUESTION_REQUEST 透传 tool_confirm snake_case 载荷', async () => {
+    const payload = {
+      type: 'USER_QUESTION_REQUEST',
+      kind: 'tool_confirm',
+      session_id: 's1',
+      run_id: 'r1',
+      tool_calls: [{ id: 'c1', name: 'code_executor', args: { cmd: 'ls' } }],
+    };
+    const res = createResponse([sse(payload)]);
+    const { calls, handlers } = spyHandlers();
+
+    const result = await parseAguiStream(res, handlers);
+
+    expect(result.terminal).toBe(false); // 中断请求本身不是终态
+    const call = calls.find((c) => c.name === 'humanInput')?.payload as Record<string, unknown>;
+    expect(call).toMatchObject({
+      kind: 'tool_confirm',
+      session_id: 's1',
+      run_id: 'r1',
+      tool_calls: [{ id: 'c1', name: 'code_executor', args: { cmd: 'ls' } }],
+    });
+  });
+
+  it('USER_QUESTION_REQUEST 透传 clarifying 载荷（含 question）', async () => {
+    const res = createResponse([
+      sse({
+        type: 'USER_QUESTION_REQUEST',
+        kind: 'clarifying',
+        session_id: 's1',
+        question: '你想做什么？',
+      }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    await parseAguiStream(res, handlers);
+
+    const call = calls.find((c) => c.name === 'humanInput')?.payload as Record<string, unknown>;
+    expect(call).toMatchObject({ kind: 'clarifying', question: '你想做什么？' });
+  });
+
+  it('RUN_PAUSED：返回 paused + terminal=true 并触发回调', async () => {
+    const res = createResponse([
+      sse({ type: 'TEXT_MESSAGE_CONTENT', delta: '半截内容' }),
+      sse({ type: 'RUN_PAUSED', threadId: 's1', runId: 'r1' }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    const result = await parseAguiStream(res, handlers);
+
+    expect(result.reason).toBe('paused');
+    expect(result.terminal).toBe(true);
+    expect(calls.some((c) => c.name === 'paused')).toBe(true);
+  });
+
+  it('RUN_PAUSED 后流未立即关闭：继续读取后续数据，结束仍为 paused', async () => {
+    const res = createResponse([
+      sse({ type: 'RUN_PAUSED', threadId: 's1', runId: 'r1' }),
+      enc.encode(': keepalive\n'),
+    ]);
+    const result = await parseAguiStream(res, spyHandlers().handlers);
+    expect(result.reason).toBe('paused');
+    expect(result.terminal).toBe(true);
+  });
+
+  it('HITL_ABORTED：标记 terminal 并触发收尾回调', async () => {
+    const res = createResponse([
+      sse({ type: 'HITL_ABORTED', threadId: 's1', runId: 'r1', reason: 'timeout' }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    const result = await parseAguiStream(res, handlers);
+
+    expect(result.terminal).toBe(true);
+    const call = calls.find((c) => c.name === 'hitlAborted')?.payload as Record<string, unknown>;
+    expect(call).toMatchObject({ reason: 'timeout' });
+  });
+
+  it('HITL_ABORTED 后流关闭：reason 为 closed（中止语义由回调承载）', async () => {
+    const res = createResponse([
+      sse({ type: 'HITL_ABORTED', threadId: 's1', runId: 'r1' }),
+    ]);
+    const result = await parseAguiStream(res, {});
+    expect(result.reason).toBe('closed');
+    expect(result.terminal).toBe(true);
+  });
+
+  it('ARTIFACT_CREATED：透传产物全部字段', async () => {
+    const payload = {
+      type: 'ARTIFACT_CREATED',
+      artifactId: 'a1',
+      name: 'report.md',
+      path: '/tmp/report.md',
+      format: 'markdown',
+      operation: 'create',
+      summary: '报告摘要',
+      title: '分析报告',
+    };
+    const res = createResponse([sse(payload)]);
+    const { calls, handlers } = spyHandlers();
+
+    await parseAguiStream(res, handlers);
+
+    const call = calls.find((c) => c.name === 'artifactCreated')?.payload as Record<string, unknown>;
+    expect(call).toMatchObject({
+      artifactId: 'a1',
+      name: 'report.md',
+      format: 'markdown',
+      title: '分析报告',
+    });
+  });
+
+  it('ARTIFACT_CREATED 后接 RUN_FINISHED：两事件均不丢，reason=finished', async () => {
+    const res = createResponse([
+      sse({ type: 'ARTIFACT_CREATED', artifactId: 'a1' }),
+      sse({ type: 'RUN_FINISHED' }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    const result = await parseAguiStream(res, handlers);
+
+    expect(result.reason).toBe('finished');
+    expect(result.terminal).toBe(true);
+    expect(calls.some((c) => c.name === 'artifactCreated')).toBe(true);
+  });
+
+  it('STATE_SNAPSHOT：回调收到快照负载', async () => {
+    const res = createResponse([
+      sse({ type: 'STATE_SNAPSHOT', values: { phase: 'planning' } }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    await parseAguiStream(res, handlers);
+
+    expect(
+      (calls.find((c) => c.name === 'stateSnapshot')?.payload as Record<string, unknown>)?.values,
+    ).toEqual({ phase: 'planning' });
+  });
+
+  it('MESSAGES_SNAPSHOT：回调收到快照负载', async () => {
+    const res = createResponse([
+      sse({ type: 'MESSAGES_SNAPSHOT', messages: [{ id: 'm1' }] }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    await parseAguiStream(res, handlers);
+
+    expect(
+      (calls.find((c) => c.name === 'messagesSnapshot')?.payload as Record<string, unknown>)
+        ?.messages,
+    ).toEqual([{ id: 'm1' }]);
+  });
+
+  it('STATE_SNAPSHOT 跨 chunk 拆包仍可完整解析', async () => {
+    const line = `data: ${JSON.stringify({ type: 'STATE_SNAPSHOT', values: { count: 3 } })}\n`;
+    const bytes = enc.encode(line);
+    const res = createResponse([bytes.slice(0, 20), bytes.slice(20)]);
+    const { calls, handlers } = spyHandlers();
+
+    await parseAguiStream(res, handlers);
+
+    expect(
+      (calls.find((c) => c.name === 'stateSnapshot')?.payload as Record<string, unknown>)?.values,
+    ).toEqual({ count: 3 });
+  });
+
+  it('MESSAGES_SNAPSHOT 空快照也触发回调', async () => {
+    const res = createResponse([
+      sse({ type: 'MESSAGES_SNAPSHOT', messages: [] }),
+    ]);
+    const { calls, handlers } = spyHandlers();
+
+    await parseAguiStream(res, handlers);
+
+    expect(calls.some((c) => c.name === 'messagesSnapshot')).toBe(true);
+  });
+
+  it('无任何终态事件流关闭：terminal=false，reason=closed', async () => {
+    const res = createResponse([
+      sse({ type: 'TEXT_MESSAGE_CONTENT', delta: '普通文本' }),
+    ]);
+    const result = await parseAguiStream(res, {});
+    expect(result.reason).toBe('closed');
+    expect(result.terminal).toBe(false);
+  });
+
+  it('终态事件计数：RUN_FINISHED / RUN_ERROR 均标记 terminal', async () => {
+    const finished = await parseAguiStream(
+      createResponse([sse({ type: 'RUN_FINISHED' })]),
+      {},
+    );
+    expect(finished.terminal).toBe(true);
+    expect(finished.reason).toBe('finished');
+
+    const errored = await parseAguiStream(
+      createResponse([sse({ type: 'RUN_ERROR', message: 'boom' })]),
+      {},
+    );
+    expect(errored.terminal).toBe(true);
+    expect(errored.reason).toBe('error-event');
   });
 });

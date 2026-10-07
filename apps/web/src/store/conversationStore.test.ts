@@ -13,6 +13,11 @@ vi.mock('../api/session', () => ({
   deleteSession: vi.fn(),
 }));
 
+// Mock agent API（pro/task 创建走 /agent/sessions，T3.4）
+vi.mock('../api/agent', () => ({
+  createAgentSession: vi.fn(),
+}));
+
 // Mock localStorage（Zustand persist 需要）
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -128,20 +133,97 @@ describe('conversationStore.create', () => {
     expect(state.createPromise).toBeNull();
   });
 
-  it('sessionModes 在创建成功后正确映射', async () => {
-    mockCreateSession.mockResolvedValue({
+  it('pro 创建走 /agent/sessions，agentMode=react_agent，sessionModes 正确映射', async () => {
+    const agent = await import('../api/agent');
+    vi.mocked(agent.createAgentSession).mockResolvedValue({
       id: 'real-3',
       title: '新会话',
+      agentMode: 'react_agent',
+      model: null,
+      messageCount: 0,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
     });
 
     await useConversationStore.getState().create('pro');
 
+    // agentMode=react_agent
+    expect(agent.createAgentSession).toHaveBeenCalledWith({
+      title: '新会话',
+      agentMode: 'react_agent',
+    })
+
     const state = useConversationStore.getState();
-    // 临时 ID 的映射应被清除，真实 ID 的映射应存在
     expect(state.sessionModes['real-3']).toBe('pro');
-    // 不应有 temp_ 开头的 key
-    expect(Object.keys(state.sessionModes).every(k => !k.startsWith('temp_'))).toBe(true);
+    expect(Object.keys(state.sessionModes).every((k) => !k.startsWith('temp_'))).toBe(true);
+  });
+
+  it('fetchSessions：mode 优先按后端 agentMode 推导', async () => {
+    vi.mocked(sessionApi.getSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's-pro', title: 'P', model: 'm', messageCount: 0,
+          agentMode: 'react_agent',
+          createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', isArchived: false,
+        },
+        {
+          id: 's-task', title: 'T', model: 'm', messageCount: 0,
+          agentMode: 'plan_execute',
+          createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', isArchived: false,
+        },
+        {
+          id: 's-chat', title: 'C', model: 'm', messageCount: 0,
+          agentMode: null,
+          createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', isArchived: false,
+        },
+      ],
+      total: 3, nextCursor: null, hasMore: false, limit: 50,
+    } as never)
+
+    await useConversationStore.getState().fetchSessions()
+
+    const convos = useConversationStore.getState().conversations
+    expect(convos.find((c) => c.id === 's-pro')?.mode).toBe('pro')
+    expect(convos.find((c) => c.id === 's-task')?.mode).toBe('task')
+    expect(convos.find((c) => c.id === 's-chat')?.mode).toBe('chat')
+  })
+
+  it('agentMode 缺失时降级 sessionModes，再缺为 chat', async () => {
+    vi.mocked(sessionApi.getSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's-legacy', title: 'L', model: 'm', messageCount: 0,
+          createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', isArchived: false,
+        },
+      ],
+      total: 1, nextCursor: null, hasMore: false, limit: 50,
+    } as never)
+
+    useConversationStore.setState({
+      sessionModes: { 's-legacy': 'pro' },
+    })
+    await useConversationStore.getState().fetchSessions()
+    expect(useConversationStore.getState().conversations[0]?.mode).toBe('pro')
+  })
+
+  it('task 创建走 /agent/sessions，agentMode=plan_execute', async () => {
+    const agent = await import('../api/agent');
+    vi.mocked(agent.createAgentSession).mockResolvedValue({
+      id: 'real-4',
+      title: '新会话',
+      agentMode: 'plan_execute',
+      model: null,
+      messageCount: 0,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    });
+
+    await useConversationStore.getState().create('task');
+
+    expect(agent.createAgentSession).toHaveBeenCalledWith({
+      title: '新会话',
+      agentMode: 'plan_execute',
+    })
+    expect(useConversationStore.getState().sessionModes['real-4']).toBe('task');
   });
 });

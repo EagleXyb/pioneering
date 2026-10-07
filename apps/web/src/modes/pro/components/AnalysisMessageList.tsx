@@ -1,9 +1,13 @@
 import React, { useRef, useEffect } from 'react';
 import type { ChatMessagesData, ChatStatus } from '../../../types/chat';
+import type { AgentRunData } from '../../../api/agent';
+import { RunTrace } from '../../../components/run-trace/RunTrace';
 
 interface Props {
   messages: ChatMessagesData[];
   status: ChatStatus;
+  /** messageId → 该消息对应的 run（执行轨迹） */
+  runByMessage?: ReadonlyMap<string, AgentRunData>;
 }
 
 function getMessageText(msg: ChatMessagesData): string {
@@ -18,7 +22,7 @@ function getMessageText(msg: ChatMessagesData): string {
     .join('\n');
 }
 
-export function AnalysisMessageList({ messages, status }: Props) {
+export function AnalysisMessageList({ messages, status, runByMessage }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +61,12 @@ export function AnalysisMessageList({ messages, status }: Props) {
             )}
             <div className={`pro-message-content${isUser ? ' pro-message-content-user' : ''}`}>
               <div className="pro-message-text">{text}</div>
+              {!isUser && runByMessage?.has(msg.id) && (
+                <RunTrace
+                  runId={runByMessage.get(msg.id)!.id}
+                  initialRun={runByMessage.get(msg.id)}
+                />
+              )}
             </div>
             {isUser && (
               <div className="pro-message-avatar pro-message-avatar-user">

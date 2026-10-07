@@ -2,8 +2,23 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as sessionApi from '../api/session';
 import type { Session } from '../api/types';
+import {
+  createAgentSession,
+  type AgentSessionInfo,
+} from '../api/agent';
 import type { AppMode } from '../types';
 import { getDefaultModel } from '../config/models';
+
+/** T3.4：Agent 会话响应适配为 sessionToConversation 所需的 Session 结构 */
+function agentSessionToSession(a: AgentSessionInfo): Session {
+  return {
+    id: a.id,
+    title: a.title ?? '新会话',
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    isArchived: false,
+  } as Session;
+}
 
 export interface Conversation {
   id: string;
@@ -71,12 +86,27 @@ function getGroup(dateStr: string): '今天' | '昨天' | '更早' {
   return '更早';
 }
 
-/** 将后端 Session 转换为本地 Conversation，mode 从 sessionModes 映射中获取 */
+/**
+ * T3.5：mode 以后端 agentMode 为权威：
+ *   plan_execute → task；react_agent → pro；
+ *   缺失时降级 localStorage 映射（过渡一轮），再缺为 chat。
+ */
+function deriveMode(
+  agentMode: Session['agentMode'],
+  sessionModes: Record<string, AppMode>,
+  id: string,
+): AppMode {
+  if (agentMode === 'plan_execute') return 'task'
+  if (agentMode === 'react_agent') return 'pro'
+  return sessionModes[id] || 'chat'
+}
+
+/** 将后端 Session 转换为本地 Conversation */
 function sessionToConversation(s: Session, sessionModes: Record<string, AppMode>): Conversation {
   return {
     id: s.id,
     title: s.title,
-    mode: sessionModes[s.id] || 'chat',
+    mode: deriveMode(s.agentMode ?? null, sessionModes, s.id),
     preview: s.lastMessage?.content || '',
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
@@ -213,13 +243,22 @@ export const useConversationStore = create<ConversationStore>()(
           error: null,
         });
 
-        // 后台异步调用后端 API
+        // 后台异步调用后端 API（T3.4：chat → /chat/sessions；pro/task → /agent/sessions）
         const promise = (async () => {
           try {
-            const session = await sessionApi.createSession({
-              title: '新会话',
-              model: getDefaultModel(mode),
-            });
+            let session: Session
+            if (mode === 'chat') {
+              session = await sessionApi.createSession({
+                title: '新会话',
+                model: getDefaultModel(mode),
+              })
+            } else {
+              const agentSession = await createAgentSession({
+                title: '新会话',
+                agentMode: mode === 'task' ? 'plan_execute' : 'react_agent',
+              })
+              session = agentSessionToSession(agentSession)
+            }
             const conversation = sessionToConversation(session, { [session.id]: mode });
 
             set((s) => {

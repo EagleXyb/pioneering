@@ -26,6 +26,7 @@ import {
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { buildSchema } from '../utils/zod-schema.js'
+import { checkQuota, recordUsage } from '../core/quota.js'
 
 // P2-8 修复：Message 增加 id 字段，供 doRegenerate 按 ID 定位父消息
 type Message = { role: string; content: string; id?: string }
@@ -158,6 +159,8 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               model: s.model,
               modelConfig: s.modelConfig,
               messageCount: s.messageCount ?? 0,
+              // T3.5：下发 agentMode，前端据此推导模式
+              agentMode: s.agentMode ?? null,
               lastMessage: lastMsg
                 ? {
                     content: lastMsg.content?.slice(0, 150) ?? null,
@@ -202,6 +205,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           model: session.model,
           modelConfig: session.modelConfig,
           messageCount: session.messageCount ?? 0,
+          agentMode: session.agentMode ?? null,
           lastMessage: null,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
@@ -232,6 +236,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           model: session.model,
           modelConfig: session.modelConfig,
           messageCount: session.messageCount ?? 0,
+          agentMode: session.agentMode ?? null,
           lastMessage: lastMsg
             ? {
                 content: lastMsg.content?.slice(0, 150) ?? null,
@@ -280,6 +285,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           model: updated.model,
           modelConfig: updated.modelConfig,
           messageCount: updated.messageCount ?? 0,
+          agentMode: updated.agentMode ?? null,
           lastMessage: updatedLastMsg
             ? {
                 content: updatedLastMsg.content?.slice(0, 150) ?? null,
@@ -518,84 +524,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       })
 
       // ========== 对话补全 ==========
-
-      // P0-5 修复：配额校验辅助函数
-      // 调用前校验 total/used 与 daily 限额；超限抛 429
-      // P1-5 修复：若 resetAt 已过期，先重置 dailyUsed 再校验
-      async function checkQuota(userId: string): Promise<void> {
-        const quota = await fastify.prisma.userQuota.findUnique({
-          where: { userId },
-        })
-        if (!quota) return // 无配额记录视为不限制（兼容旧数据）
-
-        // P1-5 修复：resetAt 过期则重置 dailyUsed
-        let effectiveDailyUsed = Number(quota.dailyUsed)
-        if (quota.resetAt && quota.resetAt <= new Date()) {
-          await fastify.prisma.userQuota.update({
-            where: { userId },
-            data: {
-              dailyUsed: 0,
-              resetAt: null,
-            },
-          }).catch(() => {
-            // 重置失败不影响后续校验，使用原值
-          })
-          effectiveDailyUsed = 0
-        }
-
-        const totalUsed = Number(quota.usedTokens)
-        const totalLimit = Number(quota.totalTokens)
-        const dailyLimit = Number(quota.dailyLimit)
-        if (totalLimit > 0 && totalUsed >= totalLimit) {
-          throw new TooManyRequestsError(`总 Token 配额已用尽（已用 ${totalUsed}/${totalLimit}）`)
-        }
-        if (dailyLimit > 0 && effectiveDailyUsed >= dailyLimit) {
-          throw new TooManyRequestsError(`今日 Token 配额已用尽（已用 ${effectiveDailyUsed}/${dailyLimit}）`)
-        }
-      }
-
-      /** P0-5 修复：记录 Token 用量并扣减配额
-       * 优先使用上游真实 usage；缺失时退化为 length/4 估算
-       */
-      async function recordUsage(
-        userId: string,
-        sessionId: string,
-        messageId: string,
-        model: string,
-        usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
-        promptText: string,
-        completionText: string,
-      ): Promise<void> {
-        const promptTokens = usage?.promptTokens ?? Math.floor(promptText.length / 4)
-        const completionTokens = usage?.completionTokens ?? Math.floor(completionText.length / 4)
-        const totalTokens = usage?.totalTokens ?? (promptTokens + completionTokens)
-
-        await Promise.all([
-          fastify.prisma.tokenUsage.create({
-            data: {
-              userId,
-              sessionId,
-              messageId,
-              model,
-              promptTokens,
-              completionTokens,
-              totalTokens,
-            },
-          }),
-          // P1-11 修复：配额更新失败时记录错误而非静默吞错
-          // 避免配额扣减失败被绕过
-          fastify.prisma.userQuota.update({
-            where: { userId },
-            data: {
-              usedTokens: { increment: BigInt(totalTokens) },
-              dailyUsed: { increment: BigInt(totalTokens) },
-            },
-          }).catch((e) => {
-            // 配额记录可能不存在（旧用户），记录警告但不阻断流程
-            fastify.log.warn({ err: e, userId }, '配额扣减失败（用户可能无配额记录）')
-          }),
-        ])
-      }
+      // 配额校验 / 用量记录统一在 core/quota.ts（chat / agent 共用）
 
       // 对应 Python: @router.post("/completions")
       app.post('/completions', buildSchema({
@@ -607,7 +536,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         const dto = ChatCompletionRequestSchema.parse(req.body)
 
         // P0-5 修复：调用 LLM 前校验配额
-        await checkQuota(req.user.id)
+        await checkQuota(fastify.prisma, req.user.id)
 
         let sessionId = dto.sessionId
         if (!sessionId) {
@@ -723,11 +652,15 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           })
 
           // P0-5 修复：记录用量（优先用上游真实 usage）
-          await recordUsage(
-            req.user.id, sessionId, assistantMsgId, model,
-            (resultData as any).usage,
-            dto.message, content,
-          )
+          await recordUsage(fastify.prisma, {
+            userId: req.user.id,
+            sessionId,
+            messageId: assistantMsgId,
+            model,
+            usage: (resultData as any).usage,
+            promptText: dto.message,
+            completionText: content,
+          })
 
           return {
             id: `chatcmpl_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
@@ -876,10 +809,15 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           })
 
           // P0-5 修复：记录用量；P1-6 修复：传入流式真实 usage
-          await recordUsage(
-            req.user.id, sessionId, assistantMsgId, model,
-            usageRef.current, dto.message, fullContent,
-          )
+          await recordUsage(fastify.prisma, {
+            userId: req.user.id,
+            sessionId,
+            messageId: assistantMsgId,
+            model,
+            usage: usageRef.current,
+            promptText: dto.message,
+            completionText: fullContent,
+          })
         } else if (!streamError) {
           // P0-4 修复：流式无内容且非异常 → 回滚已写入的 userMsg，避免孤儿用户消息
           await rollbackUserMessage(sessionId, userMsg.id)
@@ -1004,7 +942,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         dto: { model?: string | null; temperature?: number | null; maxTokens?: number | null },
       ) {
         // P0-5 修复：重生同样校验配额
-        await checkQuota(userId)
+        await checkQuota(fastify.prisma, userId)
 
         let messages = await buildMessageContext(sessionId)
 
@@ -1075,10 +1013,15 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
         // P0-5 修复：记录用量
         const promptText = messages.map((m) => m.content).join('')
-        await recordUsage(
-          userId, sessionId, newMsg.id, dto.model || env.LLM_DEFAULT_MODEL,
-          (resultData as any).usage, promptText, content,
-        )
+        await recordUsage(fastify.prisma, {
+          userId,
+          sessionId,
+          messageId: newMsg.id,
+          model: dto.model || env.LLM_DEFAULT_MODEL,
+          usage: (resultData as any).usage,
+          promptText,
+          completionText: content,
+        })
 
         return {
           id: newMsg.id,

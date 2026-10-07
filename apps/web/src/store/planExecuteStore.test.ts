@@ -149,5 +149,64 @@ describe('planExecuteStore', () => {
       expect(usePlanExecuteStore.getState().phase).toBe('done');
     });
   });
+
+  describe('HITL 互斥锁', () => {
+    it('setHitlLock 切换 hitlLocked', () => {
+      const { setHitlLock } = usePlanExecuteStore.getState();
+      expect(usePlanExecuteStore.getState().hitlLocked).toBe(false);
+      setHitlLock(true);
+      expect(usePlanExecuteStore.getState().hitlLocked).toBe(true);
+      setHitlLock(false);
+      expect(usePlanExecuteStore.getState().hitlLocked).toBe(false);
+    });
+
+    it('锁定时 toggleStep 为 no-op', () => {
+      const { toggleStep, setHitlLock } = usePlanExecuteStore.getState();
+      setHitlLock(true);
+      toggleStep('step-1');
+      expect(usePlanExecuteStore.getState().collapsedSteps).toEqual({});
+    });
+
+    it('锁定时 applyPlanDelta（plan/execute）为 no-op，phase 不推进', () => {
+      const { applyPlanDelta, setHitlLock } = usePlanExecuteStore.getState();
+      setHitlLock(true);
+
+      applyPlanDelta({
+        phase: 'plan',
+        plan: [{ step_id: 's1', title: 'T', description: 'D', status: 'pending' }],
+      });
+      expect(usePlanExecuteStore.getState().phase).toBe('idle');
+      expect(usePlanExecuteStore.getState().rootIds).toEqual([]);
+
+      applyPlanDelta({
+        phase: 'execute',
+        step_update: { id: 's1', status: 'running' },
+      });
+      expect(usePlanExecuteStore.getState().phase).toBe('idle');
+    });
+
+    it('解锁后 applyPlanDelta 正常推进', () => {
+      const { applyPlanDelta, setHitlLock } = usePlanExecuteStore.getState();
+      setHitlLock(true);
+      applyPlanDelta({
+        phase: 'plan',
+        plan: [{ step_id: 's1', title: 'T', description: 'D', status: 'pending' }],
+      });
+      setHitlLock(false);
+      applyPlanDelta({
+        phase: 'plan',
+        plan: [{ step_id: 's1', title: 'T', description: 'D', status: 'pending' }],
+      });
+      expect(usePlanExecuteStore.getState().phase).toBe('executing');
+      expect(usePlanExecuteStore.getState().rootIds).toEqual(['s1']);
+    });
+
+    it('reset 清除互斥锁', () => {
+      const { setHitlLock, reset } = usePlanExecuteStore.getState();
+      setHitlLock(true);
+      reset();
+      expect(usePlanExecuteStore.getState().hitlLocked).toBe(false);
+    });
+  });
 });
 

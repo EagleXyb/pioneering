@@ -1,8 +1,10 @@
 // Prisma schema —— 与 Python 版 SQLAlchemy 模型（app/models/user.py）精确对齐
 //
-// 重要约束：表结构由 Python 版 init_db() 创建并维护。
-// TS 版只用 `prisma generate` 生成 Client，**绝不执行 `prisma migrate` 或 `db push`**，
-// 以保证数据库表结构不被任何改动。
+// 【D6 决策记录 · 2026-10-07】
+//   经项目负责人授权（W5 / T5.5），schema 所有权正式移交 TS 侧：
+//   TS 版除 `prisma generate` 外，**可执行 `prisma db push` / migrate** 以新增 TS 侧表。
+//   存量 1–10 号表仍与 Python 模型保持对齐；新增表（如 agent_runs）由 TS 侧维护，
+//   Python init_db() 不再负责这些表。本记录即 D6 书面留档。
 //
 // 对照基准：apps/backend/app/models/user.py
 
@@ -257,5 +259,32 @@ model PlanStep {
   @@index([messageId, stepIndex], map: "idx_plan_steps_message")
   @@index([sessionId], map: "idx_plan_steps_session")
   @@map("plan_steps")
+}
+
+// ===== 11. agent_runs（D6 后由 TS 侧维护）=====
+// T5.5：Agent 一次执行（run）的实体记录，支撑回放 / 分享 / 分叉。
+// id 即 runId / traceId（AGUI RUN_* 的 runId 当前等于 trace_id）。
+// events 为该次执行的 AG-UI 事件时间轴（Json），GET /agent/runs/:id 据此回放。
+model AgentRun {
+  id           String    @id @db.VarChar(64)
+  sessionId    String    @map("session_id") @db.VarChar(64)
+  userId       String    @map("user_id") @db.VarChar(64)
+  messageId    String?   @map("message_id") @db.VarChar(64)
+  agentMode    String    @default("react_agent") @map("agent_mode") @db.VarChar(50)
+  // running / completed / error / cancelled / paused
+  status       String    @default("running") @db.VarChar(20)
+  traceId      String    @map("trace_id") @db.VarChar(64)
+  events       Json?     // 事件时间轴 [{ seq, type, ts, ... }]
+  usage        Json?     // { promptTokens, completionTokens }
+  errorCode    String?   @map("error_code") @db.VarChar(50)
+  errorMessage String?   @map("error_message") @db.Text
+  startedAt    DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  endedAt      DateTime? @map("ended_at") @db.Timestamptz
+  durationMs   Int?      @map("duration_ms")
+
+  @@index([sessionId], map: "idx_agent_runs_session")
+  @@index([userId], map: "idx_agent_runs_user")
+  @@index([messageId], map: "idx_agent_runs_message")
+  @@map("agent_runs")
 }
 

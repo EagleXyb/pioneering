@@ -1,4 +1,12 @@
-# pioneering modu-agent 默认配置模板（首次安装自动生成，可安全修改）
+# pioneering modu-agent 默认配置（首次安装自动生成，可安全修改）
+
+# Checkpointer：HITL 暂停态持久化（W2）。
+# sqlite 把 interrupt 状态写入本地文件，进程重启/多实例后仍可恢复；
+# 回退 memory（内存 LRU 100 线程）只需把 type 改为 memory。
+memory:
+  checkpointer_type: sqlite
+  sqlite_path: checkpoints.db
+  checkpointer_max_threads: 100
 
 react_optimization:
   # 4.5 风险①：Markdown 文档提示注入（首次安装默认开启，配合下方 .md 模板）
@@ -59,3 +67,25 @@ perception:
       - id: ai_agent
         label: 一个 AI Agent 演示
         description: 结合你此前的项目，做一个可运行的 AI 产品原型
+
+# T5.3：启动时自动激活的场景包（领域能力分层）：
+#   research-pack → pro（react_agent）研究分析领域
+#   planning-pack → task（plan_execute）任务规划领域
+# 留空或删除本段即回退默认「裸 ReAct」，行为与开启前一致。
+scenario:
+  packs:
+    - research-pack
+    - planning-pack
+
+# T5.4：可观测性开关（框架 DEFAULT_CONFIG 默认全 false，不强制开启；
+# 此处为本部署的启用选择）。
+#   metrics：指标经后端 GET /observability/metrics 以 Prometheus 文本暴露；
+#   tracing：需配置 otlp_endpoint（如 http://localhost:4317）后才会导出，缺省关闭。
+observability:
+  metrics:
+    enabled: true
+  tracing:
+    enabled: false
+    otlp_endpoint: ''
+  logging:
+    structured: false

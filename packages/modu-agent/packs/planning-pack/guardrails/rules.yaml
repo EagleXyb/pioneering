@@ -1,0 +1,5 @@
+rules:
+  - rule_id: planning_doc_writer_approval
+    tool_name: doc_writer
+    description: 计划/任务文档落盘需经确认
+    dry_run_supported: true

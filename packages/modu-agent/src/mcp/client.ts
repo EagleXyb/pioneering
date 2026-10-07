@@ -257,6 +257,92 @@ export class MCPClient {
   }
 
   /**
+   * 连接单个已配置的 MCP Server（T5.2 设置面板按需启停）。
+   *
+   * 与 start() 的区别：start() 一次性连接 mcp.servers 中所有启用项；
+   * 本方法只连接指定 server，供前端面板单独启停。
+   *
+   * 幂等：目标 server 已连接时直接返回现有会话，不重复握手。
+   *
+   * @param runtimeConfig 运行时配置（读取 mcp.servers）
+   * @param serverName    目标 server 名
+   * @returns 连接后的会话
+   * @throws MCPConnectionError server 未在 mcp.servers 配置 / 被禁用 / 连接失败
+   */
+  async connectServer(
+    runtimeConfig: RuntimeConfig,
+    serverName: string,
+  ): Promise<MCPSession> {
+    const existing = this._sessions.get(serverName)
+    if (existing && existing.connected) {
+      return existing
+    }
+
+    const serversConfig =
+      (runtimeConfig.get('mcp.servers', []) ?? []) as Record<string, any>[]
+    const serverCfg = serversConfig.find((s) => String(s.name) === serverName)
+    if (!serverCfg) {
+      throw new MCPConnectionError(
+        `MCP server '${serverName}' is not configured in mcp.servers`,
+      )
+    }
+    if (serverCfg.enabled === false) {
+      throw new MCPConnectionError(
+        `MCP server '${serverName}' is disabled (set enabled: true to connect)`,
+      )
+    }
+
+    // 清理可能残留的失活会话
+    const stale = this._sessions.get(serverName)
+    if (stale && !stale.connected) {
+      await stale.disconnect().catch(() => undefined)
+      this._sessions.delete(serverName)
+    }
+
+    this._serverConfigs.set(serverName, serverCfg)
+    const session = await this._openSession(serverCfg)
+    const tools = await session.listTools(false)
+    this._discovery.update(serverName, tools)
+
+    // 标记 client 已活动：create_agent 的 _discover_and_register_mcp_tools
+    // 依赖 started 决定是否把已连接 server 的工具注册进图。
+    this._started = true
+
+    logger.info("MCP server '%s' connected on demand", serverName)
+    return session
+  }
+
+  /**
+   * 断开单个 MCP Server 连接（T5.2 设置面板按需启停）。
+   *
+   * 幂等：目标 server 未连接时静默返回。
+   * 同时移除缓存的 server 配置，避免后续 callTool 触发懒重连，
+   * 违背用户主动停止的意图。
+   *
+   * @param serverName 目标 server 名
+   */
+  async disconnectServer(serverName: string): Promise<void> {
+    const session = this._sessions.get(serverName)
+    if (session) {
+      await session.disconnect().catch((e) =>
+        logger.warning(
+          "Error disconnecting MCP server '%s': %s",
+          serverName,
+          String(e),
+        ),
+      )
+      this._sessions.delete(serverName)
+    }
+    this._discovery.update(serverName, [])
+    this._serverConfigs.delete(serverName)
+
+    if (this._sessions.size === 0) {
+      this._started = false
+    }
+    logger.info("MCP server '%s' disconnected on demand", serverName)
+  }
+
+  /**
    * 发现所有已连接 Server 的工具列表。
    *
    * @returns 所有 Server 的工具列表（含 server_name 前缀标识来源）

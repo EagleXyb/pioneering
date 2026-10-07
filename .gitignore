@@ -65,4 +65,11 @@ test_*.txt
 token.txt
 *.token
 
+# 本地运行时数据库（禁止入库）
+*.db
+*.db-journal
+
+# 临时探针脚本
+.review-probe/
+
 

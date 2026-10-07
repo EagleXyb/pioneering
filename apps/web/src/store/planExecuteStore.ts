@@ -68,13 +68,17 @@ interface PlanExecuteState {
   source: PlanSource;
   /** 当前快照关联的 assistant messageId（仅 history 来源有意义，用于回传 collapsedSteps） */
   snapshotMessageId: string | null;
+  /** HITL 暂停互斥锁：锁定时禁止 toggleStep，且 STATE_DELTA 不得推进 phase */
+  hitlLocked: boolean;
 
   /** 应用 STATE_DELTA 事件（实时流） */
   applyPlanDelta: (delta: PlanStateDelta) => void;
   /** 设置阶段（供 hook 在 RUN_FINISHED / RUN_ERROR 时调用） */
   setPhase: (phase: Phase, error?: string | null) => void;
-  /** 切换单个步骤的折叠状态 */
+  /** 切换单个步骤的折叠状态（HITL 锁定时 no-op） */
   toggleStep: (stepId: string) => void;
+  /** 设置 HITL 互斥锁 */
+  setHitlLock: (locked: boolean) => void;
   /** 从持久化快照装配（会话切换/刷新后恢复，source='history'） */
   hydrateFromHistory: (snapshot: PlanSnapshot) => void;
   /** 重置全部状态（切换会话时调用） */
@@ -90,6 +94,7 @@ const initialState = {
   collapsedSteps: {},
   source: 'live' as PlanSource,
   snapshotMessageId: null,
+  hitlLocked: false,
 };
 
 export const usePlanExecuteStore = create<PlanExecuteState>((set) => ({
@@ -97,6 +102,8 @@ export const usePlanExecuteStore = create<PlanExecuteState>((set) => ({
 
   applyPlanDelta: (delta) =>
     set((state) => {
+      // HITL 暂停互斥：暂停期间任何 STATE_DELTA 不得推进
+      if (state.hitlLocked) return state;
       // plan 阶段：全量替换 items 和 rootIds，进入 executing 阶段
       if (delta.phase === 'plan' && Array.isArray(delta.plan)) {
         const items: Record<string, PlanItem> = {};
@@ -156,12 +163,18 @@ export const usePlanExecuteStore = create<PlanExecuteState>((set) => ({
   setPhase: (phase, error = null) => set({ phase, error }),
 
   toggleStep: (stepId) =>
-    set((state) => ({
-      collapsedSteps: {
-        ...state.collapsedSteps,
-        [stepId]: !state.collapsedSteps[stepId],
-      },
-    })),
+    set((state) => {
+      // HITL 暂停时步骤不可交互
+      if (state.hitlLocked) return {};
+      return {
+        collapsedSteps: {
+          ...state.collapsedSteps,
+          [stepId]: !state.collapsedSteps[stepId],
+        },
+      };
+    }),
+
+  setHitlLock: (locked) => set({ hitlLocked: locked }),
 
   hydrateFromHistory: (snapshot) =>
     set(() => {

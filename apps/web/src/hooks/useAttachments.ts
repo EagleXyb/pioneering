@@ -1,14 +1,13 @@
 /**
- * chat 输入区附件编排
+ * 附件编排（chat / pro / task 共用，T4.4 抽取自 modes/chat/hooks/useChatAttachments）
  *
  * 生命周期：
- *   选择文件 → 前置校验（类型/大小）→ 立即插入 uploading 项（图片给本地 objectURL 预览）
- *          → POST /upload → done（记录服务端 UploadedFile）/ error
+ *   选择文件 → 前置校验（类型/大小）→ 插入 uploading 项（图片给本地 objectURL 预览）
+ *            → POST /upload → done（记录服务端 UploadedFile）/ error
  *   移除附件：revoke 本地预览 URL；已上传成功的 best-effort 调 DELETE /upload
  *   发送：takeMessageSuffix() 把附件拼成 Markdown 文本并清空（拼绝对 URL）
  *
- * 发送协议无附件字段（后端 ChatCompletionRequest 仅纯文本 + DeepSeek），
- * 故附件以 Markdown 图片/链接形式拼入消息正文：
+ * 发送协议无独立附件字段，附件以 Markdown 图片/链接形式拼入消息正文：
  *   - 图片：![name](absoluteUrl)
  *   - 文件：[name](absoluteUrl)
  * 历史回读时由 Markdown 渲染器直接呈现（http(s) URL 经 sanitize 白名单放行）。
@@ -20,8 +19,8 @@ import {
   toAbsoluteUploadUrl,
   uploadFile,
   validateUploadFile,
-} from '../../../api/upload';
-import type { ChatAttachment } from '../components/ChatAttachments';
+} from '../api/upload';
+import type { AttachmentItem } from '../components/attachments/AttachmentBar';
 
 let tempSeq = 0;
 function nextTempId(): string {
@@ -29,19 +28,16 @@ function nextTempId(): string {
   return `att_${Date.now()}_${tempSeq}`;
 }
 
-export function useChatAttachments() {
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+export function useAttachments() {
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   /** objectURL → tempId，卸载/移除时统一回收 */
   const objectUrlsRef = useRef<Map<string, string>>(new Map());
 
-  const patchItem = useCallback(
-    (tempId: string, patch: Partial<ChatAttachment>) => {
-      setAttachments((prev) =>
-        prev.map((a) => (a.tempId === tempId ? { ...a, ...patch } : a)),
-      );
-    },
-    [],
-  );
+  const patchItem = useCallback((tempId: string, patch: Partial<AttachmentItem>) => {
+    setAttachments((prev) =>
+      prev.map((a) => (a.tempId === tempId ? { ...a, ...patch } : a)),
+    );
+  }, []);
 
   const revokeUrl = useCallback((url: string) => {
     try {
@@ -68,7 +64,7 @@ export function useChatAttachments() {
           objectUrlsRef.current.set(tempId, localPreviewUrl);
         }
 
-        const item: ChatAttachment = {
+        const item: AttachmentItem = {
           tempId,
           fileName: file.name,
           fileSize: file.size,
@@ -97,8 +93,7 @@ export function useChatAttachments() {
   /** 移除单个附件（回收预览 URL；已上传则通知后端删除） */
   const removeAttachment = useCallback(
     (tempId: string) => {
-      // 副作用必须在 setState updater 外执行：updater 在 React StrictMode
-      // 开发态会被双调用，写在里面会导致 DELETE 重复发送。
+      // 副作用放在 updater 外（StrictMode 双调用防护）
       const target = attachments.find((a) => a.tempId === tempId);
       if (target) {
         if (target.localPreviewUrl) {
@@ -106,7 +101,6 @@ export function useChatAttachments() {
           objectUrlsRef.current.delete(tempId);
         }
         if (target.status === 'done' && target.uploaded) {
-          // 后端删除失败不影响本地移除（文件可后续清理）
           void deleteUpload(target.uploaded.id).catch(() => {});
         }
       }
