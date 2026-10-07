@@ -8,6 +8,8 @@
   --bg-card: #ffffff;
   --bg-input: #f0f2f5;
   --bg-code: #f4f5f7;
+  /* hover 浅灰底：跟随 bg-input，明暗主题自动切换 */
+  --bg-hover: var(--bg-input);
 
   --text-primary: #1a1d23;
   --text-secondary: #6b7280;

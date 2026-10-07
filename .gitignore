@@ -68,6 +68,8 @@ token.txt
 # 本地运行时数据库（禁止入库）
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 
 # 临时探针脚本
 .review-probe/

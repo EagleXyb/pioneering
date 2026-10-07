@@ -1,10 +1,10 @@
 /**
- * 应用侧边栏（阶段 3.4 由 856 行单文件拆为三件）
+ * 应用侧边栏（拆为三件）
  * - Sidebar.tsx：壳层、模式切换、会话列表、无限滚动、归档视图、删除确认
  * - SidebarItem.tsx：单条会话 + 行内菜单
  * - AccountPopover.tsx：底部账号弹层/个人中心/设置入口
- * 业务逻辑（重命名/归档/恢复/无限滚动/骨架屏）零改动；TDesign
- * Dialog/Tooltip/MessagePlugin 与内联 SVG 全部替换为 shadcn/sonner/lucide。
+ * 业务逻辑（重命名/归档/恢复/无限滚动/骨架屏）保持不变；
+ * 对话框/提示/toast/图标统一为 shadcn/sonner/lucide。
  */
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';

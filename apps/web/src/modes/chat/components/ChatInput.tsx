@@ -1,13 +1,13 @@
 /**
- * chat 输入区（阶段 4.5 自建，替代 TDesign ChatSender）
+ * chat 输入区
  *
  * 直接复用 task 模式已验证的 useTaskInput：
  * IME 合成保护、Enter/Ctrl+Enter 发送策略（读 app:preferences.enterToSend）、
  * sessionStorage 草稿（按会话隔离，键前缀 chat-input-draft）、autosize、
- * Escape 停止。UI 为 shadcn Textarea + 工具栏卡片。
+ * Escape 停止。
  *
  * 附件（+ 按钮）：上传图片 / 上传文件 → POST /upload，
- * 发送时以 Markdown 图片/链接拼入正文（见 useChatAttachments）。
+ * 发送时以 Markdown 图片/链接拼入正文（见 useAttachments）。
  */
 import { useRef } from 'react';
 import { ArrowUp, Image as ImageIcon, Plus, Square, Brain, Globe, FileText } from 'lucide-react';

@@ -1,9 +1,9 @@
 /**
  * 登录页 — 对齐原型 V1.3
- * 使用原生受控表单（阶段 3 去除 TDesign Form）+ shadcn 基座 + AuthLayout 品牌布局
+ * 原生受控表单 + shadcn 基座 + AuthLayout 品牌布局
  * 后端: POST /auth/login (username + password)
  *
- * 校验规则从 TDesign Form rule 平移：
+ * 校验规则：
  * - username 必填
  * - password 必填
  */
@@ -36,7 +36,7 @@ export default function LoginPage() {
   });
   const [submitted, setSubmitted] = useState(false);
 
-  /** 校验逻辑（与原 TDesign rules 一一对应） */
+  /** 校验逻辑 */
   const validate = (): Errors => {
     const next: Errors = {};
     if (!username.trim()) next.username = '请输入用户名或邮箱';

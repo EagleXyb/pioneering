@@ -15,11 +15,14 @@ import './index.css';
 // Tailwind 4 + shadcn/desktop 对齐令牌（全站生效）
 import './styles/tailwind.css';
 
+// 三模式共享的对话消息与输入区样式
+import './styles/conversation.css';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider>
       <App />
-      {/* 全局 sonner toast（阶段 2 起替代 TDesign MessagePlugin） */}
+      {/* 全局 sonner toast */}
       <Toaster richColors position="top-center" />
     </ThemeProvider>
   </React.StrictMode>,

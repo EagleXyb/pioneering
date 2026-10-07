@@ -1,9 +1,8 @@
 /**
- * 侧边栏底部账号弹层（阶段 3.4 从 Sidebar.tsx 拆出）
- * - TDesign Popup/Dialog/Avatar/Loading/MessagePlugin/图标
- *   → DropdownMenu / ui-dialog / ui-avatar / Spinner / sonner / lucide
+ * 侧边栏底部账号弹层（从 Sidebar.tsx 拆出）
+ * - DropdownMenu / ui-dialog / ui-avatar / Spinner / sonner / lucide
  * - 个人中心资料拉取、复制、登出撤销 token、主题切换、设置/帮助入口等逻辑
- *   零改动平移；外观行沿用自绘滑动分段控件（.theme-switch*）
+ *   保持不变；外观行沿用自绘滑动分段控件（.theme-switch*）
  */
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';

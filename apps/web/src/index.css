@@ -1,11 +1,10 @@
 /*
  * Global Reset（@layer base）
  *
- * 阶段 2 起必须分层：Tailwind 4 的工具类全部位于 @layer utilities，
+ * 必须分层：Tailwind 4 的工具类全部位于 @layer utilities，
  * 未分层样式会无条件压过分层样式——裸写 `button { border:none; background:none }`
  * 会击穿 shadcn 按钮/Checkbox/Switch 等基于 <button> 的工具类。
- * 收入 @layer base 后：shadcn utilities > base reset；
- * TDesign 自带样式未分层，仍天然压过本 reset，行为不变。
+ * 收入 @layer base 后：shadcn utilities > base reset。
  */
 @layer base {
   *, *::before, *::after {

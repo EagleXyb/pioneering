@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useConversationStore } from '../../store/conversationStore';
 import { useAppStore } from '../../store/appStore';
+import { Button } from '@/components/ui/button';
 import { useAgentChat } from './hooks/useAgentChat';
 import { useChatSync } from './hooks/useChatSync';
 import { AnalysisLayout } from './components/AnalysisLayout';
@@ -53,7 +54,7 @@ export default function ProMode() {
         </svg>
         <h2>智能分析</h2>
         <p>输入分析需求，Agent 将自动拆解步骤并执行，实时展示推理过程</p>
-        <button onClick={() => create('pro')}>开始分析</button>
+        <Button onClick={() => create('pro')}>开始分析</Button>
       </div>
     );
   }
@@ -67,6 +68,7 @@ export default function ProMode() {
           runByMessage={runByMessage}
         />
         <AnalysisInput
+          chatId={activeId}
           status={status}
           hitl={hitl}
           hitlError={hitlError}

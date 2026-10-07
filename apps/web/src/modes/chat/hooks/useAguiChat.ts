@@ -1,15 +1,13 @@
 /**
- * useAguiChat —— chat 模式自研 AG-UI 对话 Hook（阶段 4.3）
+ * useAguiChat —— chat 模式自研 AG-UI 对话 Hook
  *
- * 替代 @tdesign-react/chat 的 useChat(agui)。设计对齐 desktop 的
- * streamAgui 事件语义，SSE 解析复用 lib/parseAguiStream；保留 web 侧
- * 既有契约：
+ * SSE 解析复用 lib/parseAguiStream；契约：
  *   - setMessages(messages, 'replace')：历史消息整包同步（会话切换/分页/重生成后）
  *   - sendUserMessage({ prompt, deepThink })：追加 user/assistant 占位后发起流式请求
  *   - abortChat()：仅中止前端读取；停止生成的 /stop 通知由组件层另行调用
  *
  * 消息结构沿用 types/chat：assistant 消息的 content 为
- * [reasoning?, markdown]，reasoning 块结构与后端历史转换器 converter.ts 对齐。
+ * [reasoning?, search?, markdown]，reasoning 块结构与历史转换器 converter.ts 对齐。
  */
 import { useCallback, useRef, useState } from 'react';
 import { getAuthHeader } from '../../../api/client';
@@ -33,7 +31,7 @@ export interface SendUserMessageOptions {
 export interface UseAguiChatReturn {
   messages: ChatMessagesData[];
   status: ChatStatus;
-  /** 整包替换消息（语义对齐 TDesign chatEngine.setMessages(messages, 'replace')） */
+  /** 整包替换消息（历史同步） */
   setMessages: (
     messages: ChatMessagesData[],
     mode?: 'replace',

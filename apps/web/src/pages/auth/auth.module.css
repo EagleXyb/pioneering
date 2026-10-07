@@ -267,7 +267,7 @@
   display: block;
 }
 
-/* ===== shadcn 表单字段（阶段 3 替换 TDesign Form 后使用） ===== */
+/* ===== shadcn 表单字段 ===== */
 .field {
   margin-bottom: 16px;
 }

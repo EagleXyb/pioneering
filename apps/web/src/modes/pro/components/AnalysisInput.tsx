@@ -1,9 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, Mic, Square, Plus, Image as ImageIcon, FileText as FileTextIcon } from 'lucide-react';
+import React, { useRef } from 'react';
+import { ArrowUp, Square, Plus, Image as ImageIcon, FileText as FileTextIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ChatStatus } from '../../../types/chat';
-import { MoreMenu } from '@/components/more-menu/MoreMenu';
-import { buildMoreMenuItems } from '@/components/more-menu/buildMoreMenuItems';
 import {
   HitlInlineCard,
   useHitlStore,
@@ -11,6 +9,7 @@ import {
 } from '@pioneering/agent-protocol';
 import { useAttachments } from '@/hooks/useAttachments';
 import { AttachmentBar } from '@/components/attachments/AttachmentBar';
+import { useTaskInput } from '../../task/hooks/useTaskInput';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,9 +17,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FILE_ACCEPT_ATTR, IMAGE_ACCEPT_ATTR } from '@/api/upload';
-// 分析模式输入区使用 pro.css 中的 .pro-input-* 独立样式，不依赖 task.css
 
 interface Props {
+  /** 当前会话 ID，用于草稿隔离 */
+  chatId: string | null;
   status: ChatStatus;
   onSend: (text: string) => void;
   onStop: () => void;
@@ -30,7 +30,12 @@ interface Props {
   hitlBusy?: boolean;
 }
 
+/**
+ * 分析模式输入区 —— 与 chat / task 同一套输入卡片布局。
+ * 输入逻辑（IME 保护 / 草稿 / autosize / Enter 策略）复用 useTaskInput。
+ */
 export function AnalysisInput({
+  chatId,
   status,
   onSend,
   onStop,
@@ -38,12 +43,13 @@ export function AnalysisInput({
   hitlError,
   hitlBusy,
 }: Props) {
-  const [value, setValue] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isBusy = status === 'streaming' || status === 'pending';
+  const locked = !!hitl;
+
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // T4.4：附件（图片/文件上传，发送时拼 Markdown 后缀）
+  // 附件（图片/文件上传，发送时拼 Markdown 后缀）
   const {
     attachments,
     hasPending,
@@ -52,54 +58,57 @@ export function AnalysisInput({
     takeMessageSuffix,
   } = useAttachments();
 
-  const handleSend = useCallback(() => {
+  /** 文本 + 附件 Markdown 后缀组合后交给上层 onSend */
+  const composeWithAttachments = (text: string): string | null => {
     if (hasPending) {
       toast.error('附件仍在上传，请稍候');
-      return;
+      return null;
     }
-    const text = value.trim();
     const suffix = takeMessageSuffix();
-    if (!text && !suffix) return;
-    onSend(`${text}${suffix}`);
+    const trimmed = text.trim();
+    if (!trimmed && !suffix) return null;
+    return `${trimmed}${suffix}`;
+  };
+
+  /** 按钮/键盘统一发送出口 */
+  const dispatchSend = (rawText: string) => {
+    const composed = composeWithAttachments(rawText);
+    if (composed === null) return;
+    onSend(composed);
     setValue('');
-  }, [value, onSend, hasPending, takeMessageSuffix]);
+  };
+
+  const {
+    value,
+    setValue,
+    textareaRef,
+    handleKeyDown,
+    handleCompositionStart,
+    handleCompositionEnd,
+    canSend,
+    useCtrlEnterToSend,
+  } = useTaskInput({
+    chatId,
+    isStreaming: isBusy,
+    onSend: (text) => dispatchSend(text),
+    onStop,
+    draftKeyPrefix: 'pro-input-draft',
+  });
 
   const handlePickedFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length > 0) addFiles(files);
+    // 重置 value，允许再次选择同一个文件
     e.target.value = '';
   };
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
-
-  const isStreaming = status === 'streaming' || status === 'pending';
-  const locked = !!hitl;
-
-  // 自动增高：与 TaskMode 输入区一致的多行展开体验
-  const adjustHeight = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    const maxHeight = 200;
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
-  }, []);
-
-  useEffect(() => {
-    adjustHeight();
-  }, [value, isStreaming, adjustHeight]);
+  /** 有文本 或 附件全部上传完成 时允许发送 */
+  const canSendNow = canSend || (!hasPending && attachments.length > 0);
 
   return (
-    <div className="pro-input-area">
-      <div className="pro-input-inner">
-        {locked && hitl && (
+    <div className="chat-input-area">
+      {locked && hitl && (
+        <div className="chat-input-hitl">
           <HitlInlineCard
             kind={hitl.kind}
             question={hitl.question}
@@ -129,109 +138,101 @@ export function AnalysisInput({
               useHitlStore.getState().resolve({ approved: false, feedback })
             }
           />
-        )}
-        <div className="pro-input-card">
-          <AttachmentBar
-            attachments={attachments}
-            onRemove={removeAttachment}
-          />
-          <textarea
-            ref={textareaRef}
-            className="pro-input-text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="描述分析需求... Enter 发送，Shift+Enter 换行"
-            rows={1}
-            disabled={isStreaming || locked}
-            aria-label="分析输入框"
-          />
-          <div className="pro-input-toolbar">
-            <div className="pro-input-toolbar-left">
-              {/* T4.4：上传图片/文件 */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="pro-input-toolbar-btn"
-                    aria-label="上传图片、文件"
-                    title="上传图片、文件"
-                    disabled={isStreaming || locked}
-                  >
-                    <Plus className="h-5 w-5" strokeWidth={2} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
-                  <DropdownMenuItem onSelect={() => imageInputRef.current?.click()}>
-                    <ImageIcon className="h-4 w-4" />
-                    上传图片
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
-                    <FileTextIcon className="h-4 w-4" />
-                    上传文件
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept={IMAGE_ACCEPT_ATTR}
-                multiple
-                hidden
-                onChange={handlePickedFiles}
-              />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={FILE_ACCEPT_ATTR}
-                multiple
-                hidden
-                onChange={handlePickedFiles}
-              />
-              <MoreMenu
-                popClassName="pro-input"
-                disabled={isStreaming || locked}
-                items={buildMoreMenuItems({
-                  onUploadImage: () => imageInputRef.current?.click(),
-                  onUploadFile: () => fileInputRef.current?.click(),
-                  disabled: isStreaming || locked,
-                })}
-              />
-            </div>
-            <div className="pro-input-toolbar-right">
-              <button
-                type="button"
-                className="pro-input-toolbar-btn"
-                aria-label="语音输入"
-                title="语音输入即将上线"
-                disabled
-              >
-                <Mic className="h-5 w-5" strokeWidth={1.8} />
-              </button>
-              {isStreaming ? (
+        </div>
+      )}
+      <div className="chat-input-card">
+        {/* 附件预览条 */}
+        <AttachmentBar
+          attachments={attachments}
+          onRemove={removeAttachment}
+        />
+
+        <textarea
+          ref={textareaRef}
+          className="chat-input-textarea"
+          placeholder={
+            useCtrlEnterToSend
+              ? '输入消息，Ctrl/⌘ + Enter 发送'
+              : '输入分析需求，Enter 发送，Shift+Enter 换行'
+          }
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          rows={1}
+          disabled={isBusy || locked}
+          aria-label="分析输入框"
+        />
+        <div className="chat-input-footer">
+          <div className="chat-input-tools">
+            {/* + 上传 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="pro-input-send-btn pro-input-send-btn--stop"
-                  onClick={onStop}
-                  aria-label="停止"
+                  className="chat-upload-btn"
+                  aria-label="上传图片、文件"
+                  data-tooltip="上传图片、文件"
+                  disabled={isBusy || locked}
                 >
-                  <Square className="h-4 w-4" strokeWidth={2.5} />
+                  <Plus size={18} strokeWidth={2.2} />
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  className="pro-input-send-btn"
-                  onClick={handleSend}
-                  disabled={!value.trim() || locked}
-                  aria-label="发送"
-                >
-                  <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
-                </button>
-              )}
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
+                <DropdownMenuItem onSelect={() => imageInputRef.current?.click()}>
+                  <ImageIcon />
+                  上传图片
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+                  <FileTextIcon />
+                  上传文件
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept={IMAGE_ACCEPT_ATTR}
+              multiple
+              hidden
+              onChange={handlePickedFiles}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={FILE_ACCEPT_ATTR}
+              multiple
+              hidden
+              onChange={handlePickedFiles}
+            />
           </div>
+
+          {isBusy ? (
+            <button
+              type="button"
+              className="chat-send-btn chat-send-btn--stop"
+              onClick={onStop}
+              aria-label="停止生成"
+              title="停止生成"
+            >
+              <Square size={14} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="chat-send-btn"
+              onClick={() => dispatchSend(value)}
+              disabled={!canSendNow || locked}
+              aria-label="发送消息"
+              title="发送"
+            >
+              <ArrowUp size={17} />
+            </button>
+          )}
         </div>
       </div>
+      <div className="copyright__item">内容由AI生成，仅供参考</div>
     </div>
   );
 }

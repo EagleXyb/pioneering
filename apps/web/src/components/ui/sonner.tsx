@@ -3,9 +3,9 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner';
 import { useTheme } from '@/store/themeContext';
 
 /**
- * 全局 Toast（替代 TDesign MessagePlugin）——shadcn 官方推荐的 sonner。
+ * 全局 Toast —— shadcn 官方推荐的 sonner。
  * 挂载一次于 main.tsx，业务代码直接 `import { toast } from 'sonner'` 调用：
- * toast.info/success/error/loading，API 形态与 MessagePlugin 高度接近。
+ * toast.info/success/error/loading。
  * 主题跟随 web 的 resolvedTheme（light/dark），不受 system 模式下 data-theme
  * 缺省影响。
  */

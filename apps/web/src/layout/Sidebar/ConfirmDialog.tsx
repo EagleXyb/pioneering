@@ -1,6 +1,6 @@
 /**
  * 侧边栏操作确认对话框（删除会话 / 退出登录）
- * 阶段 3.4 基于 ui/dialog 的轻封装，替代 TDesign Dialog 的命令式用法。
+ * 基于 ui/dialog 的轻封装（命令式用法）。
  */
 import {
   Dialog,

@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
- * 加载指示小件（替代 TDesign Loading）：lucide Loader2 + CSS 旋转。
+ * 加载指示小件：lucide Loader2 + CSS 旋转。
  * size 透传给图标的 className（如 h-4 w-4）。
  */
 const Spinner = React.forwardRef<

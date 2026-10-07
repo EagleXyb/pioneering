@@ -126,13 +126,13 @@ describe('TaskMessageList', () => {
     expect(container.querySelector('.task-messages-empty')).not.toBeNull();
   });
 
-  it('streaming 状态显示思考指示器', () => {
+  it('streaming 状态显示等待输入指示', () => {
     const messages = [
       makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
     ];
     const { container } = render(<TaskMessageList messages={messages} status="streaming" />);
 
-    expect(container.querySelector('.task-thinking-indicator')).not.toBeNull();
+    expect(container.querySelector('.chat-typing')).not.toBeNull();
   });
 
   it('非 html/svg 语言的代码块不显示预览按钮但显示代码块卡片', () => {

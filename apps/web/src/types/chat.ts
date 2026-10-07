@@ -1,9 +1,7 @@
 /**
- * 聊天消息类型（阶段 4.1 平地化）
+ * 聊天消息类型
  *
- * 结构与字段名保持与 tdesign-web-components chat-engine 完全一致，
- * 从 types/tdesign.ts 深拷贝而来，业务代码（store/hooks/转换器/组件）
- * 无需改动即可无感切换；TDesign 全家移除后本文件成为唯一消息类型源。
+ * 本文件是全应用唯一的消息类型源，业务代码（store/hooks/转换器/组件）统一消费。
  */
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system';

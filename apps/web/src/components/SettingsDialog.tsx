@@ -2,13 +2,10 @@
  * 设置模态框 —— 由侧边栏账户弹层「设置」按钮唤起
  * 全屏浮层 + 900×600 居中窗口；分组：通用 / 外观 / 通知 / 对话 / 账户 / 帮助 / 关于
  *
- * 阶段 3（3.3）：
- * - TDesign Switch/Slider/Select/Radio/MessagePlugin/图标 → shadcn 基座 +
- *   sonner + lucide
- * - 8 个"存而不用"的假设置按审计结论处理：未接通的偏好一律禁用并打"开发中"
- *   标识（语言/桌面通知/提示音/显示时间/语音快捷键/隐私模式）；桌面 IDE 语境的
- *   「本地链接打开方式」整条移除；仅保留真实生效项（主题/密度/字号/回车发送）
- * - 清掉 TRAE 品牌文案与终端语境文案；技术栈说明同步为 Tailwind/shadcn
+ * - 基于 shadcn 基座 + sonner + lucide 实现
+ * - 未接通的偏好一律禁用并打"开发中"标识
+ *   （语言/桌面通知/提示音/显示时间/语音快捷键/隐私模式）；
+ *   仅保留真实生效项（主题/密度/字号/回车发送）
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -112,7 +109,7 @@ const SECTIONS: ReadonlyArray<{
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
-/** 小分段选择器（替代 TDesign Radio.Button 组） */
+/** 小分段选择器 */
 function Segmented<T extends string>({
   value,
   onChange,

@@ -1,4 +1,4 @@
-/* ===== ProMode ===== */
+/* ===== ProMode 布局 ===== */
 .pro-layout {
   display: flex;
   height: 100%;
@@ -11,37 +11,20 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 与任务模式 .task-main 一致：整列统一 bg-secondary，
-   * 使顶部栏、消息区、输入区底色连贯（任务模式即如此） */
+  /* 整列统一 bg-secondary，使顶部栏、消息区、输入区底色连贯 */
   background: var(--bg-secondary);
 }
 
-/* 右侧面板外壳：pro 独立样式（.pro-pipeline），不再依赖 task.css。
- * 宽度 / 折叠 / 分隔条仍由 TaskResizer 与 useAppStore.pipelineWidth 控制 */
-
-/* 分析模式中间栏现在自带顶部标题栏（.pro-main-header，见下方独立区块），
- * 与右侧面板 .pro-pipeline-header 同为 .pro-layout 直接子列的头部，故两者
- * 同高(48px)、同级；折叠/展开推理面板的入口已迁回中间栏头部（面板折叠时显示），
- * 不再依赖全局 TopNav（/pro 路由已不渲染 TopNav） */
-
-/* Messages —— 背景与任务模式 .task-messages 一致（var(--bg-secondary)），
- * 居中容器 .pro-messages-inner 对齐 .task-messages-inner（max-width 760） */
+/* ===== 消息滚动容器 =====
+ * 居中排版（max-width 960 / padding / gap）由共享 .chat-messages 承担，
+ * 这里只负责滚动与列方向；样式与 chat / task 完全一致 */
 .pro-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-}
-
-.pro-messages-inner {
-  width: 100%;
-  max-width: var(--task-content-width, 880px);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
 .pro-messages-empty {
@@ -71,103 +54,8 @@
   color: var(--text-tertiary);
 }
 
-.pro-message {
-  display: flex;
-  gap: 10px;
-  max-width: 85%;
-}
-
-.pro-message-user {
-  align-self: flex-end;
-  flex-direction: row-reverse;
-}
-
-.pro-message-assistant {
-  align-self: flex-start;
-}
-
-.pro-message-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.pro-message-avatar-ai {
-  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-  color: white;
-}
-
-.pro-message-avatar-user {
-  background: var(--accent-blue-light);
-  color: var(--accent-blue);
-}
-
-.pro-message-content {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  min-width: 0;
-}
-
-.pro-message-content-user {
-  background: var(--accent-blue);
-  color: white;
-  border-color: transparent;
-}
-
-.pro-message-text {
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Thinking Indicator */
-.pro-thinking-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 2px 0;
-}
-
-.pro-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-  animation: pro-dot-bounce 1.4s infinite ease-in-out both;
-}
-
-.pro-dot:nth-child(1) { animation-delay: -0.32s; }
-.pro-dot:nth-child(2) { animation-delay: -0.16s; }
-.pro-dot:nth-child(3) { animation-delay: 0s; }
-
-@keyframes pro-dot-bounce {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
-}
-
-/* Input Area —— pro 独立输入区样式（.pro-input-*），与任务模式视觉一致但互不影响。
- * 外层容器与内容居中定位在此定义，卡片/文本框/工具栏/发送按钮样式见文件底部 pro 区块 */
-.pro-input-area {
-  padding: 16px 20px 24px;
-  flex-shrink: 0;
-  min-width: 0;
-  background: var(--bg-card);
-}
-
-.pro-input-inner {
-  width: 100%;
-  max-width: var(--task-content-width, 880px);
-  margin: 0 auto;
-}
-
-/* Process Panel —— 面板头使用 pro 独立样式 .pro-pipeline-header / .pro-pipeline-title /
- * .pro-pipeline-collapse-btn（48px 高度、折叠按钮与任务模式视觉一致），内容样式保留在下方 */
+/* ===== 右侧推理过程面板 =====
+ * 宽度 / 折叠 / 分隔条由 TaskResizer 与 appStore.pipelineWidth 控制 */
 .process-panel {
   display: flex;
   flex-direction: column;
@@ -175,8 +63,8 @@
   min-height: 0;
   /* 覆盖 .pro-pipeline 继承的 white-space:nowrap，使推理步骤文本可正常换行 */
   white-space: normal;
-  /* 标题栏 .pro-pipeline-header 紧贴面板顶部（48px），与任务模式 .task-pipeline-header 对齐；
-   * 下方 .process-steps / .process-empty 以 flex:1 占满剩余高度，整体自适应外层容器 */
+  /* 标题栏 .pro-pipeline-header 紧贴面板顶部（48px），
+   * 下方 .process-steps / .process-empty 以 flex:1 占满剩余高度 */
 }
 
 .process-panel > .pro-pipeline-header {
@@ -291,25 +179,25 @@
 }
 
 .process-step-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 4px;
 }
 
+/* 步骤内容：对齐 chat 思考正文的克制风格 —— 浅灰底、无边框卡片 */
 .process-step-content {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border-radius: 8px;
   padding: 8px 10px;
 }
 
-/* Pro Empty State */
+/* ===== 无会话空态 ===== */
 .pro-empty {
   display: flex;
   flex-direction: column;
@@ -334,28 +222,9 @@
   max-width: 360px;
 }
 
-.pro-empty button {
-  padding: 10px 24px;
-  background: var(--accent-purple);
-  color: white;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 500;
-  transition: filter var(--transition-fast);
-}
-
-.pro-empty button:hover {
-  filter: brightness(1.1);
-}
-
-/* =========================================================
- * ProMode 独立组件样式（不依赖 task.css，避免与任务模式相互影响）
- * 以下样式为任务模式对应组件样式的 pro 副本，类名统一前缀 .pro-*
- * ========================================================= */
-
-/* 右侧推理面板外壳：结构与任务模式 .task-pipeline 一致
- * —— flex 列布局、靠默认 align-items:stretch 自适应外层 .pro-layout 高度
- * （与任务模式一样不写 height:100%，避免百分比高度解析链路的边界情况），
+/* ===== 右侧推理面板外壳 =====
+ * flex 列布局、靠默认 align-items:stretch 自适应外层 .pro-layout 高度
+ * （不写 height:100%，避免百分比高度解析链路的边界情况），
  * 顶部 48px 标题栏 + 主体占满剩余高度 */
 .pro-pipeline {
   flex-shrink: 0;
@@ -385,9 +254,8 @@
   white-space: nowrap;
 }
 
-/* 中间栏顶部栏：与右侧面板 .pro-pipeline-header、任务模式 .task-top-bar
- * 完全对齐——同为 bg-secondary、无底边框、左右内边距 0 20px、高 48px。
- * 三者都是各自列的直接子头部，Y 轴起点与高度一致，视觉统一 */
+/* 中间栏顶部栏：与右侧面板 .pro-pipeline-header 同高(48px)、同级，
+ * /pro 路由不渲染全局 TopNav，折叠/展开入口由本头部承载 */
 .pro-main-header {
   display: flex;
   align-items: center;
@@ -429,9 +297,7 @@
 }
 
 /* 中间栏与右侧面板之间的可拖动分隔条（复用 task 模式的 TaskResizer 组件）。
- * 其样式原本只存在于 task.css，而分析模式(pro)是独立 lazy 分包、不会加载 task.css，
- * 导致分隔条“裸奔”（无宽度/无竖线/不可拖）。这里在 pro.css 内补一份等价规则，
- * 保证分析模式下同样可用，且与任务模式视觉一致。 */
+ * pro 是独立 lazy 分包、不会加载 task.css，故在此补一份等价规则 */
 .task-resizer {
   width: 5px;
   flex-shrink: 0;
@@ -455,7 +321,7 @@
 
 .task-resizer:hover::before,
 .task-resizer:active::before {
-  background: var(--accent-primary, #3b82f6);
+  background: var(--accent-blue, #3b82f6);
 }
 
 .pro-pipeline-header-left {
@@ -490,285 +356,4 @@
 .pro-pipeline-collapse-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-}
-
-/* 输入区卡片 / 文本框 / 工具栏 / 发送按钮 */
-.pro-input-card {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 20px;
-  padding: 6px 0 0;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.02),
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    0 8px 32px rgba(0, 0, 0, 0.06);
-  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
-}
-
-.pro-input-card:focus-within {
-  border-color: var(--border-medium);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.03),
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    0 12px 40px rgba(0, 0, 0, 0.08);
-}
-
-.pro-input-text {
-  width: 100%;
-  min-height: 44px;
-  max-height: 200px;
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  resize: none;
-  padding: 14px 20px 8px;
-  outline: none;
-  font-family: inherit;
-  overflow-y: auto;
-  field-sizing: content;
-}
-
-.pro-input-text::placeholder {
-  color: var(--text-tertiary);
-  font-size: 16px;
-}
-
-.pro-input-text:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.pro-input-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 10px 10px;
-  gap: 8px;
-}
-
-.pro-input-toolbar-left,
-.pro-input-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.pro-input-toolbar-right {
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-right: 2px;
-}
-
-.pro-input-toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-  padding: 0;
-}
-
-.pro-input-toolbar-btn:hover:not(:disabled) {
-  background: var(--bg-input);
-  color: var(--text-secondary);
-}
-
-.pro-input-toolbar-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* 「更多工具」+ 按钮改为圆形 */
-.pro-input-more-btn {
-  border-radius: 50%;
-}
-
-.pro-input-send-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: #1a1d23;
-  color: #ffffff;
-  cursor: pointer;
-  transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast);
-  padding: 0;
-  margin-left: 4px;
-}
-
-.pro-input-send-btn:hover:not(:disabled) {
-  background: #000000;
-  transform: scale(1.05);
-}
-
-.pro-input-send-btn:active:not(:disabled) {
-  transform: scale(0.95);
-}
-
-.pro-input-send-btn:disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-  background: #1a1d23;
-}
-
-.pro-input-send-btn--stop {
-  background: #1a1d23;
-}
-
-.pro-input-send-btn--stop:hover {
-  background: #ef4444;
-}
-
-/* 暗色主题：pro 输入区 */
-[data-theme="dark"] .pro-input-card {
-  border-color: var(--border-light);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    0 8px 32px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .pro-input-card:focus-within {
-  border-color: var(--border-medium);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 4px 12px rgba(0, 0, 0, 0.3),
-    0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
-[data-theme="dark"] .pro-input-send-btn {
-  background: #e8eaed;
-  color: #1a1d23;
-}
-
-[data-theme="dark"] .pro-input-send-btn:hover:not(:disabled) {
-  background: #ffffff;
-}
-
-[data-theme="dark"] .pro-input-send-btn--stop:hover {
-  background: #f87171;
-  color: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .pro-input-card {
-    border-color: var(--border-light);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.04),
-      0 2px 8px rgba(0, 0, 0, 0.2),
-      0 8px 32px rgba(0, 0, 0, 0.3);
-  }
-
-  :root:not([data-theme="light"]) .pro-input-send-btn {
-    background: #e8eaed;
-    color: #1a1d23;
-  }
-
-  :root:not([data-theme="light"]) .pro-input-send-btn:hover:not(:disabled) {
-    background: #ffffff;
-  }
-}
-
-/* 分析模式「+」按钮弹出的「更多工具」下拉菜单（pro 独立副本） */
-.pro-input-more-pop {
-  position: fixed;
-  z-index: 1000;
-  display: flex;
-  align-items: stretch;
-  pointer-events: auto;
-}
-
-.pro-input-more-main,
-.pro-input-more-sub {
-  position: relative;
-  min-width: 200px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.02),
-    0 4px 16px rgba(0, 0, 0, 0.08),
-    0 12px 40px rgba(0, 0, 0, 0.10);
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.pro-input-more-sub {
-  position: absolute;
-  left: calc(100% + 4px);
-  margin: 0;
-  min-width: 180px;
-}
-
-.pro-input-more-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1;
-  user-select: none;
-  white-space: nowrap;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.pro-input-more-item:hover,
-.pro-input-more-item.active {
-  background: var(--bg-input);
-  color: var(--text-primary);
-}
-
-.pro-input-more-item.has-sub.active {
-  background: var(--bg-input);
-}
-
-.pro-input-more-item-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  color: var(--text-secondary);
-  stroke-width: 1.8;
-}
-
-.pro-input-more-item-label {
-  flex: 1;
-  min-width: 0;
-}
-
-.pro-input-more-chevron {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  color: var(--text-tertiary);
-  stroke-width: 1.8;
-}
-
-[data-theme="dark"] .pro-input-more-main,
-[data-theme="dark"] .pro-input-more-sub {
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 4px 16px rgba(0, 0, 0, 0.4),
-    0 12px 40px rgba(0, 0, 0, 0.5);
 }

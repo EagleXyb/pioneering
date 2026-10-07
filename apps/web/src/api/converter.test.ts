@@ -1,6 +1,6 @@
 /**
  * convertMessages 单元测试
- * 验证后端 Message → TDesign ChatMessagesData 转换逻辑
+ * 验证后端 Message → ChatMessagesData 转换逻辑
  */
 import { describe, it, expect } from 'vitest';
 import { convertMessages } from './converter';

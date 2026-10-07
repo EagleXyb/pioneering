@@ -1,10 +1,10 @@
 /**
- * Chat 模式（阶段 4.3 接入自研 useAguiChat，移除 @tdesign-react/chat）
+ * Chat 模式（自研 useAguiChat）
  *
- * 会话级职责（与重写前一致）：
- * - 历史消息手动同步（切换会话/向上分页/重生成后刷新）+ 竞态保护 + 滚动位置保持
- * - 无会话/temp 会话时创建会话后再发送
- * - 停止：前端 abort + 后端 /stop；重生成：专用 regenerate 端点后刷新历史
+ * 会话级职责：
+ * 历史消息手动同步（切换会话/向上分页/重生成后刷新）+ 竞态保护 + 滚动位置保持
+ * 无会话/temp 会话时创建会话后再发送
+ * 停止：前端 abort + 后端 /stop；重生成：专用 regenerate 端点后刷新历史
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -64,7 +64,7 @@ function ChatSession({
           await create('chat');
         } catch {
           // 会话创建失败：侧边栏会展示列表错误，这里再给一次即时反馈，
-          // 避免用户在对话区无任何感知（旧 TDesign 版本此处为静默 return）
+          // 避免用户在对话区无任何感知
           toast.error('创建会话失败，请稍后重试');
           return;
         }

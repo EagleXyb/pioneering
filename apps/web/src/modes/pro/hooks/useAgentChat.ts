@@ -115,7 +115,11 @@ export function useAgentChat(
 
   // ========== 消息按 id 更新 ==========
 
-  const setMessageText = (msgId: string, text: string) => {
+  const setMessageText = (
+    msgId: string,
+    text: string,
+    terminalStatus?: 'complete' | 'stop' | 'error',
+  ) => {
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === msgId);
       if (idx === -1) return prev;
@@ -124,6 +128,8 @@ export function useAgentChat(
       next[idx] = {
         ...next[idx]!,
         content: [{ type: 'markdown' as const, data: text }],
+        // 流收尾时写入终态，供消息组件决定操作栏展示
+        ...(terminalStatus ? { status: terminalStatus } : {}),
       } as ChatMessagesData;
       return next;
     });
@@ -291,7 +297,7 @@ export function useAgentChat(
       const msgId = assistantMsgIdRef.current;
       const text = `Agent 错误: ${(event.message as string) || '未知错误'}`;
       assistantTextRef.current = text;
-      if (msgId) setMessageText(msgId, text);
+      if (msgId) setMessageText(msgId, text, 'error');
     },
     // ===== HITL =====
     onHumanInputRequest: (event) => {
@@ -314,7 +320,7 @@ export function useAgentChat(
         ? `${base}\n\n[已中止] 该操作未执行。`
         : '[已中止] 该操作未执行。';
       assistantTextRef.current = text;
-      if (msgId) setMessageText(msgId, text);
+      if (msgId) setMessageText(msgId, text, 'stop');
       setCurrentStateKey(null);
       useHitlStore.getState().dequeue();
       void event;
@@ -342,6 +348,7 @@ export function useAgentChat(
           return;
         }
         if (result.reason === 'aborted') {
+          if (msgId) setMessageText(msgId, assistantTextRef.current, 'stop');
           setStatus('complete');
           return;
         }
@@ -350,7 +357,7 @@ export function useAgentChat(
         if (flowStatusRef.current === 'aborted') return;
 
         // finished / closed：固化最终消息
-        if (msgId) setMessageText(msgId, assistantTextRef.current);
+        if (msgId) setMessageText(msgId, assistantTextRef.current, 'complete');
         setStatus('complete');
         // resume 续写正常结束：出队当前暂停项
         if (isResumeRunRef.current) useHitlStore.getState().dequeue();
@@ -358,13 +365,19 @@ export function useAgentChat(
       } catch (err) {
         const e = err as { name?: string; message?: string };
         if (e?.name === 'AbortError') {
+          if (msgId) setMessageText(msgId, assistantTextRef.current, 'stop');
           setStatus('complete');
           flowStatusRef.current = 'idle';
         } else {
           flowStatusRef.current = 'error';
           setStatus('error');
           settleRunningSteps();
-          if (msgId) setMessageText(msgId, `请求失败: ${e?.message || '未知错误'}`);
+          if (msgId)
+            setMessageText(
+              msgId,
+              `请求失败: ${e?.message || '未知错误'}`,
+              'error',
+            );
         }
       }
     },

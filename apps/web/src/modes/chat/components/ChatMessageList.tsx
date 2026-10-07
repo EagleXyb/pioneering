@@ -1,6 +1,6 @@
 /**
- * 聊天消息列表（阶段 4.4）
- * 自动滚动/顶部历史分页逻辑零改动；TDesign ChatMessage 等待动画换为自绘三点。
+ * 聊天消息列表
+ * 自动滚动（底部哨兵 + 近底部判定）与顶部历史分页。
  */
 import { useRef, useEffect } from 'react';
 import type { ChatStatus } from '../../../types/chat';

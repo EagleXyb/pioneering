@@ -5,6 +5,7 @@ import { useHitlStore } from '@pioneering/agent-protocol';
 import { useChatSync } from './hooks/useChatSync';
 import { usePlanExecuteChat } from './hooks/usePlanExecuteChat';
 import { TaskMessageList } from './components/TaskMessageList';
+import { TaskWelcome } from './components/TaskWelcome';
 import { TaskInput } from './components/TaskInput';
 import { TaskPipeline } from './components/TaskPipeline';
 import { TaskResizer } from './components/TaskResizer';
@@ -12,18 +13,17 @@ import { ArtifactPanel } from '@/components/ArtifactPreview/ArtifactPanel';
 import '@/components/ArtifactPreview/artifactPanel.css';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
 import { useSessionRuns } from '@/hooks/useSessionRuns';
+import { Button } from '@/components/ui/button';
 import { useEffect } from 'react';
 import './task.css';
 
 /**
- * 任务模式主组件（P4 Plan-and-Execute 对接版）
+ * 任务模式主组件（Plan-and-Execute）
  *
- * 改造说明：
- *   - 从 @tdesign-react/chat 的 useChat 切换到自定义 usePlanExecuteChat，
- *     以支持 STATE_DELTA 事件解析和 planExecuteStore 驱动
- *   - 请求体新增 agentMode: 'plan_execute' 启用后端 Plan-Execute 图
- *   - 切换会话时调用 reset() 清空消息和 plan 状态（原实现仅 resetArtifact）
- *   - ArtifactPanel 与 TaskPipeline 互斥逻辑保持不变
+ *   - usePlanExecuteChat：解析 STATE_DELTA 事件，planExecuteStore 驱动
+ *   - 请求体 agentMode: 'plan_execute' 启用后端 Plan-Execute 图
+ *   - 切换会话时 reset() 清空消息和 plan 状态
+ *   - ArtifactPanel 与 TaskPipeline 互斥
  */
 export default function TaskMode() {
   const activeId = useConversationStore((s) => s.activeId);
@@ -79,7 +79,7 @@ export default function TaskMode() {
         </svg>
         <h2>任务模式</h2>
         <p>创建任务，Agent 将自动规划并执行多步骤操作，支持复杂的 Plan-and-Execute 流程</p>
-        <button onClick={() => create('task')}>创建任务</button>
+        <Button onClick={() => create('task')}>创建任务</Button>
       </div>
     );
   }
@@ -88,11 +88,18 @@ export default function TaskMode() {
     <div className="task-mode">
       <div className="task-main">
         <TaskTopBar />
-        <TaskMessageList
-          messages={messages}
-          status={status}
-          runByMessage={runByMessage}
-        />
+        {messages.length === 0 ? (
+          <TaskWelcome
+            onSuggestion={(text) => sendMessage({ prompt: text })}
+          />
+        ) : (
+          <TaskMessageList
+            messages={messages}
+            status={status}
+            runByMessage={runByMessage}
+            paused={!!hitl}
+          />
+        )}
         <TaskInput
           chatId={activeId}
           status={status}

@@ -1,9 +1,9 @@
 /**
  * 注册页 — 对齐原型 V1.3
- * 原生受控表单（阶段 3 去除 TDesign Form）+ shadcn 基座 + AuthLayout 品牌布局
+ * 原生受控表单 + shadcn 基座 + AuthLayout 品牌布局
  * 后端: POST /auth/register（backend-ts 已实现，返回 { token, refreshToken, user }）
  *
- * 校验规则从 TDesign Form rule 平移：
+ * 校验规则：
  * - username 必填、至少 2 字符
  * - email 必填、邮箱格式
  * - password 必填、至少 8 位
@@ -40,7 +40,7 @@ const strengthLabel: Record<StrengthLevel, string> = {
   3: '密码强度：强',
 };
 
-// 与 TDesign `email: true` 内置规则一致的简单邮箱校验
+// 简单邮箱校验
 const EMAIL_RE = /^[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}$/;
 
 type FieldName = 'username' | 'email' | 'password' | 'confirmPassword';
@@ -83,7 +83,7 @@ export default function RegisterPage() {
   const markTouched = (field: FieldName) =>
     setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
 
-  /** 校验逻辑（与原 TDesign rules 一一对应） */
+  /** 校验逻辑 */
   const validate = (): Errors => {
     const next: Errors = {};
     if (!form.username.trim()) {

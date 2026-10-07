@@ -1,10 +1,10 @@
 /**
- * 单条聊天消息（阶段 4.4 自建，替代 TDesign ChatMessage/ChatActionBar）
+ * 单条聊天消息
  *
- * - 用户消息：右侧品牌蓝气泡；助手消息：通栏纯文本 + Markdown 渲染
- * - reasoning/thinking 块折叠展示（历史默认折叠、流式过程默认展开）
- * - 操作栏五按钮（copy/good/bad/share/replay）逻辑逐行平移
- * - 修复 P2-5：comment 初始值之后随消息反馈状态同步（useEffect），
+ * - 用户消息：右侧灰色气泡；助手消息：通栏 Markdown 渲染
+ * - reasoning 块折叠展示（历史默认折叠、流式过程默认展开）
+ * - 操作栏五按钮（copy/good/bad/share/replay）
+ * - comment 随消息反馈状态同步（useEffect），
  *   历史刷新/重新加载不再出现按钮高亮与数据不一致
  */
 import { useEffect, useState } from 'react';
@@ -93,8 +93,8 @@ interface ActionIconProps {
 }
 
 /**
- * 分享：TDesign 图标 share-1 的 path（弧形转发箭头）
- * 使用 round 圆角线帽/连接，与复制、赞、踩（lucide 圆角风格）保持统一；
+ * 分享：弧形转发箭头
+ * 使用 round 圆角线帽/连接，与复制、赞、踩（lucide 图标圆角风格）保持统一；
  * stroke=currentColor 自动继承按钮灰色/hover/高亮色
  */
 function ShareForwardIcon({ size = 15, className }: ActionIconProps) {
@@ -117,8 +117,8 @@ function ShareForwardIcon({ size = 15, className }: ActionIconProps) {
 }
 
 /**
- * 重新生成：TDesign 图标 rotate 的 path（近闭合圆环 + 右侧顺时针箭头）
- * 使用 round 圆角线帽/连接，与其他三个 lucide 图标的平滑风格一致；
+ * 重新生成：近闭合圆环 + 右侧顺时针箭头
+ * 使用 round 圆角线帽/连接，与其他 lucide 图标的平滑风格一致；
  * stroke=currentColor 自动继承按钮颜色
  */
 function ReplayRotateIcon({ size = 15, className }: ActionIconProps) {
@@ -141,9 +141,24 @@ function ReplayRotateIcon({ size = 15, className }: ActionIconProps) {
 }
 
 export function ChatMessageItem({ message, onReplay }: Props) {
-  // assistant 分支的消息（含后端回写的 comment）；用户消息在上方已 return
+  // assistant 分支的消息（含后端回写的 comment）
   const aiMessage = message as Extract<ChatMessageData, { role: 'assistant' }>;
   const [comment, setComment] = useState<ChatComment>(aiMessage.comment ?? '');
+
+  // 以下 assistant 专用 hooks 提前调用，避免在 user 早返回之后形成条件调用
+  const openSources = useSourcesPanelStore((s) => s.openSources);
+  const isSourcesPanelOpen = useSourcesPanelStore(
+    (s) => s.open && s.messageId === message.id,
+  );
+  const reasoningBlock = message.content?.find((c) => c.type === 'reasoning');
+  // 历史消息默认折叠（converter 写 ext.collapsed=true），流式消息默认展开；
+  // 之后由用户点击受控切换（流式过程中也允许手动折叠）
+  const [reasoningOpen, setReasoningOpen] = useState<boolean>(() => {
+    const collapsed =
+      (reasoningBlock?.ext as { collapsed?: boolean } | undefined)?.collapsed ??
+      (message.status === 'complete' || message.status === 'stop');
+    return !collapsed;
+  });
 
   // P2-5：消息引用变化（历史刷新、反馈回写）时同步按钮高亮状态
   useEffect(() => {
@@ -167,21 +182,8 @@ export function ChatMessageItem({ message, onReplay }: Props) {
   // assistant
   const reasoning = extractReasoning(message.content);
   const references = extractReferences(message.content);
-  const openSources = useSourcesPanelStore((s) => s.openSources);
-  const isSourcesPanelOpen = useSourcesPanelStore(
-    (s) => s.open && s.messageId === message.id,
-  );
   const textBlocks = getTextBlocks(message);
   const text = textBlocks.map((c) => (c.data as string) ?? '').join('\n');
-  const reasoningBlock = message.content?.find((c) => c.type === 'reasoning');
-  // 历史消息默认折叠（converter 写 ext.collapsed=true），流式消息默认展开；
-  // 之后由用户点击受控切换（流式过程中也允许手动折叠）
-  const [reasoningOpen, setReasoningOpen] = useState<boolean>(() => {
-    const collapsed =
-      (reasoningBlock?.ext as { collapsed?: boolean } | undefined)?.collapsed ??
-      (message.status === 'complete' || message.status === 'stop');
-    return !collapsed;
-  });
   // 流式进行中（含思考阶段与正文阶段）：标题显示"深度思考中…"，图标呼吸
   const isReasoningStreaming = message.status === 'streaming' || message.status === 'pending';
   const isFinal =
