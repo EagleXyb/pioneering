@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ArrowUp, Square, Plus, Image as ImageIcon, FileText as FileTextIcon } from 'lucide-react';
+import { ArrowUp, Square, Plus, Image as ImageIcon, FileText as FileTextIcon, Mic } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ChatStatus } from '../../../types/chat';
 import {
@@ -9,6 +9,7 @@ import {
 } from '@pioneering/agent-protocol';
 import { useAttachments } from '@/hooks/useAttachments';
 import { AttachmentBar } from '@/components/attachments/AttachmentBar';
+import { ModelSelect } from '@/components/ModelSelect/ModelSelect';
 import { useTaskInput } from '../../task/hooks/useTaskInput';
 import {
   DropdownMenu,
@@ -208,28 +209,40 @@ export function AnalysisInput({
             />
           </div>
 
-          {isBusy ? (
+          <div className="chat-input-actions">
+            <ModelSelect mode="pro" disabled={isBusy || locked} />
             <button
               type="button"
-              className="chat-send-btn chat-send-btn--stop"
-              onClick={onStop}
-              aria-label="停止生成"
-              title="停止生成"
+              className="chat-upload-btn"
+              aria-label="语音输入"
+              data-tooltip="语音输入"
+              disabled={isBusy || locked}
             >
-              <Square size={14} fill="currentColor" />
+              <Mic size={19} />
             </button>
-          ) : (
-            <button
-              type="button"
-              className="chat-send-btn"
-              onClick={() => dispatchSend(value)}
-              disabled={!canSendNow || locked}
-              aria-label="发送消息"
-              title="发送"
-            >
-              <ArrowUp size={17} />
-            </button>
-          )}
+            {isBusy ? (
+              <button
+                type="button"
+                className="chat-send-btn chat-send-btn--stop"
+                onClick={onStop}
+                aria-label="停止生成"
+                title="停止生成"
+              >
+                <Square size={14} fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="chat-send-btn"
+                onClick={() => dispatchSend(value)}
+                disabled={!canSendNow || locked}
+                aria-label="发送消息"
+                title="发送"
+              >
+                <ArrowUp size={17} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
       <div className="copyright__item">内容由AI生成，仅供参考</div>

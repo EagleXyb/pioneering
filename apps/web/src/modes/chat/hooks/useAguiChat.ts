@@ -26,6 +26,8 @@ export interface SendUserMessageOptions {
   deepThink?: boolean;
   /** 联网搜索开关（对应请求体 netSearch） */
   netSearch?: boolean;
+  /** 指定模型 id（对应请求体 model；后端默认 deepseek-v4-flash） */
+  model?: string;
 }
 
 export interface UseAguiChatReturn {
@@ -76,7 +78,7 @@ export function useAguiChat(
   }, []);
 
   const sendUserMessage = useCallback(
-    ({ prompt, deepThink = false, netSearch = false }: SendUserMessageOptions) => {
+    ({ prompt, deepThink = false, netSearch = false, model }: SendUserMessageOptions) => {
       const sid = sessionId();
       if (!sid) return;
       // 流式/待响应中忽略重复发送
@@ -171,6 +173,7 @@ export function useAguiChat(
               stream: true,
               deepThink,
               netSearch,
+              model,
             }),
             signal: controller.signal,
           });

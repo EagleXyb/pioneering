@@ -10,11 +10,13 @@
  * 发送时以 Markdown 图片/链接拼入正文（见 useAttachments）。
  */
 import { useRef } from 'react';
-import { ArrowUp, Image as ImageIcon, Plus, Square, Brain, Globe, FileText } from 'lucide-react';
+import { ArrowUp, Image as ImageIcon, Plus, Square, Brain, Globe, FileText, Mic } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ChatStatus } from '../../../types/chat';
 import { useTaskInput } from '../../task/hooks/useTaskInput';
 import { Spinner } from '@/components/ui/spinner';
+import { ModelSelect } from '@/components/ModelSelect/ModelSelect';
+import { useModelOptions } from '@/hooks/useModelOptions';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +33,8 @@ import { useAttachments } from '@/hooks/useAttachments';
 interface Props {
   activeId: string | null;
   status: ChatStatus;
-  onSend: (text: string) => void;
+  /** model 为当前所选模型 id（对话模式会随请求透传给后端） */
+  onSend: (text: string, model?: string) => void;
   onStop: () => void;
   r1Active: boolean;
   onR1Change: (v: boolean) => void;
@@ -50,6 +53,9 @@ export function ChatInput({
   onNetSearchChange,
 }: Props) {
   const isBusy = status === 'streaming' || status === 'pending';
+
+  // ---- 模型选择（随发送透传给 /chat/completions） ----
+  const { selectedId, selectModel } = useModelOptions('chat');
 
   // ---- 附件 ----
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +84,7 @@ export function ChatInput({
   const dispatchSend = (rawText: string) => {
     const composed = composeWithAttachments(rawText);
     if (composed === null) return;
-    onSend(composed);
+    onSend(composed, selectedId);
     setValue('');
   };
 
@@ -204,28 +210,43 @@ export function ChatInput({
             </button>
           </div>
 
-          {isBusy ? (
+          <div className="chat-input-actions">
+            <ModelSelect
+              mode="chat"
+              selectedId={selectedId}
+              onSelect={selectModel}
+            />
             <button
               type="button"
-              className="chat-send-btn chat-send-btn--stop"
-              onClick={onStop}
-              aria-label="停止生成"
-              title="停止生成"
+              className="chat-upload-btn"
+              aria-label="语音输入"
+              data-tooltip="语音输入"
             >
-              <Square size={14} fill="currentColor" />
+              <Mic size={19} />
             </button>
-          ) : (
-            <button
-              type="button"
-              className="chat-send-btn"
-              onClick={() => dispatchSend(value)}
-              disabled={!canSendNow}
-              aria-label="发送消息"
-              title="发送"
-            >
-              {isBusy ? <Spinner /> : <ArrowUp size={17} />}
-            </button>
-          )}
+            {isBusy ? (
+              <button
+                type="button"
+                className="chat-send-btn chat-send-btn--stop"
+                onClick={onStop}
+                aria-label="停止生成"
+                title="停止生成"
+              >
+                <Square size={14} fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="chat-send-btn"
+                onClick={() => dispatchSend(value)}
+                disabled={!canSendNow}
+                aria-label="发送消息"
+                title="发送"
+              >
+                {isBusy ? <Spinner /> : <ArrowUp size={17} />}
+              </button>
+            )}
+          </div>
         </div>
       </div>
       <div className="copyright__item">内容由AI生成，仅供参考</div>

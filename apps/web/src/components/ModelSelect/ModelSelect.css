@@ -1,0 +1,114 @@
+/* ============================================================
+ * ModelSelect —— 输入框模型选择胶囊（三模式共享，组件自带样式）
+ * ============================================================ */
+
+.model-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  max-width: 230px;
+  padding: 0 13px 0 9px;
+  border: none;
+  border-radius: 999px;
+  /* 浅灰胶囊底（亮/暗主题自适应） */
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+.model-select__trigger:hover:not(:disabled),
+.model-select__trigger:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 9%, var(--bg-input));
+}
+.model-select__trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 暗色主题下 --bg-input 与卡片底色相同，用半透明白拉出胶囊层次 */
+[data-theme='dark'] .model-select__trigger {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-theme='dark'] .model-select__trigger:hover:not(:disabled),
+[data-theme='dark'] .model-select__trigger:focus-visible:not(:disabled) {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.model-select__logo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+}
+.model-select__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-select__chevron {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--text-tertiary);
+  transition: transform 0.18s ease;
+}
+.model-select__trigger[data-state='open'] .model-select__chevron {
+  transform: rotate(180deg);
+}
+
+/* ---- 上弹菜单 ---- */
+.model-select__menu {
+  min-width: 264px;
+  max-width: 320px;
+  padding: 6px;
+}
+.model-select__menu .model-select__item {
+  gap: 9px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.model-select__item-logo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-primary);
+}
+.model-select__item-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.model-select__item-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.model-select__item-desc {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  text-align: left;
+  white-space: normal;
+}
+.model-select__check {
+  flex: none;
+  color: var(--accent-blue);
+}
+.model-select__check.is-hidden {
+  visibility: hidden;
+}

@@ -14,3 +14,17 @@ export interface HealthInfo {
 export function getHealth(): Promise<HealthInfo> {
   return get<HealthInfo>('/health');
 }
+
+/** 后端支持的模型信息（对齐 GET /system/models 返回项） */
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description?: string;
+  max_tokens?: number;
+  pricing?: { input_price?: number; output_price?: number };
+}
+
+/** 获取后端支持的模型列表 */
+export function getModels(): Promise<ModelInfo[]> {
+  return get<ModelInfo[]>('/system/models');
+}

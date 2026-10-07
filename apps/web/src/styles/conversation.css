@@ -506,6 +506,13 @@
   gap: 6px;
 }
 
+/* 输入框右下操作组（模型选择 / 语音输入 / 发送），紧挨发送按钮排列 */
+.chat-input-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* + 上传按钮：默认透明、深色图标；悬停浮现浅灰圆底 + 深色气泡提示（对齐豆包） */
 .chat-upload-btn {
   position: relative;

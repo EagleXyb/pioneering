@@ -56,7 +56,7 @@ function ChatSession({
 
   // 统一发送：必要时先建会话，再交给 hook 发起流式请求
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, model?: string) => {
       const store = useConversationStore.getState();
 
       if (!store.activeId) {
@@ -86,6 +86,7 @@ function ChatSession({
         prompt: text,
         deepThink: r1ActiveRef.current,
         netSearch: netSearchRef.current,
+        model,
       });
     },
     [create, sendUserMessage],
