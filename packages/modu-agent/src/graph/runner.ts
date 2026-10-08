@@ -1136,14 +1136,13 @@ export async function* resume_stream(
       }),
     )
 
-    for await (const event of stream) {
-      // LangGraph JS stream 产出 [mode, chunk] 元组
-      if (Array.isArray(event) && event.length === 2) {
-        const [mode, chunk] = event
-        yield { type: mode, data: chunk }
-      } else if (event && typeof event === 'object' && !Array.isArray(event)) {
-        yield event as Record<string, any>
-      }
+    // 与 stream_response 走同一套归一化：LangGraph 的 [mode, chunk] 元组必须转成
+    // { type, event, data, metadata }，否则 AGUIStreamAdapter 在 messages 分支读到的是
+    // 原始数组（event.event 为空 → event.data 退化为数组），msgType 解析为空、
+    // content 取不到，导致 resume 整轮不产生任何 TEXT_MESSAGE_CONTENT（前端表现为
+    // 「Agent 没有任何回复」）。updates 分支同理需要按节点展开。
+    for await (const event of _normalizeLangGraphStream(stream)) {
+      yield event
     }
   } finally {
     const elapsedMs = performance.now() - streamStart

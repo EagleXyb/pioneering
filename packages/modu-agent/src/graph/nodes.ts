@@ -1134,12 +1134,26 @@ export function makeAgentNode(
   ): Promise<Partial<ModuAgentState>> {
     const messages: BaseMessage[] = [...(state.messages ?? [])]
 
-    // 如果没有消息，使用 cleaned_text 作为 HumanMessage
-    if (messages.length === 0) {
-      const cleanedText = state.cleaned_text ?? state.input_data?.['prompt'] ?? ''
-      if (cleanedText) {
-        messages.push(new HumanMessage({ content: cleanedText }))
-      }
+    // 注入当前轮的用户输入。
+    //
+    // 不能只在 messages 为空时注入：第 2 轮起 state.messages 已含上一轮的
+    // Human/AI 消息，若不追加，本轮用户输入会被静默丢弃，请求以 assistant 消息结尾。
+    // 而当请求携带 tools（进入 thinking / 工具调用模式）时，DeepSeek 会要求历史
+    // assistant 消息带 reasoning_content，否则返回 400：
+    //   "The `reasoning_content` in the thinking mode must be passed back to the API."
+    //
+    // 两个守卫用于避免重复注入：
+    //   hasSameUserInput —— ReAct 循环内同一轮会多次进入本节点（agent→tools→agent），
+    //                       此时历史里已有本轮 Human 消息，重复追加会污染上下文；
+    //   tailIsUser       —— clarify 中断恢复后 messages 尾部已是 Human（澄清后的
+    //                       需求），不应再追加原始 prompt 造成连续两条 user 消息。
+    const cleanedText = String(state.cleaned_text ?? state.input_data?.['prompt'] ?? '')
+    const tailIsUser = messages.length > 0 && messages[messages.length - 1] instanceof HumanMessage
+    const hasSameUserInput = messages.some(
+      (m) => m instanceof HumanMessage && String((m as any).content ?? '').trim() === cleanedText.trim(),
+    )
+    if (cleanedText && !tailIsUser && !hasSameUserInput) {
+      messages.push(new HumanMessage({ content: cleanedText }))
     }
 
     // P0-2: 按 tier 动态拼接 CoT 锚点 prompt

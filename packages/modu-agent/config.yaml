@@ -15,6 +15,16 @@ react_optimization:
     system_prompt_max_chars: 8000
     runtime_context_max_chars: 4000
 
+# LLM 生成上限。
+# 框架内置默认仅 512（graph/adapters/llm-adapter.ts: `runtimeConfig.get('llm.max_tokens', 512)`），
+# 对本项目使用的 deepseek-v4-flash（thinking 模型）明显不足：
+#   - 512：澄清/长回答场景直接被截断，finish_reason='length' 且 content=''；
+#   - 4096：多轮改代码类任务中 reasoning_tokens 会吃满 4096，正文仍为空
+#     （实测第2轮 completion=4096 / reasoning_tokens=4096 / content=0）。
+# 思考与输出共用该预算，故需按「思考 + 最长输出」估算。8192 为当前模型可用上限。
+llm:
+  max_tokens: 8192
+
 # 示例：参数覆盖（类型不符会自动丢弃并回退默认，见 4.5 风险②）
 # llm:
 #   default_provider: deepseek
