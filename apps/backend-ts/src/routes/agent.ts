@@ -633,6 +633,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             answer: dto.answer ?? undefined,
             answerId: dto.answerId ?? undefined,
             signal: resumeStopController.signal,
+            // 与 streamAgentCompletion 同构：resume 段正文经 ctx 回填后落库
+            ctx,
           })) {
             if (resumeStopController.signal.aborted) {
               ctx.abortReason = 'user_cancel'

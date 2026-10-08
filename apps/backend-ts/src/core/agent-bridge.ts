@@ -239,6 +239,14 @@ export interface ResumeAgentOptions {
   traceId?: string
   // T2.3：取消信号
   signal?: AbortSignal | null
+  /**
+   * 流式元数据收集器（必填）。
+   * 与 streamAgentCompletion 同构：resume 段事件同样要经路由层 collectMetadataFromEvent 累积，
+   * 且本函数必须在流结束时把 adapter.collected_text 回填到 ctx.answerContent。
+   * 否则 persistAssistantMessage 落库的 assistant 消息 content 为空串，
+   * 表现为「流式能看到回答，但刷新后回答消失」。
+   */
+  ctx: StreamContext
 }
 
 /**
@@ -251,7 +259,7 @@ export interface ResumeAgentOptions {
 export async function* streamAgentResume(
   opts: ResumeAgentOptions,
 ): AsyncGenerator<Record<string, string>> {
-  const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId, signal } =
+  const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId, signal, ctx } =
     opts
   const trace = traceId ?? randomUUID()
   // T2.6：resume 复用缓存图（checkpointer 共享，能读取中断 checkpoint）
@@ -280,6 +288,11 @@ export async function* streamAgentResume(
   )) {
     yield eventDict
   }
+
+  // 与 streamAgentCompletion 对齐：把本段正文与耗时回填 ctx，供路由层落库
+  // （缺这一步会让 assistant 消息 content 落库为空串，刷新后回答消失）。
+  ctx.answerContent = adapter.collected_text
+  ctx.finish()
 }
 
 // ============================================================
