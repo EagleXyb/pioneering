@@ -451,6 +451,10 @@ export function useAgentChat(
               sessionId,
               message: params.prompt,
               stream: true,
+              // pro 模式固定走 ReAct 图：显式声明而非依赖后端 schema 的
+              // default('react_agent')，契约见 packages/modu-agent/AGENTS.md:13。
+              // 一旦后端默认值变更，缺失该字段会让 pro 静默装配成别的图拓扑。
+              agentMode: 'react_agent',
             },
             controller.signal,
           );

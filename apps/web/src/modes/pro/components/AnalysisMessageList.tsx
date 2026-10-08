@@ -113,6 +113,14 @@ function AnalysisAssistantItem({
     message.status === 'stop' ||
     message.status === 'error' ||
     (!message.status && text.length > 0);
+  /**
+   * 空回复兜底：run 正常结束（status='complete'）但正文为空时，
+   * 不能渲染成 null —— 那会让整条消息在界面上完全消失，用户无从判断
+   * 「Agent 没回复」还是「页面坏了」。典型触发：后端 max_tokens 截断导致
+   * finish_reason='length' 且 content=''（此时后端不会发 RUN_ERROR）。
+   * 仅对 complete 生效：HITL 占位消息（无 status）与历史消息（有正文）不受影响。
+   */
+  const isEmptyFinal = !text && !isStreaming && message.status === 'complete';
 
   /** 点踩/点赞：再点一次取消 */
   const toggleFeedback = (next: 'good' | 'bad') => {
@@ -180,6 +188,10 @@ function AnalysisAssistantItem({
           <Markdown content={text} />
         ) : isStreaming ? (
           <span className="chat-streaming-placeholder" />
+        ) : isEmptyFinal ? (
+          <span className="chat-empty-response">
+            Agent 本轮未返回内容，可能是模型输出被长度上限截断，请重试或补充更多细节。
+          </span>
         ) : null}
 
         {isFinal && (

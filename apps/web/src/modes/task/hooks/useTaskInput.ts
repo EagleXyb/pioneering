@@ -49,8 +49,12 @@ interface UseTaskInputOptions {
   chatId: string | null;
   /** 是否处于流式输出中 */
   isStreaming: boolean;
-  /** 发送回调 */
-  onSend: (text: string) => void;
+  /**
+   * 发送回调。
+   * 返回 `false` 表示发送被拦截（消息未发出），输入框内容与草稿将被保留；
+   * 其余返回值（含 undefined）均视为发送成功。
+   */
+  onSend: (text: string) => void | boolean;
   /** 停止回调（用于 Escape 键） */
   onStop: () => void;
   /** 草稿存储键前缀（任务模式与 chat 模式各自隔离） */
@@ -226,7 +230,10 @@ export function useTaskInput({
     if (isStreaming) return;
     const text = value.trim();
     if (!text) return;
-    onSend(text);
+    // onSend 返回 false 表示发送被拦截（消息未发出，例如附件仍在上传），
+    // 此时保留输入内容与草稿，避免用户输入被静默清空。
+    // 其余返回值（含 undefined）一律视为发送成功，行为与既有调用方一致。
+    if (onSend(text) === false) return;
     setValue('');
     // 立即清空草稿，避免下一帧防抖又把空字符串写入前残留
     if (draftKey) {

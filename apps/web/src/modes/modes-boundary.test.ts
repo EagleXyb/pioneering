@@ -52,4 +52,10 @@ describe('pro / task 不互相渗透', () => {
     expect(proHook).not.toMatch(/plan_execute/);
     expect(proHook).not.toMatch(/applyPlanDelta|step_update/);
   });
+
+  // 契约（packages/modu-agent/AGENTS.md:13）：pro 必须显式声明 react_agent，
+  // 一旦退化为「不传、靠后端 schema 默认值」，后端默认值一变 pro 就会静默换图。
+  it('pro 显式声明 agentMode=react_agent', () => {
+    expect(proHook).toMatch(/agentMode:\s*'react_agent'/);
+  });
 });

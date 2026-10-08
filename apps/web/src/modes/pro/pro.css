@@ -54,6 +54,17 @@
   color: var(--text-tertiary);
 }
 
+/* 空回复兜底提示：run 正常结束但正文为空（如模型输出被 max_tokens 截断） */
+.chat-empty-response {
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  padding: 8px 12px;
+  border: 1px dashed var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+}
+
 /* ===== 右侧推理过程面板 =====
  * 宽度 / 折叠 / 分隔条由 TaskResizer 与 appStore.pipelineWidth 控制 */
 .process-panel {

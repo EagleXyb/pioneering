@@ -71,12 +71,17 @@ export function AnalysisInput({
     return `${trimmed}${suffix}`;
   };
 
-  /** 按钮/键盘统一发送出口 */
-  const dispatchSend = (rawText: string) => {
+  /**
+   * 按钮/键盘统一发送出口。
+   * 返回 false 表示发送被拦截（附件仍在上传 / 无有效内容），此时不进入上层
+   * onSend，useTaskInput 也会保留输入框内容与草稿。
+   */
+  const dispatchSend = (rawText: string): boolean => {
     const composed = composeWithAttachments(rawText);
-    if (composed === null) return;
+    if (composed === null) return false;
     onSend(composed);
     setValue('');
+    return true;
   };
 
   const {
@@ -177,7 +182,7 @@ export function AnalysisInput({
                   data-tooltip="上传图片、文件"
                   disabled={isBusy || locked}
                 >
-                  <Plus size={18} strokeWidth={2.2} />
+                  <Plus size={17} strokeWidth={2.2} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
@@ -218,7 +223,7 @@ export function AnalysisInput({
               data-tooltip="语音输入"
               disabled={isBusy || locked}
             >
-              <Mic size={19} />
+              <Mic size={17} />
             </button>
             {isBusy ? (
               <button
@@ -228,7 +233,7 @@ export function AnalysisInput({
                 aria-label="停止生成"
                 title="停止生成"
               >
-                <Square size={14} fill="currentColor" />
+                <Square size={13} fill="currentColor" />
               </button>
             ) : (
               <button
@@ -239,7 +244,7 @@ export function AnalysisInput({
                 aria-label="发送消息"
                 title="发送"
               >
-                <ArrowUp size={17} />
+                <ArrowUp size={16} />
               </button>
             )}
           </div>

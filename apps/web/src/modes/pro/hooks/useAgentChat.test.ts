@@ -180,4 +180,32 @@ describe('useAgentChat', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.current.messages).toHaveLength(0);
   });
+
+  it('请求体显式携带 agentMode=react_agent', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createSSEResponse([
+        { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    );
+
+    const { result } = renderHook(() => useAgentChat('session-pro', false));
+    act(() => {
+      result.current.sendMessage({ prompt: '分析需求' });
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('complete');
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(String(url)).toBe('/api/agent/completions');
+    const body = JSON.parse(String((init as RequestInit).body ?? '{}'));
+    expect(body).toMatchObject({
+      sessionId: 'session-pro',
+      message: '分析需求',
+      stream: true,
+      agentMode: 'react_agent',
+    });
+  });
 });
