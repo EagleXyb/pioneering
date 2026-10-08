@@ -166,7 +166,7 @@ export function TaskInput({
                   data-tooltip="上传图片、文件"
                   disabled={isBusy || locked}
                 >
-                  <Plus size={18} strokeWidth={2.2} />
+                  <Plus size={17} strokeWidth={2.2} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
@@ -207,7 +207,7 @@ export function TaskInput({
               data-tooltip="语音输入"
               disabled={isBusy || locked}
             >
-              <Mic size={19} />
+              <Mic size={17} />
             </button>
             {isBusy ? (
               <button
@@ -216,7 +216,7 @@ export function TaskInput({
                 onClick={onStop}
                 aria-label="停止生成"
               >
-                <Square size={14} fill="currentColor" />
+                <Square size={13} fill="currentColor" />
               </button>
             ) : (
               <button
@@ -226,7 +226,7 @@ export function TaskInput({
                 disabled={!canSendNow || locked}
                 aria-label="发送"
               >
-                <ArrowUp size={17} />
+                <ArrowUp size={16} />
               </button>
             )}
           </div>

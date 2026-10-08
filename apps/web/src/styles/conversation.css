@@ -436,7 +436,7 @@
  *   ② 输入行内缩层 --ci-edit-*：输入行相对操作行额外内缩（上 6 / 左右 10），
  *      故占位文字距上 16、距左右 20，而操作按钮距边框仅 10——文字比按钮多缩进一级
  *   ③ 层间间隔带 --ci-gap：输入区 ↔ 操作行 14px
- * 高度构成：10 +(6+24 输入行)+ 14 + 36 操作行 + 10 = 100
+ * 高度构成：10 +(6+24 输入行)+ 14 + 32 操作行 + 10 = 96
  * 断点：桌面默认 / ≤720px 平板 / ≤480px 手机逐级收敛 */
 .chat-input-card {
   --ci-pad-y: 10px;
@@ -519,8 +519,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  /* 32×32 圆形，与功能胶囊（32px）及发送按钮同高对齐 */
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -625,14 +626,14 @@
   background: color-mix(in srgb, var(--accent-green) 16%, transparent);
 }
 
-/* 发送按钮（主操作 36×36 圆形） */
+/* 发送按钮（主操作 32×32 圆形） */
 .chat-send-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 主操作按钮 36×36，与左侧 ＋ 按钮共同撑满操作行 */
-  width: 36px;
-  height: 36px;
+  /* 主操作按钮 32×32，与左侧 ＋ / 语音按钮及功能胶囊同高对齐 */
+  width: 32px;
+  height: 32px;
   border: none;
   border-radius: 50%;
   background: #000;

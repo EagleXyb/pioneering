@@ -5,38 +5,38 @@
 .model-select__trigger {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 34px;
-  max-width: 230px;
-  padding: 0 13px 0 9px;
+  /* 尺寸/字号与左侧「深度思考 / 联网搜索」功能胶囊完全一致 */
+  gap: 4px;
+  height: 32px;
+  max-width: 220px;
+  padding: 0 10px 0 8px;
   border: none;
-  border-radius: 999px;
-  /* 浅灰胶囊底（亮/暗主题自适应） */
-  background: var(--bg-input);
+  border-radius: 16px;
+  /* 默认透明，仅 hover/focus 浮现浅灰圆底 */
+  background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 .model-select__trigger:hover:not(:disabled),
 .model-select__trigger:focus-visible:not(:disabled) {
-  background: color-mix(in srgb, var(--text-primary) 9%, var(--bg-input));
+  background: var(--bg-input);
 }
 .model-select__trigger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-/* 暗色主题下 --bg-input 与卡片底色相同，用半透明白拉出胶囊层次 */
-[data-theme='dark'] .model-select__trigger {
-  background: rgba(255, 255, 255, 0.08);
-}
+/* 暗色主题下 --bg-input 与卡片底色相同，改用半透明白保证灰底可见 */
 [data-theme='dark'] .model-select__trigger:hover:not(:disabled),
 [data-theme='dark'] .model-select__trigger:focus-visible:not(:disabled) {
-  background: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .model-select__logo {
@@ -44,8 +44,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
 }
 .model-select__name {
   min-width: 0;
@@ -55,8 +55,8 @@
 }
 .model-select__chevron {
   flex: none;
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   color: var(--text-tertiary);
   transition: transform 0.18s ease;
 }

@@ -153,7 +153,7 @@ export function ChatInput({
                   data-tooltip="上传图片、文件"
                   disabled={isBusy}
                 >
-                  <Plus size={18} strokeWidth={2.2} />
+                  <Plus size={17} strokeWidth={2.2} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
@@ -222,7 +222,7 @@ export function ChatInput({
               aria-label="语音输入"
               data-tooltip="语音输入"
             >
-              <Mic size={19} />
+              <Mic size={17} />
             </button>
             {isBusy ? (
               <button
@@ -232,7 +232,7 @@ export function ChatInput({
                 aria-label="停止生成"
                 title="停止生成"
               >
-                <Square size={14} fill="currentColor" />
+                <Square size={13} fill="currentColor" />
               </button>
             ) : (
               <button
@@ -243,7 +243,7 @@ export function ChatInput({
                 aria-label="发送消息"
                 title="发送"
               >
-                {isBusy ? <Spinner /> : <ArrowUp size={17} />}
+                {isBusy ? <Spinner /> : <ArrowUp size={16} />}
               </button>
             )}
           </div>

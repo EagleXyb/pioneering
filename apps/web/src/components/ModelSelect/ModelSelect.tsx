@@ -27,17 +27,24 @@ function BrandMark({ id, size = 22 }: { id: string; size?: number }) {
         viewBox="0 0 48 48"
         fill="none"
         stroke="currentColor"
-        strokeWidth={4.6}
+        strokeWidth={5}
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
       >
-        {/* 尾鳍（两片，交汇于尾柄） */}
-        <path d="M44 5 36.5 12.5 45 17" />
-        {/* 背部大弧线 → 头部 → 腹部回勾，整体呈 C 形鲸身 */}
-        <path d="M36.5 12.5C28 14 17 18 12.5 27.5 9 34.5 12.5 39.5 19 39c7-0.6 12-5.2 12-11" />
-        {/* 眼睛 */}
-        <circle cx="15.5" cy="33.5" r="1.7" fill="currentColor" stroke="none" />
+        {/* 尾鳍：两片，交汇于尾柄（右上） */}
+        <path d="M32.5 13.5C37 5.5 42.5 3 46 4.5" />
+        <path d="M32.5 13.5C40 11.5 44.5 12.5 46 16.5" />
+        {/* 背部大弧 → 左下头部 → 腹部向内回勾，呈螺旋鲸身 */}
+        <path d="M32.5 13.5C19.5 14.5 8.5 23 9.5 32c0.8 7 8 9 12.5 5.5 5-4 6.5-9.5 3-12.5" />
+        {/* 眼睛（挖空色，贴在输入卡片底色上） */}
+        <circle
+          cx="14"
+          cy="33"
+          r="1.7"
+          fill="var(--bg-card)"
+          stroke="none"
+        />
       </svg>
     );
   }
@@ -110,7 +117,7 @@ export function ModelSelect({ mode, disabled, selectedId, onSelect }: Props) {
           title="选择模型"
         >
           <span className="model-select__logo">
-            <BrandMark id={selectedModel.id} />
+            <BrandMark id={selectedModel.id} size={20} />
           </span>
           <span className="model-select__name">{selectedModel.name}</span>
           <svg
