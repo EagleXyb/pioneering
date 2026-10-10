@@ -9,6 +9,10 @@ import {
   CreateAgentSessionRequestSchema,
   AgentChatRequestSchema,
 } from '../src/schemas/agent.ts';
+import {
+  ChatCompletionRequestSchema,
+  EditMessageRequestSchema,
+} from '../src/schemas/chat.ts';
 
 describe('CreateAgentSessionRequestSchema — agentMode', () => {
   it('接受 react_agent 与 plan_execute', () => {
@@ -43,5 +47,37 @@ describe('AgentChatRequestSchema — agentMode', () => {
     expect(
       AgentChatRequestSchema.parse({ message: 'hi', agentMode: 'plan_execute' }).agentMode,
     ).toBe('plan_execute');
+  });
+});
+
+describe('编辑重发字段（方案 B）', () => {
+  it('ChatCompletionRequestSchema 接受 messageId 与 truncateAfter，默认均为 undefined', () => {
+    const parsed = ChatCompletionRequestSchema.parse({ message: 'hi' });
+    expect(parsed.messageId).toBeUndefined();
+    // 未显式传入时保持 undefined：路由层据此按"编辑重发默认截断"处理
+    expect(parsed.truncateAfter).toBeUndefined();
+
+    const edit = ChatCompletionRequestSchema.parse({
+      message: 'hi',
+      messageId: 'msg_1',
+      truncateAfter: false,
+    });
+    expect(edit.messageId).toBe('msg_1');
+    expect(edit.truncateAfter).toBe(false);
+  });
+
+  it('AgentChatRequestSchema 接受 messageId / truncateAfter（pro、task 共用）', () => {
+    const parsed = AgentChatRequestSchema.parse({
+      message: 'hi',
+      messageId: 'msg_1',
+      truncateAfter: true,
+    });
+    expect(parsed.messageId).toBe('msg_1');
+    expect(parsed.truncateAfter).toBe(true);
+  });
+
+  it('EditMessageRequestSchema 的 truncateAfter 可缺省（保持既有 PUT 语义）', () => {
+    expect(EditMessageRequestSchema.parse({ content: 'x' }).truncateAfter).toBeUndefined();
+    expect(EditMessageRequestSchema.parse({ content: 'x' }).regenerate).toBe(false);
   });
 });

@@ -4,7 +4,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { randomUUID } from 'crypto'
 import { authGuard } from '../plugins/auth.js'
 import { isOriginAllowed } from '../plugins/cors.js'
-import { NotFoundError, ForbiddenError, BadGatewayError, TooManyRequestsError } from '../plugins/error-handler.js'
+import { NotFoundError, ForbiddenError, BadGatewayError, BadRequestError, TooManyRequestsError } from '../plugins/error-handler.js'
 import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
 import { llmService } from '../core/llm.js'
@@ -27,6 +27,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { buildSchema } from '../utils/zod-schema.js'
 import { checkQuota, recordUsage } from '../core/quota.js'
+import { applyUserMessageEdit } from '../core/message-edit.js'
 
 // P2-8 修复：Message 增加 id 字段，供 doRegenerate 按 ID 定位父消息
 type Message = { role: string; content: string; id?: string }
@@ -488,24 +489,26 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
         await verifySessionOwner(sessionId, req.user.id)
 
-        const msg = await fastify.prisma.chatMessage.findFirst({
-          where: { id: messageId, sessionId, userId: req.user.id },
-        })
-        if (!msg) {
-          throw new NotFoundError('消息不存在')
-        }
-        // 对应 Python: if msg.role != MessageRole.user
-        if (msg.role !== 'user') {
-          throw new ForbiddenError('仅允许编辑用户消息')
-        }
-
-        const updated = await fastify.prisma.chatMessage.update({
-          where: { id: messageId },
-          data: { content: dto.content },
+        // 校验 + 更新正文（+ 可选截断其后消息）收敛到 core/message-edit.ts，
+        // 与 /completions 的编辑重发、/agent/completions 共用同一口径
+        const applied = await applyUserMessageEdit(fastify.prisma, {
+          sessionId,
+          userId: req.user.id,
+          messageId,
+          content: dto.content,
+          truncateAfter: dto.truncateAfter ?? false,
         })
 
         if (dto.regenerate) {
           return await doRegenerate(req.user.id, messageId, sessionId, {})
+        }
+
+        // 回读以保持既有响应字段完整（contentBlocks/tokenCount/feedback/metadata 等）
+        const updated = await fastify.prisma.chatMessage.findFirst({
+          where: { id: applied.id },
+        })
+        if (!updated) {
+          throw new NotFoundError('消息不存在')
         }
 
         return {
@@ -560,22 +563,42 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // 写入用户消息
-        const userMsg = await fastify.prisma.chatMessage.create({
-          data: {
-            id: genId('msg_'),
+        // 方案 B：携带 messageId 时为「编辑重发」——更新既有消息正文并截断其后消息，
+        // 不新建用户消息；否则保持原有"新建用户消息"行为完全不变。
+        let userMsg: { id: string }
+        let isEditResend = false
+        if (dto.messageId) {
+          if (!dto.sessionId) {
+            throw new BadRequestError('编辑重发必须提供 sessionId')
+          }
+          const applied = await applyUserMessageEdit(fastify.prisma, {
             sessionId,
             userId: req.user.id,
-            role: 'user',
+            messageId: dto.messageId,
             content: dto.message,
-            parentMessageId: dto.parentMessageId ?? null,
-          },
-        })
+            // 显式传 false 才不截断；省略时按编辑重发语义默认截断
+            truncateAfter: dto.truncateAfter ?? true,
+          })
+          userMsg = { id: applied.id }
+          isEditResend = true
+        } else {
+          userMsg = await fastify.prisma.chatMessage.create({
+            data: {
+              id: genId('msg_'),
+              sessionId,
+              userId: req.user.id,
+              role: 'user',
+              content: dto.message,
+              parentMessageId: dto.parentMessageId ?? null,
+            },
+          })
 
-        // 更新 session message_count
-        await fastify.prisma.chatSession.update({
-          where: { id: sessionId },
-          data: { messageCount: { increment: 1 } },
-        })
+          // 更新 session message_count
+          await fastify.prisma.chatSession.update({
+            where: { id: sessionId },
+            data: { messageCount: { increment: 1 } },
+          })
+        }
 
         // 构建消息上下文（buildMessageContext 已从 DB 读取最近 20 条历史，
         // 含刚写入的 userMsg，无需再 push，避免重复发送用户消息）
@@ -615,7 +638,8 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             )
           } catch (e) {
             // P0-4 修复：LLM 调用失败时回滚已写入的用户消息，避免孤儿消息
-            await rollbackUserMessage(sessionId, userMsg.id)
+            // 编辑重发时该消息是既有数据（用户编辑后的正文），不能删除
+            if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
             throw new BadGatewayError(`LLM API 错误: ${(e as Error).message}`)
           }
 
@@ -623,8 +647,10 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           const content = choices[0]?.message?.content || ''
           // P0-4 修复：空回复回滚用户消息 + messageCount
           if (!content) {
-            await rollbackUserMessage(sessionId, userMsg.id)
-            throw new BadGatewayError('LLM 返回空内容，已回滚用户消息')
+            if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
+            throw new BadGatewayError(
+              isEditResend ? 'LLM 返回空内容' : 'LLM 返回空内容，已回滚用户消息',
+            )
           }
 
           const assistantMsgId = genId('msg_')
@@ -820,7 +846,8 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           })
         } else if (!streamError) {
           // P0-4 修复：流式无内容且非异常 → 回滚已写入的 userMsg，避免孤儿用户消息
-          await rollbackUserMessage(sessionId, userMsg.id)
+          // 编辑重发不删既有消息（保留用户编辑后的正文，仅提示本次生成失败）
+          if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
         }
 
         reply.raw.end()

@@ -48,6 +48,13 @@ export interface AgentCompletionBody {
   message: string;
   stream?: boolean;
   agentMode?: 'react_agent' | 'plan_execute';
+  /**
+   * 编辑重发（方案 B）：指定目标用户消息 id 时，后端更新该消息正文并在其后
+   * 重新执行 Agent（pro / task 共用），不再新建用户消息。
+   */
+  messageId?: string;
+  /** 编辑重发时是否截断目标消息之后的全部消息（省略时后端默认截断） */
+  truncateAfter?: boolean;
 }
 
 /** 发起 Agent 生成（SSE）。响应已通过 ok 校验，调用方交给 parseAguiStream */

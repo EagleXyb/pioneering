@@ -284,10 +284,12 @@ describe('useAguiChat', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 70));
       result.current.abortChat();
-      await new Promise((r) => setTimeout(r, 30));
     });
 
-    expect(result.current.status).toBe('complete');
+    // 中止后的收尾依赖 mock 流自然关闭的时刻，改为轮询等待，消除固定 sleep 的时序竞态
+    await waitFor(() => expect(result.current.status).toBe('complete'), {
+      timeout: 2000,
+    });
     expect(last(result.current.messages).status).toBe('stop');
   });
 
@@ -403,5 +405,136 @@ describe('useAguiChat', () => {
 
     const ai = last(result.current.messages);
     expect(ai.content?.some((c) => c.type === 'search')).toBe(false);
+  });
+
+  // ===== 编辑重发（方案 B） =====
+
+  /** 场景：历史两条消息，第二条 user 消息进入编辑重发 */
+  function seedHistory(result: { current: ReturnType<typeof useAguiChat> }) {
+    act(() =>
+      result.current.setMessages(
+        [
+          { id: 'msg_u1', role: 'user', content: [{ type: 'text', data: '第一问' }] },
+          {
+            id: 'msg_a1',
+            role: 'assistant',
+            content: [{ type: 'markdown', data: '第一答' }],
+            status: 'complete',
+          },
+          { id: 'msg_u2', role: 'user', content: [{ type: 'text', data: '第二问' }] },
+          {
+            id: 'msg_a2',
+            role: 'assistant',
+            content: [{ type: 'markdown', data: '第二答' }],
+            status: 'complete',
+          },
+        ] as ChatMessagesData[],
+        'replace',
+      ),
+    );
+  }
+
+  it('19. resendEditedMessage 请求体携带 messageId 与 truncateAfter', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(sseResponse([{ type: 'RUN_FINISHED' }]));
+    const [getSession] = sessionHolder('s1');
+    const { result } = renderHook(() => useAguiChat(getSession));
+    seedHistory(result);
+
+    act(() =>
+      result.current.resendEditedMessage({
+        messageId: 'msg_u2',
+        prompt: '改后的第二问',
+        deepThink: true,
+      }),
+    );
+    await waitFor(() => expect(result.current.status).toBe('complete'));
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('/api/chat/completions');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      sessionId: 's1',
+      message: '改后的第二问',
+      stream: true,
+      deepThink: true,
+      netSearch: false,
+      messageId: 'msg_u2',
+      truncateAfter: true,
+    });
+  });
+
+  it('20. resendEditedMessage 本地截断到目标消息、就地替换正文并追加 assistant 占位', async () => {
+    let captured: ChatMessagesData[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return sseResponse([{ type: 'TEXT_MESSAGE_CONTENT', delta: '新回复' }], 30);
+    });
+    const [getSession] = sessionHolder('s1');
+    const { result } = renderHook(() => useAguiChat(getSession));
+    seedHistory(result);
+
+    act(() =>
+      result.current.resendEditedMessage({ messageId: 'msg_u2', prompt: '改后的第二问' }),
+    );
+
+    // 乐观更新：截断为 [u1, a1, u2(改后), assistant 占位]
+    captured = result.current.messages;
+    expect(captured).toHaveLength(4);
+    expect(captured[0].id).toBe('msg_u1');
+    expect(captured[2].id).toBe('msg_u2');
+    expect((captured[2].content as { data: string }[])[0].data).toBe('改后的第二问');
+    expect(captured[3].role).toBe('assistant');
+
+    await waitFor(() => expect(result.current.status).toBe('complete'));
+    // 旧的第二答（msg_a2）已被截断，不会残留
+    expect(result.current.messages.some((m) => m.id === 'msg_a2')).toBe(false);
+    const ai = last(result.current.messages);
+    expect(ai.content?.[0]).toMatchObject({ type: 'markdown', data: '新回复' });
+  });
+
+  it('21. resendEditedMessage 在目标消息不存在时仍发起请求且不崩溃', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(sseResponse([{ type: 'RUN_FINISHED' }]));
+    const [getSession] = sessionHolder('s1');
+    const { result } = renderHook(() => useAguiChat(getSession));
+
+    act(() =>
+      result.current.resendEditedMessage({ messageId: 'msg_missing', prompt: 'x' }),
+    );
+    await waitFor(() => expect(result.current.status).toBe('complete'));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].role).toBe('assistant');
+  });
+
+  it('22. resendEditedMessage 的 onSettled 在流结束后被调用（失败场景同样触发）', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom'));
+    const [getSession] = sessionHolder('s1');
+    const { result } = renderHook(() => useAguiChat(getSession));
+    seedHistory(result);
+    const onSettled = vi.fn();
+
+    act(() =>
+      result.current.resendEditedMessage({
+        messageId: 'msg_u2',
+        prompt: 'x',
+        onSettled,
+      }),
+    );
+    await waitFor(() => expect(result.current.status).toBe('error'));
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('23. 无 sessionId 时 resendEditedMessage 不发请求', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const [getSession] = sessionHolder(null);
+    const { result } = renderHook(() => useAguiChat(getSession));
+
+    act(() => result.current.resendEditedMessage({ messageId: 'msg_u2', prompt: 'x' }));
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

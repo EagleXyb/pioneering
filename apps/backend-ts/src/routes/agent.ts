@@ -5,7 +5,7 @@ import { Prisma, type PrismaClient, type ChatSession, type ChatMessage, type Age
 import { z } from 'zod'
 import { authGuard } from '../plugins/auth.js'
 import { isOriginAllowed } from '../plugins/cors.js'
-import { NotFoundError } from '../plugins/error-handler.js'
+import { NotFoundError, BadRequestError } from '../plugins/error-handler.js'
 import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
 import { buildSchema } from '../utils/zod-schema.js'
@@ -33,6 +33,7 @@ import { checkInterruptTimeout, get_runner, resume_sync } from '@pioneering/modu
 import { trackInterruptSession } from '../core/agent-scheduler.js'
 import { checkQuota, recordUsage } from '../core/quota.js'
 import { loadSessionHistoryByBudget } from '../core/context-budget.js'
+import { applyUserMessageEdit } from '../core/message-edit.js'
 
 // ===== Agent 流式运行注册表（供 /agent/completions/stop 中止生成）=====
 // 对齐 chat.ts 的 runningRuns：注册当前用户的运行中生成任务，
@@ -344,21 +345,38 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // 2. 写入用户消息（对应 Python: user_msg = ChatMessage(...)）
-        const userMsg = await fastify.prisma.chatMessage.create({
-          data: {
-            id: genId('msg_'),
+        // 方案 B：携带 messageId 时为「编辑重发」——更新既有消息正文并截断其后消息，
+        // 不新建用户消息、也不重复累加 messageCount（截断路径会重算真实计数）。
+        let userMsg: { id: string }
+        if (dto.messageId) {
+          if (!dto.sessionId) {
+            throw new BadRequestError('编辑重发必须提供 sessionId')
+          }
+          const applied = await applyUserMessageEdit(fastify.prisma, {
             sessionId,
             userId,
-            role: 'user',
+            messageId: dto.messageId,
             content: dto.message,
-          },
-        })
+            truncateAfter: dto.truncateAfter ?? true,
+          })
+          userMsg = { id: applied.id }
+        } else {
+          userMsg = await fastify.prisma.chatMessage.create({
+            data: {
+              id: genId('msg_'),
+              sessionId,
+              userId,
+              role: 'user',
+              content: dto.message,
+            },
+          })
 
-        // 3. messageCount++（对应 Python: session.message_count += 1）
-        await fastify.prisma.chatSession.update({
-          where: { id: sessionId },
-          data: { messageCount: { increment: 1 } },
-        })
+          // 3. messageCount++（对应 Python: session.message_count += 1）
+          await fastify.prisma.chatSession.update({
+            where: { id: sessionId },
+            data: { messageCount: { increment: 1 } },
+          })
+        }
 
         // 4. 加载会话历史（token 预算内选择，包含刚写入的用户消息）
         const history = await loadSessionHistoryByBudget(fastify.prisma, sessionId)

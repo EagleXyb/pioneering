@@ -25,21 +25,21 @@ import type { ChatMessageData } from '../../../api/converter';
 import { feedbackMessage } from '../../../api/message';
 import { useSourcesPanelStore } from '../../../store/sourcesPanelStore';
 import { Markdown } from '@/components/Markdown';
+import { UserMessageBubble } from '@/components/message/UserMessageBubble';
 import { SourceFavicon } from './SourcesPanel/SourceFavicon';
 
 interface Props {
   message: ChatMessageData;
   onReplay?: (messageId: string) => void;
-}
-
-/** 提取消息中所有 text/markdown 片段拼成纯文本（复制/分享用） */
-function extractText(message: ChatMessageData): string {
-  return (message.content ?? [])
-    .filter((c): c is { type: 'text'; data: string } | { type: 'markdown'; data: string } =>
-      c.type === 'text' || c.type === 'markdown',
-    )
-    .map((c) => c.data)
-    .join('\n');
+  /** 用户消息是否可编辑（流式中/临时会话为 false） */
+  editable?: boolean;
+  /** 当前是否处于编辑态 */
+  editing?: boolean;
+  /** 编辑提交中 */
+  submittingEdit?: boolean;
+  onStartEdit?: (messageId: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: (messageId: string, nextText: string) => void | Promise<void>;
 }
 
 /** 提取 reasoning 块文本（data 为 text/markdown 片段数组） */
@@ -140,7 +140,16 @@ function ReplayRotateIcon({ size = 15, className }: ActionIconProps) {
   );
 }
 
-export function ChatMessageItem({ message, onReplay }: Props) {
+export function ChatMessageItem({
+  message,
+  onReplay,
+  editable = false,
+  editing = false,
+  submittingEdit = false,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
+}: Props) {
   // assistant 分支的消息（含后端回写的 comment）
   const aiMessage = message as Extract<ChatMessageData, { role: 'assistant' }>;
   const [comment, setComment] = useState<ChatComment>(aiMessage.comment ?? '');
@@ -166,16 +175,16 @@ export function ChatMessageItem({ message, onReplay }: Props) {
   }, [aiMessage.comment, aiMessage.id]);
 
   if (message.role === 'user') {
-    const raw = extractText(message);
-    // 含附件（上传图片/文件拼入的 Markdown 图片或链接）时用 Markdown 渲染，
-    // 纯文本消息保持 pre-wrap 原样输出
-    const hasAttachmentMarkdown = /!?\[[^\]]*\]\(https?:\/\//i.test(raw);
     return (
-      <div className="chat-msg-row chat-msg-row--user">
-        <div className="chat-msg-user-bubble">
-          {hasAttachmentMarkdown ? <Markdown content={raw} /> : raw}
-        </div>
-      </div>
+      <UserMessageBubble
+        message={message}
+        editable={editable}
+        editing={editing}
+        submitting={submittingEdit}
+        onStartEdit={() => onStartEdit?.(message.id)}
+        onCancelEdit={onCancelEdit}
+        onSubmitEdit={(next) => onSubmitEdit?.(message.id, next)}
+      />
     );
   }
 

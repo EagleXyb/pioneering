@@ -13,8 +13,9 @@ import { ArtifactPanel } from '@/components/ArtifactPreview/ArtifactPanel';
 import '@/components/ArtifactPreview/artifactPanel.css';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
 import { useSessionRuns } from '@/hooks/useSessionRuns';
+import { useUserMessageEdit } from '@/hooks/useUserMessageEdit';
 import { Button } from '@/components/ui/button';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import './task.css';
 
 /**
@@ -41,6 +42,7 @@ export default function TaskMode() {
     messages,
     status,
     sendMessage,
+    resendEditedMessage,
     abort,
     reset,
     loadHistory,
@@ -53,6 +55,21 @@ export default function TaskMode() {
   const { byMessage: runByMessage } = useSessionRuns(activeId, status);
 
   useChatSync(activeId, messages);
+
+  // 用户消息行内编辑（编辑重发走 agent plan_execute 通道，方案 B）
+  const handleResend = useCallback(
+    (messageId: string, nextText: string) =>
+      resendEditedMessage({ messageId, prompt: nextText }),
+    [resendEditedMessage],
+  );
+  const {
+    editingId,
+    submitting: submittingEdit,
+    canEdit: canEditUserMessage,
+    startEdit,
+    cancelEdit,
+    submitEdit,
+  } = useUserMessageEdit({ activeId, messages, status, onResend: handleResend });
 
   // 切换会话时清理 artifact 状态；并从后端恢复历史消息与 plan 时间轴快照
   // - temp_ 前缀的临时会话：仅 reset（后端尚未创建，无可恢复数据）
@@ -98,6 +115,13 @@ export default function TaskMode() {
             status={status}
             runByMessage={runByMessage}
             paused={!!hitl}
+            // HITL 暂停中不允许编辑（此时续写的是同一条 assistant 消息）
+            canEditUserMessage={canEditUserMessage && !hitl}
+            editingMessageId={editingId}
+            submittingEdit={submittingEdit}
+            onStartEdit={startEdit}
+            onCancelEdit={cancelEdit}
+            onSubmitEdit={submitEdit}
           />
         )}
         <TaskInput

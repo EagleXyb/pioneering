@@ -9,7 +9,7 @@
  * 本测试锁定：空终态消息必须给出可见提示；HITL 占位消息（无 status）不误报。
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AnalysisMessageList } from './AnalysisMessageList';
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
@@ -96,5 +96,54 @@ describe('AnalysisMessageList 空回复兜底', () => {
     );
 
     expect(emptyNotice()).toBeNull();
+  });
+});
+
+describe('AnalysisMessageList 用户消息气泡（与 chat / task 对齐）', () => {
+  const userMsg = { id: 'u1', role: 'user' as const, content: [{ type: 'text' as const, data: '你好' }] };
+
+  it('渲染悬停元信息行与复制入口', () => {
+    const { container } = render(
+      <AnalysisMessageList status="complete" messages={[userMsg]} />,
+    );
+
+    expect(container.querySelector('.chat-user-meta')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '复制' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
+  });
+
+  it('canEditUserMessage=true 时出现编辑入口并回调 onStartEdit', () => {
+    const onStartEdit = vi.fn();
+    render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[userMsg]}
+        canEditUserMessage
+        onStartEdit={onStartEdit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    expect(onStartEdit).toHaveBeenCalledWith('u1');
+  });
+
+  it('editingMessageId 命中时进入编辑态并提交新文本', () => {
+    const onSubmitEdit = vi.fn();
+    render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[userMsg]}
+        canEditUserMessage
+        editingMessageId="u1"
+        onSubmitEdit={onSubmitEdit}
+        onCancelEdit={vi.fn()}
+      />,
+    );
+
+    const textarea = screen.getByLabelText('编辑消息');
+    fireEvent.change(textarea, { target: { value: '改后的内容' } });
+    fireEvent.click(screen.getByRole('button', { name: /发送/ }));
+
+    expect(onSubmitEdit).toHaveBeenCalledWith('u1', '改后的内容');
   });
 });

@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useConversationStore } from '../../store/conversationStore';
 import { useAppStore } from '../../store/appStore';
 import { Button } from '@/components/ui/button';
 import { useAgentChat } from './hooks/useAgentChat';
 import { useChatSync } from './hooks/useChatSync';
+import { useUserMessageEdit } from '@/hooks/useUserMessageEdit';
 import { AnalysisLayout } from './components/AnalysisLayout';
 import { AnalysisMessageList } from './components/AnalysisMessageList';
 import { AnalysisInput } from './components/AnalysisInput';
@@ -24,6 +25,7 @@ export default function ProMode() {
     stateMap,
     currentStateKey,
     sendMessage,
+    resendEditedMessage,
     abort,
     loadHistory,
     hitl,
@@ -35,6 +37,21 @@ export default function ProMode() {
   const { byMessage: runByMessage } = useSessionRuns(activeId, status);
 
   useChatSync(activeId, messages);
+
+  // 用户消息行内编辑（编辑重发走 agent 通道，方案 B）
+  const handleResend = useCallback(
+    (messageId: string, nextText: string) =>
+      resendEditedMessage({ messageId, prompt: nextText }),
+    [resendEditedMessage],
+  );
+  const {
+    editingId,
+    submitting: submittingEdit,
+    canEdit: canEditUserMessage,
+    startEdit,
+    cancelEdit,
+    submitEdit,
+  } = useUserMessageEdit({ activeId, messages, status, onResend: handleResend });
 
   // T3.1 + T1.6：会话切换时先恢复历史，再检测待答复项（暂停则补占位卡片）
   useEffect(() => {
@@ -66,6 +83,12 @@ export default function ProMode() {
           messages={messages}
           status={status}
           runByMessage={runByMessage}
+          canEditUserMessage={canEditUserMessage}
+          editingMessageId={editingId}
+          submittingEdit={submittingEdit}
+          onStartEdit={startEdit}
+          onCancelEdit={cancelEdit}
+          onSubmitEdit={submitEdit}
         />
         <AnalysisInput
           chatId={activeId}

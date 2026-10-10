@@ -171,4 +171,55 @@ describe('TaskMessageList', () => {
     expect(blocks).toHaveLength(2);
     expect(screen.getAllByText('预览')).toHaveLength(2);
   });
+
+  // ===== 用户消息气泡与 chat / pro 对齐（时间 / 复制 / 编辑） =====
+
+  it('用户消息复用共享气泡：悬停元信息行与复制入口常驻 DOM', () => {
+    const messages = [
+      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+    ];
+    const { container } = render(<TaskMessageList messages={messages} status="idle" />);
+
+    expect(container.querySelector('.chat-user-meta')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '复制' })).toBeInTheDocument();
+    // 默认不开放编辑入口（未传 canEditUserMessage）
+    expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
+  });
+
+  it('canEditUserMessage=true 时出现编辑入口并回调 onStartEdit', () => {
+    const onStartEdit = vi.fn();
+    const messages = [
+      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+    ];
+    render(
+      <TaskMessageList
+        messages={messages}
+        status="idle"
+        canEditUserMessage
+        onStartEdit={onStartEdit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    expect(onStartEdit).toHaveBeenCalledWith('u1');
+  });
+
+  it('editingMessageId 命中时该条进入编辑态（气泡替换为编辑卡片）', () => {
+    const messages = [
+      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+    ];
+    const { container } = render(
+      <TaskMessageList
+        messages={messages}
+        status="idle"
+        canEditUserMessage
+        editingMessageId="u1"
+        onSubmitEdit={vi.fn()}
+        onCancelEdit={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.chat-user-editor')).not.toBeNull();
+    expect(screen.getByLabelText('编辑消息')).toHaveValue('hi');
+  });
 });

@@ -47,6 +47,8 @@ export interface UseAgentChatReturn {
   stateMap: Record<string, AgentStep>;
   currentStateKey: string | null;
   sendMessage: (params: { prompt: string }) => void;
+  /** 编辑重发（方案 B）：截断到目标用户消息为止并重新执行 */
+  resendEditedMessage: (params: { messageId: string; prompt: string }) => void;
   abort: () => void;
   /** T3.1：会话切换时恢复历史消息 */
   loadHistory: (sessionId: string) => Promise<void>;
@@ -397,8 +399,13 @@ export function useAgentChat(
 
   // ========== 发送 ==========
 
-  const sendMessage = useCallback(
-    (params: { prompt: string }) => {
+  /**
+   * 统一的流式启动入口（发送 / 编辑重发共用）：
+   *   params.editMessageId 存在时走"编辑重发"——本地截断到目标消息为止并就地
+   *   替换正文，请求体携带 messageId 交由后端在同一流程内更新 + 截断。
+   */
+  const startRun = useCallback(
+    (params: { prompt: string; editMessageId?: string }) => {
       const sessionId = sessionIdRef.current;
       if (!sessionId) return;
       // HITL 暂停时禁止发起新请求（输入框已锁定，此为双保险）
@@ -413,11 +420,6 @@ export function useAgentChat(
       const userMsgId = `u_${ts}`;
       const assistantMsgId = `a_${ts}`;
 
-      const userMsg: ChatMessagesData = {
-        id: userMsgId,
-        role: 'user' as const,
-        content: [{ type: 'text' as const, data: params.prompt }],
-      };
       const assistantMsg: ChatMessagesData = {
         id: assistantMsgId,
         role: 'assistant' as const,
@@ -435,8 +437,34 @@ export function useAgentChat(
       flowStatusRef.current = 'running';
       isResumeRunRef.current = false;
 
-      // T3.1：多轮累积（不再每次重置）
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      if (params.editMessageId) {
+        // 编辑重发：截断到目标消息为止并替换正文，再追加 assistant 占位
+        const editId = params.editMessageId;
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === editId);
+          if (idx === -1) return [...prev, assistantMsg];
+          const head = prev.slice(0, idx + 1).map((m, i) =>
+            i === idx
+              ? ({
+                  ...m,
+                  content: [{ type: 'text' as const, data: params.prompt }],
+                } as ChatMessagesData)
+              : m,
+          );
+          return [...head, assistantMsg];
+        });
+      } else {
+        const userMsg: ChatMessagesData = {
+          id: userMsgId,
+          role: 'user' as const,
+          content: [{ type: 'text' as const, data: params.prompt }],
+          // 供用户气泡悬停显示时间（历史消息由 converter 补齐）
+          datetime: new Date().toISOString(),
+        };
+        // T3.1：多轮累积（不再每次重置）
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      }
+
       setStatus('pending');
       setStateMap({});
       setCurrentStateKey(null);
@@ -455,6 +483,9 @@ export function useAgentChat(
               // default('react_agent')，契约见 packages/modu-agent/AGENTS.md:13。
               // 一旦后端默认值变更，缺失该字段会让 pro 静默装配成别的图拓扑。
               agentMode: 'react_agent',
+              ...(params.editMessageId
+                ? { messageId: params.editMessageId, truncateAfter: true }
+                : {}),
             },
             controller.signal,
           );
@@ -476,7 +507,22 @@ export function useAgentChat(
         }
       })();
     },
+    // 与改造前保持一致：仅依赖 consumeStream；其余（settleRunningSteps/
+    // setMessageText/resetPipelineForSession）只操作 ref 与 setState，闭包无时效性问题
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [consumeStream],
+  );
+
+  const sendMessage = useCallback(
+    (params: { prompt: string }) => startRun(params),
+    [startRun],
+  );
+
+  /** 编辑重发（方案 B）：截断到目标消息为止并重新执行 */
+  const resendEditedMessage = useCallback(
+    (params: { messageId: string; prompt: string }) =>
+      startRun({ prompt: params.prompt, editMessageId: params.messageId }),
+    [startRun],
   );
 
   // ========== HITL 宿主动作（供 hitlStore 状态机调用） ==========
@@ -627,6 +673,7 @@ export function useAgentChat(
     stateMap,
     currentStateKey,
     sendMessage,
+    resendEditedMessage,
     abort,
     loadHistory,
     hitl,

@@ -10,6 +10,8 @@ import type {
 import { useScrollToMessage } from '@/hooks/useScrollToMessage';
 import { extractCodeBlocks, isPreviewable } from '@/components/ArtifactPreview/extractCodeBlocks';
 import { Markdown } from '@/components/Markdown';
+import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import type { ChatMessageData } from '@/api/converter';
 import { useArtifactStore } from '@/store/artifactStore';
 import type { AgentRunData } from '@/api/agent';
 import { RunTrace } from '@/components/run-trace/RunTrace';
@@ -22,7 +24,27 @@ interface Props {
   runByMessage?: ReadonlyMap<string, AgentRunData>;
   /** HITL 暂停中：最后一条消息等待审批，不显示等待指示与操作栏 */
   paused?: boolean;
+  /** 用户消息是否可编辑（流式中/HITL 暂停时禁用） */
+  canEditUserMessage?: boolean;
+  /** 当前处于编辑态的消息 id（同一时刻仅一条） */
+  editingMessageId?: string | null;
+  /** 编辑提交中 */
+  submittingEdit?: boolean;
+  onStartEdit?: (messageId: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: (messageId: string, nextText: string) => void | Promise<void>;
 }
+
+/** 用户消息编辑相关的透传属性（TaskMessageList → TaskMessageItem） */
+type EditProps = Pick<
+  Props,
+  | 'canEditUserMessage'
+  | 'editingMessageId'
+  | 'submittingEdit'
+  | 'onStartEdit'
+  | 'onCancelEdit'
+  | 'onSubmitEdit'
+>;
 
 /**
  * 将消息的 content 数组拼接为纯文本
@@ -155,27 +177,33 @@ function TaskMessageItem({
   total,
   isLive,
   runByMessage,
+  canEditUserMessage,
+  editingMessageId,
+  submittingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
 }: {
   msg: ChatMessagesData;
   index: number;
   total: number;
   isLive: boolean;
   runByMessage?: ReadonlyMap<string, AgentRunData>;
-}) {
+} & EditProps) {
   const text = getMessageText(msg);
 
   if (msg.role === 'user') {
-    // 含附件（上传图片/文件拼入的 Markdown 图片或链接）时用 Markdown 渲染
-    const hasAttachmentMarkdown = /!?\[[^\]]*\]\(https?:\/\//i.test(text);
+    // 用户气泡（时间/编辑/复制）与 chat、pro 模式共用同一组件，保证三模式一致
     return (
-      <div
-        className="chat-msg-row chat-msg-row--user"
-        data-message-id={msg.id}
-      >
-        <div className="chat-msg-user-bubble">
-          {hasAttachmentMarkdown ? <Markdown content={text} /> : text}
-        </div>
-      </div>
+      <UserMessageBubble
+        message={{ id: msg.id, role: 'user', content: msg.content, datetime: msg.datetime } as ChatMessageData}
+        editable={!!canEditUserMessage}
+        editing={editingMessageId === msg.id}
+        submitting={!!submittingEdit && editingMessageId === msg.id}
+        onStartEdit={() => onStartEdit?.(msg.id)}
+        onCancelEdit={onCancelEdit}
+        onSubmitEdit={(next) => onSubmitEdit?.(msg.id, next)}
+      />
     );
   }
 
@@ -319,7 +347,18 @@ function TaskActions({
   );
 }
 
-export function TaskMessageList({ messages, status, runByMessage, paused }: Props) {
+export function TaskMessageList({
+  messages,
+  status,
+  runByMessage,
+  paused,
+  canEditUserMessage,
+  editingMessageId,
+  submittingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -379,6 +418,12 @@ export function TaskMessageList({ messages, status, runByMessage, paused }: Prop
             total={messages.length}
             isLive={isLive}
             runByMessage={runByMessage}
+            canEditUserMessage={canEditUserMessage}
+            editingMessageId={editingMessageId}
+            submittingEdit={submittingEdit}
+            onStartEdit={onStartEdit}
+            onCancelEdit={onCancelEdit}
+            onSubmitEdit={onSubmitEdit}
           />
         ))}
         {showTrailingTyping && (

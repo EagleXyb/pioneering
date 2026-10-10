@@ -33,8 +33,24 @@
   justify-content: flex-start;
 }
 
-.chat-msg-user-bubble {
+/* ===== 用户消息列（气泡 + 悬停元信息行 / 编辑卡片） ===== */
+/* 宽度约束上移到列容器：元信息行才能与气泡右缘对齐，
+ * 且编辑卡片可放宽到与气泡同列（参考图 2 视觉） */
+.chat-user-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   max-width: 80%;
+  min-width: 0;
+}
+.chat-user-col.is-editing {
+  width: 100%;
+  max-width: 100%;
+  align-items: stretch;
+}
+
+.chat-msg-user-bubble {
+  max-width: 100%;
   padding: 9px 14px;
   border-radius: 12px;
   background: var(--bg-input);
@@ -61,6 +77,134 @@
 }
 .chat-msg-user-bubble .chat-markdown > :last-child {
   margin-bottom: 0;
+}
+
+/* ===== 用户消息悬停元信息行（时间 / 编辑 / 复制） =====
+ * 与助手操作栏 `.chat-action-bar` 同一范式：默认透明，hover / focus-within 显示，
+ * 触屏（hover:none）常显；图标按钮直接复用 `.chat-action-btn` 保证视觉一致。 */
+.chat-user-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 4px;
+  min-height: 28px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.chat-msg-row--user:hover .chat-user-meta,
+.chat-user-meta:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chat-user-meta {
+    opacity: 1;
+  }
+}
+.chat-user-meta-time {
+  margin-right: 4px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ===== 用户消息行内编辑卡片 ===== */
+.chat-user-editor {
+  width: 100%;
+  min-width: 380px;
+  padding: 8px 10px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 42%, var(--border-light));
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  box-sizing: border-box;
+}
+.chat-user-editor-textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: 240px;
+  padding: 2px 4px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  word-break: break-word;
+  box-sizing: border-box;
+}
+.chat-user-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+.chat-user-editor-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+.chat-user-editor-hint-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.chat-user-editor-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-left: auto;
+}
+.chat-user-editor-cancel,
+.chat-user-editor-send {
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    opacity var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+.chat-user-editor-cancel {
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.chat-user-editor-cancel:hover:not(:disabled) {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+.chat-user-editor-send {
+  padding: 0 16px;
+  font-weight: 500;
+  background: var(--text-primary);
+  color: var(--bg-secondary);
+}
+.chat-user-editor-send:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.chat-user-editor-cancel:disabled,
+.chat-user-editor-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* 尊重系统"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-user-meta,
+  .chat-user-editor-cancel,
+  .chat-user-editor-send {
+    transition: none;
+  }
 }
 
 .chat-msg-ai-body {
@@ -206,6 +350,44 @@
 }
 .chat-action-btn.is-active {
   color: var(--accent-blue);
+}
+
+/* ===== 悬停气泡提示（自定义，替代原生 title） =====
+ * 统一承载 `data-tooltip` 文案，视觉沿用输入区 .chat-upload-btn 的深色胶囊；
+ * 尺寸按 28px 操作按钮收小一档，避免比按钮本身还大。
+ * 纯 CSS 伪元素：不进入 DOM 结构、不参与无障碍树（名称仍由 aria-label 提供），
+ * pointer-events: none 保证不挡点击。 */
+.chat-tooltip {
+  position: relative;
+}
+.chat-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(28, 31, 38, 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  z-index: 60;
+}
+.chat-tooltip:hover::after,
+.chat-tooltip:focus-visible::after {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-tooltip::after {
+    transition: none;
+  }
 }
 
 /* 有参考来源时操作栏常驻可见（"N 篇来源"是主操作之一，不应只在 hover 时出现） */
@@ -686,6 +868,10 @@
     padding-right: 16px;
     padding-left: 16px;
   }
+  /* 编辑卡片最小宽度随可用宽度收敛，避免窄屏横向溢出 */
+  .chat-user-editor {
+    min-width: 300px;
+  }
 }
 /* 手机：卡片内边距 8、输入行上内缩 6→4、层间 12→8，整卡 90px（含 2px 边框） */
 @media (max-width: 480px) {
@@ -706,5 +892,12 @@
   .chat-msg-row {
     padding-right: 12px;
     padding-left: 12px;
+  }
+  /* 手机：编辑卡片撑满可用宽度，footer 允许换行（提示语较长） */
+  .chat-user-editor {
+    min-width: 0;
+  }
+  .chat-user-editor-footer {
+    flex-wrap: wrap;
   }
 }

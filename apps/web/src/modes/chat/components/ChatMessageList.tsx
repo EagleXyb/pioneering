@@ -17,6 +17,15 @@ interface Props {
   loadingMoreHistory?: boolean;
   /** 加载更早历史消息的回调 */
   onLoadMoreHistory?: () => void;
+  /** 用户消息是否可编辑（流式中禁用） */
+  canEditUserMessage?: boolean;
+  /** 当前处于编辑态的消息 id（同一时刻仅一条） */
+  editingMessageId?: string | null;
+  /** 编辑提交中（禁用发送/取消） */
+  submittingEdit?: boolean;
+  onStartEdit?: (messageId: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: (messageId: string, nextText: string) => void | Promise<void>;
 }
 
 function TypingDots() {
@@ -38,6 +47,12 @@ export function ChatMessageList({
   hasMoreHistory,
   loadingMoreHistory,
   onLoadMoreHistory,
+  canEditUserMessage = false,
+  editingMessageId = null,
+  submittingEdit = false,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
@@ -115,7 +130,17 @@ export function ChatMessageList({
         </div>
       )}
       {messages.map((msg) => (
-        <ChatMessageItem key={msg.id} message={msg} onReplay={onReplay} />
+        <ChatMessageItem
+          key={msg.id}
+          message={msg}
+          onReplay={onReplay}
+          editable={canEditUserMessage && msg.role === 'user'}
+          editing={msg.role === 'user' && editingMessageId === msg.id}
+          submittingEdit={submittingEdit && editingMessageId === msg.id}
+          onStartEdit={onStartEdit}
+          onCancelEdit={onCancelEdit}
+          onSubmitEdit={onSubmitEdit}
+        />
       ))}
       {status === 'pending' && <TypingDots />}
       <div ref={bottomRef} />

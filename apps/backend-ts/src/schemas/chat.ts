@@ -84,7 +84,16 @@ export const ChatCompletionRequestSchema = z.object({
   parentMessageId: z.string().nullable().optional(),
   deepThink: z.boolean().default(false),
   netSearch: z.boolean().default(false),
+  /**
+   * 编辑重发（方案 B）：指定目标用户消息 id 时，本次请求不新建用户消息，
+   * 而是更新该消息正文并在其后重新生成回复。
+   */
   messageId: z.string().nullable().optional(),
+  /**
+   * 编辑重发时是否截断目标消息之后的全部消息。
+   * 省略（undefined）时：提供 messageId 则默认截断，否则无效。
+   */
+  truncateAfter: z.boolean().optional(),
 })
 export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>
 
@@ -109,10 +118,12 @@ export const FeedbackRequestSchema = z.object({
   feedback: z.enum(['none', 'like', 'dislike']),
 })
 
-// 对应 Python: EditMessageRequest
+// 对应 Python: EditMessageRequest（truncateAfter 为 TS 侧扩展，见 core/message-edit.ts）
 export const EditMessageRequestSchema = z.object({
   content: z.string(),
   regenerate: z.boolean().default(false),
+  /** 是否截断该消息之后的全部消息；省略时默认 false（保持既有 PUT 语义不变） */
+  truncateAfter: z.boolean().optional(),
 })
 export type EditMessageRequest = z.infer<typeof EditMessageRequestSchema>
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { readInputPrefs } from '../../../lib/inputPreferences';
 
 /**
  * 任务模式输入框逻辑 Hook
@@ -22,28 +23,8 @@ const isSafari =
   typeof navigator !== 'undefined' &&
   /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-interface AppPrefs {
-  /** false 时需 Ctrl/Cmd + Enter 发送（与 SettingsDialog 中的偏好一致） */
-  enterToSend: boolean;
-}
-
-const DEFAULT_PREFS: AppPrefs = { enterToSend: true };
-
-/** 读取全局应用偏好（键名与 SettingsDialog 保持一致） */
-function readPrefs(): AppPrefs {
-  try {
-    const raw = localStorage.getItem('app:preferences');
-    if (!raw) return DEFAULT_PREFS;
-    const parsed = JSON.parse(raw);
-    return {
-      enterToSend:
-        typeof parsed.enterToSend === 'boolean' ? parsed.enterToSend : true,
-    };
-  } catch {
-    return DEFAULT_PREFS;
-  }
-}
-
+// 应用偏好（Enter 发送策略）读取已抽到 lib/inputPreferences，
+// 与消息行内编辑（useMessageEdit）共用同一份实现，避免两处键名/默认值漂移。
 interface UseTaskInputOptions {
   /** 当前会话 ID，用于草稿隔离；为 null 时不持久化 */
   chatId: string | null;
@@ -80,7 +61,7 @@ export function useTaskInput({
   const saveDraftTimerRef = useRef<number | null>(null);
 
   // 应用偏好（仅在挂载时读取一次；用户在设置中切换后需刷新生效，符合现有项目模式）
-  const prefs = useMemo(readPrefs, []);
+  const prefs = useMemo(readInputPrefs, []);
 
   const draftKey = chatId ? `${draftKeyPrefix}-${chatId}` : null;
 

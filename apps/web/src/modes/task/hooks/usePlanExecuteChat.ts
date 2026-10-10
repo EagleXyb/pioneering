@@ -231,8 +231,13 @@ export function usePlanExecuteChat(activeId: string | null) {
 
   // ========== 发送 ==========
 
-  const sendMessage = useCallback(
-    async (params: SendMessageParams) => {
+  /**
+   * 统一的流式启动入口（发送 / 编辑重发共用）。
+   * params.editMessageId 存在时走"编辑重发"：本地截断到目标消息为止并就地替换
+   * 正文，请求体携带 messageId 交由后端更新 + 截断（方案 B）。
+   */
+  const startRun = useCallback(
+    async (params: { prompt: string; editMessageId?: string }) => {
       if (!activeId || status === 'streaming' || status === 'pending') return;
       // HITL 暂停守卫：paused 时不能发起新请求
       if (flowStatusRef.current === 'paused') return;
@@ -241,13 +246,8 @@ export function usePlanExecuteChat(activeId: string | null) {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      // 构造用户消息与 assistant 占位消息（多轮累积，不重置）
+      // 构造 assistant 占位消息（多轮累积，不重置）
       const ts = Date.now();
-      const userMsg: ChatMessagesData = {
-        id: `u_${ts}`,
-        role: 'user',
-        content: [{ type: 'text', data: params.prompt }],
-      };
       const assistantMsg: ChatMessagesData = {
         id: `a_${ts}`,
         role: 'assistant',
@@ -260,7 +260,32 @@ export function usePlanExecuteChat(activeId: string | null) {
       isResumeRunRef.current = false;
       setHitlLock(false);
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      if (params.editMessageId) {
+        const editId = params.editMessageId;
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === editId);
+          if (idx === -1) return [...prev, assistantMsg];
+          const head = prev.slice(0, idx + 1).map((m, i) =>
+            i === idx
+              ? ({
+                  ...m,
+                  content: [{ type: 'text' as const, data: params.prompt }],
+                } as ChatMessagesData)
+              : m,
+          );
+          return [...head, assistantMsg];
+        });
+      } else {
+        const userMsg: ChatMessagesData = {
+          id: `u_${ts}`,
+          role: 'user',
+          content: [{ type: 'text', data: params.prompt }],
+          // 供用户气泡悬停显示时间（历史消息由 converter 补齐）
+          datetime: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      }
+
       setStatus('streaming');
       setPhase('planning');
       // 新一轮任务：清除用户折叠意图并先保持折叠，待规划/步骤输出时再自动展开
@@ -273,6 +298,9 @@ export function usePlanExecuteChat(activeId: string | null) {
             message: params.prompt,
             stream: true,
             agentMode: 'plan_execute',
+            ...(params.editMessageId
+              ? { messageId: params.editMessageId, truncateAfter: true }
+              : {}),
           },
           controller.signal,
         );
@@ -284,7 +312,19 @@ export function usePlanExecuteChat(activeId: string | null) {
         updateAssistantContent(assistantMsg.id, `请求失败: ${String(e)}`);
       }
     },
-    [activeId, status, setPhase, setHitlLock, consumeStream, updateAssistantContent],
+    [activeId, status, setPhase, setHitlLock, consumeStream, updateAssistantContent, resetPipelineForSession],
+  );
+
+  const sendMessage = useCallback(
+    async (params: SendMessageParams) => startRun(params),
+    [startRun],
+  );
+
+  /** 编辑重发（方案 B）：截断到目标用户消息为止并重新规划执行 */
+  const resendEditedMessage = useCallback(
+    async (params: { messageId: string; prompt: string }) =>
+      startRun({ prompt: params.prompt, editMessageId: params.messageId }),
+    [startRun],
   );
 
   // ========== HITL 宿主动作 ==========
@@ -447,6 +487,8 @@ export function usePlanExecuteChat(activeId: string | null) {
     messages,
     status,
     sendMessage,
+    /** 编辑重发（方案 B）：截断到目标用户消息为止并重新规划执行 */
+    resendEditedMessage,
     abort,
     reset,
     loadHistory,

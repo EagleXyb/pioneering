@@ -5,6 +5,7 @@
  * 历史消息手动同步（切换会话/向上分页/重生成后刷新）+ 竞态保护 + 滚动位置保持
  * 无会话/temp 会话时创建会话后再发送
  * 停止：前端 abort + 后端 /stop；重生成：专用 regenerate 端点后刷新历史
+ * 编辑重发（方案 B）：本地截断 + 携带 messageId 的流式请求 + 收尾刷新历史
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ import { useAguiChat } from './hooks/useAguiChat';
 import { getMessages, stopGeneration, regenerateMessage } from '../../api/message';
 import { convertMessages } from '../../api/converter';
 import type { ChatMessageData } from '../../api/converter';
+import { useUserMessageEdit } from '../../hooks/useUserMessageEdit';
 import { useSourcesPanelStore } from '../../store/sourcesPanelStore';
 import './chat.css';
 
@@ -28,6 +30,7 @@ function ChatSession({
   loadingMoreHistory,
   onLoadMoreHistory,
   onReplay,
+  onReloadHistory,
 }: {
   activeId: string | null;
   historyMessages: ChatMessageData[];
@@ -35,6 +38,7 @@ function ChatSession({
   loadingMoreHistory: boolean;
   onLoadMoreHistory: () => void;
   onReplay: (messageId: string) => Promise<void>;
+  onReloadHistory: () => void;
 }) {
   const create = useConversationStore((s) => s.create);
   const [r1Active, setR1Active] = useState(false);
@@ -44,7 +48,7 @@ function ChatSession({
   const netSearchRef = useRef(netSearchActive);
   netSearchRef.current = netSearchActive;
 
-  const { messages, status, setMessages, sendUserMessage, abortChat } =
+  const { messages, status, setMessages, sendUserMessage, resendEditedMessage, abortChat } =
     useAguiChat(() => useConversationStore.getState().activeId);
 
   // 历史消息整包同步（会话切换/分页/重生成后由父组件下发）
@@ -116,6 +120,37 @@ function ChatSession({
     }
   }, [abortChat, messages]);
 
+  /**
+   * 编辑重发（方案 B）：
+   *   1. 本地列表若仍是流式生成的临时 id（u_*），先与后端历史对齐出真实 id
+   *   2. 关闭编辑态并乐观截断本地列表（由 hook 完成），随后发起流式请求
+   *   3. 流成功落库后刷新历史，令消息 id / 顺序 / 时间与后端完全一致
+   *      （失败时不刷新，保留本地错误提示）
+   */
+  const handleResend = useCallback(
+    (realId: string, nextText: string) => {
+      resendEditedMessage({
+        messageId: realId,
+        prompt: nextText,
+        deepThink: r1ActiveRef.current,
+        netSearch: netSearchRef.current,
+        onSettled: (ok) => {
+          if (ok) onReloadHistory();
+        },
+      });
+    },
+    [resendEditedMessage, onReloadHistory],
+  );
+
+  const {
+    editingId,
+    submitting: submittingEdit,
+    canEdit: canEditUserMessage,
+    startEdit: handleStartEdit,
+    cancelEdit: handleCancelEdit,
+    submitEdit: handleSubmitEdit,
+  } = useUserMessageEdit({ activeId, messages, status, onResend: handleResend });
+
   return (
     <>
       <div className="chat-scroll-area">
@@ -129,6 +164,12 @@ function ChatSession({
             hasMoreHistory={hasMoreHistory}
             loadingMoreHistory={loadingMoreHistory}
             onLoadMoreHistory={onLoadMoreHistory}
+            canEditUserMessage={canEditUserMessage}
+            editingMessageId={editingId}
+            submittingEdit={submittingEdit}
+            onStartEdit={handleStartEdit}
+            onCancelEdit={handleCancelEdit}
+            onSubmitEdit={handleSubmitEdit}
           />
         )}
       </div>
@@ -270,6 +311,7 @@ export default function ChatMode() {
         loadingMoreHistory={loadingMoreHistory}
         onLoadMoreHistory={handleLoadMoreHistory}
         onReplay={handleReplay}
+        onReloadHistory={reloadHistory}
       />
     </div>
   );

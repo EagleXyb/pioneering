@@ -27,13 +27,20 @@ export const AgentSessionResponseSchema = z.object({
   updatedAt: z.date().nullable().optional(),
 })
 
-// 对应 Python: AgentChatRequest
+// 对应 Python: AgentChatRequest（messageId / truncateAfter 为 TS 侧扩展）
 export const AgentChatRequestSchema = z.object({
   sessionId: z.string().nullable().optional(),
   message: z.string(),
   stream: z.boolean().default(true),
   // P4: 支持 per-request 指定 Agent 模式，前端任务模式传 'plan_execute' 启用 Plan-Execute 图
   agentMode: z.enum(['react_agent', 'plan_execute']).default('react_agent'),
+  /**
+   * 编辑重发（方案 B）：指定目标用户消息 id 时，本次请求不新建用户消息，
+   * 而是更新该消息正文并在其后重新执行 Agent（pro / task 模式共用）。
+   */
+  messageId: z.string().nullable().optional(),
+  /** 编辑重发时是否截断目标消息之后的全部消息；省略时默认截断 */
+  truncateAfter: z.boolean().optional(),
 })
 export type AgentChatRequest = z.infer<typeof AgentChatRequestSchema>
 

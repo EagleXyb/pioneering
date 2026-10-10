@@ -14,6 +14,8 @@ import type {
 import type { AgentRunData } from '../../../api/agent';
 import { RunTrace } from '../../../components/run-trace/RunTrace';
 import { Markdown } from '@/components/Markdown';
+import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import type { ChatMessageData } from '@/api/converter';
 import { feedbackMessage } from '@/api/message';
 
 interface Props {
@@ -21,7 +23,27 @@ interface Props {
   status: ChatStatus;
   /** messageId → 该消息对应的 run（执行轨迹） */
   runByMessage?: ReadonlyMap<string, AgentRunData>;
+  /** 用户消息是否可编辑（流式中禁用） */
+  canEditUserMessage?: boolean;
+  /** 当前处于编辑态的消息 id（同一时刻仅一条） */
+  editingMessageId?: string | null;
+  /** 编辑提交中 */
+  submittingEdit?: boolean;
+  onStartEdit?: (messageId: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: (messageId: string, nextText: string) => void | Promise<void>;
 }
+
+/** 用户消息编辑相关的透传属性（AnalysisMessageList → AnalysisMessageItem） */
+type EditProps = Pick<
+  Props,
+  | 'canEditUserMessage'
+  | 'editingMessageId'
+  | 'submittingEdit'
+  | 'onStartEdit'
+  | 'onCancelEdit'
+  | 'onSubmitEdit'
+>;
 
 /** 提取消息中所有 text/markdown 片段拼成纯文本（复制用） */
 function extractText(message: ChatMessagesData): string {
@@ -70,20 +92,35 @@ function ShareForwardIcon({ size = 15, className }: ActionIconProps) {
 function AnalysisMessageItem({
   message,
   runByMessage,
+  canEditUserMessage,
+  editingMessageId,
+  submittingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
 }: {
   message: ChatMessagesData;
   runByMessage?: ReadonlyMap<string, AgentRunData>;
-}) {
+} & EditProps) {
   if (message.role === 'user') {
-    const raw = extractText(message);
-    // 含附件（上传图片/文件拼入的 Markdown 图片或链接）时用 Markdown 渲染
-    const hasAttachmentMarkdown = /!?\[[^\]]*\]\(https?:\/\//i.test(raw);
+    // 用户气泡（时间/编辑/复制）与 chat、task 模式共用同一组件，保证三模式一致
     return (
-      <div className="chat-msg-row chat-msg-row--user">
-        <div className="chat-msg-user-bubble">
-          {hasAttachmentMarkdown ? <Markdown content={raw} /> : raw}
-        </div>
-      </div>
+      <UserMessageBubble
+        message={
+          {
+            id: message.id,
+            role: 'user',
+            content: message.content,
+            datetime: message.datetime,
+          } as ChatMessageData
+        }
+        editable={!!canEditUserMessage}
+        editing={editingMessageId === message.id}
+        submitting={!!submittingEdit && editingMessageId === message.id}
+        onStartEdit={() => onStartEdit?.(message.id)}
+        onCancelEdit={onCancelEdit}
+        onSubmitEdit={(next) => onSubmitEdit?.(message.id, next)}
+      />
     );
   }
 
@@ -241,7 +278,17 @@ function TypingDots() {
   );
 }
 
-export function AnalysisMessageList({ messages, status, runByMessage }: Props) {
+export function AnalysisMessageList({
+  messages,
+  status,
+  runByMessage,
+  canEditUserMessage,
+  editingMessageId,
+  submittingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
+}: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
 
@@ -287,6 +334,12 @@ export function AnalysisMessageList({ messages, status, runByMessage }: Props) {
             key={msg.id}
             message={msg}
             runByMessage={runByMessage}
+            canEditUserMessage={canEditUserMessage}
+            editingMessageId={editingMessageId}
+            submittingEdit={submittingEdit}
+            onStartEdit={onStartEdit}
+            onCancelEdit={onCancelEdit}
+            onSubmitEdit={onSubmitEdit}
           />
         ))}
         {status === 'pending' && <TypingDots />}
