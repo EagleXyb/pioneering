@@ -11,6 +11,7 @@ import {
 import { useAttachments } from '@/hooks/useAttachments';
 import { AttachmentBar } from '@/components/attachments/AttachmentBar';
 import { ModelSelect } from '@/components/ModelSelect/ModelSelect';
+import { CapabilityBar } from '@/components/CapabilityBar/CapabilityBar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -196,6 +197,12 @@ export function TaskInput({
               hidden
               onChange={handlePickedFiles}
             />
+
+            {/* + 与能力入口之间的分隔线（与 chat 模式一致） */}
+            <span className="chat-tools-divider" aria-hidden="true" />
+
+            {/* 技能 / 插件选择（参考豆包输入框底部能力入口） */}
+            <CapabilityBar mode="task" disabled={isBusy || locked} />
           </div>
 
           <div className="chat-input-actions">
@@ -212,19 +219,21 @@ export function TaskInput({
             {isBusy ? (
               <button
                 type="button"
-                className="chat-send-btn chat-send-btn--stop"
+                className="chat-send-btn chat-send-btn--stop chat-tooltip"
                 onClick={onStop}
                 aria-label="停止生成"
+                data-tooltip="停止生成"
               >
                 <Square size={13} fill="currentColor" />
               </button>
             ) : (
               <button
                 type="button"
-                className="chat-send-btn"
+                className="chat-send-btn chat-tooltip"
                 onClick={() => composeSend(value)}
                 disabled={!canSendNow || locked}
                 aria-label="发送"
+                data-tooltip="发送"
               >
                 <ArrowUp size={16} />
               </button>
