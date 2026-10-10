@@ -342,6 +342,74 @@
   border-bottom: none;
 }
 
+/* ===== 个人资料分组（账户页，标题右侧带刷新按钮） ===== */
+.settings-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.settings-group-head .settings-group-title {
+  margin: 0;
+}
+
+/* 只读资料行：左标签 + 右值（值可含复制按钮） */
+.settings-profile-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.settings-profile-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: right;
+  word-break: break-all;
+  min-width: 0;
+}
+
+.settings-profile-value--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.settings-profile-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-profile-copy:hover:not(:disabled) {
+  background: var(--bg-sidebar-hover);
+  color: var(--accent-blue);
+}
+
+.settings-profile-copy:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.settings-profile-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
 .setting-row-controls {
   display: flex;
   align-items: center;
@@ -402,9 +470,14 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.settings-icon-btn:hover {
+.settings-icon-btn:hover:not(:disabled) {
   background: var(--bg-sidebar-active);
   color: var(--text-secondary);
+}
+
+.settings-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .settings-icon-btn svg {

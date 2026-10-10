@@ -2,7 +2,7 @@
  * 应用侧边栏（拆为三件）
  * - Sidebar.tsx：壳层、模式切换、会话列表、无限滚动、归档视图、删除确认
  * - SidebarItem.tsx：单条会话 + 行内菜单
- * - AccountPopover.tsx：底部账号弹层/个人中心/设置入口
+ * - AccountPopover.tsx：底部账号弹层/个人中心与设置入口（均指向设置框）
  * 业务逻辑（重命名/归档/恢复/无限滚动/骨架屏）保持不变；
  * 对话框/提示/toast/图标统一为 shadcn/sonner/lucide。
  */

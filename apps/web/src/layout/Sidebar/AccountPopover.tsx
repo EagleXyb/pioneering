@@ -1,24 +1,22 @@
 /**
  * 侧边栏底部账号弹层（从 Sidebar.tsx 拆出）
- * - DropdownMenu / ui-dialog / ui-avatar / Spinner / sonner / lucide
- * - 个人中心资料拉取、复制、登出撤销 token、主题切换、设置/帮助入口等逻辑
- *   保持不变；外观行沿用自绘滑动分段控件（.theme-switch*）
+ * - DropdownMenu / ui-avatar / sonner / lucide
+ * - 登出撤销 token、主题切换、设置/帮助/个人中心入口等逻辑保持不变；
+ *   个人资料明细已并入设置框「账户」分区（个人中心入口定位到该分区），
+ *   外观行沿用自绘滑动分段控件（.theme-switch*）
  */
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import {
   CircleHelp,
-  Copy,
   LogOut,
   Moon,
-  RefreshCw,
   Settings,
   Sun,
   UserRound,
 } from 'lucide-react';
 import { useTheme } from '../../store/themeContext';
 import { useAuth } from '../../hooks/useAuth';
-import { getProfileApi } from '../../api/auth-api';
 import SettingsDialog from '../../components/SettingsDialog';
 import {
   Avatar,
@@ -26,28 +24,19 @@ import {
   AvatarImage,
 } from '@/components/ui/avatar';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 
 export function AccountPopover() {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout } = useAuth();
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string>('general');
 
@@ -68,41 +57,11 @@ export function AccountPopover() {
     }
   }, [logout]);
 
-  /** 拉取最新个人资料并同步到全局 store；失败沿用本地缓存静默忽略 */
-  const refreshProfile = useCallback(async () => {
-    setProfileLoading(true);
-    try {
-      const fresh = await getProfileApi();
-      updateUser(fresh);
-    } catch {
-      // 后端不可用时沿用本地缓存数据，不报错打断用户
-    } finally {
-      setProfileLoading(false);
-    }
-  }, [updateUser]);
-
-  /** 格式化 createdAt（ISO 字符串）为可读日期 */
-  const formatDate = (iso: string | undefined | null) => {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleString('zh-CN', { hour12: false });
-  };
-
-  /** 复制到剪贴板并提示 */
-  const copyText = useCallback((text: string, label: string) => {
-    if (!text) return;
-    navigator.clipboard?.writeText(text).then(
-      () => toast.success(`已复制${label}`),
-      () => toast.error('复制失败'),
-    );
-  }, []);
-
   /**
    * Radix 已知时序问题：键盘操作菜单项时 DropdownMenu 会给 body 加
-   * pointer-events:none；紧接着挂载 Dialog 会把这个"已锁定"状态当作旧值，
+   * pointer-events:none；紧接着挂载弹层会把这个"已锁定"状态当作旧值，
    * 关弹窗时恢复成 none，导致全页鼠标点击失效。在选中菜单项、弹层挂载前
-   * 同步清除，使 Dialog 捕获到的是未锁定状态。
+   * 同步清除，使弹层捕获到的是未锁定状态。
    */
   const resetBodyPointerEvents = () => {
     document.body.style.pointerEvents = '';
@@ -151,8 +110,8 @@ export function AccountPopover() {
             className="account-popover-item"
             onSelect={() => {
               resetBodyPointerEvents();
-              setProfileOpen(true);
-              void refreshProfile();
+              setSettingsSection('account');
+              setSettingsOpen(true);
             }}
           >
             <UserRound />
@@ -236,116 +195,6 @@ export function AccountPopover() {
         confirmText="确认退出"
         onConfirm={() => void handleLogout()}
       />
-
-      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="w-[440px] max-w-[calc(100vw-2rem)]">
-          <DialogHeader>
-            <DialogTitle asChild>
-              <div className="account-info-dialog-header">
-                <span>个人中心</span>
-                <button
-                  type="button"
-                  className="account-info-refresh"
-                  onClick={() => void refreshProfile()}
-                  disabled={profileLoading}
-                  title={profileLoading ? '刷新中…' : '刷新资料'}
-                  aria-label="刷新资料"
-                >
-                  <RefreshCw className={profileLoading ? 'animate-spin' : ''} />
-                </button>
-              </div>
-            </DialogTitle>
-          </DialogHeader>
-
-          {profileLoading && !user ? (
-            <div className="account-info-loading">
-              <Spinner className="mr-2 h-4 w-4" />
-              加载中…
-            </div>
-          ) : (
-            <div className="account-info">
-              <div className="account-info-header">
-                <Avatar className="account-info-avatar h-16 w-16 text-base">
-                  {user?.avatar && (
-                    <AvatarImage src={user.avatar} alt={displayName} />
-                  )}
-                  <AvatarFallback>{initial}</AvatarFallback>
-                </Avatar>
-                <div className="account-info-name">
-                  <div className="account-info-nickname">{displayName}</div>
-                  <div className="account-info-username">
-                    @{user?.username || '—'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="account-info-list">
-                <div className="account-info-row">
-                  <span className="account-info-label">用户 ID</span>
-                  <span className="account-info-value-group">
-                    <span className="account-info-value account-info-mono">
-                      {user?.id || '—'}
-                    </span>
-                    <button
-                      type="button"
-                      className="account-info-copy"
-                      onClick={() => copyText(user?.id || '', '用户 ID')}
-                      disabled={!user?.id}
-                      title="复制用户 ID"
-                      aria-label="复制用户 ID"
-                    >
-                      <Copy />
-                    </button>
-                  </span>
-                </div>
-                <div className="account-info-row">
-                  <span className="account-info-label">用户名</span>
-                  <span className="account-info-value">
-                    {user?.username || '—'}
-                  </span>
-                </div>
-                <div className="account-info-row">
-                  <span className="account-info-label">昵称</span>
-                  <span className="account-info-value">
-                    {user?.nickname || '—'}
-                  </span>
-                </div>
-                <div className="account-info-row">
-                  <span className="account-info-label">邮箱</span>
-                  <span className="account-info-value-group">
-                    <span className="account-info-value">
-                      {user?.email || '—'}
-                    </span>
-                    {user?.email && (
-                      <button
-                        type="button"
-                        className="account-info-copy"
-                        onClick={() => copyText(user.email || '', '邮箱')}
-                        title="复制邮箱"
-                        aria-label="复制邮箱"
-                      >
-                        <Copy />
-                      </button>
-                    )}
-                  </span>
-                </div>
-                <div className="account-info-row">
-                  <span className="account-info-label">手机号</span>
-                  <span className="account-info-value">
-                    {user?.phone || '—'}
-                  </span>
-                </div>
-                <div className="account-info-row">
-                  <span className="account-info-label">注册时间</span>
-                  <span className="account-info-value">
-                    {formatDate(user?.createdAt)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       <SettingsDialog
         visible={settingsOpen}

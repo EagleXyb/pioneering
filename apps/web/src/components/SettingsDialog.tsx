@@ -1,6 +1,7 @@
 /**
- * 设置模态框 —— 由侧边栏账户弹层「设置」按钮唤起
- * 全屏浮层 + 900×600 居中窗口；分组：通用 / 外观 / 通知 / 对话 / 账户 / 帮助 / 关于
+ * 设置模态框 —— 由侧边栏账户弹层「设置 / 个人中心」按钮唤起
+ * 全屏浮层 + 900×600 居中窗口；分组：通用 / 外观 / 通知 / 对话 / MCP / 账户 / 帮助 / 关于
+ * 账户分区承载个人资料明细（用户 ID/用户名/昵称/邮箱/手机号/注册时间，支持刷新与复制）
  *
  * - 基于 shadcn 基座 + sonner + lucide 实现
  * - 未接通的偏好一律禁用并打"开发中"标识
@@ -12,12 +13,14 @@ import { createPortal } from 'react-dom';
 import {
   Bell,
   CircleHelp,
+  Copy,
   Ellipsis,
   FileText,
   Info,
   MessageSquare,
   Palette,
   Phone,
+  RefreshCw,
   Settings2,
   Sun,
   Moon,
@@ -32,6 +35,7 @@ import { toast } from 'sonner';
 import { useTheme } from '../store/themeContext';
 import type { ThemeMode } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { getProfileApi } from '../api/auth-api';
 import { getHealth } from '../api/system';
 import {
   Select,
@@ -156,10 +160,11 @@ export default function SettingsDialog({
   initialSection?: string;
 }) {
   const { theme, setTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const [version, setVersion] = useState<string>('—');
   const [active, setActive] = useState<SectionId>('general');
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   // 弹框打开时定位到指定标签页
   useEffect(() => {
@@ -208,6 +213,43 @@ export default function SettingsDialog({
   const update = <K extends keyof Prefs>(k: K, v: Prefs[K]) => {
     setPrefs((p) => ({ ...p, [k]: v }));
   };
+
+  /** 拉取最新个人资料并同步到全局 store；失败沿用本地缓存静默忽略 */
+  const refreshProfile = useCallback(async () => {
+    setProfileLoading(true);
+    try {
+      const fresh = await getProfileApi();
+      updateUser(fresh);
+    } catch {
+      // 后端不可用时沿用本地缓存数据，不报错打断用户
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [updateUser]);
+
+  // 进入「账户」分区时自动拉取一次资料（保持原「个人中心」打开即刷新的行为）
+  useEffect(() => {
+    if (visible && active === 'account') {
+      void refreshProfile();
+    }
+  }, [visible, active, refreshProfile]);
+
+  /** 格式化 createdAt（ISO 字符串）为可读日期 */
+  const formatDate = (iso: string | undefined | null) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('zh-CN', { hour12: false });
+  };
+
+  /** 复制到剪贴板并提示 */
+  const copyText = useCallback((text: string, label: string) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text).then(
+      () => toast.success(`已复制${label}`),
+      () => toast.error('复制失败'),
+    );
+  }, []);
 
   const section = useMemo(
     () => SECTIONS.find((s) => s.id === active) ?? SECTIONS[0],
@@ -286,7 +328,7 @@ export default function SettingsDialog({
               {active === 'notification' && '新消息提醒方式'}
               {active === 'chat' && '对话交互的默认行为'}
               {active === 'mcp' && 'Model Context Protocol 服务连接状态'}
-              {active === 'account' && '账户信息、用量与隐私设置'}
+              {active === 'account' && '个人资料、账号权益与隐私设置'}
               {active === 'help' && '产品使用指引与问题反馈'}
               {active === 'about' && '产品版本与说明'}
             </p>
@@ -472,19 +514,96 @@ export default function SettingsDialog({
 
             {active === 'account' && (
               <>
-                {/* 账户信息 */}
+                {/* 个人资料 */}
                 <section className="settings-group">
-                  <h3 className="settings-group-title">账户信息</h3>
+                  <div className="settings-group-head">
+                    <h3 className="settings-group-title">个人资料</h3>
+                    <button
+                      type="button"
+                      className="settings-icon-btn"
+                      onClick={() => void refreshProfile()}
+                      disabled={profileLoading}
+                      title={profileLoading ? '刷新中…' : '刷新资料'}
+                      aria-label="刷新资料"
+                    >
+                      <RefreshCw className={profileLoading ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
+                  <div className="settings-group-card">
+                    <div className="setting-row setting-row--card">
+                      <span className="settings-profile-label">用户 ID</span>
+                      <span className="settings-profile-value settings-profile-value--mono">
+                        {user?.id || '—'}
+                        <button
+                          type="button"
+                          className="settings-profile-copy"
+                          onClick={() => copyText(user?.id || '', '用户 ID')}
+                          disabled={!user?.id}
+                          title="复制用户 ID"
+                          aria-label="复制用户 ID"
+                        >
+                          <Copy />
+                        </button>
+                      </span>
+                    </div>
+
+                    <div className="setting-row setting-row--card">
+                      <span className="settings-profile-label">用户名</span>
+                      <span className="settings-profile-value">
+                        {user?.username || '—'}
+                      </span>
+                    </div>
+
+                    <div className="setting-row setting-row--card">
+                      <span className="settings-profile-label">昵称</span>
+                      <span className="settings-profile-value">
+                        {user?.nickname || '—'}
+                      </span>
+                    </div>
+
+                    <div className="setting-row setting-row--card">
+                      <span className="settings-profile-label">邮箱</span>
+                      <span className="settings-profile-value">
+                        {user?.email || '—'}
+                        {user?.email && (
+                          <button
+                            type="button"
+                            className="settings-profile-copy"
+                            onClick={() => copyText(user.email || '', '邮箱')}
+                            title="复制邮箱"
+                            aria-label="复制邮箱"
+                          >
+                            <Copy />
+                          </button>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="setting-row setting-row--card">
+                      <span className="settings-profile-label">手机号</span>
+                      <span className="settings-profile-value">
+                        {user?.phone || '—'}
+                      </span>
+                    </div>
+
+                    <div className="setting-row setting-row--card">
+                      <span className="settings-profile-label">注册时间</span>
+                      <span className="settings-profile-value">
+                        {formatDate(user?.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
+                {/* 账号与权益 */}
+                <section className="settings-group">
+                  <h3 className="settings-group-title">账号与权益</h3>
                   <div className="settings-group-card">
                     <div className="setting-row setting-row--card">
                       <div className="setting-row-text">
-                        <div className="setting-row-title">
-                          {user?.nickname || user?.username || '未登录'}
-                        </div>
+                        <div className="setting-row-title">账号管理</div>
                         <div className="setting-row-desc">
-                          {user?.phone
-                            ? `${user.phone.slice(0, 3)}*****${user.phone.slice(-2)}`
-                            : '未绑定手机号'}
+                          修改密码、绑定邮箱与登录设备管理
                         </div>
                       </div>
                       <div className="setting-row-controls">
