@@ -520,10 +520,10 @@ export default function SettingsDialog({
                     <h3 className="settings-group-title">个人资料</h3>
                     <button
                       type="button"
-                      className="settings-icon-btn"
+                      className="settings-icon-btn chat-tooltip chat-tooltip--below"
                       onClick={() => void refreshProfile()}
                       disabled={profileLoading}
-                      title={profileLoading ? '刷新中…' : '刷新资料'}
+                      data-tooltip={profileLoading ? '刷新中…' : '刷新资料'}
                       aria-label="刷新资料"
                     >
                       <RefreshCw className={profileLoading ? 'animate-spin' : ''} />

@@ -384,6 +384,12 @@
 .chat-tooltip:focus-visible::after {
   opacity: 1;
 }
+/* 向下弹出变体：用于面板头部/对话框等贴近容器上缘的按钮。
+ * 这些容器多带 overflow:hidden|auto，向上弹出会被裁剪，故改为向容器内部弹出 */
+.chat-tooltip--below::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
 @media (prefers-reduced-motion: reduce) {
   .chat-tooltip::after {
     transition: none;

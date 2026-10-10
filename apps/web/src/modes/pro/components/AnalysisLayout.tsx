@@ -28,10 +28,10 @@ AnalysisLayout.Main = function AnalysisMain({ children }: { children: React.Reac
         {/* 面板折叠后提供重新展开入口（展开时由右侧面板头部按钮控制） */}
         {!pipelineOpen && (
           <button
-            className="pro-main-panel-toggle"
+            className="pro-main-panel-toggle chat-tooltip chat-tooltip--below"
             onClick={togglePipeline}
             aria-label="展开推理面板"
-            title="展开推理面板"
+            data-tooltip="展开推理面板"
           >
             <PanelRight width={18} height={18} />
           </button>

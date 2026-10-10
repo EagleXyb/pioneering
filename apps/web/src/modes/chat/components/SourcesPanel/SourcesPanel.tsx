@@ -40,10 +40,10 @@ export function SourcesPanel() {
             <span className="sources-panel-title">参考来源（{sources.length}）</span>
             <button
               type="button"
-              className="sources-panel-btn"
+              className="sources-panel-btn chat-tooltip chat-tooltip--below"
               onClick={closePanel}
               aria-label="关闭来源面板"
-              title="关闭"
+              data-tooltip="关闭"
             >
               <X size={16} />
             </button>
@@ -145,10 +145,10 @@ function SourceReader({
       <div className="sources-panel-header source-reader-header">
         <button
           type="button"
-          className="sources-panel-btn"
+          className="sources-panel-btn chat-tooltip chat-tooltip--below"
           onClick={onBack}
           aria-label="返回来源列表"
-          title="返回"
+          data-tooltip="返回"
         >
           <ArrowLeft size={16} />
         </button>
@@ -160,22 +160,22 @@ function SourceReader({
         </span>
         {source.url && (
           <a
-            className="sources-panel-btn"
+            className="sources-panel-btn chat-tooltip chat-tooltip--below"
             href={source.url}
             target="_blank"
             rel="noreferrer"
             aria-label="在新标签页打开原文"
-            title="新标签页打开"
+            data-tooltip="新标签页打开"
           >
             <ExternalLink size={16} />
           </a>
         )}
         <button
           type="button"
-          className="sources-panel-btn"
+          className="sources-panel-btn chat-tooltip chat-tooltip--below"
           onClick={onClose}
           aria-label="关闭来源面板"
-          title="关闭"
+          data-tooltip="关闭"
         >
           <X size={16} />
         </button>

@@ -65,7 +65,6 @@ export function TopNav() {
                 onClick={togglePipeline}
                 aria-label={pipelineOpen ? '收起推理面板' : '展开推理面板'}
                 aria-expanded={pipelineOpen}
-                title={pipelineOpen ? '收起推理面板' : '展开推理面板'}
               >
                 <PanelRight size={18} />
               </button>

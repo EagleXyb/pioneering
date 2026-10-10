@@ -227,21 +227,21 @@ export function ChatInput({
             {isBusy ? (
               <button
                 type="button"
-                className="chat-send-btn chat-send-btn--stop"
+                className="chat-send-btn chat-send-btn--stop chat-tooltip"
                 onClick={onStop}
                 aria-label="停止生成"
-                title="停止生成"
+                data-tooltip="停止生成"
               >
                 <Square size={13} fill="currentColor" />
               </button>
             ) : (
               <button
                 type="button"
-                className="chat-send-btn"
+                className="chat-send-btn chat-tooltip"
                 onClick={() => dispatchSend(value)}
                 disabled={!canSendNow}
                 aria-label="发送消息"
-                title="发送"
+                data-tooltip="发送"
               >
                 {isBusy ? <Spinner /> : <ArrowUp size={16} />}
               </button>

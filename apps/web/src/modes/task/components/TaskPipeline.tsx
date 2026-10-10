@@ -41,11 +41,11 @@ export function TaskPipeline() {
         </div>
         <button
           type="button"
-          className="task-pipeline-collapse-btn"
+          className="task-pipeline-collapse-btn chat-tooltip chat-tooltip--below"
           onClick={togglePipeline}
           aria-label="收起任务流水线"
           aria-expanded={pipelineOpen}
-          title="收起任务流水线"
+          data-tooltip="收起任务流水线"
         >
           <PanelRight width={18} height={18} />
         </button>

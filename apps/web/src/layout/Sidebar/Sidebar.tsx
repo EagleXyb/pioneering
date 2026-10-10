@@ -273,7 +273,6 @@ export function Sidebar() {
           <button
             className={`btn-archive-toggle${archivedView ? ' active' : ''}`}
             onClick={handleToggleArchived}
-            title={archivedView ? '返回活跃会话' : '查看归档会话'}
             aria-pressed={archivedView}
           >
             <Archive size={16} strokeWidth={1.5} />

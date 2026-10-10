@@ -34,10 +34,10 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
           </div>
           <button
             type="button"
-            className="pro-pipeline-collapse-btn"
+            className="pro-pipeline-collapse-btn chat-tooltip chat-tooltip--below"
             onClick={togglePipeline}
             aria-label="收起推理面板"
-            title="收起推理面板"
+            data-tooltip="收起推理面板"
           >
             <PanelRight width={18} height={18} />
           </button>
@@ -62,10 +62,10 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
         </div>
         <button
           type="button"
-            className="pro-pipeline-collapse-btn"
+            className="pro-pipeline-collapse-btn chat-tooltip chat-tooltip--below"
             onClick={togglePipeline}
           aria-label="收起推理面板"
-          title="收起推理面板"
+          data-tooltip="收起推理面板"
         >
           <PanelRight width={18} height={18} />
         </button>
