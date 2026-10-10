@@ -324,9 +324,9 @@ export function ChatMessageItem({
                   <button
                     key={a.key}
                     type="button"
-                    className={`chat-action-btn${a.active ? ' is-active' : ''}`}
+                    className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
                     aria-label={a.label}
-                    title={a.label}
+                    data-tooltip={a.label}
                     aria-pressed={a.active ?? false}
                     onClick={a.onClick}
                   >
@@ -338,10 +338,10 @@ export function ChatMessageItem({
             {references.length > 0 && (
               <button
                 type="button"
-                className={`chat-sources-chip${isSourcesPanelOpen ? ' is-active' : ''}`}
+                className={`chat-sources-chip chat-tooltip${isSourcesPanelOpen ? ' is-active' : ''}`}
                 aria-pressed={isSourcesPanelOpen}
                 onClick={() => openSources(message.id, references)}
-                title="查看参考来源"
+                data-tooltip="查看参考来源"
               >
                 <span className="chat-sources-favicons">
                   {references.slice(0, 3).map((r, i) => (

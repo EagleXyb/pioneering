@@ -127,6 +127,30 @@ describe('AnalysisMessageList 用户消息气泡（与 chat / task 对齐）', (
     expect(onStartEdit).toHaveBeenCalledWith('u1');
   });
 
+  it('助手操作栏按钮统一使用 data-tooltip（无原生 title）', () => {
+    const { container } = render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[
+          {
+            id: 'a1',
+            role: 'assistant',
+            status: 'complete',
+            content: [{ type: 'markdown', data: '回复正文' }],
+          },
+        ]}
+      />,
+    );
+
+    for (const label of ['复制', '赞', '踩', '分享']) {
+      const btn = screen.getByRole('button', { name: label });
+      expect(btn).toHaveClass('chat-tooltip');
+      expect(btn).toHaveAttribute('data-tooltip', label);
+      expect(btn).not.toHaveAttribute('title');
+    }
+    expect(container.querySelectorAll('[title]')).toHaveLength(0);
+  });
+
   it('editingMessageId 命中时进入编辑态并提交新文本', () => {
     const onSubmitEdit = vi.fn();
     render(

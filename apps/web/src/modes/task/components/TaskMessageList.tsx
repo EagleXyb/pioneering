@@ -325,9 +325,9 @@ function TaskActions({
               <button
                 key={a.key}
                 type="button"
-                className={`chat-action-btn${a.active ? ' is-active' : ''}`}
+                className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
                 aria-label={a.label}
-                title={a.label}
+                data-tooltip={a.label}
                 aria-pressed={a.active ?? false}
                 onClick={a.onClick}
               >

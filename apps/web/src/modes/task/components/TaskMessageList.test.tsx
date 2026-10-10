@@ -26,6 +26,16 @@ function makeMessage(over: Partial<ChatMessagesData> & { id: string; role: 'user
   } as ChatMessagesData;
 }
 
+/** 构造纯文本用户消息（显式返回类型，避免联合类型收窄失败而写 `as any`） */
+function makeUserMessage(id: string, text: string): ChatMessagesData {
+  return {
+    id,
+    role: 'user',
+    content: [{ type: 'text', data: text }],
+    datetime: new Date().toISOString(),
+  };
+}
+
 describe('TaskMessageList', () => {
   beforeEach(() => {
     useArtifactStore.getState().reset();
@@ -40,7 +50,7 @@ describe('TaskMessageList', () => {
 
   it('每条消息外层暴露 data-message-id', () => {
     const messages = [
-      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+      makeUserMessage('u1', 'hi'),
       makeMessage({ id: 'a1', role: 'assistant', content: [{ type: 'markdown', data: 'hello' }] as any }),
     ];
     const { container } = render(<TaskMessageList messages={messages} status="idle" />);
@@ -128,7 +138,7 @@ describe('TaskMessageList', () => {
 
   it('streaming 状态显示等待输入指示', () => {
     const messages = [
-      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+      makeUserMessage('u1', 'hi'),
     ];
     const { container } = render(<TaskMessageList messages={messages} status="streaming" />);
 
@@ -176,7 +186,7 @@ describe('TaskMessageList', () => {
 
   it('用户消息复用共享气泡：悬停元信息行与复制入口常驻 DOM', () => {
     const messages = [
-      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+      makeUserMessage('u1', 'hi'),
     ];
     const { container } = render(<TaskMessageList messages={messages} status="idle" />);
 
@@ -189,7 +199,7 @@ describe('TaskMessageList', () => {
   it('canEditUserMessage=true 时出现编辑入口并回调 onStartEdit', () => {
     const onStartEdit = vi.fn();
     const messages = [
-      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+      makeUserMessage('u1', 'hi'),
     ];
     render(
       <TaskMessageList
@@ -204,9 +214,29 @@ describe('TaskMessageList', () => {
     expect(onStartEdit).toHaveBeenCalledWith('u1');
   });
 
+  it('助手操作栏按钮统一使用 data-tooltip（无原生 title）', () => {
+    const messages = [
+      makeMessage({
+        id: 'a1',
+        role: 'assistant',
+        status: 'complete',
+        content: [{ type: 'markdown', data: '回复正文' }],
+      }),
+    ];
+    const { container } = render(<TaskMessageList messages={messages} status="idle" />);
+
+    for (const label of ['复制', '赞', '踩', '分享']) {
+      const btn = screen.getByRole('button', { name: label });
+      expect(btn).toHaveClass('chat-tooltip');
+      expect(btn).toHaveAttribute('data-tooltip', label);
+      expect(btn).not.toHaveAttribute('title');
+    }
+    expect(container.querySelectorAll('[title]')).toHaveLength(0);
+  });
+
   it('editingMessageId 命中时该条进入编辑态（气泡替换为编辑卡片）', () => {
     const messages = [
-      makeMessage({ id: 'u1', role: 'user', content: [{ type: 'text', data: 'hi' }] as any }),
+      makeUserMessage('u1', 'hi'),
     ];
     const { container } = render(
       <TaskMessageList
