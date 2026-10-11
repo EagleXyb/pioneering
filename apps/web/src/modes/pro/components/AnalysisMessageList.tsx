@@ -15,6 +15,7 @@ import type { AgentRunData } from '../../../api/agent';
 import { RunTrace } from '../../../components/run-trace/RunTrace';
 import { Markdown } from '@/components/Markdown';
 import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import { ScrollToBottomButton } from '@/components/message/ScrollToBottomButton';
 import {
   ShareForwardIcon,
   type ActionIconProps,
@@ -267,20 +268,27 @@ export function AnalysisMessageList({
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  /** 离开底部（底部哨兵不可见）时显示"回到底部"按钮 */
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-  // 底部哨兵：判断用户是否在底部附近，用于自动滚动
+  // 底部哨兵：判断用户是否在底部附近，用于自动滚动 + 回到底部按钮显隐。
+  // 依赖 hasMessages：空态（历史加载中）时哨兵尚未渲染、ref 为 null，
+  // 消息到位后必须重建监听，否则近底部判定与按钮显隐会永久失效
+  const hasMessages = messages.length > 0;
   useEffect(() => {
+    if (!hasMessages) return;
     const el = bottomRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         isNearBottomRef.current = entry.isIntersecting;
+        setShowScrollToBottom(!entry.isIntersecting);
       },
       { threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [hasMessages]);
 
   useEffect(() => {
     if (isNearBottomRef.current) {
@@ -319,6 +327,8 @@ export function AnalysisMessageList({
         {status === 'pending' && <TypingDots />}
         <div ref={bottomRef} />
       </div>
+
+      <ScrollToBottomButton visible={showScrollToBottom} targetRef={bottomRef} />
     </div>
   );
 }

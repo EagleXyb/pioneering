@@ -9,13 +9,29 @@
  *   5. 无代码块的消息走原渲染路径（保留原有行为）
  *   6. 空消息列表显示空态
  *   7. streaming 状态显示思考指示器
+ *   8. 离开底部时显示"回到底部"按钮（与 chat / pro 一致）
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import React from 'react';
 import { TaskMessageList } from './TaskMessageList';
 import { useArtifactStore } from '@/store/artifactStore';
 import type { ChatMessagesData } from '@/types/chat';
+
+/** 捕获组件创建的 IntersectionObserver 回调，手动模拟哨兵可见性变化 */
+const ioCallbacks: IntersectionObserverCallback[] = [];
+
+class MockIntersectionObserver {
+  constructor(cb: IntersectionObserverCallback) {
+    ioCallbacks.push(cb);
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
 
 // 构造消息的辅助函数
 function makeMessage(over: Partial<ChatMessagesData> & { id: string; role: 'user' | 'assistant' }): ChatMessagesData {
@@ -251,5 +267,31 @@ describe('TaskMessageList', () => {
 
     expect(container.querySelector('.chat-user-editor')).not.toBeNull();
     expect(screen.getByLabelText('编辑消息')).toHaveValue('hi');
+  });
+
+  it('离开底部时显示回到底部按钮，点击后平滑滚回底部', () => {
+    ioCallbacks.length = 0;
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const messages = [makeUserMessage('u1', 'hi')];
+    const { container } = render(<TaskMessageList messages={messages} status="idle" />);
+
+    const wrap = container.querySelector('.chat-scroll-bottom');
+    expect(wrap).not.toBeNull();
+    // 贴底时不显示（按钮仍在 DOM 中，由 is-visible 控制显隐）
+    expect(wrap).not.toHaveClass('is-visible');
+    expect(wrap).toHaveAttribute('aria-hidden', 'true');
+
+    act(() => {
+      ioCallbacks.forEach((cb) =>
+        cb([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver),
+      );
+    });
+    expect(wrap).toHaveClass('is-visible');
+
+    fireEvent.click(screen.getByRole('button', { name: '回到底部' }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' });
   });
 });

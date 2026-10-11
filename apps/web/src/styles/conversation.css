@@ -632,6 +632,82 @@
   pointer-events: none;
 }
 
+/* ===== 回到底部悬浮按钮（对话 / 分析 / 任务三模式共用） =====
+ * 离开底部（底部哨兵不可见）时浮现在滚动区底部居中，与输入区上沿保持 14 的间距。
+ * 由 <ScrollToBottomButton> 渲染，挂在各自滚动容器（.chat-scroll-area /
+ * .pro-messages / .task-messages）末尾：sticky 悬浮，高度 32 + 负外边距抵消为
+ * 净占位 0，因此不改变滚动几何（与上面的底部渐隐留白互不干扰）；
+ * pointer-events: none 让容器覆盖区不拦截消息内容交互，仅按钮本身可点。 */
+.chat-scroll-bottom {
+  position: sticky;
+  bottom: 14px;
+  z-index: 2;
+  flex: none;
+  height: 32px;
+  margin-top: -32px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  /* 隐藏态：visibility 参与过渡，淡出结束后才真正不可命中/不可聚焦 */
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast),
+    visibility var(--transition-fast);
+}
+.chat-scroll-bottom.is-visible {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+.chat-scroll-bottom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  /* 无边框：纯白圆片，靠阴影与背景拉开层次（与设计稿一致）；
+     尺寸与输入区发送按钮（32）对齐 */
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+  transition:
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+.chat-scroll-bottom-btn:hover {
+  background: var(--bg-input);
+  transform: translateY(-1px);
+}
+.chat-scroll-bottom-btn:active {
+  transform: translateY(0);
+}
+/* 暗色主题：暗底上加重阴影，保持同等的悬浮层次 */
+[data-theme='dark'] .chat-scroll-bottom-btn {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+/* 尊重系统"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-scroll-bottom {
+    transition: none;
+    transform: none;
+  }
+  .chat-scroll-bottom-btn {
+    transition: none;
+  }
+}
 /* ===== 输入区 ===== */
 .chat-input-area {
   position: relative;

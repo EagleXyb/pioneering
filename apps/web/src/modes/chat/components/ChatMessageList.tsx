@@ -1,10 +1,11 @@
 /**
  * 聊天消息列表
- * 自动滚动（底部哨兵 + 近底部判定）与顶部历史分页。
+ * 自动滚动（底部哨兵 + 近底部判定）、回到底部悬浮按钮与顶部历史分页。
  */
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { ChatStatus } from '../../../types/chat';
 import type { ChatMessageData } from '../../../api/converter';
+import { ScrollToBottomButton } from '@/components/message/ScrollToBottomButton';
 import { ChatMessageItem } from './ChatMessageItem';
 
 interface Props {
@@ -57,20 +58,27 @@ export function ChatMessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  /** 离开底部（底部哨兵不可见）时显示"回到底部"按钮 */
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-  // 底部哨兵：判断用户是否在底部附近，用于自动滚动
+  // 底部哨兵：判断用户是否在底部附近，用于自动滚动 + 回到底部按钮显隐。
+  // 依赖 hasMessages：空态（历史加载中）时哨兵尚未渲染、ref 为 null，
+  // 消息到位后必须重建监听，否则近底部判定与按钮显隐会永久失效
+  const hasMessages = messages.length > 0;
   useEffect(() => {
+    if (!hasMessages) return;
     const el = bottomRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         isNearBottomRef.current = entry.isIntersecting;
+        setShowScrollToBottom(!entry.isIntersecting);
       },
       { threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [hasMessages]);
 
   // 顶部哨兵：滚动到顶部时加载更早消息
   useEffect(() => {
@@ -119,31 +127,35 @@ export function ChatMessageList({
   }, [messages.length, lastContentLen, status]);
 
   return (
-    <div className="chat-messages">
-      {hasMoreHistory && (
-        <div ref={topSentinelRef} className="chat-load-more-top">
-          {loadingMoreHistory ? (
-            <span className="chat-load-more-text">加载历史消息...</span>
-          ) : (
-            <span className="chat-load-more-hint">滚动到顶部加载更多</span>
-          )}
-        </div>
-      )}
-      {messages.map((msg) => (
-        <ChatMessageItem
-          key={msg.id}
-          message={msg}
-          onReplay={onReplay}
-          editable={canEditUserMessage && msg.role === 'user'}
-          editing={msg.role === 'user' && editingMessageId === msg.id}
-          submittingEdit={submittingEdit && editingMessageId === msg.id}
-          onStartEdit={onStartEdit}
-          onCancelEdit={onCancelEdit}
-          onSubmitEdit={onSubmitEdit}
-        />
-      ))}
-      {status === 'pending' && <TypingDots />}
-      <div ref={bottomRef} />
-    </div>
+    <>
+      <div className="chat-messages">
+        {hasMoreHistory && (
+          <div ref={topSentinelRef} className="chat-load-more-top">
+            {loadingMoreHistory ? (
+              <span className="chat-load-more-text">加载历史消息...</span>
+            ) : (
+              <span className="chat-load-more-hint">滚动到顶部加载更多</span>
+            )}
+          </div>
+        )}
+        {messages.map((msg) => (
+          <ChatMessageItem
+            key={msg.id}
+            message={msg}
+            onReplay={onReplay}
+            editable={canEditUserMessage && msg.role === 'user'}
+            editing={msg.role === 'user' && editingMessageId === msg.id}
+            submittingEdit={submittingEdit && editingMessageId === msg.id}
+            onStartEdit={onStartEdit}
+            onCancelEdit={onCancelEdit}
+            onSubmitEdit={onSubmitEdit}
+          />
+        ))}
+        {status === 'pending' && <TypingDots />}
+        <div ref={bottomRef} />
+      </div>
+
+      <ScrollToBottomButton visible={showScrollToBottom} targetRef={bottomRef} />
+    </>
   );
 }
