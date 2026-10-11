@@ -292,6 +292,12 @@
   color: var(--text-tertiary);
   font-size: 14px;
   line-height: 1.75;
+  /* 最大高度 350px：超出后内部滚动查看（右侧留出细滚动条呼吸空间） */
+  max-height: 350px;
+  overflow-y: auto;
+  /* 滚动到边界时不带动外层消息列表 */
+  overscroll-behavior: contain;
+  padding-right: 8px;
 }
 /* Markdown 渲染层继承思考正文的浅灰色 */
 .chat-reasoning-body .chat-markdown {
@@ -602,6 +608,28 @@
 /* HITL 待答复卡片（pro / task 特有）：与输入卡片左右对齐 */
 .chat-input-hitl {
   margin: 0 24px 10px;
+}
+
+/* ===== 消息滚动区 → 输入区 底部渐隐过渡 =====
+ * 消息滚到底部时会被输入区上沿硬切，形成视觉断层。这里在三种模式的滚动
+ * 容器末尾统一蒙一层「透明 → 背景色」渐隐遮罩（与侧边栏 .sidebar-footer::before
+ * 同一手法），让内容滑入输入区前自然淡出而不是被裁断。
+ * 实现：容器末尾的 sticky 伪元素——随内容滚动但始终钉在滚动可视区底部，
+ * pointer-events: none 不拦截交互。
+ * 高度 48 与 margin-top:-24 的取值含义：净占位 24，加上消息容器自身 24 的
+ * 底部留白，令滚动到底时最后一行恰好停在遮罩上沿（不被压暗），同时与输入区
+ * 之间留出约 48 的呼吸感。 */
+.chat-scroll-area::after,
+.pro-messages::after,
+.task-messages::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  flex: none;
+  height: 48px;
+  margin-top: -24px;
+  background: linear-gradient(to bottom, transparent, var(--bg-secondary));
+  pointer-events: none;
 }
 
 /* ===== 输入区 ===== */

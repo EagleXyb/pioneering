@@ -5,7 +5,7 @@
  * （`data-tooltip` + `chat-tooltip`），不得回退为原生 `title`。
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('sonner', () => ({
   toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -53,5 +53,50 @@ describe('ChatMessageItem — 助手操作栏悬停提示', () => {
     } as ChatMessageData;
     render(<ChatMessageItem message={streaming} />);
     expect(screen.queryByRole('toolbar', { name: '消息操作' })).toBeNull();
+  });
+});
+
+/** 含 reasoning 块的助手消息（ext.collapsed=false 与流式产物一致） */
+function reasoningMessage(status: ChatMessageData['status']): ChatMessageData {
+  return {
+    id: 'msg_r1',
+    role: 'assistant',
+    status,
+    content: [
+      {
+        type: 'reasoning',
+        data: [{ type: 'text', data: '第一步：拆解问题；第二步：验证结论' }],
+        status: 'streaming',
+        ext: { collapsed: false },
+      },
+      { type: 'markdown', data: '这是回复正文' },
+    ],
+  } as ChatMessageData;
+}
+
+describe('ChatMessageItem — 思考区折叠态', () => {
+  it('流式过程默认展开，回答完成后自动收起', () => {
+    const { rerender } = render(<ChatMessageItem message={reasoningMessage('streaming')} />);
+    expect(screen.getByRole('button', { name: /深度思考中/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
+    rerender(
+      <ChatMessageItem message={{ ...reasoningMessage('streaming'), status: 'complete' }} />,
+    );
+    expect(screen.getByRole('button', { name: /已完成思考/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('终态消息（含历史）默认收起，用户可手动重新展开', () => {
+    render(<ChatMessageItem message={{ ...reasoningMessage('streaming'), status: 'complete' }} />);
+    const header = screen.getByRole('button', { name: /已完成思考/ });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
   });
 });

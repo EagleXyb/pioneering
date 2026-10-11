@@ -2,12 +2,13 @@
  * 单条聊天消息
  *
  * - 用户消息：右侧灰色气泡；助手消息：通栏 Markdown 渲染
- * - reasoning 块折叠展示（历史默认折叠、流式过程默认展开）
+ * - reasoning 块折叠展示（历史默认折叠、流式过程默认展开、回答完成后自动收起）
+ * - 思考区最大高度 350px，超出后内部滚动；流式期间自动跟随最新内容
  * - 操作栏五按钮（copy/good/bad/share/replay）
  * - comment 随消息反馈状态同步（useEffect），
  *   历史刷新/重新加载不再出现按钮高亮与数据不一致
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   ChevronRight,
@@ -19,6 +20,7 @@ import { toast } from 'sonner';
 import type {
   AIMessageContent,
   ChatComment,
+  ChatMessageStatus,
   ReferenceItem,
 } from '../../../types/chat';
 import type { ChatMessageData } from '../../../api/converter';
@@ -68,6 +70,11 @@ function extractReferences(content: AIMessageContent[] | undefined): ReferenceIt
   return Array.isArray(block.data?.references) ? block.data.references : [];
 }
 
+/** 终态判定（回答完成/用户停止）：此时思考区默认收起 */
+function isSettledStatus(status?: ChatMessageStatus): boolean {
+  return status === 'complete' || status === 'stop';
+}
+
 export function ChatMessageItem({
   message,
   onReplay,
@@ -88,14 +95,46 @@ export function ChatMessageItem({
     (s) => s.open && s.messageId === message.id,
   );
   const reasoningBlock = message.content?.find((c) => c.type === 'reasoning');
-  // 历史消息默认折叠（converter 写 ext.collapsed=true），流式消息默认展开；
+  // 终态消息（回答已完成/已停止，含历史消息）思考区默认收起；
+  // 流式消息默认展开（ext.collapsed 显式指定时以其为准），
   // 之后由用户点击受控切换（流式过程中也允许手动折叠）
   const [reasoningOpen, setReasoningOpen] = useState<boolean>(() => {
+    if (isSettledStatus(message.status)) return false;
     const collapsed =
-      (reasoningBlock?.ext as { collapsed?: boolean } | undefined)?.collapsed ??
-      (message.status === 'complete' || message.status === 'stop');
+      (reasoningBlock?.ext as { collapsed?: boolean } | undefined)?.collapsed ?? false;
     return !collapsed;
   });
+
+  const reasoning =
+    message.role === 'assistant' ? extractReasoning(message.content) : '';
+  // 流式进行中（含思考阶段与正文阶段）：标题显示"深度思考中…"，图标呼吸
+  const isReasoningStreaming =
+    message.status === 'streaming' || message.status === 'pending';
+
+  // 思考区滚动容器（CSS 限制最大高度 350px）：流式期间自动跟随最新内容，
+  // 用户上滚查看历史后暂停跟随，回到底部附近自动恢复
+  const reasoningBodyRef = useRef<HTMLDivElement>(null);
+  const reasoningStickRef = useRef(true);
+
+  useEffect(() => {
+    if (!reasoningOpen || !isReasoningStreaming) return;
+    const el = reasoningBodyRef.current;
+    if (el && reasoningStickRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [reasoning, reasoningOpen, isReasoningStreaming]);
+
+  // 回答完成/用户停止后思考区自动收起（仅响应「流式 → 终态」的状态跃迁，
+  // 用户手动展开后不再被打断）
+  const prevStatusRef = useRef(message.status);
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = message.status;
+    if (prevStatus === message.status) return;
+    if (isSettledStatus(message.status)) {
+      setReasoningOpen(false);
+    }
+  }, [message.status]);
 
   // P2-5：消息引用变化（历史刷新、反馈回写）时同步按钮高亮状态
   useEffect(() => {
@@ -117,17 +156,33 @@ export function ChatMessageItem({
   }
 
   // assistant
-  const reasoning = extractReasoning(message.content);
   const references = extractReferences(message.content);
   const textBlocks = getTextBlocks(message);
   const text = textBlocks.map((c) => (c.data as string) ?? '').join('\n');
-  // 流式进行中（含思考阶段与正文阶段）：标题显示"深度思考中…"，图标呼吸
-  const isReasoningStreaming = message.status === 'streaming' || message.status === 'pending';
   const isFinal =
     message.status === 'complete' ||
     message.status === 'stop' ||
     (!message.status && text.length > 0);
   const isStreaming = message.status === 'streaming';
+
+  /** 展开/收起思考区；完成后重新展开时回到开头，避免停留在流式末尾位置 */
+  const toggleReasoning = () => {
+    const next = !reasoningOpen;
+    setReasoningOpen(next);
+    if (next && !isReasoningStreaming) {
+      reasoningStickRef.current = false;
+      requestAnimationFrame(() => {
+        if (reasoningBodyRef.current) reasoningBodyRef.current.scrollTop = 0;
+      });
+    }
+  };
+
+  /** 滚动位置判定：贴近底部（24px 内）时恢复流式自动跟随 */
+  const handleReasoningScroll = () => {
+    const el = reasoningBodyRef.current;
+    if (!el) return;
+    reasoningStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 24;
+  };
 
   /** 点踩/点赞：再点一次取消 */
   const toggleFeedback = (next: 'good' | 'bad') => {
@@ -206,7 +261,7 @@ export function ChatMessageItem({
             <button
               type="button"
               className="chat-reasoning-header"
-              onClick={() => setReasoningOpen((v) => !v)}
+              onClick={toggleReasoning}
               aria-expanded={reasoningOpen}
             >
               <ThinkingIcon className="chat-reasoning-icon" />
@@ -225,7 +280,11 @@ export function ChatMessageItem({
               inert={!reasoningOpen ? true : undefined}
             >
               <div className="chat-reasoning-body-inner">
-                <div className="chat-reasoning-body">
+                <div
+                  ref={reasoningBodyRef}
+                  className="chat-reasoning-body"
+                  onScroll={handleReasoningScroll}
+                >
                   <Markdown content={reasoning} />
                 </div>
               </div>
