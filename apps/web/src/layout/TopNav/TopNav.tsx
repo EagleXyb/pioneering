@@ -34,7 +34,7 @@ export function TopNav() {
         style={navStyle}
       >
         <button className="btn-sidebar-toggle" onClick={toggleSidebar} aria-label="切换侧边栏">
-          <Menu size={20} strokeWidth={1.5} />
+          <Menu size={20} />
         </button>
 
         {!sidebarOpen && (

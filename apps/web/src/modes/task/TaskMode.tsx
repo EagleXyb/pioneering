@@ -11,6 +11,7 @@ import { TaskPipeline } from './components/TaskPipeline';
 import { TaskResizer } from './components/TaskResizer';
 import { ArtifactPanel } from '@/components/ArtifactPreview/ArtifactPanel';
 import '@/components/ArtifactPreview/artifactPanel.css';
+import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
 import { useSessionRuns } from '@/hooks/useSessionRuns';
 import { useUserMessageEdit } from '@/hooks/useUserMessageEdit';
@@ -90,10 +91,7 @@ export default function TaskMode() {
   if (!activeId) {
     return (
       <div className="task-empty task-empty--root">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
-          <rect x="1" y="1" width="22" height="22" rx="2"/>
-          <path d="M7 8h10M7 12h6M7 16h8"/>
-        </svg>
+        <EmptyStateGlyph variant="task" className="task-empty-glyph" />
         <h2>任务模式</h2>
         <p>创建任务，Agent 将自动规划并执行多步骤操作，支持复杂的 Plan-and-Execute 流程</p>
         <Button onClick={() => create('task')}>创建任务</Button>

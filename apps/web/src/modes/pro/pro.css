@@ -220,6 +220,11 @@
   background: var(--bg-secondary);
 }
 
+/* 无会话空态插图：弱化为背景元素（原为内联 opacity 属性） */
+.pro-empty-glyph {
+  opacity: 0.4;
+}
+
 .pro-empty h2 {
   font-size: 20px;
   font-weight: 600;

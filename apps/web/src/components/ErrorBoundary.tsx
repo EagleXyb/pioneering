@@ -2,6 +2,7 @@
  * 全局错误边界 — 捕获子组件渲染异常，避免白屏
  */
 import React from 'react';
+import { EmptyStateGlyph } from './icons/emptyStateGlyph';
 
 interface Props {
   children: React.ReactNode;
@@ -32,9 +33,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="error-boundary">
           <div className="error-boundary-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
+            <EmptyStateGlyph variant="error" />
           </div>
           <div className="error-boundary-title">页面出错了</div>
           <div className="error-boundary-desc">

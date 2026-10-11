@@ -15,6 +15,11 @@ import type { AgentRunData } from '../../../api/agent';
 import { RunTrace } from '../../../components/run-trace/RunTrace';
 import { Markdown } from '@/components/Markdown';
 import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import {
+  ShareForwardIcon,
+  type ActionIconProps,
+} from '@/components/icons/customIcons';
+import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import type { ChatMessageData } from '@/api/converter';
 import { feedbackMessage } from '@/api/message';
 
@@ -57,35 +62,6 @@ function extractText(message: ChatMessagesData): string {
     )
     .map((c) => c.data)
     .join('\n');
-}
-
-/** 操作栏图标属性 */
-interface ActionIconProps {
-  size?: number;
-  className?: string;
-}
-
-/**
- * 分享：弧形转发箭头；round 线帽/连接与复制、赞、踩风格统一，
- * stroke=currentColor 自动继承按钮颜色。
- */
-function ShareForwardIcon({ size = 15, className }: ActionIconProps) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12.5 4L22 12L12.5 20V14.9C7.5 14.9 4 16.5 1.5 20C2.5 15 5.5 10 12.5 9L12.5 4Z" />
-    </svg>
-  );
 }
 
 /** 单条分析消息：用户右对齐气泡；助手通栏 Markdown + 操作栏 + 执行轨迹 */
@@ -316,9 +292,7 @@ export function AnalysisMessageList({
     return (
       <div className="pro-messages-empty">
         <div className="pro-empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/>
-          </svg>
+          <EmptyStateGlyph variant="pro" />
         </div>
         <div className="pro-empty-title">智能分析</div>
         <div className="pro-empty-desc">输入分析需求，Agent 将自动拆解步骤并执行</div>

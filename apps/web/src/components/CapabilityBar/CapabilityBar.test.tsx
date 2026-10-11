@@ -124,8 +124,20 @@ beforeEach(() => {
 describe('CapabilityBar 技能选择', () => {
   it('渲染「技能 / 插件」两个 chip', () => {
     render(<CapabilityBar mode="pro" />);
-    expect(screen.getByRole('button', { name: /^选择技能/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^选择插件/ })).toBeInTheDocument();
+    const skillChip = screen.getByRole('button', { name: /^选择技能/ });
+    expect(skillChip).toBeInTheDocument();
+    const pluginChip = screen.getByRole('button', { name: /^选择插件/ });
+    expect(pluginChip).toBeInTheDocument();
+    // 两个 chip 同规格：主图标 1.75 线宽 + 右侧展开箭头（技能 Pickaxe / 插件 Cable）
+    const skillIcon = skillChip.querySelector('svg.lucide-pickaxe');
+    expect(skillIcon).not.toBeNull();
+    expect(skillIcon?.getAttribute('stroke-width')).toBe('1.75');
+    expect(skillChip.querySelector('.capability-chip__chevron')).not.toBeNull();
+
+    const pluginIcon = pluginChip.querySelector('svg.lucide-cable');
+    expect(pluginIcon).not.toBeNull();
+    expect(pluginIcon?.getAttribute('stroke-width')).toBe('1.75');
+    expect(pluginChip.querySelector('.capability-chip__chevron')).not.toBeNull();
   });
 
   it('点击技能 chip 打开菜单，展示技能名称与描述', async () => {
@@ -162,6 +174,22 @@ describe('CapabilityBar 技能选择', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^选择技能/ })).toBeInTheDocument(),
     );
+  });
+
+  it('技能为多选：点击一项后面板保持打开（非模态 Popover，无焦点交还）', async () => {
+    render(<CapabilityBar mode="pro" />);
+    const chip = screen.getByRole('button', { name: /^选择技能/ });
+    fireEvent.click(chip);
+
+    const itemBtn = (await screen.findByText('math')).closest(
+      'button',
+    ) as HTMLElement;
+    fireEvent.click(itemBtn);
+
+    // 多选：面板不关闭，且焦点不被程序化交还给 chip
+    // （与 DropdownMenu「选中即关闭并把焦点交还触发器」的语义不同）
+    expect(screen.getByText('math')).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(chip);
   });
 
   it('搜索框按名称/描述过滤技能', async () => {
@@ -277,5 +305,58 @@ describe('CapabilityBar 菜单可访问性', () => {
         within(document.body).getByRole('button', { name: 'math' }),
       ).toHaveAttribute('aria-pressed', 'true'),
     );
+  });
+});
+
+describe('CapabilityBar 面板几何', () => {
+  // jsdom 无布局引擎：桩掉 getBoundingClientRect，模拟
+  // 「输入框卡片 900×96 @(24,500)」与「chip 60×32 @(100,554)」两种尺寸
+  const rect = (r: Record<string, number>) =>
+    ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+      ...r,
+    }) as DOMRect;
+
+  function stubRects(): () => void {
+    const orig = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      if (this.classList?.contains('capability-anchor')) {
+        return rect({ width: 900, height: 96, top: 500, bottom: 596, left: 24, right: 924 });
+      }
+      return rect({ width: 60, height: 32, top: 554, bottom: 586, left: 100, right: 160 });
+    };
+    return () => {
+      Element.prototype.getBoundingClientRect = orig;
+    };
+  }
+
+  it('以输入框卡片为参照（宽度=卡片宽度、底边贴卡片上沿 8px），而非以 chip 为参照', async () => {
+    const restore = stubRects();
+    try {
+      render(<CapabilityBar mode="pro" />);
+      fireEvent.click(screen.getByRole('button', { name: /^选择技能/ }));
+      await screen.findByText('math');
+
+      const wrapper = document.querySelector(
+        '[data-radix-popper-content-wrapper]',
+      ) as HTMLElement;
+      expect(wrapper).not.toBeNull();
+      // 锚点宽度 = 900（卡片），若退化成 chip 则为 60 —— 面板宽度即来自该变量
+      expect(wrapper.style.getPropertyValue('--radix-popper-anchor-width')).toBe('900px');
+      expect(wrapper.style.getPropertyValue('--radix-popper-anchor-height')).toBe('96px');
+      // side="top" + sideOffset=8：底边 = 卡片顶边(500) - 8；jsdom 中浮层高度为 0，
+      // 故 translate 的 y = 492。核心是「相对卡片顶边」而不是「相对 chip 顶边(554)」
+      expect(wrapper.style.transform).toContain('492px');
+    } finally {
+      restore();
+    }
   });
 });

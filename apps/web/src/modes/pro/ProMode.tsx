@@ -10,6 +10,7 @@ import { AnalysisMessageList } from './components/AnalysisMessageList';
 import { AnalysisInput } from './components/AnalysisInput';
 import { ProcessPanel } from './components/ProcessPanel';
 import { TaskResizer } from '../task/components/TaskResizer';
+import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import { useHitlStore } from '@pioneering/agent-protocol';
 import { useSessionRuns } from '../../hooks/useSessionRuns';
 import './pro.css';
@@ -66,9 +67,7 @@ export default function ProMode() {
   if (!activeId) {
     return (
       <div className="pro-empty">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
-          <path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z"/>
-        </svg>
+        <EmptyStateGlyph variant="pro" className="pro-empty-glyph" />
         <h2>智能分析</h2>
         <p>输入分析需求，Agent 将自动拆解步骤并执行，实时展示推理过程</p>
         <Button onClick={() => create('pro')}>开始分析</Button>

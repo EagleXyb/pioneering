@@ -9,17 +9,20 @@ const SCHEMA_CONFIG = { tags: ['system'], summary: '获取系统配置', securit
 const SCHEMA_HEALTH = { tags: ['system'], summary: '健康检查', security: [] }
 
 // P1-9 修复：模型列表与 env.LLM_DEFAULT_MODEL / chat.ts 实际使用的模型对齐
+// name 为界面展示名，id 为发送到上游 LLM_BASE_URL 的 model 字段，两者独立：
+// 改展示名不影响本地已选记录（localStorage 存 id）与 chat.ts 的 deepThink 路由。
+// 新增模型暂未提供官方单价：pricing 留空，前端详情卡会自动省略「消耗速度」行。
 const SUPPORTED_MODELS = [
   {
     id: 'deepseek-v4-flash',
-    name: 'DeepSeek V4 Flash',
+    name: 'DeepSeek-V4-Flash',
     description: 'DeepSeek 标准对话模型（默认，速度快、成本低）',
     max_tokens: 128000,
     pricing: { input_price: 0.14, output_price: 0.28 },
   },
   {
     id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro',
+    name: 'DeepSeek-V4-Pro',
     description: 'DeepSeek 深度思考模型（deepThink 模式，更强的推理能力）',
     max_tokens: 128000,
     pricing: { input_price: 0.28, output_price: 0.56 },
@@ -37,6 +40,24 @@ const SUPPORTED_MODELS = [
     description: '高性能多模态模型，适用于复杂任务',
     max_tokens: 128000,
     pricing: { input_price: 2.5, output_price: 10 },
+  },
+  {
+    id: 'glm-5.3',
+    name: 'GLM-5.3',
+    description: '智谱 GLM 旗舰模型，中文与工具调用能力突出',
+    max_tokens: 128000,
+  },
+  {
+    id: 'glm-5.3-flash',
+    name: 'GLM-5.3-Flash',
+    description: 'GLM 轻量版本，响应快、单次成本低',
+    max_tokens: 128000,
+  },
+  {
+    id: 'minimax-m3',
+    name: 'MiniMax-M3',
+    description: 'MiniMax 旗舰模型，长文本与多轮对话表现出色',
+    max_tokens: 128000,
   },
 ]
 

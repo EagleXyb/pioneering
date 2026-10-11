@@ -1,18 +1,19 @@
 import { useNavigate } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { MODE_ICONS } from '@/components/icons/modeIcons';
+import type { AppMode } from '@/types';
 import './welcome.css';
 
 interface ModeCard {
-  key: 'chat' | 'pro' | 'task';
+  key: AppMode;
   title: string;
   desc: string;
-  icon: ReactNode;
   to: string;
   cta: string;
 }
 
 /**
  * 三种模式触达卡片（chat / pro / task 欢迎页共用）。
+ * 图标取自 MODE_ICONS，与侧栏模式切换、会话项标记保持同一图形。
  */
 const MODE_CARDS: ModeCard[] = [
   {
@@ -21,11 +22,6 @@ const MODE_CARDS: ModeCard[] = [
     desc: '即时问答、长文创作，多模态理解图文内容',
     to: '/chat',
     cta: '直接开始',
-    icon: (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z" />
-      </svg>
-    ),
   },
   {
     key: 'pro',
@@ -33,14 +29,6 @@ const MODE_CARDS: ModeCard[] = [
     desc: '自动拆解复杂问题，实时展示推理链路',
     to: '/pro',
     cta: '开始分析',
-    icon: (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <rect x="3" y="3" width="7" height="7" rx="1.5" />
-        <rect x="14" y="3" width="7" height="7" rx="1.5" />
-        <rect x="3" y="14" width="7" height="7" rx="1.5" />
-        <rect x="14" y="14" width="7" height="7" rx="1.5" />
-      </svg>
-    ),
   },
   {
     key: 'task',
@@ -48,12 +36,6 @@ const MODE_CARDS: ModeCard[] = [
     desc: 'Plan-and-Execute，自动规划多步操作',
     to: '/task',
     cta: '创建任务',
-    icon: (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <rect x="3" y="3" width="18" height="18" rx="2.5" />
-        <path d="M8 12l3 3 5-6" />
-      </svg>
-    ),
   },
 ];
 
@@ -101,23 +83,28 @@ export function ModeWelcome({
 
         {/* 核心功能触达路径：三种模式 */}
         <div className="chat-welcome-cards">
-          {MODE_CARDS.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              className="chat-welcome-card"
-              onClick={() => navigate(c.to)}
-              aria-label={`${c.title} · ${c.cta}`}
-            >
-              <span className="chat-welcome-card-icon">{c.icon}</span>
-              <span className="chat-welcome-card-title">{c.title}</span>
-              <span className="chat-welcome-card-desc">{c.desc}</span>
-              <span className="chat-welcome-card-cta">
-                {c.cta}
-                <span className="chat-welcome-card-arrow" aria-hidden>→</span>
-              </span>
-            </button>
-          ))}
+          {MODE_CARDS.map((c) => {
+            const Icon = MODE_ICONS[c.key];
+            return (
+              <button
+                key={c.key}
+                type="button"
+                className="chat-welcome-card"
+                onClick={() => navigate(c.to)}
+                aria-label={`${c.title} · ${c.cta}`}
+              >
+                <span className="chat-welcome-card-icon">
+                  <Icon size={22} aria-hidden="true" />
+                </span>
+                <span className="chat-welcome-card-title">{c.title}</span>
+                <span className="chat-welcome-card-desc">{c.desc}</span>
+                <span className="chat-welcome-card-cta">
+                  {c.cta}
+                  <span className="chat-welcome-card-arrow" aria-hidden>→</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* 新手引导：一键发送示例 */}

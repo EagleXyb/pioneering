@@ -627,6 +627,9 @@
  * 高度构成：10 +(6+24 输入行)+ 14 + 32 操作行 + 10 = 96
  * 断点：桌面默认 / ≤720px 平板 / ≤480px 手机逐级收敛 */
 .chat-input-card {
+  /* 技能/插件面板的锚点定位上下文：面板需与输入框等宽、贴其上沿
+     （锚点 .capability-anchor 以本卡片为包含块，见 CapabilityBar.css） */
+  position: relative;
   --ci-pad-y: 10px;
   --ci-pad-x: 10px;
   --ci-gap: 14px;
@@ -726,6 +729,15 @@
   color: var(--text-primary);
   background: var(--bg-input);
 }
+/* 去掉浏览器默认焦点描边（与 .model-select__trigger 同因）：
+ * 「+ 上传」是 Radix 菜单触发器，菜单关闭时会把焦点交还给按钮，
+ * 该程序化聚焦被 Chrome 判为 focus-visible，于是画出默认蓝圈。
+ * index.css 的 base 只重置了 input/textarea 的 outline，button 未重置。
+ * 键盘聚焦仍由上面的图标转深 + 浅灰圆底反馈。 */
+.chat-upload-btn:focus,
+.chat-upload-btn:focus-visible {
+  outline: none;
+}
 .chat-upload-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -772,6 +784,20 @@
   background: var(--border-medium);
   margin: 0 2px;
   flex: none;
+}
+
+/* ===== + 上传附件菜单（chat / pro / task 共用） =====
+ * 与 .model-select__menu 同规格：嵌套圆角 外层(16) = 行圆角(10) + 内边距(6)，内外同心。
+ * 必须显式覆盖 shadcn 默认的 p-1(4px) + rounded-md(≈4.8px)——否则内层行圆角
+ * 比外层容器还大，四角会"顶出来"。
+ * 行高沿用 shadcn 默认（py-1.5 ≈ 30px），仅统一圆角，不改变菜单高度。 */
+.chat-upload-menu {
+  min-width: 148px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+}
+.chat-upload-menu [role='menuitem'] {
+  border-radius: 10px;
 }
 
 /* 左下功能开关按钮 —— 无边框胶囊，选中为绿色填充 */

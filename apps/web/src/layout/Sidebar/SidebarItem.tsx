@@ -10,15 +10,12 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   Archive,
   Ellipsis,
-  LayoutGrid,
-  ListChecks,
   MessageSquare,
   Pencil,
   Pin,
   RotateCcw,
   Share,
   Trash2,
-  type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -28,13 +25,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MODE_ICONS } from '@/components/icons/modeIcons';
 import type { Conversation } from '../../store/conversationStore';
-
-const MODE_ICON: Record<Conversation['mode'], LucideIcon> = {
-  chat: MessageSquare,
-  pro: LayoutGrid,
-  task: ListChecks,
-};
 
 interface SidebarItemProps {
   conv: Conversation;
@@ -86,7 +78,7 @@ export function SidebarItem({
   // 重命名输入框上避免点击冒泡触发会话切换
   const stopSelect = (e: ReactMouseEvent) => e.stopPropagation();
 
-  const ModeIcon = MODE_ICON[conv.mode] ?? MessageSquare;
+  const ModeIcon = MODE_ICONS[conv.mode] ?? MessageSquare;
 
   return (
     <div
@@ -102,7 +94,7 @@ export function SidebarItem({
     >
       <div className="sidebar-item-inner">
         <span className="sidebar-item-mode-tag">
-          <ModeIcon style={{ width: 12, height: 12 }} strokeWidth={1.5} />
+          <ModeIcon size={12} />
         </span>
         {isRenaming ? (
           <input
@@ -132,13 +124,13 @@ export function SidebarItem({
               title="更多操作"
               onClick={stopSelect}
             >
-              <Ellipsis style={{ width: 14, height: 14 }} />
+              <Ellipsis size={14} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
             sideOffset={4}
-            className="min-w-[132px]"
+            className="sidebar-menu"
           >
             <DropdownMenuItem onSelect={startRename}>
               <Pencil />

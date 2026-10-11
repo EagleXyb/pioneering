@@ -6,9 +6,10 @@
  * 列表数据与勾选状态见 useSkillOptions（列表 GET /skills，按模式持久化）。
  */
 import { useMemo, useState } from 'react';
-import { Check, Search, Sparkles } from 'lucide-react';
+import { Check, ChevronRight, Pickaxe, Search, Sparkles } from 'lucide-react';
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
@@ -64,13 +65,25 @@ export function SkillPicker({ mode, disabled }: Props) {
           }
           title="选择技能"
         >
-          <Sparkles size={14} />
+          {/* chip 图标为 Pickaxe，线宽 1.75 与同排其它胶囊一致；
+              菜单列表行内的技能图标仍用 Sparkles */}
+          <Pickaxe size={14} strokeWidth={1.75} />
           技能
           {selected.length > 0 && (
             <span className="capability-chip__badge">{selected.length}</span>
           )}
+          {/* 展开箭头：常驻浅灰，语义为「打开面板」；按钮已由 aria-label 表达，故对读屏隐藏 */}
+          <ChevronRight
+            size={14}
+            className="capability-chip__chevron"
+            aria-hidden="true"
+          />
         </button>
       </PopoverTrigger>
+      {/* 面板锚点：盒子 = 输入框卡片，令面板与输入框等宽并贴其上沿。
+          必须放在 Trigger 之后：PopoverTrigger 自身也注册一个 Popper Anchor，
+          后注册者胜出，锚点在前会被触发器覆盖。 */}
+      <PopoverAnchor className="capability-anchor" />
       <PopoverContent
         align="start"
         side="top"

@@ -156,7 +156,7 @@ export function ChatInput({
                   <Plus size={17} strokeWidth={2.2} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
+              <DropdownMenuContent align="start" side="top" sideOffset={8} className="chat-upload-menu">
                 <DropdownMenuItem
                   onSelect={() => imageInputRef.current?.click()}
                 >
@@ -196,7 +196,9 @@ export function ChatInput({
               aria-pressed={r1Active}
               onClick={() => onR1Change(!r1Active)}
             >
-              <Brain size={13} />
+              {/* 图标 13px 与 12px 名称同级（同 .model-select__trigger 规格）；
+                  线宽 1.75 与模型选择胶囊的棕榈一致 */}
+              <Brain size={13} strokeWidth={1.75} />
               深度思考
             </button>
             <button
@@ -205,7 +207,7 @@ export function ChatInput({
               aria-pressed={netSearchActive}
               onClick={() => onNetSearchChange(!netSearchActive)}
             >
-              <Globe size={13} />
+              <Globe size={13} strokeWidth={1.75} />
               联网搜索
             </button>
           </div>

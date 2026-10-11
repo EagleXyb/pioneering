@@ -29,6 +29,15 @@
 .model-select__trigger:focus-visible:not(:disabled) {
   background: var(--bg-input);
 }
+/* 去掉浏览器默认焦点描边。
+ * 成因：Radix 在菜单关闭后会把焦点交还给触发器（键盘可达性所需），
+ * Chrome 对这次程序化聚焦判定为 focus-visible，于是画出默认蓝框。
+ * index.css 的 base 只重置了 input/textarea 的 outline，button 未重置，
+ * 故此处显式关闭；键盘聚焦仍由上面的浅灰底变化反馈。 */
+.model-select__trigger:focus,
+.model-select__trigger:focus-visible {
+  outline: none;
+}
 .model-select__trigger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -39,13 +48,15 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* 模型图标容器：尺寸由 TreePalm 的 size 属性（16px，与菜单项同尺寸）提供，
+   容器与图标同宽，避免"容器定尺寸 + 图标另定尺寸"的双份维护 */
 .model-select__logo {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 .model-select__name {
   min-width: 0;
@@ -53,10 +64,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 尺寸由 lucide 的 size 属性提供，此处只负责颜色与展开态旋转 */
 .model-select__chevron {
   flex: none;
-  width: 13px;
-  height: 13px;
   color: var(--text-tertiary);
   transition: transform 0.18s ease;
 }
@@ -64,51 +74,163 @@
   transform: rotate(180deg);
 }
 
-/* ---- 上弹菜单 ---- */
+/* ---- 上弹菜单（单行紧凑列表） ---- */
 .model-select__menu {
-  min-width: 264px;
-  max-width: 320px;
+  /* 详情卡以菜单为定位参照（对齐参照图：卡片位置不随高亮行跳动），
+     同时放开 shadcn 默认的 overflow: hidden，允许卡片向左溢出菜单边界。
+     注意：Radix 在 popper 外层 wrapper 上做定位，本元素本身未被定位，可安全设为 relative */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* 行间距：选中/悬停的圆角块相邻时会贴成一片，2px 即可分开（与技能/插件菜单同值）。
+     首行距容器仍有 6px 内边距，容器圆角(16) = 行圆角(10) + 内边距(6) 的同心关系不变 */
+  gap: 2px;
+  min-width: 240px;
+  max-width: 300px;
   padding: 6px;
+  overflow: visible;
+  /* 嵌套圆角：外层 = 行圆角(10) + 菜单内边距(6)，内外圆弧才同心；
+     同时与详情卡共用 --radius-lg，两块浮层视觉同族。
+     注意必须覆盖 shadcn 默认的 rounded-md(≈4.8px)——它比行圆角还小 */
+  border-radius: var(--radius-lg);
 }
 .model-select__menu .model-select__item {
-  gap: 9px;
-  padding: 8px 10px;
+  /* 单行行高 32px：与触发胶囊等高，且与 18px 标识、13px 名称相称 */
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
   cursor: pointer;
 }
+/* 选中项常驻高亮（与 hover 同底色，表达同一种「当前」语义） */
+.model-select__item[data-active] {
+  background: var(--bg-hover);
+}
+/* 行本体：标识 + 名称 + 选中勾；详情卡为绝对定位兄弟节点，不参与此行布局 */
+.model-select__item-row {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+/* 菜单项图标容器：承载 16px 标识，容器略宽于图标以留出左侧留白
+   （见 ModelSelect.tsx 的 size 传参） */
 .model-select__item-logo {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   color: var(--text-primary);
 }
-.model-select__item-main {
-  display: flex;
+/* 名称占满剩余宽度，超长省略；描述改由悬停详情卡呈现，不占行高 */
+.model-select__item-name {
   flex: 1;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.model-select__item-name {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.35;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.model-select__item-desc {
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-tertiary);
-  text-align: left;
-  white-space: normal;
-}
+/* 选中标记：列表最右侧 */
 .model-select__check {
   flex: none;
-  color: var(--accent-blue);
+  color: var(--accent-green);
 }
-.model-select__check.is-hidden {
-  visibility: hidden;
+
+/* ============================================================
+ * 模型详情卡（悬停浮层）
+ *
+ * 显隐由 [data-highlighted] 驱动：Radix 在鼠标悬停与键盘高亮时都会打上该属性，
+ * 因此键盘上下键切换也能看到卡片，无需任何 JS 状态。
+ * 纯展示内容 + pointer-events: none：不挡鼠标、不参与交互。
+ * 横向落位（左侧/右侧）由 JS 计算后经 data-card-side 透传，见 cardPlacement.ts：
+ * 默认在菜单右侧，右侧余量不足时翻到左侧，两侧都不足则收窄宽度，任何情况都不溢出视口。
+ * ============================================================ */
+.model-select__detail {
+  position: absolute;
+  /* 默认展开在菜单右侧 */
+  left: calc(100% + var(--detail-gap, 10px));
+  right: auto;
+  /* 底对齐菜单：菜单自输入框上方弹出，向上生长只会压到消息区，
+     不会遮挡下方的输入框 */
+  bottom: 0;
+  z-index: 10;
+  /* 220px：对齐参照图（悬停卡比列表更窄，标签与值不会被拉到两端） */
+  width: 220px;
+  /* 余量不足时按可用宽度收窄 */
+  max-width: var(--detail-max-width, 220px);
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  /* 圆角对齐参照图：圆角约 30 图像 px ≈ 15px（截图为 2x），取设计令牌 --radius-lg；
+     需明显大于菜单项自身圆角（10px）以体现浮层层次 */
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+.model-select__item[data-highlighted] .model-select__detail {
+  opacity: 1;
+}
+/* 翻到菜单左侧的变体（右侧余量不足时） */
+.model-select__menu[data-card-side='left'] .model-select__detail {
+  left: auto;
+  right: calc(100% + var(--detail-gap, 10px));
+}
+
+/* 卡片字号整体比列表小一档（列表名称 13px），把"待选项"与"补充说明"在字号上分清：
+   标题 12.5 / 描述 11.5 / 事实行 12 —— 全部小于列表的 13px */
+.model-select__detail-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+.model-select__detail-desc {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.model-select__detail-divider {
+  height: 1px;
+  margin: 12px 0;
+  background: var(--border-light);
+}
+
+.model-select__detail-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+.model-select__detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.model-select__detail-row dt {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.model-select__detail-row dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* 尊重系统"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  .model-select__detail {
+    transition: none;
+  }
 }

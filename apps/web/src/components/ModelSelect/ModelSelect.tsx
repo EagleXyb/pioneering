@@ -1,8 +1,9 @@
 /**
  * ModelSelect —— 输入框模型选择胶囊（chat / pro / task 三模式共用）
  *
- * 视觉：浅灰圆角胶囊 + 品牌标识 + 当前模型名 + 下箭头，
- * 点击上弹模型菜单（名称 + 描述，当前项打勾）。
+ * 视觉：浅灰圆角胶囊 + 统一模型图标 + 当前模型名 + 下箭头，
+ * 点击上弹模型菜单：单行紧凑列表（统一模型图标 + 名称 + 选中绿勾），
+ * 选中项常驻浅灰底；模型描述不占行高，挂在悬停提示上。
  * 数据与选择状态由 useModelOptions 管理（列表来自 /system/models，
  * 选择按模式持久化到 localStorage）。
  */
@@ -12,76 +13,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Check } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { Check, ChevronDown, TreePalm } from 'lucide-react';
 import { useModelOptions } from '@/hooks/useModelOptions';
 import type { AppMode } from '@/types';
+import { buildModelFacts } from './modelFacts';
+import { ModelDetailCard } from './ModelDetailCard';
+import {
+  CARD_GAP,
+  CARD_WIDTH,
+  resolveCardPlacement,
+  type CardPlacement,
+} from './cardPlacement';
 import './ModelSelect.css';
-
-/** 品牌标识：deepseek 为鲸形曲线，gpt 为六边节点，其余用通用菱形光斑 */
-function BrandMark({ id, size = 22 }: { id: string; size?: number }) {
-  if (id.startsWith('deepseek')) {
-    return (
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 48 48"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        {/* 尾鳍：两片，交汇于尾柄（右上） */}
-        <path d="M32.5 13.5C37 5.5 42.5 3 46 4.5" />
-        <path d="M32.5 13.5C40 11.5 44.5 12.5 46 16.5" />
-        {/* 背部大弧 → 左下头部 → 腹部向内回勾，呈螺旋鲸身 */}
-        <path d="M32.5 13.5C19.5 14.5 8.5 23 9.5 32c0.8 7 8 9 12.5 5.5 5-4 6.5-9.5 3-12.5" />
-        {/* 眼睛（挖空色，贴在输入卡片底色上） */}
-        <circle
-          cx="14"
-          cy="33"
-          r="1.7"
-          fill="var(--bg-card)"
-          stroke="none"
-        />
-      </svg>
-    );
-  }
-  if (id.startsWith('gpt')) {
-    return (
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 48 48"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={3.4}
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M30 5.5 39 10.75v10.5L30 26.5l-9-5.25v-10.5L30 5.5Z" />
-        <path d="M18 21.5 9 26.75v10.5L18 42.5l9-5.25v-10.5L18 21.5Z" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" />
-      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" />
-    </svg>
-  );
-}
 
 interface Props {
   mode: AppMode;
@@ -90,6 +35,9 @@ interface Props {
   selectedId?: string;
   onSelect?: (id: string) => void;
 }
+
+/** 定位完成前的默认落位：菜单右侧（与参照图一致） */
+const DEFAULT_PLACEMENT: CardPlacement = { side: 'right', maxWidth: CARD_WIDTH };
 
 export function ModelSelect({ mode, disabled, selectedId, onSelect }: Props) {
   const modelOptions = useModelOptions(mode);
@@ -101,13 +49,48 @@ export function ModelSelect({ mode, disabled, selectedId, onSelect }: Props) {
       name: activeId,
     };
 
+  // 详情卡以菜单为参照定位，故只需在菜单位置变化时重算落位
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<CardPlacement>(DEFAULT_PLACEMENT);
+
+  const syncPlacement = useCallback(() => {
+    const menu = menuRef.current;
+    if (!menu) return; // 菜单未打开（内容未挂载）
+    const rect = menu.getBoundingClientRect();
+    if (!rect.width) return; // Radix 尚未完成 popper 定位
+    const next = resolveCardPlacement({
+      menuLeft: rect.left,
+      menuRight: rect.right,
+      viewportWidth: window.innerWidth,
+    });
+    // 相同结果返回原对象，避免滚动时逐帧触发重渲染
+    setPlacement((prev) =>
+      prev.side === next.side && prev.maxWidth === next.maxWidth ? prev : next,
+    );
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('resize', syncPlacement);
+    // Radix 会在滚动时重新定位菜单，用捕获阶段覆盖内部滚动容器
+    window.addEventListener('scroll', syncPlacement, true);
+    return () => {
+      window.removeEventListener('resize', syncPlacement);
+      window.removeEventListener('scroll', syncPlacement, true);
+    };
+  }, [syncPlacement]);
+
   const handleSelect = (id: string) => {
     modelOptions.selectModel(id);
     onSelect?.(id);
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        // 打开后 Radix 才挂载并定位内容，下一帧再测量
+        if (open) requestAnimationFrame(syncPlacement);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -117,28 +100,30 @@ export function ModelSelect({ mode, disabled, selectedId, onSelect }: Props) {
           title="选择模型"
         >
           <span className="model-select__logo">
-            <BrandMark id={selectedModel.id} size={20} />
+            {/* 与菜单项同尺寸（16px）：收起态与展开态两处图标视觉重量一致 */}
+            <TreePalm size={16} strokeWidth={1.75} aria-hidden="true" />
           </span>
           <span className="model-select__name">{selectedModel.name}</span>
-          <svg
-            className="model-select__chevron"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
+          <ChevronDown size={14} className="model-select__chevron" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
+        ref={menuRef}
         align="end"
         side="top"
         sideOffset={8}
         className="model-select__menu"
+        /* 落位由 JS 计算后透传给 CSS（见 cardPlacement.ts） */
+        data-card-side={placement.side}
+        style={
+          {
+            '--detail-max-width': `${placement.maxWidth}px`,
+            '--detail-gap': `${CARD_GAP}px`,
+          } as CSSProperties
+        }
+        /* 指针进入 / 键盘聚焦时菜单必已定位，再同步一次以防打开瞬间测量偏早 */
+        onPointerEnter={syncPlacement}
+        onFocusCapture={syncPlacement}
       >
         {models.map((m) => {
           const active = m.id === activeId;
@@ -146,24 +131,28 @@ export function ModelSelect({ mode, disabled, selectedId, onSelect }: Props) {
             <DropdownMenuItem
               key={m.id}
               className="model-select__item"
+              /* 选中态：常驻浅灰底（CSS 用 [data-active] 命中） */
+              data-active={active || undefined}
               onSelect={() => handleSelect(m.id)}
               aria-label={m.name}
             >
-              <span className="model-select__item-logo">
-                <BrandMark id={m.id} size={18} />
-              </span>
-              <span className="model-select__item-main">
+              {/* 行本体：单行（标识 + 名称 + 选中勾）；详情卡绝对定位，不占行高 */}
+              <span className="model-select__item-row">
+                <span className="model-select__item-logo">
+                  {/* 菜单内所有模型统一用 tree-palm，不按品牌区分；
+                      16px / 1.75 线宽与触发胶囊同规格 */}
+                  <TreePalm size={16} strokeWidth={1.75} aria-hidden="true" />
+                </span>
                 <span className="model-select__item-name">{m.name}</span>
-                {m.description && (
-                  <span className="model-select__item-desc">
-                    {m.description}
-                  </span>
+                {active && (
+                  <Check
+                    size={15}
+                    className="model-select__check"
+                    aria-hidden="true"
+                  />
                 )}
               </span>
-              <Check
-                size={15}
-                className={`model-select__check${active ? '' : ' is-hidden'}`}
-              />
+              <ModelDetailCard model={m} facts={buildModelFacts(m, models)} />
             </DropdownMenuItem>
           );
         })}

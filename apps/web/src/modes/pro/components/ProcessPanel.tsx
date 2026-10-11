@@ -1,6 +1,8 @@
 import React from 'react';
 import { PanelRight } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
+import { StepStatusGlyph } from '@/components/icons/customIcons';
+import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 
 interface StepState {
   id: string;
@@ -39,13 +41,11 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
             aria-label="收起推理面板"
             data-tooltip="收起推理面板"
           >
-            <PanelRight width={18} height={18} />
+            <PanelRight size={18} />
           </button>
         </div>
         <div className="process-empty">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
-          </svg>
+          <EmptyStateGlyph variant="process" size={32} />
           <div className="process-empty-text">等待分析开始</div>
           <div className="process-empty-desc">Agent 推理步骤将在这里展示</div>
         </div>
@@ -67,7 +67,7 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
           aria-label="收起推理面板"
           data-tooltip="收起推理面板"
         >
-          <PanelRight width={18} height={18} />
+          <PanelRight size={18} />
         </button>
       </div>
 
@@ -77,9 +77,7 @@ export function ProcessPanel({ stateMap, currentStateKey }: Props) {
             <div className="process-step-indicator">
               <div className="process-step-circle">
                 {step.status === 'done' && (
-                  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 7l3 3 5-5" />
-                  </svg>
+                  <StepStatusGlyph status="done" size={12} />
                 )}
                 {step.status === 'running' && <div className="process-step-spinner" />}
               </div>

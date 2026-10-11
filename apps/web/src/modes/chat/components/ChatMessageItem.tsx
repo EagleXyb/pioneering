@@ -26,6 +26,12 @@ import { feedbackMessage } from '../../../api/message';
 import { useSourcesPanelStore } from '../../../store/sourcesPanelStore';
 import { Markdown } from '@/components/Markdown';
 import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import {
+  ReplayRotateIcon,
+  ShareForwardIcon,
+  ThinkingIcon,
+  type ActionIconProps,
+} from '@/components/icons/customIcons';
 import { SourceFavicon } from './SourcesPanel/SourceFavicon';
 
 interface Props {
@@ -51,30 +57,6 @@ function extractReasoning(content: AIMessageContent[] | undefined): string {
     .join('\n');
 }
 
-/** 思考标识图标（四瓣花造型，居中实心圆点），流式时由 CSS 加呼吸动画 */
-function ThinkingIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="19"
-      height="19"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      <g transform="rotate(45 12 12)">
-        <ellipse cx="12" cy="12" rx="3.5" ry="8.7" />
-      </g>
-      <g transform="rotate(-45 12 12)">
-        <ellipse cx="12" cy="12" rx="3.5" ry="8.7" />
-      </g>
-      <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 function getTextBlocks(message: ChatMessageData) {
   return (message.content ?? []).filter((c) => c.type === 'text' || c.type === 'markdown');
 }
@@ -84,60 +66,6 @@ function extractReferences(content: AIMessageContent[] | undefined): ReferenceIt
   const block = content?.find((c) => c.type === 'search');
   if (!block || block.type !== 'search') return [];
   return Array.isArray(block.data?.references) ? block.data.references : [];
-}
-
-/** 操作栏图标属性（与 lucide 图标用法对齐） */
-interface ActionIconProps {
-  size?: number;
-  className?: string;
-}
-
-/**
- * 分享：弧形转发箭头
- * 使用 round 圆角线帽/连接，与复制、赞、踩（lucide 图标圆角风格）保持统一；
- * stroke=currentColor 自动继承按钮灰色/hover/高亮色
- */
-function ShareForwardIcon({ size = 15, className }: ActionIconProps) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12.5 4L22 12L12.5 20V14.9C7.5 14.9 4 16.5 1.5 20C2.5 15 5.5 10 12.5 9L12.5 4Z" />
-    </svg>
-  );
-}
-
-/**
- * 重新生成：近闭合圆环 + 右侧顺时针箭头
- * 使用 round 圆角线帽/连接，与其他 lucide 图标的平滑风格一致；
- * stroke=currentColor 自动继承按钮颜色
- */
-function ReplayRotateIcon({ size = 15, className }: ActionIconProps) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21.1679 16C19.6248 19.5318 16.1006 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12L20 10.5" />
-    </svg>
-  );
 }
 
 export function ChatMessageItem({

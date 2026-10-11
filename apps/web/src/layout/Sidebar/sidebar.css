@@ -131,19 +131,20 @@
   height: 30px;
 }
 
-.sidebar-mode-btn svg {
-  width: 13px;
-  height: 13px;
-}
+/* 图标尺寸一律由 lucide 的 size 属性声明（CSS 的 width/height 会覆盖该属性，
+   双份声明会让改属性失效），此处不再定义尺寸 */
+
+/* Sidebar 行类元素统一 6px 圆角（会话行 / 新建会话 / 归档切换三个同宽同列的项），
+   与底部账号行使用的 --radius-sm 同值。嵌套在行内的小控件（⋯ 按钮、重命名输入框）仍用更小圆角。 */
 
 /* New Chat Button */
 .btn-new-chat {
   width: 225px;
-  height: 36px;
+  height: 34px;
   padding: 10px 14px;
   background: var(--bg-sidebar-hover);
   color: var(--text-primary);
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   display: flex;
@@ -156,10 +157,7 @@
   background: var(--bg-secondary);
 }
 
-.btn-new-chat svg {
-  width: 14px;
-  height: 14px;
-}
+
 
 /* Archive View Toggle Button */
 .btn-archive-toggle {
@@ -170,7 +168,7 @@
   background: transparent;
   color: var(--text-sidebar-dim);
   border: 1px solid var(--bg-sidebar-hover);
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   display: flex;
@@ -190,10 +188,7 @@
   border-color: var(--accent-blue);
 }
 
-.btn-archive-toggle svg {
-  width: 12px;
-  height: 12px;
-}
+
 
 /* Chat List */
 .sidebar-list {
@@ -220,8 +215,10 @@
   display: flex;
   align-items: center;
   padding: 8px 10px;
-  height: 36px;
-  border-radius: 4px;
+  /* 与 .btn-new-chat 同为 34px：两个行类元素等高 */
+  height: 34px;
+  /* 与 .btn-new-chat / .btn-archive-toggle 同为 6px：三者同宽同列，圆角需一致 */
+  border-radius: 6px;
   cursor: pointer;
   transition: background var(--transition-fast);
   margin-bottom: 2px;
@@ -297,7 +294,27 @@
   opacity: 1;
 }
 
+/* 菜单打开期间常驻显形：仅靠行 hover 时，鼠标移入菜单（离开该行）会让
+ * 触发按钮淡出，出现「菜单开着但按钮消失」的断裂感 */
+.sidebar-item-menu-trigger[data-state='open'] {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
 .sidebar-item-menu-trigger:hover {
+  color: var(--text-primary);
+  background: var(--bg-sidebar-active);
+}
+
+/* 键盘可达性 + 去掉浏览器默认描边：
+ * 本按钮是 DropdownMenu 触发器，菜单关闭时会收回焦点，鼠标选完
+ * 「重命名/归档」等项后会冒出浏览器蓝圈。这里改为「显形 + 底色」反馈
+ * （与输入区胶囊同一口径）。默认 opacity: 0，故聚焦时必须显形，
+ * 否则去掉描边后键盘用户完全看不到焦点位置。 */
+.sidebar-item-menu-trigger:focus,
+.sidebar-item-menu-trigger:focus-visible {
+  outline: none;
+  opacity: 1;
   color: var(--text-primary);
   background: var(--bg-sidebar-active);
 }
@@ -306,11 +323,22 @@
   display: block;
 }
 
-/* 会话行下拉菜单（shadcn DropdownMenu 已提供容器/浮层/动画样式，
-   这里只微调宽度与字号，贴合侧栏密度） */
-.sidebar-item-menu [role='menu'] {
+/* 会话行下拉菜单（shadcn DropdownMenu 已提供容器/浮层/动画样式）。
+ * 注意：浮层由 Radix Portal 挂到 body 上，不是 .sidebar-item-menu 的后代，
+ * 因此类名必须落在 DropdownMenuContent 元素上（原 `.sidebar-item-menu [role='menu']`
+ * 永远匹配不到，其 font-size: 13px 从未生效）。
+ * 嵌套圆角与 .model-select__menu 同规格：外层(16) = 行圆角(10) + 内边距(6) */
+.sidebar-menu {
   min-width: 132px;
-  font-size: 13px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+}
+.sidebar-menu [role='menuitem'] {
+  border-radius: 10px;
+}
+/* 分隔线保持通栏：内边距由 4 增到 6 后，shadcn 的 -mx-1 会留下 2px 内缩 */
+.sidebar-menu [role='separator'] {
+  margin-inline: -6px;
 }
 
 /* Footer / Account */
@@ -370,9 +398,13 @@
 }
 
 /* Account 下拉菜单（挂在 shadcn DropdownMenuContent 上，
-   容器底色/边框/浮层动画由 shadcn 提供，这里只定宽度与弹出原点） */
+   容器底色/边框/浮层动画由 shadcn 提供，这里定宽度/弹出原点/圆角）。
+   嵌套圆角与 .model-select__menu 同规格：外层(16) = 行圆角(10) + 内边距(6)。
+   分隔线与行文字同左缘：内边距 6 + 行内边距 10 = 16px，两者对齐关系不变 */
 .account-popover {
   min-width: 210px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
   transform-origin: bottom left;
 }
 
@@ -386,7 +418,7 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   transition: background var(--transition-fast), color var(--transition-fast);
   border: none;
   background: none;
@@ -418,7 +450,7 @@
   margin: 2px 0;
   min-height: 38px;
   padding: 0 10px;
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   transition: background var(--transition-fast);
 }
 
@@ -531,10 +563,12 @@
   color: var(--accent-red);
 }
 
-/* 触发器键盘可达性 */
+/* 触发器键盘可达性：不用描边（与悬浮层触发器统一口径）。
+ * 原为 2px accent-blue outline，但账号菜单关闭时会把焦点交还给本触发器，
+ * 鼠标操作后该描边会意外闪现；改为与 :hover 同款的常驻底色反馈。 */
 .sidebar-account-trigger:focus-visible {
-  outline: 2px solid var(--accent-blue);
-  outline-offset: 2px;
+  outline: none;
+  background: var(--bg-sidebar-hover);
 }
 
 /* ===== 会话列表状态 ===== */
@@ -579,6 +613,8 @@
 
 .sidebar-list-empty svg {
   margin-bottom: 8px;
+  /* 空态插图弱化为背景元素（原为内联 opacity 属性） */
+  opacity: 0.3;
 }
 
 .sidebar-status-text {

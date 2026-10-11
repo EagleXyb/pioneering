@@ -170,7 +170,7 @@ export function TaskInput({
                   <Plus size={17} strokeWidth={2.2} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" sideOffset={8} className="min-w-[148px]">
+              <DropdownMenuContent align="start" side="top" sideOffset={8} className="chat-upload-menu">
                 <DropdownMenuItem onSelect={() => imageInputRef.current?.click()}>
                   <ImageIcon />
                   上传图片

@@ -1,6 +1,7 @@
 import { usePlanExecuteStore } from '../../../store/planExecuteStore';
 import type { PlanItem } from '../../../store/planExecuteStore';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { StepStatusGlyph } from '@/components/icons/customIcons';
 
 /**
  * Plan-and-Execute 任务流水线主体组件（时间轴样式）
@@ -112,31 +113,13 @@ function extractStepResult(raw: string): string {
 }
 
 function StatusDot({ status }: { status: PlanItem['status'] }) {
-  if (status === 'done') {
-    return (
-      <svg width="8" height="8" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 7l3 3 5-5" />
-      </svg>
-    );
-  }
-  if (status === 'failed') {
-    return (
-      <svg width="8" height="8" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M4 4l6 6M10 4l-6 6" />
-      </svg>
-    );
-  }
-  if (status === 'skipped') {
-    return (
-      <svg width="8" height="8" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 7h8" />
-      </svg>
-    );
-  }
   if (status === 'running') {
     return <div className="timeline-dot-spinner" />;
   }
-  return null;
+  if (status === 'pending') {
+    return null;
+  }
+  return <StepStatusGlyph status={status} />;
 }
 
 interface TimelineItemProps {
@@ -244,7 +227,10 @@ export function PlanPipelineTree() {
     if (phase === 'error') {
       return (
         <div className="timeline-empty timeline-empty--error">
-          <div className="timeline-empty-icon">✕</div>
+          {/* strokeWidth 3：对齐原粗体 ✕ 字形的视觉重量（字号 14px / font-weight 700） */}
+          <div className="timeline-empty-icon">
+            <X size={16} strokeWidth={3} />
+          </div>
           <div className="timeline-empty-title">任务失败</div>
           {error && <div className="timeline-empty-detail">{error}</div>}
         </div>
@@ -275,7 +261,7 @@ export function PlanPipelineTree() {
       {/* 全局错误信息（plan 已收到但后续执行失败） */}
       {phase === 'error' && error && (
         <div className="timeline-global-error">
-          <span className="timeline-global-error-icon">✕</span>
+          <X size={14} strokeWidth={3} className="timeline-global-error-icon" />
           <span className="timeline-global-error-text">{error}</span>
         </div>
       )}

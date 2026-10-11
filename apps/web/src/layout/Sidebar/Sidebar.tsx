@@ -10,9 +10,6 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Archive,
-  LayoutGrid,
-  ListChecks,
-  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   SquarePen,
@@ -31,16 +28,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { MODE_ICONS } from '@/components/icons/modeIcons';
+import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import { SidebarItem } from './SidebarItem';
 import { AccountPopover } from './AccountPopover';
 import { ConfirmDialog } from './ConfirmDialog';
 import '../../styles/tokens.css';
 import './sidebar.css';
 
-const MODES = [
-  { id: 'chat' as const, label: '对话', hint: '对话模式', icon: MessageSquare },
-  { id: 'pro' as const, label: '分析', hint: '分析模式', icon: LayoutGrid },
-  { id: 'task' as const, label: '任务', hint: '任务模式', icon: ListChecks },
+const MODES: ReadonlyArray<{ id: AppMode; label: string; hint: string }> = [
+  { id: 'chat', label: '对话', hint: '对话模式' },
+  { id: 'pro', label: '分析', hint: '分析模式' },
+  { id: 'task', label: '任务', hint: '任务模式' },
 ];
 
 export function Sidebar() {
@@ -239,7 +238,7 @@ export function Sidebar() {
 
           <div className="sidebar-mode-switcher" role="tablist" aria-label="模式切换">
             {MODES.map((m) => {
-              const Icon = m.icon;
+              const Icon = MODE_ICONS[m.id];
               return (
                 <Tooltip key={m.id}>
                   <TooltipTrigger asChild>
@@ -249,7 +248,7 @@ export function Sidebar() {
                       aria-selected={mode === m.id}
                       onClick={() => handleSwitchMode(m.id)}
                     >
-                      <Icon style={{ width: 14, height: 14 }} strokeWidth={1.5} />
+                      <Icon size={14} />
                       {m.label}
                     </button>
                   </TooltipTrigger>
@@ -262,7 +261,7 @@ export function Sidebar() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button className="btn-new-chat" onClick={handleNewConversation}>
-                <SquarePen size={16} strokeWidth={1.5} />
+                <SquarePen size={14} />
                 新建会话
               </button>
             </TooltipTrigger>
@@ -275,7 +274,8 @@ export function Sidebar() {
             onClick={handleToggleArchived}
             aria-pressed={archivedView}
           >
-            <Archive size={16} strokeWidth={1.5} />
+            {/* 与 30px 高的次级按钮同刻度（低于新建会话的 14px） */}
+            <Archive size={12} />
             {archivedView ? '返回活跃会话' : '归档会话'}
           </button>
         </div>
@@ -318,11 +318,7 @@ export function Sidebar() {
           {/* 空列表 */}
           {!loading && !error && conversations.length === 0 && (
             <div className="sidebar-list-status sidebar-list-empty">
-              <MessageSquare
-                size={28}
-                strokeWidth={1.2}
-                style={{ opacity: 0.3 }}
-              />
+              <EmptyStateGlyph variant="chat" size={28} />
               <p className="sidebar-status-text">暂无会话</p>
             </div>
           )}

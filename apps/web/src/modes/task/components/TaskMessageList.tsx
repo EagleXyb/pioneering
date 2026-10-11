@@ -11,6 +11,11 @@ import { useScrollToMessage } from '@/hooks/useScrollToMessage';
 import { extractCodeBlocks, isPreviewable } from '@/components/ArtifactPreview/extractCodeBlocks';
 import { Markdown } from '@/components/Markdown';
 import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import {
+  ShareForwardIcon,
+  type ActionIconProps,
+} from '@/components/icons/customIcons';
+import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import type { ChatMessageData } from '@/api/converter';
 import { useArtifactStore } from '@/store/artifactStore';
 import type { AgentRunData } from '@/api/agent';
@@ -141,32 +146,6 @@ function MessageContent({ msg, text }: { msg: ChatMessagesData; text: string }) 
         );
       })}
     </div>
-  );
-}
-
-/** 操作栏图标属性 */
-interface ActionIconProps {
-  size?: number;
-  className?: string;
-}
-
-/** 分享：弧形转发箭头，风格与其他操作图标统一 */
-function ShareForwardIcon({ size = 15, className }: ActionIconProps) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12.5 4L22 12L12.5 20V14.9C7.5 14.9 4 16.5 1.5 20C2.5 15 5.5 10 12.5 9L12.5 4Z" />
-    </svg>
   );
 }
 
@@ -390,10 +369,7 @@ export function TaskMessageList({
     return (
       <div className="task-messages-empty">
         <div className="task-empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <rect x="1" y="1" width="22" height="22" rx="2"/>
-            <path d="M7 8h10M7 12h6M7 16h8"/>
-          </svg>
+          <EmptyStateGlyph variant="task" />
         </div>
         <div className="task-empty-title">发送一条消息开始任务</div>
         <div className="task-empty-desc">Agent 将自动规划并执行多步骤操作</div>

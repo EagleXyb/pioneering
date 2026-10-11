@@ -215,6 +215,11 @@
   height: 100%;
 }
 
+/* 无会话空态插图：弱化为背景元素（原为内联 opacity 属性） */
+.task-empty-glyph {
+  opacity: 0.4;
+}
+
 .task-empty h2 {
   font-size: 20px;
   font-weight: 600;
@@ -296,10 +301,10 @@
 
 .timeline-global-error-icon {
   color: var(--accent-red, #ef4444);
-  font-weight: 700;
-  font-size: 12px;
   flex-shrink: 0;
-  line-height: 1.5;
+  /* 父级 align-items: flex-start，与 12px/1.5（行盒 18px）的文案居中对齐：
+     (18 - 14) / 2 = 2px */
+  margin-top: 2px;
 }
 
 .timeline-global-error-text {

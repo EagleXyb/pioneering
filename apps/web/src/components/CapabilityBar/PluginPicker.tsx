@@ -6,10 +6,11 @@
  * 数据与启停逻辑见 useMcpPlugins（打开菜单时刷新一次，实时为准）。
  */
 import { useMemo, useState } from 'react';
-import { Check, Puzzle, Search } from 'lucide-react';
+import { Cable, Check, ChevronRight, Puzzle, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
@@ -65,13 +66,23 @@ export function PluginPicker({ disabled }: Props) {
           }
           title="选择插件"
         >
-          <Puzzle size={14} />
+          {/* chip 图标为 Cable，线宽 1.75 与技能 / 模型胶囊一致；
+              菜单列表行内的插件图标仍用 Puzzle */}
+          <Cable size={14} strokeWidth={1.75} />
           插件
           {connectedCount > 0 && (
             <span className="capability-chip__badge">{connectedCount}</span>
           )}
+          {/* 展开箭头：同技能胶囊（常驻浅灰）；按钮已由 aria-label 表达，故对读屏隐藏 */}
+          <ChevronRight
+            size={14}
+            className="capability-chip__chevron"
+            aria-hidden="true"
+          />
         </button>
       </PopoverTrigger>
+      {/* 面板锚点：必须放在 Trigger 之后（Trigger 也注册 Popper Anchor，后注册者胜出） */}
+      <PopoverAnchor className="capability-anchor" />
       <PopoverContent
         align="start"
         side="top"
