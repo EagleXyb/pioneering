@@ -670,16 +670,47 @@ export class AGUIStateMachine {
 
   // ---- 工具调用事件 ----
 
+  /**
+   * 工具调用开始（按 toolCallId **幂等**）。
+   *
+   * 同一次工具调用会被上游多条路径触发：
+   *   - EventBridge 的 tool_call_start SSE 事件（更新流的侧路，只有 id/name，无参数）；
+   *   - agent 节点的权威 updates（完整 AIMessage.tool_calls，带 args）。
+   * 早期实现每次调用都发一遍 TOOL_CALL_START，前端因此渲染出「带目标 + 裸动作」两行，
+   * 且裸行（无参数、无观测）永远等不到结果，表现为一条永远无法展开的动作行。
+   *
+   * 去重规则：同一 id 只开一行；后续调用仅在「此前无参数且未补发过」时补发一次
+   * TOOL_CALL_ARGS（复用权威参数），避免重复参数把前端 args 串接坏。
+   */
   emit_tool_call_start(tool_id: string, tool_name: string, args_str: string = '{}'): (AGUIEvent | string)[] {
     const events: (AGUIEvent | string)[] = []
-    this.pending_tool_calls[tool_id] = { tool_name, arguments: args_str }
+    const args = args_str ?? ''
+    const hasArgs = args.length > 0 && args !== '{}'
+
+    const existing = this.pending_tool_calls[tool_id]
+    if (existing) {
+      const argsAlreadyEmitted = existing['args_emitted'] === true
+      if (hasArgs && !argsAlreadyEmitted) {
+        if (tool_name && !existing['tool_name']) existing['tool_name'] = tool_name
+        existing['arguments'] = args
+        existing['args_emitted'] = true
+        events.push(this._emit(AGUIEventType.TOOL_CALL_ARGS, { toolCallId: tool_id, delta: args }))
+      }
+      return events
+    }
+
+    this.pending_tool_calls[tool_id] = {
+      tool_name,
+      arguments: args,
+      args_emitted: hasArgs,
+    }
     events.push(this._emit(AGUIEventType.TOOL_CALL_START, {
       toolCallId: tool_id,
       toolCallName: tool_name,
       parentMessageId: this.message_id,
     }))
-    if (args_str && args_str !== '{}') {
-      events.push(this._emit(AGUIEventType.TOOL_CALL_ARGS, { toolCallId: tool_id, delta: args_str }))
+    if (hasArgs) {
+      events.push(this._emit(AGUIEventType.TOOL_CALL_ARGS, { toolCallId: tool_id, delta: args }))
     }
     return events
   }
