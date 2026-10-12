@@ -3,14 +3,14 @@
  *
  * 截图同款交互：
  * - 顶部一行“深度思考 + 箭头”的下拉框，默认隐藏繁琐的推理轨迹，保留可追溯性
- * - 展开后为引用式排版（浅灰底 + 左侧竖线），与正文段落形成清晰的层级区分
+ * - 展开后为轻引用排版（左侧 2px 细竖线 + 中灰正文），与正文段落形成清晰的层级区分
  * - 流式期间自动展开并跟随最新内容（图标呼吸提示）；本段结束后自动收起
  *   （仅响应“流式 → 终态”的跃迁，用户手动展开后不再被打断）
  *
  * 一个 ReAct 轮次对应一个实例：多轮叙述在消息正文里与工具动作行交错排列。
  */
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { Markdown } from '@/components/Markdown';
 import { ThinkingIcon } from '@/components/icons/customIcons';
 import './taoBlocks.css';
@@ -53,7 +53,7 @@ export function ReasoningBlock({ text, streaming = false }: Props) {
       >
         <ThinkingIcon className="tao-reasoning-icon" />
         <span className="tao-reasoning-title">深度思考</span>
-        <ChevronDown size={14} strokeWidth={2.2} className="tao-reasoning-chevron" />
+        <ChevronRight size={14} strokeWidth={2.2} className="tao-reasoning-chevron" />
       </button>
 
       <div

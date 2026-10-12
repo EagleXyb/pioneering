@@ -24,7 +24,8 @@
   background: transparent;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text-secondary);
+  /* 标题浅于正文：层级由左侧竖线承担（对齐参考图） */
+  color: var(--text-tertiary);
   cursor: pointer;
   user-select: none;
   border-radius: 8px;
@@ -64,8 +65,9 @@
   transition: transform var(--transition-fast);
 }
 
+/* 收起态朝右、展开态朝下（与 chat 思考块、参考图一致） */
 .tao-reasoning.is-open .tao-reasoning-chevron {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 /* 展开/折叠容器：grid 0fr→1fr 高度过渡（双向平滑） */
@@ -91,15 +93,15 @@
   min-height: 0;
 }
 
-/* 引用式内容块：浅灰底 + 左侧竖线（与正文形成层级区分） */
+/* 引用式内容块：仅保留左侧细竖线（去灰底/圆角，轻引用风格）
+ * 层级全靠一条 2px 浅灰线划分，正文与正文回复同字号、中灰色 */
 .tao-reasoning-body {
-  margin: 4px 0 2px;
-  padding: 10px 14px;
-  background: var(--bg-input);
-  border-left: 3px solid var(--border-medium);
-  border-radius: 4px var(--radius-sm) var(--radius-sm) 4px;
-  color: var(--text-tertiary);
-  font-size: 13.5px;
+  margin: 2px 0 4px;
+  /* 左线由 border 承担；右侧 8px 给内部滚动条留呼吸空间 */
+  padding: 0 8px 0 12px;
+  border-left: 2px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 14px;
   line-height: 1.75;
   /* 最大高度 350px：超出后内部滚动查看 */
   max-height: 350px;
@@ -107,8 +109,25 @@
   overscroll-behavior: contain;
 }
 
+/* Markdown 渲染层继承思考正文的中灰色（不用 tertiary，保证可读性） */
 .tao-reasoning-body .chat-markdown {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+}
+
+/* 降噪：标题与加粗比正文深一档（参考图：小标题为深色，正文为中灰）；
+ * 等宽文本保持中性灰、不抢焦点（去掉全局紫色） */
+.tao-reasoning-body .chat-markdown h1,
+.tao-reasoning-body .chat-markdown h2,
+.tao-reasoning-body .chat-markdown h3,
+.tao-reasoning-body .chat-markdown h4,
+.tao-reasoning-body .chat-markdown strong {
+  color: var(--text-primary);
+}
+
+.tao-reasoning-body .chat-markdown :not(pre) > code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
 }
 
 /* ===== 工具动作行（Action / Observation） ===== */
@@ -206,11 +225,155 @@
   word-break: break-word;
 }
 
+/* ===== 搜索结果卡片（WorkBuddy 风格：浅灰圆角卡片 + 来源列表） ===== */
+.tao-tool-result-card {
+  margin: 6px 0 4px;
+  padding: 10px 12px 8px;
+  /* 比 bg-input 更轻一档，弱化卡片存在感、突出标题内容 */
+  background: color-mix(in srgb, var(--bg-input) 62%, var(--bg-secondary));
+  border-radius: 10px;
+}
+
+.tao-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tao-source-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 站点图标：favicon 加载失败 / 无域名时回退首字母色块（尺寸由本类统一） */
+.tao-source-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.tao-source-icon--letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  user-select: none;
+}
+
+.tao-source-link {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.tao-source-link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 卡内页脚：来源信息 + 复制 / 原始数据（可追溯性入口，默认低存在感） */
+.tao-tool-result-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-light);
+}
+
+.tao-tool-result-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.tao-tool-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tao-tool-result-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.tao-tool-result-action:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.tao-tool-result-raw-chevron {
+  transition: transform var(--transition-fast);
+}
+
+.tao-tool-result-raw-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.tao-tool-result-raw-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.tao-tool-result-raw-wrap.is-open {
+  grid-template-rows: 1fr;
+}
+
+.tao-tool-result-raw-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.tao-tool-result-raw {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-code);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 尊重系统“减少动态效果”设置 */
 @media (prefers-reduced-motion: reduce) {
   .tao-reasoning-body-wrap,
   .tao-reasoning-chevron,
-  .tao-tool-chevron {
+  .tao-tool-chevron,
+  .tao-tool-result-raw-chevron,
+  .tao-tool-result-raw-wrap {
     transition: none;
     transform: none;
   }

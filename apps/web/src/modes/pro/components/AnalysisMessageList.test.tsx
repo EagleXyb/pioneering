@@ -178,6 +178,55 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
     expect(screen.getByText('观察')).toBeInTheDocument();
   });
 
+  it('联网搜索观测展开为来源卡片（WorkBuddy 风格），原始数据可追溯', () => {
+    const searchMessage = {
+      id: 'a-search',
+      role: 'assistant' as const,
+      status: 'complete' as const,
+      content: [
+        {
+          type: 'toolcall' as const,
+          data: {
+            toolCallId: 't2',
+            toolCallName: 'search_engine',
+            args: '{"query":"Harness Engineering"}',
+            result: JSON.stringify({
+              tool: 'search_engine',
+              status: 'success',
+              data: {
+                results: [
+                  { title: 'Harness Engineering 定义', url: 'https://example.com/a', source: 'bing' },
+                  { title: '上下文工程实践', url: 'https://example.org/b', source: 'bing' },
+                ],
+                source: 'bing',
+              },
+            }),
+          },
+          status: 'complete' as const,
+          ext: { collapsed: true },
+        },
+      ],
+    };
+
+    render(<AnalysisMessageList status="complete" messages={[searchMessage as never]} />);
+
+    // 动作行摘要：动词（联网搜索）+ 目标对象
+    const row = screen.getByRole('button', { name: /联网搜索 Harness Engineering/ });
+    fireEvent.click(row);
+
+    // 来源列表：标题可点开原文 + 引擎来源信息
+    const link = screen.getByRole('link', { name: /Harness Engineering 定义/ });
+    expect(link).toHaveAttribute('href', 'https://example.com/a');
+    expect(screen.getByText('上下文工程实践')).toBeInTheDocument();
+    expect(screen.getByText('来源：bing')).toBeInTheDocument();
+
+    // 原始数据默认收起，点击后可展开追溯
+    const rawToggle = screen.getByRole('button', { name: /原始数据/ });
+    expect(rawToggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(rawToggle);
+    expect(rawToggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('同一消息内思考/行动/正文按块顺序交错渲染', () => {
     const { container } = render(
       <AnalysisMessageList status="complete" messages={[taoMessage as never]} />,
