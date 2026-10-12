@@ -70,10 +70,17 @@ export type SSEEventType =
   | 'plan_created'
   | 'step_update'
 
-/** thinking 事件 payload */
+/**
+ * thinking 事件 payload。
+ *
+ * status 语义：
+ *   - `started` / `ended`：AI 消息轮次的开始/结束**标记**（本身不带内容）；
+ *   - `delta`：模型真实思维链增量（reasoning_content 旁路），content 必填。
+ * 消费方（agui-adapter）只在 delta 到达时开启思考段，避免空段。
+ */
 export interface ThinkingSSEPayload {
   type: 'thinking'
-  data: { status: 'started' | 'ended' }
+  data: { status: 'started' | 'delta' | 'ended'; content?: string }
 }
 
 /** tool_call_start 事件 payload */
@@ -179,7 +186,7 @@ export class LangGraphEventBridge {
    * 同时透传原始事件供上游消费（如 SSE 输出）。
    */
   async *consume(
-    graphStream: AsyncGenerator<Record<string, any>>,
+    graphStream: AsyncIterable<Record<string, any>>,
   ): AsyncGenerator<Record<string, any>> {
     let eventIdx = 0
     // 修复（流式热路径性能）：consume 在 messages 模式下对每个 token chunk 执行一次，
@@ -350,13 +357,21 @@ export class LangGraphEventBridge {
    * 发射 SSE 细粒度事件。
    *
    * 支持的事件类型：
-   * - thinking：LLM 推理开始
+   * - thinking：LLM 推理开始 / 思维链增量（status=delta，reasoning-sink 旁路）
    * - tool_call_start：工具调用开始
    * - tool_result：工具执行结果
    */
   _emitSseEvents(event: Record<string, any>): SSEPayload[] {
     const sseEvents: SSEPayload[] = []
     const eventType = event.type || ''
+
+    // reasoning-sink 旁路 → thinking 增量（模型真实思维链，LangChain 层已丢弃该字段）
+    if (eventType === 'reasoning_delta') {
+      const delta = String((event.data as any)?.delta ?? '')
+      if (!delta) return sseEvents
+      sseEvents.push({ type: 'thinking', data: { status: 'delta', content: delta } })
+      return sseEvents
+    }
 
     // messages stream 开始 → thinking 事件
     if (eventType === 'messages') {

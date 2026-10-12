@@ -404,6 +404,16 @@ type AGUIEvent = Record<string, string>
 // AGUIStateMachine（对应 Python AGUIStateMachine）
 // ============================================================
 
+/**
+ * 「最终回答」早期判定阈值（字符数）。
+ *
+ * 背景：同一消息内 content 先流、tool_calls 后流，因此只有消息结束才能确定
+ * 该走 thinking（中间轮叙述，系统提示词要求"一句话"）还是 text（最终回答）。
+ * 原实现严格等消息结束 → 最终回答被整段积压，长回答表现为"卡住后整段蹦出"。
+ * 超过本阈值仍无 tool_calls 时按最终回答逐段直发（阈值覆盖一句话叙述的长度）。
+ */
+const _TEXT_STREAM_MIN_CHARS = 160
+
 export class AGUIStateMachine {
   trace_id: string
   message_id: string
@@ -427,6 +437,11 @@ export class AGUIStateMachine {
   private _buf_msg_id = ''
   private _buf_content = ''
   private _buf_has_tool_calls = false
+  /**
+   * 缓冲内容已判定为「最终回答」并转入逐段直发（见 _maybe_early_stream_text）。
+   * 为 true 时不再重复投递内容，flush 阶段只做状态收尾。
+   */
+  private _buf_streaming_text = false
 
   constructor(trace_id: string, message_id: string, output_format: string = 'dict') {
     this.trace_id = trace_id
@@ -463,6 +478,11 @@ export class AGUIStateMachine {
 
   emit_thinking(content: string, chunk_size = 30): (AGUIEvent | string)[] {
     const events: (AGUIEvent | string)[] = []
+    // 空内容不开段也不下发：EventBridge 的 started/ended 只是轮次状态标记，
+    // 早期实现把它们也喂进本方法，导致每次 run 前后各多出一个"幽灵空思考段"。
+    if (!content) {
+      return events
+    }
     if (!this.thinking_started) {
       this.thinking_round += 1
       events.push(
@@ -546,7 +566,7 @@ export class AGUIStateMachine {
     if (msgId && msgId === this._buf_msg_id) {
       this._buf_content += content
       if (chunkToolCalls) this._buf_has_tool_calls = true
-      return []
+      return this._maybe_early_stream_text()
     }
 
     // 消息 id 变化：先冲刷上一段缓冲，再开启新缓冲
@@ -554,6 +574,38 @@ export class AGUIStateMachine {
     this._buf_msg_id = msgId
     this._buf_content = content
     this._buf_has_tool_calls = chunkToolCalls
+    this._buf_streaming_text = false
+    return [...events, ...this._maybe_early_stream_text()]
+  }
+
+  /**
+   * 早期直发：缓冲长度明显超过「中间轮叙述」的量级（系统提示词要求中间轮只允许
+   * 一句话）且仍未出现 tool_calls 时，判定为最终回答 —— 立即把已缓冲内容作为
+   * text 下发，后续增量逐段直发，避免长回答被整段积压到流结束才一次性下发。
+   *
+   * 一旦进入直发模式，同一消息的后续 chunk 直接逐段下发（不再缓冲）。
+   *
+   * 权衡：若模型违反提示词、先写长叙述再发起工具调用，该段内容会作为正文显示
+   * （已下发的事件无法回收）；阈值 160 字符覆盖常见的中/英文一句话叙述。
+   */
+  private _maybe_early_stream_text(): (AGUIEvent | string)[] {
+    if (this._buf_streaming_text) {
+      const events = this._buf_content ? this.emit_text_content(this._buf_content) : []
+      this._buf_content = ''
+      return events
+    }
+    if (this._buf_has_tool_calls || this._buf_content.length < _TEXT_STREAM_MIN_CHARS) {
+      return []
+    }
+
+    const events: (AGUIEvent | string)[] = []
+    if (this.thinking_started) {
+      const te = this.emit_thinking_end()
+      if (te !== null) events.push(te)
+    }
+    this._buf_streaming_text = true
+    events.push(...this.emit_text_content(this._buf_content))
+    this._buf_content = ''
     return events
   }
 
@@ -561,9 +613,9 @@ export class AGUIStateMachine {
    * 冲刷消息缓冲：根据缓冲消息是否带 tool_calls，
    * 将其 content 路由到 thinking（中间轮叙述）或 text（最终回答）。
    *
-   * 每个中间轮叙述**独立成一个 thinking 段**（先关闭上一段，再开新段）：
-   * 前端与落库侧的块序列因此是「深度思考段 ↔ 工具调用」精确交错的 TAO 闭环，
-   * 可逐轮还原「阅读资料 → 判断类型 → 导出内容 → 数据清洗」的任务链路。
+   * 「一轮 = 一个 thinking 段」：中间轮叙述与其真实思维链（reasoning delta）
+   * 同段追加，随后立即收尾；下一轮的 CoT 到达时另开新段。前端与落库侧因此是
+   * 「深度思考段 ↔ 工具调用」精确交错的 TAO 闭环，可逐轮还原任务链路。
    * （早期实现把多轮叙述首尾粘连为一大段，无法与工具调用对齐，已废弃。）
    *
    * @param authoritativeToolCalls 可选。来自 updates 事件的权威 tool_calls 判定，
@@ -575,23 +627,36 @@ export class AGUIStateMachine {
     const content = this._buf_content
     const hasToolCalls =
       authoritativeToolCalls !== undefined ? authoritativeToolCalls : this._buf_has_tool_calls
+    const alreadyStreamed = this._buf_streaming_text
 
     // 重置缓冲
     this._buf_msg_id = ''
     this._buf_content = ''
     this._buf_has_tool_calls = false
+    this._buf_streaming_text = false
+
+    if (alreadyStreamed) {
+      // 内容已随流直发到 text 通道（判定为最终回答）；若权威判定事后表明该轮
+      // 其实是中间轮（模型先写长叙述再调工具），已下发内容无法回收，
+      // 这里只关闭可能仍开启的思考段，保持事件序列自洽。
+      if (hasToolCalls && this.thinking_started) {
+        const te = this.emit_thinking_end()
+        if (te !== null) events.push(te)
+      }
+      return events
+    }
 
     if (!content) {
       return events
     }
 
     if (hasToolCalls) {
-      // 中间轮叙述 → thinking 通道，每轮一个独立段
-      if (this.thinking_started) {
-        const te = this.emit_thinking_end()
-        if (te !== null) events.push(te)
-      }
+      // 中间轮叙述 → thinking 通道，与模型真实思维链（reasoning delta）同段：
+      // 本轮 CoT 可能已开段，直接追加；随后立即收尾，使「一轮 = 一个思考段」，
+      // 下一轮 CoT 到达时会自然开新段（段与工具动作行保持交错）。
       events.push(...this.emit_thinking(content))
+      const te = this.emit_thinking_end()
+      if (te !== null) events.push(te)
     } else {
       // 最终回答 → text 通道（若 thinking 仍开启，先关闭）
       if (this.thinking_started) {
@@ -1426,7 +1491,19 @@ export class AGUIStreamAdapter {
     // --- SSE 细粒度事件（由 EventBridge 生成） ---
 
     if (event_type === 'thinking') {
-      return sm.emit_thinking('')
+      // status 语义见 event-bridge.ThinkingSSEPayload：
+      //   delta   → 模型真实思维链增量（reasoning_content 旁路），开段并按需分包下发
+      //   ended   → 关闭当前思考段（早期实现会把它当成新段开场，产生幽灵空段）
+      //   started → 纯状态标记，待 delta 到达时再开段（避免空段）
+      const thinking = (event.data ?? {}) as { status?: string; content?: string }
+      if (thinking.status === 'delta') {
+        return sm.emit_thinking(String(thinking.content ?? ''))
+      }
+      if (thinking.status === 'ended') {
+        const end = sm.emit_thinking_end()
+        return end === null ? [] : [end]
+      }
+      return []
     }
 
     if (event_type === 'tool_call_start') {

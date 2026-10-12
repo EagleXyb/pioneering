@@ -22,6 +22,7 @@ import { ChatOpenAI } from '@langchain/openai'
 
 import type { RuntimeConfig } from '../../config/runtime-config.js'
 import { getConfig } from '../../config/runtime-config.js'
+import { current_reasoning_sink } from './reasoning-sink.js'
 import type { LLMProviderConfig, LLMProviderSpec } from '../../core/interfaces/llm-provider.js'
 import { getRegistry, type ComponentRegistry } from '../../core/registry.js'
 import {
@@ -94,6 +95,60 @@ function _resolveProviderEnv(
 }
 
 /**
+ * SSE 旁路嗅探：把 provider 流式响应中的 reasoning_content 增量送回当前 run。
+ *
+ * 必要性：`@langchain/openai` 的 `_convertDeltaToMessageChunk` 只保留
+ * content / tool_calls（reasoning_content 被丢弃），agent 通道因此拿不到
+ * 模型真实思维链 —— 在前端表现为「深度思考」段为空。
+ *
+ * 语义等价性：仅做只读旁路，不改写任何字节 ——
+ *   - 无 sink（非本 run / 非流式）或非 SSE 响应：原样返回，零开销；
+ *   - 有 sink：响应体经 TransformStream 逐块透传，旁路解析 `data:` 行。
+ */
+export function _withReasoningTap(baseFetch: typeof fetch): typeof fetch {
+  const tapped = async (input: any, init?: any): Promise<Response> => {
+    // 在请求入口捕获 sink：后续 transform 回调不依赖微任务上下文继承
+    const sink = current_reasoning_sink()
+    const response = await baseFetch(input, init)
+    if (!sink || !response.body) return response
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('text/event-stream')) return response
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    const tap = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        // 先透传，再旁路解析（解析成本极低，且失败不影响主链路）
+        controller.enqueue(chunk)
+        buffer += decoder.decode(chunk, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const rawLine of lines) {
+          const line = rawLine.trim()
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (!payload || payload === '[DONE]') continue
+          try {
+            const delta = (JSON.parse(payload) as any)?.choices?.[0]?.delta
+            const rc = delta?.reasoning_content
+            if (typeof rc === 'string' && rc) sink(rc)
+          } catch {
+            // 心跳 / 注释 / 非 JSON 行：忽略
+          }
+        }
+      },
+    })
+
+    return new Response(response.body.pipeThrough(tap), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    })
+  }
+  return tapped as typeof fetch
+}
+
+/**
  * 内置 provider 的实际构造回调（唯一 ChatModel 构造入口）。
  *
  * 保留改造前的全部行为：
@@ -132,7 +187,8 @@ const _buildChatModel: ChatModelBuilder = (
       // 发完 [DONE] 正常关闭连接时会误报 "Premature close"（ERR_STREAM_PREMATURE_CLOSE，
       // 见 node-fetch fixResponseChunkedTransferBadEnding）。改用 Node 22 内置
       // undici fetch（能正确处理该场景），规避 DeepSeek 流式调用失败。
-      fetch: globalThis.fetch as typeof fetch,
+      // 同时挂载 reasoning_content 旁路（LangChain 会丢弃该字段，见 _withReasoningTap）。
+      fetch: _withReasoningTap(globalThis.fetch as typeof fetch),
     },
     model,
     temperature: effectiveTemp,

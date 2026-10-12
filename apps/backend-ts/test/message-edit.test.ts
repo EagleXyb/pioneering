@@ -70,6 +70,8 @@ function mockPrisma() {
     userQuota: {
       findUnique: vi.fn(async () => null),
       update: vi.fn(async () => ({})),
+      // 用量记账走 upsert（旧用户无配额行时按需建行）
+      upsert: vi.fn(async () => ({})),
     },
     tokenUsage: { create: vi.fn(async () => ({})) },
   }

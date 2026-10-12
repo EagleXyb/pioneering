@@ -11,6 +11,7 @@ type Overrides = {
 
 function mockPrisma(o: Overrides = {}) {
   const quotaUpdate = vi.fn(async () => ({}))
+  const quotaUpsert = vi.fn(async () => ({}))
   const tokenCreate = vi.fn(async (_arg: unknown) => ({}))
   const quotaRecordUpdate = vi.fn(async () => ({}))
 
@@ -20,11 +21,12 @@ function mockPrisma(o: Overrides = {}) {
         o.quota === undefined ? null : o.quota,
       ),
       update: quotaUpdate,
+      upsert: quotaUpsert,
     },
     tokenUsage: { create: tokenCreate },
   }
 
-  return { prisma, quotaUpdate, tokenCreate, quotaRecordUpdate }
+  return { prisma, quotaUpdate, quotaUpsert, tokenCreate, quotaRecordUpdate }
 }
 
 describe('checkQuota', () => {
@@ -93,7 +95,6 @@ describe('checkQuota', () => {
 describe('recordUsage', () => {
   it('写入 token_usage（用真实 usage）', async () => {
     const { prisma, tokenCreate } = mockPrisma()
-    prisma.userQuota.update = vi.fn(async () => ({}))
 
     await recordUsage(prisma as never, {
       userId: 'u1',
@@ -120,7 +121,6 @@ describe('recordUsage', () => {
 
   it('无 usage 时按 length/4 估算', async () => {
     const { prisma, tokenCreate } = mockPrisma()
-    prisma.userQuota.update = vi.fn(async () => ({}))
 
     await recordUsage(prisma as never, {
       userId: 'u1',
@@ -139,10 +139,33 @@ describe('recordUsage', () => {
     expect(arg.data.totalTokens).toBe(30)
   })
 
-  it('配额记录更新失败（无记录）不阻断', async () => {
+  it('旧用户无配额行：按需建行并累计用量（upsert，不再报 Record to update not found）', async () => {
+    const { prisma, quotaUpsert } = mockPrisma()
+
+    await recordUsage(prisma as never, {
+      userId: 'u1',
+      sessionId: 's1',
+      messageId: 'm1',
+      model: 'm',
+      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+      promptText: '',
+      completionText: '',
+    })
+
+    expect(quotaUpsert).toHaveBeenCalledWith({
+      where: { userId: 'u1' },
+      create: { userId: 'u1', usedTokens: BigInt(30), dailyUsed: BigInt(30) },
+      update: {
+        usedTokens: { increment: BigInt(30) },
+        dailyUsed: { increment: BigInt(30) },
+      },
+    })
+  })
+
+  it('配额记账失败不阻断（token_usage 仍写入）', async () => {
     const { prisma, tokenCreate } = mockPrisma()
-    prisma.userQuota.update = vi.fn(async () => {
-      throw new Error('no quota row')
+    prisma.userQuota.upsert = vi.fn(async () => {
+      throw new Error('quota write failed')
     })
 
     await expect(

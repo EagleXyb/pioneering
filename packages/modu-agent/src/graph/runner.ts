@@ -34,6 +34,7 @@ import type { SpanHandle } from '../observability/tracing.js'
 import { get_span_manager } from '../observability/tracing.js'
 import { get_metrics_registry } from '../observability/metrics.js'
 import { LangGraphEventBridge } from './adapters/event-bridge.js'
+import { run_with_reasoning_sink } from './adapters/reasoning-sink.js'
 import type { ModuGraph } from './graph.js'
 import { makeInitialState, migrate_state } from './state.js'
 
@@ -403,6 +404,69 @@ async function* _normalizeLangGraphStream(
 }
 
 /**
+ * 事件通道：把「后台推入的事件」与「消费者拉取」解耦的异步队列。
+ *
+ * 用途：图流由后台任务驱动（pump），思维链增量由图流之外的 fetch 旁路推入；
+ * 两类事件在同一个通道里按到达顺序排队，消费者逐条 yield，
+ * 从而保证「深度思考」增量与 ReAct 轮次事件严格按时间交错。
+ */
+class _StreamChannel<T> implements AsyncIterable<T> {
+  private _items: T[] = []
+  private _waiters: Array<{
+    resolve: (r: IteratorResult<T>) => void
+    reject: (e: unknown) => void
+  }> = []
+  private _done = false
+  private _error: unknown = null
+
+  push(item: T): void {
+    const waiter = this._waiters.shift()
+    if (waiter) waiter.resolve({ value: item, done: false })
+    else this._items.push(item)
+  }
+
+  /** 记录失败并结束：挂起的等待者直接以该错误拒绝（AbortError 等必须透传给调用方） */
+  fail(error: unknown): void {
+    this._error = error
+    this._done = true
+    this._settleWaiters()
+  }
+
+  /** 正常结束：挂起的等待者以 done 收尾 */
+  close(): void {
+    this._done = true
+    this._settleWaiters()
+  }
+
+  private _settleWaiters(): void {
+    while (this._waiters.length > 0) {
+      const waiter = this._waiters.shift()!
+      if (this._error) waiter.reject(this._error)
+      else waiter.resolve({ value: undefined as unknown as T, done: true })
+    }
+  }
+
+  next(): Promise<IteratorResult<T>> {
+    // 已到达的事件优先投递，之后再暴露结束/错误（保证事件不丢）
+    if (this._items.length > 0) {
+      return Promise.resolve({ value: this._items.shift()!, done: false })
+    }
+    if (this._done) {
+      return this._error
+        ? Promise.reject(this._error)
+        : Promise.resolve({ value: undefined as unknown as T, done: true })
+    }
+    return new Promise<IteratorResult<T>>((resolve, reject) => {
+      this._waiters.push({ resolve, reject })
+    })
+  }
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<T> {
+    return this as unknown as AsyncIterableIterator<T>
+  }
+}
+
+/**
  * 替代 Coordinator.stream_request()。
  *
  * 使用 LangGraph 原生 stream 实现流式输出，
@@ -476,19 +540,40 @@ export async function* stream_response(
     // T2.3：AbortSignal 透传——中止时上游 LLM 请求真正取消
     ...(signal ? { signal } : {}),
   })
-  const rawStream = await graph.stream(initialState, streamConfig)
-
-  // LangGraph JS stream 产出 [mode, chunk] 元组，bridge.consume 期望 {type, node, data} 对象，
-  // 需通过 _normalizeLangGraphStream 归一化后才能交给 EventBridge 消费。
-  const normalizedStream = _normalizeLangGraphStream(rawStream)
+  // 思维链旁路（reasoning-sink）：图执行期间的 reasoning_content 增量由 fetch
+  // 拦截器推入本通道；与归一化后的图事件按到达顺序合流，再统一交给 EventBridge
+  // 消费（→ thinking SSE 增量 → AG-UI THINKING_TEXT_MESSAGE_CONTENT）。
+  const channel = new _StreamChannel<Record<string, any>>()
+  const pump = run_with_reasoning_sink(
+    (delta) => channel.push({ type: 'reasoning_delta', data: { delta } }),
+    async () => {
+      try {
+        // LangGraph JS 的 stream() 返回 Promise<IterableReadableStream>（Promise 包裹的
+        // async iterable），必须先 await 解包才能遍历，否则会抛 "not async iterable"。
+        const rawStream = await graph.stream(initialState, streamConfig)
+        // LangGraph JS stream 产出 [mode, chunk] 元组，bridge.consume 期望 {type, node, data} 对象，
+        // 需通过 _normalizeLangGraphStream 归一化后才能交给 EventBridge 消费。
+        const normalizedStream = _normalizeLangGraphStream(rawStream)
+        for await (const event of normalizedStream) {
+          channel.push(event)
+        }
+      } catch (e) {
+        channel.fail(e)
+      } finally {
+        channel.close()
+      }
+    },
+  )
 
   // P2-9: span 埋点——流式响应的总耗时（生成器生命周期由调用者控制，用 try/finally 确保结束记录）
   const streamStart = performance.now()
   try {
-    for await (const event of bridge.consume(normalizedStream)) {
+    for await (const event of bridge.consume(channel)) {
       yield event
     }
   } finally {
+    // pump 自身不抛错（异常经 channel.fail 透传），这里仅避免悬空 Promise
+    void pump
     const elapsedMs = performance.now() - streamStart
     logger.info(
       'span.end: stream_response elapsed=%.2fms trace_id=%s user_id=%s session_id=%s',
