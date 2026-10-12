@@ -1,12 +1,22 @@
 /**
  * PluginPicker —— 输入框底部「插件」选择 chip（pro / task 共用）
  *
- * 插件 = MCP servers：菜单展示每个插件的连接状态与工具数，
+ * 插件 = MCP servers：菜单顶部为「添加插件 / 管理插件」功能入口
+ * （对齐豆包插件菜单），下方展示每个插件的连接状态与工具数，
  * 点击项即启用（连接）/ 停用（断开），结果经 sonner toast 反馈。
  * 数据与启停逻辑见 useMcpPlugins（打开菜单时刷新一次，实时为准）。
  */
 import { useMemo, useState } from 'react';
-import { Cable, Check, ChevronRight, Puzzle, Search } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  ArrowUpRight,
+  Cable,
+  Check,
+  ChevronRight,
+  Plus,
+  Puzzle,
+  Search,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Popover,
@@ -16,17 +26,21 @@ import {
 } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
 import { useMcpPlugins } from '@/hooks/useMcpPlugins';
+import { useSettingsDialogStore } from '@/store/settingsDialogStore';
 import type { McpServerStatus } from '@/api/mcp';
+import { AddPluginDialog } from './AddPluginDialog';
 
 interface Props {
   disabled?: boolean;
 }
 
 export function PluginPicker({ disabled }: Props) {
-  const { plugins, loading, error, busyName, refresh, togglePlugin } =
+  const { plugins, loading, error, busyName, refresh, togglePlugin, addPlugin } =
     useMcpPlugins();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const openSettings = useSettingsDialogStore((s) => s.openSettings);
 
   const connectedCount = plugins.filter((p) => p.connected).length;
 
@@ -50,6 +64,18 @@ export function PluginPicker({ disabled }: Props) {
     const res = await togglePlugin(plugin);
     if (res.ok) toast.success(res.message);
     else toast.error(`操作失败：${res.message}`);
+  };
+
+  /** 「添加插件」：关闭菜单后打开表单对话框 */
+  const handleOpenAdd = () => {
+    setOpen(false);
+    setAddOpen(true);
+  };
+
+  /** 「管理插件」：关闭菜单后打开设置对话框的 MCP 分区 */
+  const handleOpenManage = () => {
+    setOpen(false);
+    openSettings('mcp');
   };
 
   return (
@@ -89,6 +115,42 @@ export function PluginPicker({ disabled }: Props) {
         sideOffset={8}
         className="capability-menu"
       >
+        {/* 功能入口（对齐豆包插件菜单）：添加插件 / 管理插件，右侧 ↗ 表示跳转性操作 */}
+        <div className="capability-menu__actions">
+          <button
+            type="button"
+            className="capability-action"
+            onClick={handleOpenAdd}
+            aria-label="添加插件"
+          >
+            <Plus size={16} className="capability-action__icon" aria-hidden="true" />
+            <span className="capability-action__label">添加插件</span>
+            <ArrowUpRight
+              size={14}
+              className="capability-action__arrow"
+              aria-hidden="true"
+            />
+          </button>
+          <button
+            type="button"
+            className="capability-action"
+            onClick={handleOpenManage}
+            aria-label="管理插件"
+          >
+            <ArrowLeftRight
+              size={16}
+              className="capability-action__icon"
+              aria-hidden="true"
+            />
+            <span className="capability-action__label">管理插件</span>
+            <ArrowUpRight
+              size={14}
+              className="capability-action__arrow"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+
         <div className="capability-menu__list">
           {loading && (
             <div className="capability-menu__state">
@@ -114,7 +176,7 @@ export function PluginPicker({ disabled }: Props) {
             <div className="capability-menu__state">
               {query.trim()
                 ? '未找到匹配的插件'
-                : '暂无可用插件。在 modu-agent 配置 mcp.servers 后重启服务即可接入。'}
+                : '暂无已接入的插件，点击上方「添加插件」即可接入 MCP Server。'}
             </div>
           )}
 
@@ -169,6 +231,14 @@ export function PluginPicker({ disabled }: Props) {
           />
         </div>
       </PopoverContent>
+
+      {/* 添加插件表单：Popover Root 无 DOM 包装，对话框常驻挂载（open=false 不渲染内容），
+          提交由 useMcpPlugins.addPlugin 承接，成功后插件列表自动刷新 */}
+      <AddPluginDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSubmit={addPlugin}
+      />
     </Popover>
   );
 }

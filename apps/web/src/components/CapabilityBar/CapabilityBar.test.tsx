@@ -53,6 +53,7 @@ const pluginMock = vi.hoisted(() => ({
   },
   refresh: vi.fn(),
   togglePlugin: vi.fn(),
+  addPlugin: vi.fn(),
 }));
 
 vi.mock('@/hooks/useMcpPlugins', () => ({
@@ -63,10 +64,12 @@ vi.mock('@/hooks/useMcpPlugins', () => ({
     busyName: pluginMock.state.busyName,
     refresh: pluginMock.refresh,
     togglePlugin: pluginMock.togglePlugin,
+    addPlugin: pluginMock.addPlugin,
   }),
 }));
 
 import { CapabilityBar } from './CapabilityBar';
+import { useSettingsDialogStore } from '@/store/settingsDialogStore';
 
 const skillFixtures = [
   {
@@ -119,6 +122,8 @@ beforeEach(() => {
   pluginMock.state.error = null;
   pluginMock.state.busyName = null;
   pluginMock.togglePlugin.mockResolvedValue({ ok: true, message: '已启用插件 github' });
+  pluginMock.addPlugin.mockResolvedValue({ ok: true, message: '已添加插件 github' });
+  useSettingsDialogStore.setState({ open: false, section: 'general' });
 });
 
 describe('CapabilityBar 技能选择', () => {
@@ -278,12 +283,59 @@ describe('CapabilityBar 插件选择', () => {
     );
   });
 
-  it('无插件时展示接入引导空态', async () => {
+  it('无插件时展示接入引导空态（指向「添加插件」入口）', async () => {
     pluginMock.state.plugins = [];
     render(<CapabilityBar mode="task" />);
     fireEvent.click(screen.getByRole('button', { name: /^选择插件/ }));
 
-    expect(await screen.findByText(/暂无可用插件/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/暂无已接入的插件，点击上方「添加插件」/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('CapabilityBar 插件菜单功能入口（添加 / 管理）', () => {
+  it('菜单顶部渲染「添加插件 / 管理插件」入口，样式对齐豆包（图标 + 文案 + ↗）', async () => {
+    render(<CapabilityBar mode="task" />);
+    fireEvent.click(screen.getByRole('button', { name: /^选择插件/ }));
+
+    const addEntry = await screen.findByRole('button', { name: '添加插件' });
+    const manageEntry = screen.getByRole('button', { name: '管理插件' });
+
+    expect(addEntry.querySelector('svg.lucide-plus')).not.toBeNull();
+    expect(addEntry.querySelector('svg.lucide-arrow-up-right')).not.toBeNull();
+    expect(manageEntry.querySelector('svg.lucide-arrow-left-right')).not.toBeNull();
+    expect(manageEntry.querySelector('svg.lucide-arrow-up-right')).not.toBeNull();
+    // 入口位于列表上方（功能入口区在 .capability-menu__actions 内）
+    expect(addEntry.closest('.capability-menu__actions')).not.toBeNull();
+    expect(manageEntry.closest('.capability-menu__actions')).not.toBeNull();
+  });
+
+  it('点击「管理插件」关闭菜单并打开设置对话框的 MCP 分区', async () => {
+    render(<CapabilityBar mode="task" />);
+    fireEvent.click(screen.getByRole('button', { name: /^选择插件/ }));
+
+    fireEvent.click(await screen.findByRole('button', { name: '管理插件' }));
+
+    expect(useSettingsDialogStore.getState()).toMatchObject({
+      open: true,
+      section: 'mcp',
+    });
+    // 菜单已关闭
+    expect(screen.queryByText('github')).not.toBeInTheDocument();
+  });
+
+  it('点击「添加插件」关闭菜单并打开添加插件表单', async () => {
+    render(<CapabilityBar mode="task" />);
+    fireEvent.click(screen.getByRole('button', { name: /^选择插件/ }));
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加插件' }));
+
+    // Radix Dialog（portal）出现：标题、名称与命令输入、提交按钮
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('名称')).toBeInTheDocument();
+    expect(screen.getByLabelText('启动命令')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '添加' })).toBeInTheDocument();
   });
 });
 

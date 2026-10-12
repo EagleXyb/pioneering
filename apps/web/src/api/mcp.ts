@@ -27,9 +27,48 @@ export interface McpPolicy {
   sensitiveTools: string[];
 }
 
+/** 支持的传输方式（与后端 ALLOWED_TRANSPORTS 一致，ws 为 websocket 别名） */
+export type McpTransport =
+  | 'stdio'
+  | 'sse'
+  | 'streamable_http'
+  | 'websocket';
+
+/** 「添加插件」请求体：stdio 走 command/args/env/cwd，网络传输走 url */
+export interface AddMcpServerInput {
+  /** 插件（MCP server）名称，字母/数字/点/下划线/连字符，需唯一 */
+  name: string;
+  transport: McpTransport;
+  /** stdio：启动命令（如 npx / node / uvx） */
+  command?: string;
+  /** stdio：命令参数（逐项传递，不做 shell 解析） */
+  args?: string[];
+  /** stdio：工作目录（可选） */
+  cwd?: string;
+  /** stdio：环境变量键值对（可选） */
+  env?: Record<string, string>;
+  /** sse / streamable_http / websocket：服务地址 */
+  url?: string;
+  /** 添加后立即连接（默认 true；false 时仅写入配置） */
+  autoStart?: boolean;
+}
+
+export interface AddMcpServerResponse {
+  server: McpServerStatus;
+  /** 配置已写入但立即连接失败时的错误信息（缺失表示连接成功或未尝试连接） */
+  connectError?: string;
+}
+
 /** 获取已配置的 MCP servers 及连接状态 */
 export function getMcpServers(): Promise<McpServersResponse> {
   return get<McpServersResponse>('/mcp/servers');
+}
+
+/** 新增一个 MCP server（插件）配置，默认立即尝试连接 */
+export function addMcpServer(
+  input: AddMcpServerInput,
+): Promise<AddMcpServerResponse> {
+  return post<AddMcpServerResponse>('/mcp/servers', input);
 }
 
 /** 连接指定 MCP server */

@@ -6,12 +6,16 @@
  * - togglePlugin：启用 = 连接 server（POST /mcp/servers/:name/start），
  *   停用 = 断开（POST .../stop），成功后刷新列表；
  *   结果以 { ok, message } 返回，由调用方决定 toast 文案
+ * - addPlugin：新增插件（POST /mcp/servers，默认立即连接），成功后刷新列表；
+ *   配置已写入但自动连接失败时 ok 仍为 true 且 connectFailed 为 true
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  addMcpServer,
   getMcpServers,
   startMcpServer,
   stopMcpServer,
+  type AddMcpServerInput,
   type McpServerStatus,
 } from '../api/mcp';
 
@@ -29,6 +33,11 @@ export interface TogglePluginResult {
   message: string;
 }
 
+export interface AddPluginResult extends TogglePluginResult {
+  /** 配置已写入但自动连接失败（调用方宜以 warning 而非 success 展示） */
+  connectFailed?: boolean;
+}
+
 export interface UseMcpPluginsReturn {
   plugins: McpServerStatus[];
   loading: boolean;
@@ -37,6 +46,7 @@ export interface UseMcpPluginsReturn {
   busyName: string | null;
   refresh: () => Promise<void>;
   togglePlugin: (plugin: McpServerStatus) => Promise<TogglePluginResult>;
+  addPlugin: (input: AddMcpServerInput) => Promise<AddPluginResult>;
 }
 
 export function useMcpPlugins(): UseMcpPluginsReturn {
@@ -100,5 +110,34 @@ export function useMcpPlugins(): UseMcpPluginsReturn {
     [refresh],
   );
 
-  return { plugins, loading, error, busyName, refresh, togglePlugin };
+  const addPlugin = useCallback(
+    async (input: AddMcpServerInput): Promise<AddPluginResult> => {
+      try {
+        const resp = await addMcpServer(input);
+        await refresh();
+        const name = resp.server?.name ?? input.name;
+        if (resp.connectError) {
+          return {
+            ok: true,
+            connectFailed: true,
+            message: `插件 ${name} 已添加，但连接失败：${resp.connectError}`,
+          };
+        }
+        return {
+          ok: true,
+          message: resp.server?.connected
+            ? `已添加并连接插件 ${name}`
+            : `已添加插件 ${name}`,
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          message: errorMessage(e, '请稍后重试'),
+        };
+      }
+    },
+    [refresh],
+  );
+
+  return { plugins, loading, error, busyName, refresh, togglePlugin, addPlugin };
 }

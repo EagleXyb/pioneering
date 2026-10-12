@@ -5,6 +5,7 @@ import { TopNav } from './layout/TopNav/TopNav';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSourcesPanelStore } from './store/sourcesPanelStore';
+import { useSettingsDialogStore } from './store/settingsDialogStore';
 import { SourcesPanel } from './modes/chat/components/SourcesPanel/SourcesPanel';
 import { SourcesResizer } from './modes/chat/components/SourcesPanel/SourcesResizer';
 import './layout/AppShell.css';
@@ -17,6 +18,8 @@ const RegisterPage = lazy(() => import('./pages/auth/Register'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPassword'));
 const HelpPage = lazy(() => import('./pages/Help/HelpPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFound'));
+// 全局设置对话框：由 store 控制显隐（账号弹层 / 插件菜单「管理插件」共用同一实例）
+const SettingsDialog = lazy(() => import('./components/SettingsDialog'));
 
 function ModeFallback() {
   return <div className="mode-loading">加载中...</div>;
@@ -34,6 +37,9 @@ function AppLayout() {
   const isChatRoute = location.pathname.startsWith('/chat');
   const sourcesPanelOpen = useSourcesPanelStore((s) => s.open);
   const resetSourcesPanel = useSourcesPanelStore((s) => s.reset);
+  const settingsOpen = useSettingsDialogStore((s) => s.open);
+  const settingsSection = useSettingsDialogStore((s) => s.section);
+  const closeSettings = useSettingsDialogStore((s) => s.closeSettings);
 
   // 离开 /chat 时关闭来源面板，避免返回后意外恢复
   useEffect(() => {
@@ -62,6 +68,16 @@ function AppLayout() {
             )}
           </div>
         </div>
+        {/* 全局设置对话框（唯一实例）：账号弹层 / 插件菜单「管理插件」等入口经 store 唤起 */}
+        {settingsOpen && (
+          <Suspense fallback={null}>
+            <SettingsDialog
+              visible={settingsOpen}
+              initialSection={settingsSection}
+              onClose={closeSettings}
+            />
+          </Suspense>
+        )}
       </ErrorBoundary>
     </ProtectedRoute>
   );

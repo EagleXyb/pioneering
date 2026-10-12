@@ -16,8 +16,8 @@ import {
   UserRound,
 } from 'lucide-react';
 import { useTheme } from '../../store/themeContext';
+import { useSettingsDialogStore } from '../../store/settingsDialogStore';
 import { useAuth } from '../../hooks/useAuth';
-import SettingsDialog from '../../components/SettingsDialog';
 import {
   Avatar,
   AvatarFallback,
@@ -37,8 +37,8 @@ export function AccountPopover() {
   const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<string>('general');
+  // 设置对话框由 AppLayout 全局挂载（见 settingsDialogStore），这里只负责唤起
+  const openSettings = useSettingsDialogStore((s) => s.openSettings);
 
   const displayName = user?.nickname || user?.username || '未命名用户';
   const initial = (user?.nickname || user?.username || '?')
@@ -110,8 +110,7 @@ export function AccountPopover() {
             className="account-popover-item"
             onSelect={() => {
               resetBodyPointerEvents();
-              setSettingsSection('account');
-              setSettingsOpen(true);
+              openSettings('account');
             }}
           >
             <UserRound />
@@ -152,8 +151,7 @@ export function AccountPopover() {
             className="account-popover-item"
             onSelect={() => {
               resetBodyPointerEvents();
-              setSettingsSection('general');
-              setSettingsOpen(true);
+              openSettings('general');
             }}
           >
             <Settings />
@@ -164,8 +162,7 @@ export function AccountPopover() {
             className="account-popover-item"
             onSelect={() => {
               resetBodyPointerEvents();
-              setSettingsSection('help');
-              setSettingsOpen(true);
+              openSettings('help');
             }}
           >
             <CircleHelp />
@@ -194,12 +191,6 @@ export function AccountPopover() {
         description="确认退出当前账号吗？"
         confirmText="确认退出"
         onConfirm={() => void handleLogout()}
-      />
-
-      <SettingsDialog
-        visible={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        initialSection={settingsSection}
       />
     </>
   );

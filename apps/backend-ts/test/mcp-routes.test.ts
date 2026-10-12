@@ -2,6 +2,7 @@
  * MCP 管理路由单元测试（T5.1 / T5.2）
  *
  *   GET  /mcp/servers
+ *   POST /mcp/servers
  *   POST /mcp/servers/:name/start | stop
  *   GET  /mcp/policy
  *   PUT  /mcp/policy
@@ -49,6 +50,8 @@ vi.mock('@pioneering/modu-agent', () => ({
     },
     set: (key: string, value: unknown) => {
       if (key === 'mcp.enabled') mocks.state.mcpEnabled = value as boolean
+      if (key === 'mcp.servers')
+        mocks.state.servers = value as Array<Record<string, unknown>>
       if (key === 'tools.human_in_loop.enabled')
         mocks.state.hitlEnabled = value as boolean
       if (key === 'tools.human_in_loop.sensitive_tools')
@@ -135,6 +138,159 @@ describe('GET /mcp/servers', () => {
         },
       ],
     })
+  })
+})
+
+describe('POST /mcp/servers（添加插件）', () => {
+  it('stdio：写入配置、打开总开关、立即连接并返回工具', async () => {
+    const session = {
+      connected: true,
+      toolsCache: [{ rawName: 'echo', description: '回声' }],
+    }
+    mocks.connectServer.mockResolvedValue(session)
+
+    const app = await buildServer()
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: {
+        name: 'my-tool',
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', 'my-mcp'],
+        env: { TOKEN: 'x' },
+      },
+    })
+
+    expect(reply.statusCode).toBe(200)
+    expect(mocks.state.mcpEnabled).toBe(true)
+    expect(mocks.connectServer).toHaveBeenCalledTimes(1)
+    expect(mocks.resetCache).toHaveBeenCalledTimes(1)
+    expect(mocks.state.servers).toEqual([
+      {
+        name: 'my-tool',
+        transport: 'stdio',
+        enabled: true,
+        command: 'npx',
+        args: ['-y', 'my-mcp'],
+        env: { TOKEN: 'x' },
+      },
+    ])
+    expect(reply.json()).toEqual({
+      server: {
+        name: 'my-tool',
+        enabled: true,
+        transport: 'stdio',
+        connected: true,
+        toolCount: 1,
+        tools: [{ name: 'echo', description: '回声' }],
+      },
+    })
+  })
+
+  it('网络传输：url 写入配置，缺 url → 400', async () => {
+    const app = await buildServer()
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: 'remote', transport: 'sse' },
+    })
+    expect(bad.statusCode).toBe(400)
+
+    mocks.connectServer.mockRejectedValue(new Error('connect refused'))
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: 'remote', transport: 'sse', url: 'https://x/mcp' },
+    })
+    expect(ok.statusCode).toBe(200)
+    expect(mocks.state.servers).toEqual([
+      { name: 'remote', transport: 'sse', enabled: true, url: 'https://x/mcp' },
+    ])
+  })
+
+  it('autoStart=false：只写配置不连接', async () => {
+    const app = await buildServer()
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: {
+        name: 'offline',
+        transport: 'stdio',
+        command: 'node',
+        autoStart: false,
+      },
+    })
+
+    expect(reply.statusCode).toBe(200)
+    expect(mocks.connectServer).not.toHaveBeenCalled()
+    expect(reply.json()).toEqual({
+      server: {
+        name: 'offline',
+        enabled: true,
+        transport: 'stdio',
+        connected: false,
+        toolCount: 0,
+        tools: [],
+      },
+    })
+    // 配置已落地，仍会失效图缓存（下一次运行按最新拓扑重建）
+    expect(mocks.state.servers).toHaveLength(1)
+    expect(mocks.resetCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('连接失败：配置已写入且返回 connectError（200 不阻断）', async () => {
+    mocks.connectServer.mockRejectedValue(new Error('connect timeout'))
+
+    const app = await buildServer()
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: 'flaky', transport: 'stdio', command: 'node' },
+    })
+
+    expect(reply.statusCode).toBe(200)
+    const json = reply.json()
+    expect(json.connectError).toBe('connect timeout')
+    expect(json.server.connected).toBe(false)
+    expect(mocks.state.servers).toHaveLength(1)
+  })
+
+  it('参数非法：空名称 / 非法字符 / 非 stdio 缺 command / 已存在 → 4xx', async () => {
+    const app = await buildServer()
+
+    const empty = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: '  ', command: 'node' },
+    })
+    expect(empty.statusCode).toBe(400)
+
+    const badName = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: 'bad name!', command: 'node' },
+    })
+    expect(badName.statusCode).toBe(400)
+
+    const noCommand = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: 'x' },
+    })
+    expect(noCommand.statusCode).toBe(400)
+
+    mocks.state.servers = [{ name: 'dup', transport: 'stdio' }]
+    const dup = await app.inject({
+      method: 'POST',
+      url: '/mcp/servers',
+      payload: { name: 'dup', command: 'node' },
+    })
+    expect(dup.statusCode).toBe(409)
+
+    // 校验失败的请求不落配置、不建连接
+    expect(mocks.connectServer).not.toHaveBeenCalled()
+    expect(mocks.state.servers).toHaveLength(1)
   })
 })
 

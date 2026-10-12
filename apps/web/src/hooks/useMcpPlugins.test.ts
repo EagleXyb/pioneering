@@ -8,15 +8,17 @@ const api = vi.hoisted(() => ({
   getMcpServers: vi.fn(),
   startMcpServer: vi.fn(),
   stopMcpServer: vi.fn(),
+  addMcpServer: vi.fn(),
 }));
 
 vi.mock('../api/mcp', () => ({
   getMcpServers: api.getMcpServers,
   startMcpServer: api.startMcpServer,
   stopMcpServer: api.stopMcpServer,
+  addMcpServer: api.addMcpServer,
 }));
 
-import { useMcpPlugins } from './useMcpPlugins';
+import { useMcpPlugins, type AddPluginResult } from './useMcpPlugins';
 import type { McpServerStatus } from '../api/mcp';
 
 const disconnected: McpServerStatus = {
@@ -109,5 +111,100 @@ describe('useMcpPlugins', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe('服务不可用');
+  });
+});
+
+describe('useMcpPlugins.addPlugin', () => {
+  it('添加成功且已连接：返回成功文案并刷新列表', async () => {
+    api.getMcpServers
+      .mockResolvedValueOnce({ servers: [], total: 0 })
+      .mockResolvedValueOnce({ servers: [connected], total: 1 });
+    api.addMcpServer.mockResolvedValue({ server: connected });
+
+    const { result } = renderHook(() => useMcpPlugins());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const input = {
+      name: 'github',
+      transport: 'stdio' as const,
+      command: 'npx',
+    };
+    let res: AddPluginResult | undefined;
+    await act(async () => {
+      res = await result.current.addPlugin(input);
+    });
+
+    expect(api.addMcpServer).toHaveBeenCalledWith(input);
+    expect(res).toEqual({ ok: true, message: '已添加并连接插件 github' });
+    expect(result.current.plugins).toEqual([connected]);
+  });
+
+  it('配置已写入但连接失败：ok=true 且 connectFailed 提示', async () => {
+    api.getMcpServers
+      .mockResolvedValueOnce({ servers: [], total: 0 })
+      .mockResolvedValueOnce({ servers: [disconnected], total: 1 });
+    api.addMcpServer.mockResolvedValue({
+      server: disconnected,
+      connectError: 'connect timeout',
+    });
+
+    const { result } = renderHook(() => useMcpPlugins());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let res: AddPluginResult | undefined;
+    await act(async () => {
+      res = await result.current.addPlugin({
+        name: 'github',
+        transport: 'stdio',
+        command: 'npx',
+      });
+    });
+
+    expect(res).toEqual({
+      ok: true,
+      connectFailed: true,
+      message: '插件 github 已添加，但连接失败：connect timeout',
+    });
+    expect(result.current.plugins).toEqual([disconnected]);
+  });
+
+  it('未连接（autoStart=false）：成功文案不带连接承诺', async () => {
+    api.getMcpServers
+      .mockResolvedValueOnce({ servers: [], total: 0 })
+      .mockResolvedValueOnce({ servers: [disconnected], total: 1 });
+    api.addMcpServer.mockResolvedValue({ server: disconnected });
+
+    const { result } = renderHook(() => useMcpPlugins());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let res: AddPluginResult | undefined;
+    await act(async () => {
+      res = await result.current.addPlugin({
+        name: 'github',
+        transport: 'stdio',
+        command: 'npx',
+        autoStart: false,
+      });
+    });
+
+    expect(res).toEqual({ ok: true, message: '已添加插件 github' });
+  });
+
+  it('请求失败（重名 / 校验失败）：ok=false 与后端错误信息', async () => {
+    api.addMcpServer.mockRejectedValue(new Error('插件 github 已存在'));
+
+    const { result } = renderHook(() => useMcpPlugins());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let res: AddPluginResult | undefined;
+    await act(async () => {
+      res = await result.current.addPlugin({
+        name: 'github',
+        transport: 'stdio',
+        command: 'npx',
+      });
+    });
+
+    expect(res).toEqual({ ok: false, message: '插件 github 已存在' });
   });
 });

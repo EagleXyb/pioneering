@@ -1,0 +1,84 @@
+/* ============================================================
+ * AddPluginDialog —— 「添加插件」表单对话框
+ * 基于 ui/dialog（shadcn 基座），表单色板沿用 web tokens
+ * ============================================================ */
+
+/* 内容超高时可滚动（小视口 / 缩放场景） */
+.add-plugin-dialog {
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.add-plugin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.add-plugin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.add-plugin-field label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.add-plugin-field textarea {
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* 「添加后立即连接」开关行 */
+.add-plugin-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-input);
+}
+
+.add-plugin-switch-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.add-plugin-switch-row__title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.add-plugin-switch-row__desc {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.add-plugin-form__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--accent-red);
+}
+
+.add-plugin-form__note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+/* DialogFooter 是 form 的最后一个子元素：收紧与上方的间距 */
+.add-plugin-form > div:last-child {
+  margin-top: 2px;
+}
