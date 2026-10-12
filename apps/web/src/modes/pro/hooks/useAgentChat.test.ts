@@ -163,10 +163,66 @@ describe('useAgentChat', () => {
     const steps = Object.values(result.current.stateMap);
     expect(steps.every((s) => s.status === 'done')).toBe(true);
 
-    // assistant 消息应包含错误信息
-    const assistantMsg = result.current.messages[1];
-    expect(assistantMsg.role).toBe('assistant');
-    expect(assistantMsg.content![0].data).toContain('模型超时');
+    // assistant 消息：已产生的思考段保留，错误信息作为追加正文块落在序列尾部
+    const blocks = result.current.messages[1]!.content!;
+    expect(blocks[0]!.type).toBe('reasoning');
+    const last = blocks[blocks.length - 1]!;
+    expect(last.type).toBe('markdown');
+    expect(String(last.data)).toContain('模型超时');
+    expect(result.current.messages[1]!.status).toBe('error');
+  });
+
+  it('TAO 块序列：思考段与工具动作行按事件顺序交错写入消息 content', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createSSEResponse([
+        { type: 'THINKING_START', title: '深度思考', round: 1 },
+        { type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: '先加载技能。' },
+        { type: 'THINKING_END' },
+        { type: 'TOOL_CALL_START', toolCallId: 't1', toolCallName: 'library' },
+        { type: 'TOOL_CALL_ARGS', delta: '{"skill":"library"}' },
+        { type: 'TOOL_CALL_RESULT', toolCallId: 't1', toolCallName: 'library', content: '已加载' },
+        { type: 'THINKING_START', title: '深度思考', round: 2 },
+        { type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: '再核对节点。' },
+        { type: 'THINKING_END' },
+        { type: 'TEXT_MESSAGE_CONTENT', delta: '最终回答' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    );
+
+    const { result } = renderHook(() => useAgentChat('session-tao', false));
+
+    act(() => {
+      result.current.sendMessage({ prompt: '分析' });
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('complete');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // 块序列严格按到达顺序交错：思考 → 行动 → 思考 → 正文
+    const blocks = result.current.messages[1]!.content!;
+    expect(blocks.map((b) => b.type)).toEqual([
+      'reasoning',
+      'toolcall',
+      'reasoning',
+      'markdown',
+    ]);
+
+    // 动作行携带参数与观测结果（展开区数据源），并已收尾
+    const tool = blocks[1] as { status?: string; data?: Record<string, unknown> };
+    expect(tool.data?.toolCallName).toBe('library');
+    expect(tool.data?.args).toBe('{"skill":"library"}');
+    expect(tool.data?.result).toBe('已加载');
+    expect(tool.status).toBe('complete');
+
+    // 两个思考段互不粘连（各自独立成块）
+    const first = blocks[0] as { data?: Array<{ data?: string }> };
+    const second = blocks[2] as { data?: Array<{ data?: string }> };
+    expect(first.data?.[0]?.data).toBe('先加载技能。');
+    expect(second.data?.[0]?.data).toBe('再核对节点。');
   });
 
   it('无 activeId 时不发送消息', () => {

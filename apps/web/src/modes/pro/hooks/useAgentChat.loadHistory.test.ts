@@ -49,10 +49,13 @@ describe('useAgentChat — loadHistory（T3.1）', () => {
       id: 'm2',
       role: 'assistant',
     })
-    expect(result.current.messages[1]!.content![0]).toMatchObject({
-      type: 'markdown',
-      data: '历史回答',
-    })
+    // agent 通道：contentBlocks 还原为 TAO 交错序列（思考 → 动作行 → 正文兜底）
+    const blocks = result.current.messages[1]!.content!
+    expect(blocks.map((b) => b.type)).toEqual(['reasoning', 'toolcall', 'markdown'])
+    const tool = blocks[1] as { data?: Record<string, unknown> }
+    expect(tool.data?.toolCallName).toBe('search')
+    expect(tool.data?.result).toBe('搜索结果')
+    expect((blocks[2] as { data?: string }).data).toBe('历史回答')
 
     // T3.3：过程面板从 contentBlocks 还原
     const steps = Object.values(result.current.stateMap)

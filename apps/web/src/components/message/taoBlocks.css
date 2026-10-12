@@ -1,0 +1,221 @@
+/* ============================================================
+ * TAO 过程块样式（推理-行动-观察闭环，截图同款）
+ *
+ * - .tao-reasoning：折叠式“深度思考”面板（顶部下拉框 + 引用式内容）
+ * - .tao-tool：工具动作行（一行摘要 + 展开查看参数/观测）
+ *
+ * 设计意图：默认隐藏繁琐的 Agent 运行轨迹，只在正文中保留一行式节点，
+ * 需要时展开即可追溯完整过程（黑盒 → 可解释）。
+ * ============================================================ */
+
+/* ===== 深度思考折叠块 ===== */
+.tao-reasoning {
+  margin: 2px 0 10px;
+}
+
+.tao-reasoning-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 向左外扩点击热区，视觉上图标仍与正文对齐 */
+  padding: 4px 8px 4px 2px;
+  margin-left: -2px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.tao-reasoning-header:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.tao-reasoning-icon {
+  flex: none;
+}
+
+/* 流式生成中：图标呼吸提示 */
+.tao-reasoning.is-streaming .tao-reasoning-icon {
+  animation: tao-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes tao-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.tao-reasoning-chevron {
+  flex: none;
+  margin-left: 2px;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.tao-reasoning.is-open .tao-reasoning-chevron {
+  transform: rotate(180deg);
+}
+
+/* 展开/折叠容器：grid 0fr→1fr 高度过渡（双向平滑） */
+.tao-reasoning-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    grid-template-rows 0.22s ease,
+    opacity 0.18s ease,
+    transform 0.22s ease;
+}
+
+.tao-reasoning.is-open .tao-reasoning-body-wrap {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tao-reasoning-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 引用式内容块：浅灰底 + 左侧竖线（与正文形成层级区分） */
+.tao-reasoning-body {
+  margin: 4px 0 2px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border-left: 3px solid var(--border-medium);
+  border-radius: 4px var(--radius-sm) var(--radius-sm) 4px;
+  color: var(--text-tertiary);
+  font-size: 13.5px;
+  line-height: 1.75;
+  /* 最大高度 350px：超出后内部滚动查看 */
+  max-height: 350px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tao-reasoning-body .chat-markdown {
+  color: var(--text-tertiary);
+}
+
+/* ===== 工具动作行（Action / Observation） ===== */
+.tao-tool {
+  margin: 2px 0 10px;
+}
+
+.tao-tool-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 8px 4px 2px;
+  margin-left: -2px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.tao-tool-header:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tao-tool-header:disabled {
+  cursor: default;
+}
+
+.tao-tool-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* 执行中：图标呼吸 + 高亮，提示该节点尚未完成 */
+.tao-tool.is-streaming .tao-tool-icon {
+  color: var(--accent-blue);
+  animation: tao-pulse 1.4s ease-in-out infinite;
+}
+
+.tao-tool-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tao-tool-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.tao-tool.is-open .tao-tool-chevron {
+  transform: rotate(90deg);
+}
+
+.tao-tool-detail {
+  margin: 4px 0 0 25px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tao-tool-detail-label {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+
+.tao-tool-detail-pre {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-code);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 尊重系统“减少动态效果”设置 */
+@media (prefers-reduced-motion: reduce) {
+  .tao-reasoning-body-wrap,
+  .tao-reasoning-chevron,
+  .tao-tool-chevron {
+    transition: none;
+    transform: none;
+  }
+  .tao-reasoning.is-streaming .tao-reasoning-icon,
+  .tao-tool.is-streaming .tao-tool-icon {
+    animation: none;
+  }
+}

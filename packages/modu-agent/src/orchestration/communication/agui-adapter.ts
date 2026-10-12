@@ -94,7 +94,7 @@ export interface AGUIEventPayloadMap {
   TEXT_MESSAGE_CONTENT: { messageId: string; delta: string }
   TEXT_MESSAGE_END: { messageId: string }
   TEXT_MESSAGE_CHUNK: { messageId: string; delta: string }
-  THINKING_START: { title: string }
+  THINKING_START: { title: string; round?: number }
   THINKING_END: Record<string, never>
   THINKING_TEXT_MESSAGE_START: { messageId: string; role?: string }
   THINKING_TEXT_MESSAGE_CONTENT: { delta: string }
@@ -414,6 +414,8 @@ export class AGUIStateMachine {
   has_error = false
   response_text = ''
   collected_text = ''
+  /** 已开启的思考段轮次（多轮 ReAct 的顺序锚点，随 THINKING_START 递增并随事件下发） */
+  thinking_round = 0
 
   pending_tool_calls: Record<string, Record<string, any>> = {}
   tool_call_records: ToolCallRecord[] = []
@@ -462,7 +464,13 @@ export class AGUIStateMachine {
   emit_thinking(content: string, chunk_size = 30): (AGUIEvent | string)[] {
     const events: (AGUIEvent | string)[] = []
     if (!this.thinking_started) {
-      events.push(this._emit(AGUIEventType.THINKING_START, { title: '深度思考' }))
+      this.thinking_round += 1
+      events.push(
+        this._emit(AGUIEventType.THINKING_START, {
+          title: '深度思考',
+          round: this.thinking_round,
+        }),
+      )
       this.thinking_started = true
     }
     if (content) {
@@ -553,6 +561,11 @@ export class AGUIStateMachine {
    * 冲刷消息缓冲：根据缓冲消息是否带 tool_calls，
    * 将其 content 路由到 thinking（中间轮叙述）或 text（最终回答）。
    *
+   * 每个中间轮叙述**独立成一个 thinking 段**（先关闭上一段，再开新段）：
+   * 前端与落库侧的块序列因此是「深度思考段 ↔ 工具调用」精确交错的 TAO 闭环，
+   * 可逐轮还原「阅读资料 → 判断类型 → 导出内容 → 数据清洗」的任务链路。
+   * （早期实现把多轮叙述首尾粘连为一大段，无法与工具调用对齐，已废弃。）
+   *
    * @param authoritativeToolCalls 可选。来自 updates 事件的权威 tool_calls 判定，
    *   优先于流式 chunk 累积的 _buf_has_tool_calls（因为流式 chunk 的 tool_calls
    *   可能晚于 content 到达，updates 里完整 AIMessage 的 tool_calls 才是权威）。
@@ -573,11 +586,12 @@ export class AGUIStateMachine {
     }
 
     if (hasToolCalls) {
-      // 中间轮叙述 → thinking 通道
-      // thinking_started 在整个运行期间持续为 true，恰好可用作"已有前轮叙述"的判定：
-      // 合流新一轮叙述前插入轮次分隔，避免多轮叙述首尾粘连（如 "...news.我已经..."）。
-      const sep = this.thinking_started ? '\n\n' : ''
-      events.push(...this.emit_thinking(sep + content))
+      // 中间轮叙述 → thinking 通道，每轮一个独立段
+      if (this.thinking_started) {
+        const te = this.emit_thinking_end()
+        if (te !== null) events.push(te)
+      }
+      events.push(...this.emit_thinking(content))
     } else {
       // 最终回答 → text 通道（若 thinking 仍开启，先关闭）
       if (this.thinking_started) {

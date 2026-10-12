@@ -99,6 +99,107 @@ describe('AnalysisMessageList 空回复兜底', () => {
   });
 });
 
+describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
+  const taoMessage = {
+    id: 'a-tao',
+    role: 'assistant' as const,
+    status: 'complete' as const,
+    content: [
+      {
+        type: 'reasoning' as const,
+        data: [{ type: 'text' as const, data: '先加载技能。', status: 'complete' as const }],
+        status: 'complete' as const,
+        ext: { collapsed: false },
+      },
+      {
+        type: 'toolcall' as const,
+        data: {
+          toolCallId: 't1',
+          toolCallName: 'library',
+          args: '{"skill":"library"}',
+          result: '{"ok":true}',
+        },
+        status: 'complete' as const,
+        ext: { collapsed: true },
+      },
+      { type: 'markdown' as const, data: '最终回答' },
+    ],
+  };
+
+  it('思考段渲染为“深度思考”折叠块（终态默认收起，可点击展开）', () => {
+    render(<AnalysisMessageList status="complete" messages={[taoMessage as never]} />);
+
+    const header = screen.getByRole('button', { name: /深度思考/ });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('先加载技能。')).toBeInTheDocument();
+  });
+
+  it('流式思考段默认展开（用户可实时看到推理推进）', () => {
+    render(
+      <AnalysisMessageList
+        status="streaming"
+        messages={[
+          {
+            id: 'a-stream',
+            role: 'assistant',
+            status: 'streaming',
+            content: [
+              {
+                type: 'reasoning',
+                data: [{ type: 'text', data: '推理中…', status: 'complete' }],
+                status: 'streaming',
+              },
+            ],
+          } as never,
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /深度思考/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('工具调用渲染为一行式动作摘要，展开可见参数与观察（截图交互）', () => {
+    render(<AnalysisMessageList status="complete" messages={[taoMessage as never]} />);
+
+    // 默认只有一行摘要：动词 + 目标对象
+    const toolRow = screen.getByRole('button', { name: /加载技能/ });
+    expect(toolRow).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('参数')).toBeNull();
+
+    fireEvent.click(toolRow);
+    expect(toolRow).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('参数')).toBeInTheDocument();
+    expect(screen.getByText('观察')).toBeInTheDocument();
+  });
+
+  it('同一消息内思考/行动/正文按块顺序交错渲染', () => {
+    const { container } = render(
+      <AnalysisMessageList status="complete" messages={[taoMessage as never]} />,
+    );
+
+    // 只看消息主体的顶层子节点（排除操作栏 / 执行轨迹）
+    const body = container.querySelector('.chat-msg-ai-body')!;
+    const classes = Array.from(body.children)
+      .map((n) =>
+        n.classList.contains('tao-reasoning')
+          ? 'reasoning'
+          : n.classList.contains('tao-tool')
+            ? 'tool'
+            : n.classList.contains('chat-markdown')
+              ? 'text'
+              : 'other',
+      )
+      .filter((c) => c !== 'other');
+    expect(classes).toEqual(['reasoning', 'tool', 'text']);
+  });
+});
+
 describe('AnalysisMessageList 用户消息气泡（与 chat / task 对齐）', () => {
   const userMsg = { id: 'u1', role: 'user' as const, content: [{ type: 'text' as const, data: '你好' }] };
 

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type {
+  AIMessageContent,
   ChatComment,
   ChatMessagesData,
   ChatStatus,
@@ -15,7 +16,14 @@ import type { AgentRunData } from '../../../api/agent';
 import { RunTrace } from '../../../components/run-trace/RunTrace';
 import { Markdown } from '@/components/Markdown';
 import { UserMessageBubble } from '@/components/message/UserMessageBubble';
+import { ReasoningBlock } from '@/components/message/ReasoningBlock';
+import { ToolCallRow } from '@/components/message/ToolCallRow';
 import { ScrollToBottomButton } from '@/components/message/ScrollToBottomButton';
+import {
+  blocksToPlainText,
+  reasoningText,
+  type TaoToolBlock,
+} from '../../../lib/taoBlocks';
 import {
   ShareForwardIcon,
   type ActionIconProps,
@@ -51,18 +59,22 @@ type EditProps = Pick<
   | 'onSubmitEdit'
 >;
 
-/** 提取消息中所有 text/markdown 片段拼成纯文本（复制用） */
+/**
+ * 提取消息中所有正文（text/markdown）拼成纯文本（复制用）。
+ * 思考与工具过程不进入复制内容（它们是过程信息，不是回答）。
+ */
 function extractText(message: ChatMessagesData): string {
   if (message.role === 'system') {
     return message.content.map((c) => c.data).join('\n');
   }
-  return (message.content ?? [])
-    .filter(
-      (c): c is { type: 'text'; data: string } | { type: 'markdown'; data: string } =>
-        c.type === 'text' || c.type === 'markdown',
-    )
-    .map((c) => c.data)
-    .join('\n');
+  if (message.role === 'user') {
+    // 用户消息为 text/attachment 内容：复制只取文本
+    return message.content
+      .filter((c): c is { type: 'text'; data: string } => c.type === 'text')
+      .map((c) => c.data)
+      .join('\n');
+  }
+  return blocksToPlainText(message.content);
 }
 
 /** 单条分析消息：用户右对齐气泡；助手通栏 Markdown + 操作栏 + 执行轨迹 */
@@ -106,6 +118,64 @@ function AnalysisMessageItem({
   );
 }
 
+/**
+ * 块是否可渲染：空思考段与空正文块（流式占位期）不参与渲染，
+ * 否则会在正文区留下空白，并把“流式占位 / 空回复兜底”挤掉。
+ */
+function hasRenderableBlock(block: AIMessageContent): boolean {
+  if (block.type === 'reasoning') return reasoningText(block).length > 0;
+  if (block.type === 'toolcall') return true;
+  if (block.type === 'text' || block.type === 'markdown') {
+    return typeof block.data === 'string' && block.data.length > 0;
+  }
+  return false;
+}
+
+/**
+ * TAO 块序列渲染（截图同款交互）：
+ * - reasoning → “深度思考”折叠面板（引用式内容，默认随流式展开、终态收起）
+ * - toolcall → 工具动作行（一行摘要，展开可见参数与观测结果）
+ * - markdown → 正文段落
+ * 三者按事件到达顺序交错，完整复现「推理 → 行动 → 观察」闭环。
+ */
+function TaoBlockSequence({ blocks }: { blocks: AIMessageContent[] }) {
+  return (
+    <>
+      {blocks.map((block, idx) => {
+        if (!hasRenderableBlock(block)) return null;
+        if (block.type === 'reasoning') {
+          return (
+            <ReasoningBlock
+              key={`reasoning-${idx}`}
+              text={reasoningText(block)}
+              streaming={block.status === 'streaming'}
+            />
+          );
+        }
+        if (block.type === 'toolcall') {
+          const tb = block as TaoToolBlock;
+          return (
+            <ToolCallRow
+              key={`toolcall-${idx}`}
+              toolName={tb.data?.toolCallName ?? ''}
+              args={tb.data?.args}
+              result={tb.data?.result}
+              streaming={block.status === 'streaming'}
+            />
+          );
+        }
+        if (
+          (block.type === 'text' || block.type === 'markdown') &&
+          typeof block.data === 'string'
+        ) {
+          return <Markdown key={`${block.type}-${idx}`} content={block.data} />;
+        }
+        return null;
+      })}
+    </>
+  );
+}
+
 function AnalysisAssistantItem({
   message,
   runByMessage,
@@ -121,20 +191,30 @@ function AnalysisAssistantItem({
   );
 
   const text = extractText(message);
+  // TAO 块序列（reasoning / toolcall / markdown 按事件顺序交错）
+  // 仅 assistant 分支进入本组件，content 为 AIMessageContent[]
+  const blocks = (message.content ?? []) as AIMessageContent[];
+  const hasProcess = blocks.some(
+    (b) =>
+      b.type === 'toolcall' ||
+      (b.type === 'reasoning' && reasoningText(b).length > 0),
+  );
+  const hasRenderable = blocks.some(hasRenderableBlock);
   const isStreaming = message.status === 'streaming';
   const isFinal =
     message.status === 'complete' ||
     message.status === 'stop' ||
     message.status === 'error' ||
-    (!message.status && text.length > 0);
+    (!message.status && (text.length > 0 || hasProcess));
   /**
-   * 空回复兜底：run 正常结束（status='complete'）但正文为空时，
+   * 空回复兜底：run 正常结束（status='complete'）但正文与过程块全空时，
    * 不能渲染成 null —— 那会让整条消息在界面上完全消失，用户无从判断
    * 「Agent 没回复」还是「页面坏了」。典型触发：后端 max_tokens 截断导致
    * finish_reason='length' 且 content=''（此时后端不会发 RUN_ERROR）。
-   * 仅对 complete 生效：HITL 占位消息（无 status）与历史消息（有正文）不受影响。
+   * 仅对 complete 生效：HITL 占位消息（无 status）与历史消息（有正文）不受影响；
+   * 只有思考/工具过程而无正文时也不误报（过程块本身可见）。
    */
-  const isEmptyFinal = !text && !isStreaming && message.status === 'complete';
+  const isEmptyFinal = !text && !hasProcess && !isStreaming && message.status === 'complete';
 
   /** 点踩/点赞：再点一次取消 */
   const toggleFeedback = (next: 'good' | 'bad') => {
@@ -198,15 +278,17 @@ function AnalysisAssistantItem({
   return (
     <div className="chat-msg-row chat-msg-row--ai">
       <div className="chat-msg-ai-body">
-        {text ? (
-          <Markdown content={text} />
+        {hasRenderable ? (
+          <TaoBlockSequence blocks={blocks} />
         ) : isStreaming ? (
           <span className="chat-streaming-placeholder" />
-        ) : isEmptyFinal ? (
+        ) : null}
+
+        {isEmptyFinal && (
           <span className="chat-empty-response">
             Agent 本轮未返回内容，可能是模型输出被长度上限截断，请重试或补充更多细节。
           </span>
-        ) : null}
+        )}
 
         {isFinal && (
           <>

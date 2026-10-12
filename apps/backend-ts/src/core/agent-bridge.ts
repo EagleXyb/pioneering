@@ -423,9 +423,48 @@ export function collectRunTimeline(
 // collectMetadataFromEvent（对应 Python _collect_metadata_from_event）
 // ============================================================
 
+// 工具参数 / 观测结果的持久化上限。
+// 参数与观测是历史回放时“动作行展开区”的数据源，过短会失去可追溯性；
+// 上限用于避免 contentBlocks 体积失控（完整结果同时存在于正文/run 事件中）。
+const TOOL_ARGS_MAX_LEN = 500
+const TOOL_RESULT_MAX_LEN = 800
+
+/** 从后向前找最后一个指定类型且 running 的块（多段并存时最新段在尾部） */
+function findLastRunningBlock(
+  blocks: Record<string, any>[],
+  type: string,
+): Record<string, any> | null {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i]
+    if (b.type === type && b.status === 'running') return b
+  }
+  return null
+}
+
+/** 定位目标 tool_call 块：优先 executionId 精确匹配，缺失时回退到最后一个 */
+function findToolCallBlock(
+  blocks: Record<string, any>[],
+  executionId?: string,
+): Record<string, any> | null {
+  if (executionId) {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i]
+      if (b.type === 'tool_call' && b.executionId === executionId) return b
+    }
+  }
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].type === 'tool_call') return blocks[i]
+  }
+  return null
+}
+
 /**
  * 从 AG-UI 事件中提取元数据，填充 StreamContext。
  * 对应 Python: _collect_metadata_from_event
+ *
+ * contentBlocks 是前端历史回放的唯一数据源（TAO 闭环：思考段 ↔ 工具调用交错），
+ * 因此这里必须**严格保序**：THINKING 按段开块（round 锚点）、文本按段开块、
+ * 工具参数与观测按 executionId 归属。
  */
 export function collectMetadataFromEvent(
   eventDict: Record<string, string>,
@@ -446,57 +485,63 @@ export function collectMetadataFromEvent(
   const eventType = data.type ?? ''
 
   if (eventType === 'THINKING_START') {
-    ctx.contentBlocks.push({ type: 'thinking', status: 'running', summary: '' })
+    // 每个思考段独立成块（adapter 已按 ReAct 轮次分段），round 为顺序锚点
+    ctx.contentBlocks.push({
+      type: 'thinking',
+      status: 'running',
+      summary: '',
+      ...(typeof data.round === 'number' ? { round: data.round } : {}),
+    })
   } else if (eventType === 'THINKING_TEXT_MESSAGE_CONTENT') {
-    for (const b of ctx.contentBlocks) {
-      if (b.type === 'thinking' && b.status === 'running') {
-        b.summary += data.delta ?? ''
-        break
-      }
-    }
+    const target = findLastRunningBlock(ctx.contentBlocks, 'thinking')
+    if (target) target.summary += data.delta ?? ''
   } else if (eventType === 'THINKING_END') {
-    for (const b of ctx.contentBlocks) {
-      if (b.type === 'thinking' && b.status === 'running') {
-        b.status = 'success'
-        break
-      }
-    }
+    const target = findLastRunningBlock(ctx.contentBlocks, 'thinking')
+    if (target) target.status = 'success'
   } else if (eventType === 'TOOL_CALL_START') {
     ctx.contentBlocks.push({
       type: 'tool_call',
       status: 'running',
       toolName: data.toolCallName ?? '',
       executionId: data.toolCallId ?? '',
+      // 参数由随后的 TOOL_CALL_ARGS 累积（历史动作行摘要的数据源）
+      args: '',
     })
-  } else if (eventType === 'TOOL_CALL_RESULT') {
-    for (let i = ctx.contentBlocks.length - 1; i >= 0; i--) {
-      const b = ctx.contentBlocks[i]
-      if (b.type === 'tool_call' && b.executionId === data.toolCallId) {
-        b.status = 'success'
-        break
-      }
+  } else if (eventType === 'TOOL_CALL_ARGS') {
+    const target = findToolCallBlock(ctx.contentBlocks, data.toolCallId ?? '')
+    if (target) {
+      const next = `${target.args ?? ''}${data.delta ?? ''}`
+      target.args = next.slice(0, TOOL_ARGS_MAX_LEN)
     }
+  } else if (eventType === 'TOOL_CALL_RESULT') {
+    const target = findToolCallBlock(ctx.contentBlocks, data.toolCallId ?? '')
+    if (target) target.status = 'success'
     ctx.contentBlocks.push({
       type: 'tool_result',
       status: 'success',
       toolName: data.toolCallName ?? '',
       executionId: data.toolCallId ?? '',
-      summary: (data.content ?? '').slice(0, 200),
+      summary: (data.content ?? '').slice(0, TOOL_RESULT_MAX_LEN),
     })
+  } else if (eventType === 'TEXT_MESSAGE_START') {
+    // 每段文本独立成块：与思考段/工具调用保持可还原的交错顺序
+    ctx.contentBlocks.push({ type: 'text_stream', status: 'running', text: '' })
   } else if (eventType === 'TEXT_MESSAGE_CONTENT') {
-    if (!ctx.contentBlocks.some((b) => b.type === 'text_stream')) {
-      ctx.contentBlocks.push({ type: 'text_stream', status: 'running', text: '' })
-    }
-    for (const b of ctx.contentBlocks) {
-      if (b.type === 'text_stream' && b.status === 'running') {
-        b.text += data.delta ?? ''
-        break
-      }
+    const target = findLastRunningBlock(ctx.contentBlocks, 'text_stream')
+    if (target) {
+      target.text += data.delta ?? ''
+    } else {
+      // 容错：缺失 TEXT_MESSAGE_START 的事件流（旧后端）
+      ctx.contentBlocks.push({ type: 'text_stream', status: 'running', text: data.delta ?? '' })
     }
   } else if (eventType === 'TEXT_MESSAGE_END') {
-    for (const b of ctx.contentBlocks) {
+    const blocks = ctx.contentBlocks
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i]
       if (b.type === 'text_stream' && b.status === 'running') {
-        b.status = 'success'
+        // 空文本段直接移除：历史回放时不会渲染成空段落
+        if (!String(b.text ?? '').trim()) blocks.splice(i, 1)
+        else b.status = 'success'
         break
       }
     }

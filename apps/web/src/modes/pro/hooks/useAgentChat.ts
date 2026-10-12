@@ -1,9 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { parseAguiStream, type AguiStreamHandlers } from '../../../lib/parseAguiStream';
-import type { ChatMessagesData } from '../../../types/chat';
+import type { AIMessageContent, ChatMessageStatus, ChatMessagesData } from '../../../types/chat';
 import { streamCompletion, streamResume, stopAgentCompletion } from '../../../api/agent';
 import { fetchSessionMessages } from '../../../lib/load-session-messages';
 import { contentBlocksToSteps } from './contentBlocksToSteps';
+import {
+  appendReasoningDelta,
+  appendTextBlock,
+  appendTextDelta,
+  appendToolArgs,
+  createReasoningBlock,
+  createToolBlock,
+  finalizeBlocks,
+  finalizeReasoning,
+  setToolObservation,
+} from '../../../lib/taoBlocks';
 import { useAppStore } from '../../../store/appStore';
 import {
   useHitlStore,
@@ -98,8 +109,8 @@ export function useAgentChat(
   const hitlError = useHitlStore((s) => s.error);
   const hitlBusy = useHitlStore((s) => s.status === 'resolving');
 
-  // 右侧推理面板：默认折叠，有步骤输出时自动展开
-  const autoOpenPipeline = useAppStore((s) => s.autoOpenPipeline);
+  // 右侧推理面板：TAO 过程已内联在消息正文，面板默认保持折叠，
+  // 需要全局视图时由用户主动展开（“默认隐藏繁琐轨迹，避免干扰”）
   const resetPipelineForSession = useAppStore((s) => s.resetPipelineForSession);
 
   const sendControllerRef = useRef<AbortController | null>(null);
@@ -110,9 +121,17 @@ export function useAgentChat(
   // 流期间的跨闭包状态（避免 React state 异步滞后）
   const assistantMsgIdRef = useRef<string | null>(null);
   const assistantTextRef = useRef('');
+  /**
+   * 当前 assistant 消息的 TAO 有序块序列（推理-行动-观察按事件顺序交错）。
+   * 实时流的唯一事实源：每个 AG-UI 事件都不可变更新此 ref 后同步回 messages，
+   * 使消息正文与右侧过程面板同时保持最新（历史恢复由 converter 产出同构序列）。
+   */
+  const blocksRef = useRef<AIMessageContent[]>([]);
   const thinkingKeyRef = useRef<string | null>(null);
   const thinkingTextRef = useRef('');
   const toolCallKeyRef = useRef<string | null>(null);
+  /** 当前工具调用的参数累积（TOOL_CALL_ARGS 按 delta 到达，右栏展示需要全量） */
+  const toolArgsRef = useRef('');
   const flowStatusRef = useRef<FlowStatus>('idle');
   /** 当前运行是否为 resume 续写（决定终态时是否 dequeue） */
   const isResumeRunRef = useRef(false);
@@ -122,24 +141,48 @@ export function useAgentChat(
 
   // ========== 消息按 id 更新 ==========
 
-  const setMessageText = (
+  /**
+   * 把 blocksRef 的当前值同步到指定 assistant 消息。
+   * content 直接引用最新块数组（不可变更新保证引用变化即内容变化），
+   * terminalStatus 存在时同时写入终态（供操作栏/折叠态判定）。
+   */
+  const syncAssistantBlocks = (
     msgId: string,
-    text: string,
-    terminalStatus?: 'complete' | 'stop' | 'error',
+    terminalStatus?: ChatMessageStatus,
   ) => {
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === msgId);
       if (idx === -1) return prev;
       const next = [...prev];
-      // 仅用于 assistant 消息（调用方按 assistantMsgId 定位）
       next[idx] = {
         ...next[idx]!,
-        content: [{ type: 'markdown' as const, data: text }],
-        // 流收尾时写入终态，供消息组件决定操作栏展示
+        content: blocksRef.current,
         ...(terminalStatus ? { status: terminalStatus } : {}),
       } as ChatMessagesData;
       return next;
     });
+  };
+
+  /** 事件处理里的便捷写法：同步当前流式 assistant 消息（无消息时 no-op） */
+  const pushAssistantBlocks = () => {
+    const msgId = assistantMsgIdRef.current;
+    if (msgId) syncAssistantBlocks(msgId);
+  };
+
+  /** 追加整段说明文本（错误/中止/失效）并收尾所有流式块，再写入终态 */
+  const finalizeWithText = (
+    msgId: string,
+    text: string,
+    terminalStatus: ChatMessageStatus,
+  ) => {
+    blocksRef.current = finalizeBlocks(appendTextBlock(blocksRef.current, text));
+    syncAssistantBlocks(msgId, terminalStatus);
+  };
+
+  /** 仅收尾（不追加文本）并写入终态 */
+  const finalizeBlocksOnly = (msgId: string, terminalStatus: ChatMessageStatus) => {
+    blocksRef.current = finalizeBlocks(blocksRef.current);
+    syncAssistantBlocks(msgId, terminalStatus);
   };
 
   /** 将所有 running 步骤收尾为 done（错误/中止时调用） */
@@ -166,9 +209,11 @@ export function useAgentChat(
     resumeControllerRef.current = null;
     assistantMsgIdRef.current = null;
     assistantTextRef.current = '';
+    blocksRef.current = [];
     thinkingKeyRef.current = null;
     thinkingTextRef.current = '';
     toolCallKeyRef.current = null;
+    toolArgsRef.current = '';
     flowStatusRef.current = 'idle';
     stepCounterRef.current = 0;
     setMessages([]);
@@ -195,6 +240,9 @@ export function useAgentChat(
       const key = `step_${stepCounterRef.current}`;
       thinkingKeyRef.current = key;
       thinkingTextRef.current = '';
+      // 每次 THINKING_START 开一个新的推理段：多轮 ReAct 下与工具行自然交错
+      blocksRef.current = [...blocksRef.current, createReasoningBlock()];
+      pushAssistantBlocks();
       setStateMap((prev) => ({
         ...prev,
         [key]: {
@@ -205,11 +253,11 @@ export function useAgentChat(
         },
       }));
       setCurrentStateKey(key);
-      // Agent 开始输出推理步骤：自动展开右侧面板
-      autoOpenPipeline();
     },
     onThinkingDelta: (delta) => {
       thinkingTextRef.current += delta;
+      blocksRef.current = appendReasoningDelta(blocksRef.current, delta);
+      pushAssistantBlocks();
       const key = thinkingKeyRef.current;
       if (!key) return;
       setStateMap((prev) => {
@@ -222,6 +270,8 @@ export function useAgentChat(
       const key = thinkingKeyRef.current;
       thinkingKeyRef.current = null;
       setCurrentStateKey(null);
+      blocksRef.current = finalizeReasoning(blocksRef.current);
+      pushAssistantBlocks();
       if (!key) return;
       setStateMap((prev) => {
         const step = prev[key];
@@ -242,6 +292,14 @@ export function useAgentChat(
       const key = `step_${stepCounterRef.current}`;
       toolCallKeyRef.current = key;
       const toolName = (event.toolCallName as string) || '';
+      const toolCallId = (event.toolCallId as string) || '';
+      toolArgsRef.current = '';
+      // 动作行：一行摘要 + 可展开的参数/观测；观测结果稍后由 TOOL_CALL_RESULT 回填
+      blocksRef.current = [
+        ...blocksRef.current,
+        createToolBlock({ toolCallId, toolCallName: toolName }),
+      ];
+      pushAssistantBlocks();
       setStateMap((prev) => ({
         ...prev,
         [key]: {
@@ -252,21 +310,30 @@ export function useAgentChat(
         },
       }));
       setCurrentStateKey(key);
-      // 开始调用工具：自动展开右侧面板
-      autoOpenPipeline();
     },
     onToolCallArgs: (delta) => {
+      toolArgsRef.current += delta;
+      blocksRef.current = appendToolArgs(blocksRef.current, delta);
+      pushAssistantBlocks();
       const key = toolCallKeyRef.current;
       if (!key) return;
       setStateMap((prev) => {
         const step = prev[key];
         if (!step) return prev;
-        return { ...prev, [key]: { ...step, content: delta } };
+        return { ...prev, [key]: { ...step, content: toolArgsRef.current } };
       });
     },
     onToolCallResult: (event) => {
       const toolName = (event.toolCallName as string) || '';
+      const toolCallId = (event.toolCallId as string) || '';
       const resultContent = (event.content as string) || '';
+
+      blocksRef.current = setToolObservation(blocksRef.current, {
+        toolCallId,
+        toolCallName: toolName,
+        result: resultContent,
+      });
+      pushAssistantBlocks();
 
       const toolKey = toolCallKeyRef.current;
       toolCallKeyRef.current = null;
@@ -293,8 +360,8 @@ export function useAgentChat(
     },
     onTextDelta: (delta) => {
       assistantTextRef.current += delta;
-      const msgId = assistantMsgIdRef.current;
-      if (msgId) setMessageText(msgId, assistantTextRef.current);
+      blocksRef.current = appendTextDelta(blocksRef.current, delta);
+      pushAssistantBlocks();
     },
     onRunFinished: () => {
       setCurrentStateKey(null);
@@ -308,7 +375,8 @@ export function useAgentChat(
       const msgId = assistantMsgIdRef.current;
       const text = `Agent 错误: ${(event.message as string) || '未知错误'}`;
       assistantTextRef.current = text;
-      if (msgId) setMessageText(msgId, text, 'error');
+      // 错误以追加块形式落进块序列：已产生的思考/工具过程保留，便于排查
+      if (msgId) finalizeWithText(msgId, text, 'error');
     },
     // ===== HITL =====
     onHumanInputRequest: (event) => {
@@ -326,12 +394,12 @@ export function useAgentChat(
       flowStatusRef.current = 'aborted';
       settleRunningSteps();
       const msgId = assistantMsgIdRef.current;
-      const base = assistantTextRef.current;
-      const text = base
-        ? `${base}\n\n[已中止] 该操作未执行。`
-        : '[已中止] 该操作未执行。';
-      assistantTextRef.current = text;
-      if (msgId) setMessageText(msgId, text, 'stop');
+      const notice = '[已中止] 该操作未执行。';
+      assistantTextRef.current = assistantTextRef.current
+        ? `${assistantTextRef.current}\n\n${notice}`
+        : notice;
+      // 说明作为追加块（不清空已有的思考/工具过程）
+      if (msgId) finalizeWithText(msgId, notice, 'stop');
       setCurrentStateKey(null);
       useHitlStore.getState().dequeue();
       void event;
@@ -359,7 +427,7 @@ export function useAgentChat(
           return;
         }
         if (result.reason === 'aborted') {
-          if (msgId) setMessageText(msgId, assistantTextRef.current, 'stop');
+          if (msgId) finalizeBlocksOnly(msgId, 'stop');
           setStatus('complete');
           return;
         }
@@ -367,8 +435,8 @@ export function useAgentChat(
         // closed + HITL_ABORTED：onHitlAborted 已收尾（含 dequeue）
         if (flowStatusRef.current === 'aborted') return;
 
-        // finished / closed：固化最终消息
-        if (msgId) setMessageText(msgId, assistantTextRef.current, 'complete');
+        // finished / closed：固化最终消息（块序列已由事件实时写入，只需收尾 + 终态）
+        if (msgId) finalizeBlocksOnly(msgId, 'complete');
         setStatus('complete');
         // resume 续写正常结束：出队当前暂停项
         if (isResumeRunRef.current) useHitlStore.getState().dequeue();
@@ -376,7 +444,7 @@ export function useAgentChat(
       } catch (err) {
         const e = err as { name?: string; message?: string };
         if (e?.name === 'AbortError') {
-          if (msgId) setMessageText(msgId, assistantTextRef.current, 'stop');
+          if (msgId) finalizeBlocksOnly(msgId, 'stop');
           setStatus('complete');
           flowStatusRef.current = 'idle';
         } else {
@@ -384,7 +452,7 @@ export function useAgentChat(
           setStatus('error');
           settleRunningSteps();
           if (msgId)
-            setMessageText(
+            finalizeWithText(
               msgId,
               `请求失败: ${e?.message || '未知错误'}`,
               'error',
@@ -423,16 +491,19 @@ export function useAgentChat(
       const assistantMsg: ChatMessagesData = {
         id: assistantMsgId,
         role: 'assistant' as const,
-        content: [{ type: 'markdown' as const, data: '' }],
+        // TAO 块序列（reasoning / toolcall / markdown）由流事件按到达顺序写入
+        content: [],
         status: 'streaming' as const,
       };
 
       // 重置流引用
       assistantMsgIdRef.current = assistantMsgId;
       assistantTextRef.current = '';
+      blocksRef.current = [];
       thinkingKeyRef.current = null;
       thinkingTextRef.current = '';
       toolCallKeyRef.current = null;
+      toolArgsRef.current = '';
       stepCounterRef.current = 0;
       flowStatusRef.current = 'running';
       isResumeRunRef.current = false;
@@ -499,16 +570,17 @@ export function useAgentChat(
             flowStatusRef.current = 'error';
             setStatus('error');
             settleRunningSteps();
-            setMessageText(
+            finalizeWithText(
               assistantMsgId,
               `请求失败: ${e?.message || '未知错误'}`,
+              'error',
             );
           }
         }
       })();
     },
     // 与改造前保持一致：仅依赖 consumeStream；其余（settleRunningSteps/
-    // setMessageText/resetPipelineForSession）只操作 ref 与 setState，闭包无时效性问题
+    // syncAssistantBlocks/resetPipelineForSession）只操作 ref 与 setState，闭包无时效性问题
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [consumeStream],
   );
@@ -582,9 +654,11 @@ export function useAgentChat(
     resumeControllerRef.current = null
     assistantMsgIdRef.current = null
     assistantTextRef.current = ''
+    blocksRef.current = []
     thinkingKeyRef.current = null
     thinkingTextRef.current = ''
     toolCallKeyRef.current = null
+    toolArgsRef.current = ''
     flowStatusRef.current = 'idle'
     stepCounterRef.current = 0
     setMessages([])
@@ -596,16 +670,17 @@ export function useAgentChat(
       setMessages(mapped)
       // T3.3：从最后一条 assistant 消息的 contentBlocks 还原右侧过程面板
       const lastAssistant = [...rawMessages].reverse().find((m) => m.role === 'assistant')
-      let restoredSteps: Record<string, AgentStep> = {}
       if (lastAssistant) {
-        restoredSteps = contentBlocksToSteps(lastAssistant.contentBlocks)
-        setStateMap(restoredSteps)
+        setStateMap(contentBlocksToSteps(lastAssistant.contentBlocks))
       }
-      // 历史含推理步骤：进入会话即展开面板，否则保持折叠
-      resetPipelineForSession(Object.keys(restoredSteps).length > 0)
+      // 过程已内联在消息正文：进入会话保持面板折叠（用户可主动展开查看全量步骤）
+      resetPipelineForSession(false)
     } catch {
       // 失败静默降级为空态
     }
+    // 与改造前一致：内部只操作 ref 与 setState（resetPipelineForSession 来自
+    // zustand、finalizeWithText 仅用 refs/setState），闭包无时效性问题
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /** 刷新恢复：重建可续写的暂停占位消息 */
@@ -614,13 +689,15 @@ export function useAgentChat(
     const placeholder: ChatMessagesData = {
       id: msgId,
       role: 'assistant' as const,
-      content: [{ type: 'markdown' as const, data: '' }],
+      content: [],
     };
     assistantMsgIdRef.current = msgId;
     assistantTextRef.current = '';
+    blocksRef.current = [];
     thinkingKeyRef.current = null;
     thinkingTextRef.current = '';
     toolCallKeyRef.current = null;
+    toolArgsRef.current = '';
     stepCounterRef.current = 0;
     flowStatusRef.current = 'paused';
     setMessages((prev) => [...prev, placeholder]);
@@ -633,11 +710,13 @@ export function useAgentChat(
     if (msgId && sessionId === sessionIdRef.current) {
       const text = `[已失效] ${reason}`;
       assistantTextRef.current = text;
-      setMessageText(msgId, text);
+      finalizeWithText(msgId, text, 'complete');
     }
     assistantMsgIdRef.current = null;
     flowStatusRef.current = 'idle';
     setStatus('complete');
+    // finalizeWithText 仅用 refs/setState，闭包无时效性问题
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 注册模式运行时（卸载时注销）

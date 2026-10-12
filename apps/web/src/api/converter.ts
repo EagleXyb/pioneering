@@ -1,9 +1,16 @@
 /**
  * 消息格式转换工具
  * 将后端 Message 格式转换为前端统一的 ChatMessagesData 格式（types/chat.ts）
+ *
+ * assistant 消息存在两条持久化通道，口径不同，按 contentBlocks 的块类型分派：
+ * ① agent 通道（pro / task）：thinking / tool_call / tool_result / text_stream
+ *    按事件顺序落库 → 还原为 reasoning / toolcall / markdown 交错序列（TAO 闭环），
+ *    与实时流的产出同构，历史回放与实时展示完全一致；
+ * ② chat 通道：reasoningContent + sources → 保持原有的 reasoning / search + 正文。
  */
 import type { Message, FeedbackType } from '../api/types';
-import type { ChatMessagesData } from '../types/chat';
+import type { AIMessageContent, ChatMessagesData } from '../types/chat';
+import { contentBlocksToTaoBlocks, isAgentContentBlocks } from '../lib/taoBlocks';
 
 /**
  * 扩展的聊天消息类型，添加前端需要的反馈字段。
@@ -34,7 +41,25 @@ export function convertMessages(messages: Message[]): ChatMessageData[] {
         } as ChatMessageData;
       }
 
-      // assistant 消息：从 contentBlocks 提取思考内容与联网搜索来源
+      // assistant 消息（agent 通道）：contentBlocks 保序还原 TAO 交错序列
+      if (isAgentContentBlocks(m.contentBlocks)) {
+        const content: AIMessageContent[] = contentBlocksToTaoBlocks(m.contentBlocks);
+        const hasBody = content.some((c) => c.type === 'markdown' || c.type === 'text');
+        // 老数据可能缺 text_stream 块：正文回退到 message.content，避免正文丢失
+        if (!hasBody && m.content) {
+          content.push({ type: 'markdown', data: m.content, status: 'complete' });
+        }
+        return {
+          id: m.id,
+          role: 'assistant' as const,
+          content,
+          datetime: m.createdAt,
+          feedback: m.feedback,
+          metadata: m.metadata,
+        } as ChatMessageData;
+      }
+
+      // assistant 消息（chat 通道）：从 contentBlocks 提取思考内容与联网搜索来源
       const content: any[] = [];
       if (m.contentBlocks && Array.isArray(m.contentBlocks)) {
         const block = (m.contentBlocks as any[]).find((b) => b.reasoningContent);

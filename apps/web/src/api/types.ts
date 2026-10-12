@@ -80,8 +80,38 @@ export interface SessionListResponse {
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 export type FeedbackType = 'none' | 'like' | 'dislike';
 
+/**
+ * 持久化 contentBlocks 的块类型（两条写入通道口径不同）：
+ * - agent 通道（pro/task，backend-ts agent-bridge.collectMetadataFromEvent）：
+ *   thinking / tool_call / tool_result / text_stream，按事件顺序 push，可还原 TAO 闭环
+ * - chat 通道（backend-ts routes/chat）：无 type，仅 reasoningContent / sources 字段
+ */
+export type ContentBlockType =
+  | 'text'
+  | 'code'
+  | 'image'
+  | 'file'
+  | 'thinking'
+  | 'tool_call'
+  | 'tool_result'
+  | 'text_stream';
+
 export interface ContentBlock {
-  type: 'text' | 'code' | 'image' | 'file';
+  /** 块类型（agent 通道写入；chat 通道的来源块无此字段） */
+  type?: ContentBlockType;
+  /** 块处理状态（agent 通道：running / success / error） */
+  status?: string;
+  /** thinking 段文本（agent 通道）/ tool_result 观测摘要 */
+  summary?: string;
+  /** 思考段轮次（多轮 ReAct 的顺序锚点，C 档后端写入） */
+  round?: number;
+  /** tool_call / tool_result 的工具名 */
+  toolName?: string;
+  /** tool_call / tool_result 的关联执行 id */
+  executionId?: string;
+  /** 工具调用参数 JSON（截断后持久化，供历史动作行摘要） */
+  args?: string;
+  /** text_stream 的正文分片 */
   text?: string;
   code?: string;
   language?: string;
@@ -92,6 +122,8 @@ export interface ContentBlock {
   content?: string;
   id?: string;
   role?: string;
+  /** 联网搜索结构化来源（chat 通道） */
+  sources?: Array<Record<string, unknown>>;
 }
 
 export interface Message {
