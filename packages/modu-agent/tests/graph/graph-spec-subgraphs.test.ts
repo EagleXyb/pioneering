@@ -90,6 +90,7 @@ describe('P3/T-20: GraphSpec.subgraphs 消费', () => {
       'agent',
       'tools',
       'tool_processor',
+      'force_finalize',
       'finalize_response',
       'doc_gen_enforce',
       'doc_final_answer',

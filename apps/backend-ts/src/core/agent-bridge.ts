@@ -32,6 +32,22 @@ const MODE_DOMAIN: Record<string, string> = {
   plan_execute: 'task_planner',
 }
 
+/**
+ * 收尾仍处于 running 的内容块（run 终态时调用）。
+ *
+ * 缺陷背景：工具调用触顶（或 run 异常结束）时，已下发的 TOOL_CALL_START 永远
+ * 等不到 TOOL_CALL_RESULT，块状态会一直停在 `running` —— 前端过程区把这类行
+ * 一直显示成「执行中」。终态时统一收尾：
+ *   - tool_call：未执行 → `failed`（前端据此显示"未执行/已终止"）
+ *   - thinking / text_stream：已有内容 → `success`（只是缺了 END 事件）
+ */
+export function finalizePendingBlocks(ctx: StreamContext): void {
+  for (const block of ctx.contentBlocks) {
+    if (block?.status !== 'running') continue
+    block.status = block.type === 'tool_call' ? 'failed' : 'success'
+  }
+}
+
 // ============================================================
 // StreamContext: 元数据收集（对应 Python StreamContext dataclass）
 // ============================================================
@@ -184,6 +200,7 @@ export async function* streamAgentCompletion(
     // T2.4：信号中止时记录原因，持久化据此跳过（不发 RUN_ERROR，流已被调用方 break）
     if (e?.name === 'AbortError') {
       ctx.abortReason = 'user_cancel'
+      finalizePendingBlocks(ctx)
       return
     }
     ctx.hasError = true
@@ -204,6 +221,13 @@ export async function* streamAgentCompletion(
   )
 
   // 流结束，填充元数据
+  //
+  // 收尾兜底：除了 RUN_FINISHED / RUN_ERROR 两条常规终态，上游还可能提前 break
+  // （调用方中断、连接断开等）—— 这里再收一次，保证不会有残留的 running 块；
+  // HITL 暂停（等人工审批，runPaused）不是终态，跳过。
+  if (!ctx.runPaused) {
+    finalizePendingBlocks(ctx)
+  }
   ctx.answerContent = adapter.collected_text
   ctx.finish()
 
@@ -524,8 +548,15 @@ export function collectMetadataFromEvent(
       summary: (data.content ?? '').slice(0, TOOL_RESULT_MAX_LEN),
     })
   } else if (eventType === 'TEXT_MESSAGE_START') {
-    // 每段文本独立成块：与思考段/工具调用保持可还原的交错顺序
-    ctx.contentBlocks.push({ type: 'text_stream', status: 'running', text: '' })
+    // 每段文本独立成块：与思考段/工具调用保持可还原的交错顺序。
+    // narration=true 表示这是 ReAct 中间轮叙述（WorkBuddy 风格：正文展示的过程话术），
+    // 随块持久化该标记 —— 历史回放时前端据此把过程叙述排除在「回答」之外（复制/分享）。
+    ctx.contentBlocks.push({
+      type: 'text_stream',
+      status: 'running',
+      text: '',
+      ...(data.narration === true ? { narration: true } : {}),
+    })
   } else if (eventType === 'TEXT_MESSAGE_CONTENT') {
     const target = findLastRunningBlock(ctx.contentBlocks, 'text_stream')
     if (target) {
@@ -556,6 +587,8 @@ export function collectMetadataFromEvent(
   } else if (eventType === 'RUN_FINISHED') {
     // P4: Plan 终态阶段标记（供 persistAssistantMessage 写入 metadata.plan_phase）
     ctx.planPhase = 'done'
+    // run 正常收尾：把没能等到结果的 tool_call 收尾为 failed（见函数注释）
+    finalizePendingBlocks(ctx)
   } else if (eventType === 'RUN_PAUSED') {
     // HITL（阶段零 D3）：run 被 interrupt 暂停——标记 ctx，路由层据此跳过空消息持久化
     ctx.paused = true
@@ -569,6 +602,8 @@ export function collectMetadataFromEvent(
     // P4: Plan 终态阶段标记（error 时同时记录错误信息）
     ctx.planPhase = 'error'
     ctx.planError = data.message ?? null
+    // 异常终止同样收尾残留块，避免过程区留下永远的"执行中"
+    finalizePendingBlocks(ctx)
   }
 }
 

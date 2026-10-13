@@ -166,6 +166,14 @@ export interface ModuAgentState {
   doc_writer_fail_count?: number
   // doc_writer 成功后已注入过"最终回复提醒"标记（仅注入一次，防止循环）
   doc_final_answer_enforced?: boolean
+
+  // === 工具预算耗尽收尾（force_finalize 节点写入）===
+  // 置 true 表示本轮 run 因达到工具/推理轮次上限被强制收尾，
+  // 已切换为"禁用工具、基于现有信息直接作答"；responseNode 的兜底文案据此
+  // 如实说明中止原因（而不是假装正常完成）。
+  forced_finalize?: boolean
+  // 收尾原因（目前仅 'tool_budget'）
+  termination_reason?: string | null
 }
 
 /**
@@ -363,6 +371,9 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   }),
   // P0-4: 终止决策建议（last-write-wins，advisory 模式写入）
   termination_advice: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
+  // 工具预算耗尽收尾标记（last-write-wins，force_finalize 节点写入）
+  forced_finalize: Annotation<boolean>(_lw<boolean>(() => false)),
+  termination_reason: Annotation<string | null>(_lw<string | null>(() => null)),
 
   // === Artifact 产物追踪（append reducer，toolResultProcessor 写入）===
   artifacts: Annotation<Array<Record<string, any>>>({
@@ -515,6 +526,8 @@ export function makeInitialState(
     doc_writer_succeeded: false,
     doc_writer_fail_count: 0,
     doc_final_answer_enforced: false,
+    forced_finalize: false,
+    termination_reason: null,
   }
 }
 

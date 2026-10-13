@@ -51,6 +51,7 @@ import {
   makePerceptionNode,
   makeSubagentNode,
   makeToolResultProcessor,
+  makeForceFinalizeNode,
   responseNode,
   routeAfterAgent,
   routeAfterHumanReview,
@@ -504,7 +505,7 @@ export function resolveGraphProfile(args: {
  *
  * 顺序约定（与改造前逐条对应，快照测试锁定）：
  *   - 节点：perception → memory_query → agent → tools → tool_processor →
- *     finalize_response → doc_gen_enforce → doc_final_answer → [feedback] →
+ *     force_finalize → finalize_response → doc_gen_enforce → doc_final_answer → [feedback] →
  *     memory_update → [human_review] → [clarify] → [supervisor, subagent_run, consensus] →
  *     [planner, step_dispatch, step_finalize]
  *   - 边：见 `EdgeSpec` 声明顺序。
@@ -568,6 +569,12 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
     {
       name: 'tool_processor',
       factory: (deps) => makeToolResultProcessor(deps.observationDistiller),
+    },
+    // 工具预算耗尽的收尾作答（routeAfterAgent 触顶时路由到这里）：
+    // 用未绑定工具的 LLM 再答一次，保证触顶也产出真实最终回答
+    {
+      name: 'force_finalize',
+      factory: (deps) => makeForceFinalizeNode(deps.rawLlm ?? deps.llm, deps.systemPrompt),
     },
     // P0（T-05）: 输出护栏（PII / 密钥 / 内网 IP 脱敏）。
     // 门控 perception.security.sanitize_output.enabled（默认 false）→ 默认直接使用原节点，
@@ -732,6 +739,8 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
       targets: (has) => ({
         tools: has('human_review') ? 'human_review' : 'tools',
         __end__: 'finalize_response',
+        // 工具/推理轮次触顶 → 禁用工具收尾作答（不再直接结束）
+        force_finalize: 'force_finalize',
         // P4: plan_execute 模式下 routeAfterAgent 可能返回 'step_finalize'（当前步骤完成）
         ...(has('step_finalize') ? { step_finalize: 'step_finalize' } : {}),
         // 文档生成强制回退路由
@@ -741,6 +750,8 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
       }),
     },
   })
+  // 收尾作答完成后进入响应节点（responseNode 从 messages 末条 AIMessage 提取正文）
+  edges.push({ from: 'force_finalize', to: 'finalize_response' })
   // human_review 后条件路由：通过 → tools，拒绝/错误 → finalize_response
   edges.push({
     from: 'human_review',

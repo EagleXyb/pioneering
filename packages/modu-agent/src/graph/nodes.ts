@@ -725,13 +725,16 @@ export function routeAfterAgent(state: ModuAgentState): string {
     }
 
     // 优先级1: complexity_assessment 提供的 reasoning_budget（tier 自适应）
+    // 触顶处理：路由到 force_finalize（禁用工具收尾作答），而不是直接 __end__ ——
+    // 直接结束会把本轮已下发的 tool_calls 静默丢弃、且不产出最终回答，
+    // 用户只能看到最后一段过程话术（表现为"正文只有一句话"）。
     if (assessment && assessment.reasoning_budget > 0) {
       if (roundCount >= assessment.reasoning_budget) {
         logger.warning(
-          '[P0-1] Reasoning budget exhausted: %d >= %d (tier=%s), forcing termination',
+          '[P0-1] Reasoning budget exhausted: %d >= %d (tier=%s), finalizing without tools',
           roundCount, assessment.reasoning_budget, assessment.tier,
         )
-        return '__end__'
+        return 'force_finalize'
       }
     } else {
       // 优先级2: 兜底限制——不依赖 complexity_assessment，直接使用 max_reasoning_iterations 配置
@@ -742,19 +745,19 @@ export function routeAfterAgent(state: ModuAgentState): string {
         const hardLimit = maxIterations + 3
         if (roundCount >= hardLimit) {
           logger.warning(
-            '[route-after-agent] Max tool iterations reached: %d >= %d (max_iterations=%d + 3 tolerance), forcing termination',
+            '[route-after-agent] Max tool iterations reached: %d >= %d (max_iterations=%d + 3 tolerance), finalizing without tools',
             roundCount, hardLimit, maxIterations,
           )
-          return '__end__'
+          return 'force_finalize'
         }
       } catch {
         // 配置读取异常时使用保守的硬编码限制（8 轮）
         if (roundCount >= 8) {
           logger.warning(
-            '[route-after-agent] Max tool iterations reached (fallback limit): %d >= 8, forcing termination',
+            '[route-after-agent] Max tool iterations reached (fallback limit): %d >= 8, finalizing without tools',
             roundCount,
           )
-          return '__end__'
+          return 'force_finalize'
         }
       }
     }
@@ -1608,6 +1611,105 @@ function _extractAiText(rawContent: unknown): string {
   return ''
 }
 
+/** 收尾指令（force_finalize）：明确禁止再调用工具，要求基于已有信息直接作答 */
+function buildForceFinalizeDirective(toolCalls: number, successCount: number): string {
+  return [
+    '系统指令：本轮可用的工具调用次数已达上限，请不要再调用任何工具（检索、文件、代码执行等一律不要用）。',
+    `截至目前的执行情况：共 ${toolCalls} 次工具调用，成功 ${successCount} 次。`,
+    '请立刻基于已有信息与自身知识，直接给出最终回答：',
+    '1) 先给出完整、可交付的结论；',
+    '2) 因信息不足而无法核实的部分，用一句话标注（例如「以下未做实时核实」），不要留空，也不要只写「我再去查一下」这类过渡话术；',
+    '3) 不要输出任何工具调用。',
+  ].join('\n')
+}
+
+/**
+ * 工具预算耗尽时的收尾作答节点（`force_finalize`）。
+ *
+ * 背景（缺陷修复）：`routeAfterAgent` 在轮次触顶时原本直接 `__end__` —— 本轮已下发的
+ * tool_calls 被静默丢弃、也没有最终回答，用户只能看到最后一段过程话术（表现为
+ * 「正文只有一句话」）。改为：触顶时路由到本节点，**禁用工具**再调一次模型，
+ * 让它用已有信息直接作答（模型在 thinking 里通常已经打算这么写，只是被硬停）。
+ *
+ * 与 agent 节点的差异：
+ *   - 使用未绑定工具的原始 LLM（rawLlm），从根上禁止再发起工具调用；
+ *   - 尾部「未被执行的 assistant(tool_calls)」会被裁掉：该轮工具调用已被上限截断、
+ *     没有任何 tool 响应，直接回传会被 OpenAI/DeepSeek 以
+ *     "assistant message with tool_calls must be followed by tool messages" 拒绝；
+ *   - 收尾指令作为一次性 Human 消息注入（不写回 state，避免污染历史上下文）。
+ *
+ * 返回 `forced_finalize: true`，供 responseNode 的兜底文案如实说明中止原因。
+ */
+export function makeForceFinalizeNode(
+  rawLlm: any,
+  systemPrompt: string | null = null,
+): (state: ModuAgentState) => Promise<Partial<ModuAgentState>> {
+  // 未绑定工具的原始 LLM：rawLlm 可能本身带 _llm（包装器），优先取内层
+  const plainLlm = (rawLlm as any)?._llm ?? rawLlm
+
+  return async function forceFinalizeNode(
+    state: ModuAgentState,
+  ): Promise<Partial<ModuAgentState>> {
+    const toolResults = (state.tool_results ?? []) as Array<Record<string, any>>
+    const successCount = toolResults.filter((r) => r?.['status'] === 'success').length
+
+    // 1) 复制历史，裁掉尾部未被执行的 assistant(tool_calls)（原因见上方注释）
+    const messages: BaseMessage[] = [...(state.messages ?? [])]
+    while (messages.length > 0) {
+      const last = messages[messages.length - 1] as any
+      const hasToolCalls = Array.isArray(last?.tool_calls) && last.tool_calls.length > 0
+      if (!hasToolCalls) break
+      messages.pop()
+    }
+
+    // 2) 保证人设 system prompt 在场（新建/恢复的 state 可能没有）
+    if (systemPrompt && (messages.length === 0 || !(messages[0] instanceof SystemMessage))) {
+      messages.unshift(new SystemMessage({ content: systemPrompt }))
+    }
+
+    // 3) 注入一次性收尾指令
+    messages.push(
+      new HumanMessage({
+        content: buildForceFinalizeDirective(toolResults.length, successCount),
+      }),
+    )
+
+    let llmTimeoutMs = 0
+    try {
+      llmTimeoutMs = Number(getConfig().get('llm.request_timeout_ms', 0)) || 0
+    } catch {
+      llmTimeoutMs = 0
+    }
+
+    let response: any = null
+    try {
+      response = await _invokeWithTimeout(
+        (signal) => plainLlm.invoke(messages, { signal } as any),
+        llmTimeoutMs,
+        'force_finalize LLM invoke',
+      )
+    } catch (e: any) {
+      logger.warning('[force_finalize] LLM invoke failed: %s', String(e?.message ?? e))
+    }
+
+    const text = _extractAiText((response as any)?.content)
+    if (!response || !text) {
+      // 拿不到正文也不阻断：由 responseNode 的兜底文案如实说明中止原因
+      logger.warning('[force_finalize] empty answer, fallback text will be used')
+      return { forced_finalize: true, termination_reason: 'tool_budget' }
+    }
+
+    const aiMsg: BaseMessage =
+      response instanceof AIMessage ? response : new AIMessage({ content: text })
+    logger.info('[force_finalize] answered without tools (len=%d)', text.length)
+    return {
+      messages: [aiMsg],
+      forced_finalize: true,
+      termination_reason: 'tool_budget',
+    }
+  }
+}
+
 /**
  * 程序化兜底正文。
  *
@@ -1641,6 +1743,17 @@ function _buildFallbackResponse(state: ModuAgentState): string {
     return lines.join('\n')
   }
 
+  // 触顶强制作答：即便模型一个字都没吐出来，也要如实说明"因工具次数达上限而中止"，
+  // 而不是伪装成正常完成（旧文案"本次任务共执行 N 次工具调用…"对用户没有信息量）
+  if (state.forced_finalize) {
+    const successCount = toolResults.filter((r) => r['status'] === 'success').length
+    return [
+      `本轮因工具调用次数达到上限而中止：已完成 ${toolResults.length} 次工具调用（成功 ${successCount} 次），未能形成完整回答。`,
+      '',
+      '可以缩小问题范围或拆分步骤后重试，也可以直接告诉我「用已有信息作答」。',
+    ].join('\n')
+  }
+
   if (toolResults.length > 0) {
     const successCount = toolResults.filter((r) => r['status'] === 'success').length
     const toolNames = Array.from(
@@ -1669,6 +1782,12 @@ export function responseNode(
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg instanceof AIMessage) {
+      // 带 tool_calls 的消息是「中间轮」：它的 content 是过渡话术（"我先检索一下…"），
+      // 不是最终回答 —— 把它当 response 会让用户看到"回答只有一句话"
+      // （真实事故：工具轮次触顶被中止）。跳过，继续往前找真正的回答。
+      if (Array.isArray((msg as any).tool_calls) && (msg as any).tool_calls.length > 0) {
+        continue
+      }
       // content 可能是字符串或结构化数组，统一提取纯文本
       const text = _extractAiText(msg.content)
       if (text) {

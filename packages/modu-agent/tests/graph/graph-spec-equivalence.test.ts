@@ -78,6 +78,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'agent',
         'tools',
         'tool_processor',
+        'force_finalize',
         'finalize_response',
         'doc_gen_enforce',
         'doc_final_answer',
@@ -86,6 +87,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       staticEdges: [
         'START→perception',
         'memory_query→agent',
+        'force_finalize→finalize_response',
         'tools→tool_processor',
         'tool_processor→agent',
         'doc_gen_enforce→agent',
@@ -97,7 +99,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'perception', targets: ['memory_query', 'finalize_response'] },
         {
           from: 'agent',
-          targets: ['tools', 'finalize_response', 'doc_gen_enforce', 'doc_final_answer'],
+          targets: ['tools', 'finalize_response', 'force_finalize', 'doc_gen_enforce', 'doc_final_answer'],
         },
       ],
     })
@@ -112,6 +114,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'agent',
         'tools',
         'tool_processor',
+        'force_finalize',
         'finalize_response',
         'doc_gen_enforce',
         'doc_final_answer',
@@ -124,6 +127,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'START→perception',
         'clarify→memory_query',
         'memory_query→agent',
+        'force_finalize→finalize_response',
         'tools→tool_processor',
         'tool_processor→agent',
         'doc_gen_enforce→agent',
@@ -136,7 +140,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'perception', targets: ['memory_query', 'finalize_response', 'clarify'] },
         {
           from: 'agent',
-          targets: ['human_review', 'finalize_response', 'doc_gen_enforce', 'doc_final_answer'],
+          targets: ['human_review', 'finalize_response', 'force_finalize', 'doc_gen_enforce', 'doc_final_answer'],
         },
         { from: 'human_review', targets: ['tools', 'finalize_response'] },
       ],
@@ -152,6 +156,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'agent',
         'tools',
         'tool_processor',
+        'force_finalize',
         'finalize_response',
         'doc_gen_enforce',
         'doc_final_answer',
@@ -162,6 +167,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       ],
       staticEdges: [
         'START→perception',
+        'force_finalize→finalize_response',
         'subagent_run→consensus',
         'consensus→finalize_response',
         'tools→tool_processor',
@@ -176,7 +182,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'memory_query', targets: ['agent', 'supervisor'] },
         {
           from: 'agent',
-          targets: ['tools', 'finalize_response', 'doc_gen_enforce', 'doc_final_answer'],
+          targets: ['tools', 'finalize_response', 'force_finalize', 'doc_gen_enforce', 'doc_final_answer'],
         },
         { from: 'supervisor', targets: ['subagent_run'] },
       ],
@@ -192,6 +198,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'agent',
         'tools',
         'tool_processor',
+        'force_finalize',
         'finalize_response',
         'doc_gen_enforce',
         'doc_final_answer',
@@ -203,6 +210,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       staticEdges: [
         'START→perception',
         'step_finalize→step_dispatch',
+        'force_finalize→finalize_response',
         'tools→tool_processor',
         'tool_processor→agent',
         'doc_gen_enforce→agent',
@@ -220,6 +228,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
           targets: [
             'tools',
             'finalize_response',
+            'force_finalize',
             'step_finalize',
             'doc_gen_enforce',
             'doc_final_answer',
@@ -242,6 +251,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'agent',
         'tools',
         'tool_processor',
+        'force_finalize',
         'finalize_response',
         'doc_gen_enforce',
         'doc_final_answer',
@@ -257,6 +267,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       staticEdges: [
         'START→perception',
         'step_finalize→step_dispatch',
+        'force_finalize→finalize_response',
         'subagent_run→consensus',
         'consensus→step_finalize',
         'tools→tool_processor',
@@ -280,6 +291,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
           targets: [
             'human_review',
             'finalize_response',
+            'force_finalize',
             'step_finalize',
             'doc_gen_enforce',
             'doc_final_answer',

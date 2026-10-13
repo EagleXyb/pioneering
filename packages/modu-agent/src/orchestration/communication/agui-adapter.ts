@@ -90,7 +90,8 @@ export interface AGUIEventPayloadMap {
   RUN_STARTED: { threadId: string; runId: string }
   RUN_FINISHED: { threadId: string; runId: string }
   RUN_ERROR: { code: string; message: string }
-  TEXT_MESSAGE_START: { messageId: string; role: string }
+  /** narration=true：该文本段是 ReAct 中间轮叙述（过程话术），不是最终回答 */
+  TEXT_MESSAGE_START: { messageId: string; role: string; narration?: boolean }
   TEXT_MESSAGE_CONTENT: { messageId: string; delta: string }
   TEXT_MESSAGE_END: { messageId: string }
   TEXT_MESSAGE_CHUNK: { messageId: string; delta: string }
@@ -421,6 +422,10 @@ export class AGUIStateMachine {
 
   thinking_started = false
   text_message_started = false
+  /** 当前文本段是否为中间轮叙述（随 TEXT_MESSAGE_START 下发 narration 标记） */
+  private _text_narration = false
+  /** 本次 run 是否已下发过文本内容（叙述段/正文）；终态兜底去重用 */
+  private _text_any_emitted = false
   has_error = false
   response_text = ''
   collected_text = ''
@@ -442,6 +447,18 @@ export class AGUIStateMachine {
    * 为 true 时不再重复投递内容，flush 阶段只做状态收尾。
    */
   private _buf_streaming_text = false
+  /**
+   * 本轮是否已下发过工具调用（叙述标记兜底）。
+   *
+   * 缺陷背景：流式 chunk 的 tool_calls 与 content 常不在同一 chunk / 同一 id 上，
+   * 权威 tool_calls 又多经 updates 到达，导致 _buf_has_tool_calls 漏判 ——
+   * 「先说一句过渡话术、随后发起工具调用」会被 flush 成"最终回答"（正文只显示
+   * 那一句过渡话术）。这里以「本轮是否真的下发过工具调用」补一道判据，
+   * 复位点放在 tools 节点执行之后（下一轮才是干净的新轮次）。
+   */
+  private _round_tool_calls_emitted = false
+  /** 本次 run 是否已下发过「最终回答」文本段（非 narration），终态兜底据此补发正文 */
+  private _final_answer_emitted = false
 
   constructor(trace_id: string, message_id: string, output_format: string = 'dict') {
     this.trace_id = trace_id
@@ -520,29 +537,53 @@ export class AGUIStateMachine {
       this.text_message_started = true
     }
     events.push(this._emit(AGUIEventType.TEXT_MESSAGE_CONTENT, { messageId: this.message_id, delta: token }))
+    this._text_any_emitted = true
     return events
   }
 
   emit_text_content(content: string): (AGUIEvent | string)[] {
-    this.response_text += content
-    this.collected_text = this.response_text
+    // 叙述段（过程话术）不进正文累积：collected_text 是落库正文/复制分享的来源，
+    // 若混入叙述，用户的"回答正文"会变成一串过程话术（历史缺陷）。
+    if (!this._text_narration) {
+      this.response_text += content
+      this.collected_text = this.response_text
+      this._final_answer_emitted = true
+    }
     const events: (AGUIEvent | string)[] = []
     if (!this.text_message_started) {
-      events.push(this._emit(AGUIEventType.TEXT_MESSAGE_START, { messageId: this.message_id, role: 'assistant' }))
+      events.push(this._emit(AGUIEventType.TEXT_MESSAGE_START, {
+        messageId: this.message_id,
+        role: 'assistant',
+        // 叙述段显式打标：前端据此与最终回答区分（复制/分享只取最终回答），
+        // 落库侧同步持久化该标记（历史回放口径一致）
+        ...(this._text_narration ? { narration: true } : {}),
+      }))
       this.text_message_started = true
     }
     events.push(this._emit(AGUIEventType.TEXT_MESSAGE_CONTENT, { messageId: this.message_id, delta: content }))
+    this._text_any_emitted = true
     return events
   }
 
+  /**
+   * 收尾当前文本段（叙述段与最终回答各自成段的关键）。
+   *
+   * 收尾后重置 text_message_started，使下一段文本重新发 TEXT_MESSAGE_START
+   * （否则叙述段与最终回答会粘成同一段）。
+   *
+   * 兜底分支仅在「文本累积但从未下发过」的异常路径生效（_text_any_emitted
+   * 记录是否下发过内容），避免终态 closing 时把已流式下发的正文重复整段重发。
+   */
   emit_text_end(): (AGUIEvent | string)[] {
     const events: (AGUIEvent | string)[] = []
     if (this.text_message_started) {
+      this.text_message_started = false
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_END, { messageId: this.message_id }))
-    } else if (this.response_text) {
+    } else if (this.response_text && !this._text_any_emitted) {
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_START, { messageId: this.message_id, role: 'assistant' }))
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_CONTENT, { messageId: this.message_id, delta: this.response_text }))
       events.push(this._emit(AGUIEventType.TEXT_MESSAGE_END, { messageId: this.message_id }))
+      this._text_any_emitted = true
     }
     return events
   }
@@ -552,7 +593,8 @@ export class AGUIStateMachine {
    *
    * 流式 chunk 的 content 与 tool_calls 分离：同一消息的 content token 先流出，
    * tool_call_chunks 后流出。因此必须缓冲整段 content，待该消息轮次结束时
-   * 才能确定它是"中间轮叙述"（带 tool_calls → thinking）还是"最终回答"（text）。
+   * 才能确定它是"中间轮叙述"（带 tool_calls → 正文 + narration 标记）
+   * 还是"最终回答"（正文）。
    *
    * 调用时机：每收到一个 messages chunk。
    * 返回：本轮需要立即发出的事件（通常为空；id 切换时冲刷上一段缓冲）。
@@ -576,6 +618,22 @@ export class AGUIStateMachine {
     this._buf_has_tool_calls = chunkToolCalls
     this._buf_streaming_text = false
     return [...events, ...this._maybe_early_stream_text()]
+  }
+
+  /**
+   * 工具节点执行完毕 → 复位「本轮发起过工具调用」标记。
+   *
+   * 复位点选在这里而不是缓冲 id 切换处：同一轮的 tool_calls 可能晚于文本 chunk
+   * 到达（工具调用走 updates / 独立 chunk），在 id 切换处复位会让叙述判据失效。
+   * 工具执行完才是真正的新轮次边界。
+   */
+  note_tools_executed(): void {
+    this._round_tool_calls_emitted = false
+  }
+
+  /** 本次 run 是否已下发过「最终回答」文本段（非 narration）；终态兜底据此补发正文 */
+  get has_final_answer_text(): boolean {
+    return this._final_answer_emitted
   }
 
   /**
@@ -611,12 +669,13 @@ export class AGUIStateMachine {
 
   /**
    * 冲刷消息缓冲：根据缓冲消息是否带 tool_calls，
-   * 将其 content 路由到 thinking（中间轮叙述）或 text（最终回答）。
+   * 将其 content 路由到正文（中间轮叙述，带 narration 标记）或正文（最终回答）。
    *
-   * 「一轮 = 一个 thinking 段」：中间轮叙述与其真实思维链（reasoning delta）
-   * 同段追加，随后立即收尾；下一轮的 CoT 到达时另开新段。前端与落库侧因此是
-   * 「深度思考段 ↔ 工具调用」精确交错的 TAO 闭环，可逐轮还原任务链路。
-   * （早期实现把多轮叙述首尾粘连为一大段，无法与工具调用对齐，已废弃。）
+   * 两类文本都走 text 通道，但语义与呈现不同：
+   *   - 叙述段：独立成段 + narration 标记 → 渲染为正文、与工具动作行交错
+   *     （WorkBuddy 风格），复制/分享与落库按标记把过程话术排除在「回答」之外；
+   *   - 最终回答：独立成段 + 无标记 → 复制/分享的正文。
+   * 思维链（reasoning delta）仍留在思考面板，思考块因此只含推理，层级更干净。
    *
    * @param authoritativeToolCalls 可选。来自 updates 事件的权威 tool_calls 判定，
    *   优先于流式 chunk 累积的 _buf_has_tool_calls（因为流式 chunk 的 tool_calls
@@ -625,8 +684,14 @@ export class AGUIStateMachine {
   flush_message_buffer(authoritativeToolCalls?: boolean): (AGUIEvent | string)[] {
     const events: (AGUIEvent | string)[] = []
     const content = this._buf_content
+    // 判据顺序：权威 tool_calls → 流式 chunk 标记 → 本轮实际是否下发过工具调用。
+    // 第三项是缺陷修复：本轮"先说一句过渡话术、随后发起工具调用"时，前两项都可能漏判
+    // （tool_calls 走 updates / 不同 chunk），于是过渡话术被当成最终回答 —— 表现为
+    // 触顶中止后"正文只有一句话"。
     const hasToolCalls =
-      authoritativeToolCalls !== undefined ? authoritativeToolCalls : this._buf_has_tool_calls
+      authoritativeToolCalls !== undefined
+        ? authoritativeToolCalls
+        : this._buf_has_tool_calls || this._round_tool_calls_emitted
     const alreadyStreamed = this._buf_streaming_text
 
     // 重置缓冲
@@ -651,12 +716,9 @@ export class AGUIStateMachine {
     }
 
     if (hasToolCalls) {
-      // 中间轮叙述 → thinking 通道，与模型真实思维链（reasoning delta）同段：
-      // 本轮 CoT 可能已开段，直接追加；随后立即收尾，使「一轮 = 一个思考段」，
-      // 下一轮 CoT 到达时会自然开新段（段与工具动作行保持交错）。
-      events.push(...this.emit_thinking(content))
-      const te = this.emit_thinking_end()
-      if (te !== null) events.push(te)
+      // 中间轮叙述 → 正文通道（WorkBuddy 风格）：与工具动作行交错显示，
+      // 思维链留在思考面板；本段独立收尾，最终回答会另起一块。
+      events.push(...this.emit_narration(content))
     } else {
       // 最终回答 → text 通道（若 thinking 仍开启，先关闭）
       if (this.thinking_started) {
@@ -665,6 +727,30 @@ export class AGUIStateMachine {
       }
       events.push(...this.emit_text_content(content))
     }
+    return events
+  }
+
+  /**
+   * 中间轮叙述（WorkBuddy 风格：正文通道）。
+   *
+   * 叙述是「模型对用户说的话」（我先做几组并行检索…），渲染在正文里与工具动作行
+   * 交错；思维链（reasoning delta）仍留在思考面板 —— 两类文本受众不同，不再混在
+   * 同一个折叠块里。
+   *
+   * 每轮叙述独立成段（START…CONTENT…END），因此下一段（下一轮叙述或最终回答）
+   * 会另起一块，不会与最终回答粘连；段落带 narration 标记，前端复制/分享与落库
+   * 据此把过程话术排除在「回答」之外。
+   */
+  emit_narration(content: string): (AGUIEvent | string)[] {
+    const events: (AGUIEvent | string)[] = []
+    if (this.thinking_started) {
+      const te = this.emit_thinking_end()
+      if (te !== null) events.push(te)
+    }
+    this._text_narration = true
+    events.push(...this.emit_text_content(content))
+    events.push(...this.emit_text_end())
+    this._text_narration = false
     return events
   }
 
@@ -683,6 +769,9 @@ export class AGUIStateMachine {
    * TOOL_CALL_ARGS（复用权威参数），避免重复参数把前端 args 串接坏。
    */
   emit_tool_call_start(tool_id: string, tool_name: string, args_str: string = '{}'): (AGUIEvent | string)[] {
+    // 记下"本轮发起过工具调用"：叙述标记兜底据此把同轮文本判为过程叙述，
+    // 而不是最终回答（见 _round_tool_calls_emitted 注释）
+    this._round_tool_calls_emitted = true
     const events: (AGUIEvent | string)[] = []
     const args = args_str ?? ''
     const hasArgs = args.length > 0 && args !== '{}'
@@ -1190,6 +1279,8 @@ export class AGUIStreamAdapter {
 
     const sm = new AGUIStateMachine(this._trace_id, this._message_id, 'dict')
     let final_response = ''
+    /** responseNode（含触顶收尾节点）产出的权威正文：终态兜底补发时优先使用 */
+    let state_response = ''
     let eventIdx = 0
     // HITL 中断探测（阶段零 D3）：LangGraph interrupt() 时 values 状态携带 __interrupt__，
     // 流会正常结束而非抛错——因此须在流结束后判定"本次 run 是否被 interrupt 暂停"。
@@ -1261,8 +1352,11 @@ export class AGUIStreamAdapter {
             )
           }
           const resp = data.response ?? ''
-          if (resp && !final_response && !sm.text_message_started) {
-            final_response = resp
+          if (typeof resp === 'string' && resp) {
+            state_response = resp
+            if (!final_response && !sm.text_message_started) {
+              final_response = resp
+            }
           }
         }
       }
@@ -1318,10 +1412,17 @@ export class AGUIStreamAdapter {
       logger.debug('transform.final_fallback len=%d', final_response.length)
     }
 
-    if (!sm.text_message_started && final_response) {
-      logger.debug('transform.fallback_text_content len=%d', final_response.length)
-      for (const ev of sm.emit_text_content(final_response)) {
-        yield ev as Record<string, string>
+    // 兜底补发正文（缺陷修复）：本轮只下发了过程叙述（narration）而没有最终回答时，
+    // 把权威正文补发出去 —— 否则用户看到的"正文"只是最后一段过渡话术，
+    // 表现为"回答只有一句话"（典型场景：工具轮次触顶被中止）。
+    // 优先用 state.response（包含触顶收尾节点产出的回答，或如实说明中止原因的文案）。
+    if (!sm.has_final_answer_text) {
+      const fallbackText = state_response || final_response
+      if (fallbackText) {
+        logger.debug('transform.fallback_answer_text len=%d', fallbackText.length)
+        for (const ev of sm.emit_text_content(fallbackText)) {
+          yield ev as Record<string, string>
+        }
       }
     }
 
@@ -1427,6 +1528,8 @@ export class AGUIStreamAdapter {
       }
 
       if (node === 'tools') {
+        // 工具执行完毕 = 轮次边界：复位"本轮发起过工具调用"标记（叙述判据用）
+        sm.note_tools_executed()
         const messages = data.messages ?? []
         for (const msg of messages) {
           if (msg?.type === 'tool') {
@@ -1538,10 +1641,13 @@ export class AGUIStreamAdapter {
     }
 
     if (event_type === 'tool_call_start') {
-      const tc_data = event.data ?? {}
-      const tc_id = tc_data.tool_call_id ?? randomUUID()
-      const tc_name = tc_data.tool_name ?? 'unknown'
-      return sm.emit_tool_call_start(tc_id, tc_name, '{}')
+      // 动作行的唯一事实源是 agent 节点的权威 updates（带完整 args + TOOL_CALL_END）；
+      // EventBridge 从同一个 updates 派生出的这条 SSE 侧路只是"同一事件的另一视图"，
+      // 在此开行会产生两个后果：① 与权威路径重复开行；② 侧路先于原始事件下发，
+      // 导致同一轮的「叙述段」排到动作行之后。故适配器侧不再开行（事件本身保留，
+      // 其它宿主仍可消费）。
+      void event
+      return []
     }
 
     if (event_type === 'tool_result') {
