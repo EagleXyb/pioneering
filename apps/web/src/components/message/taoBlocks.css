@@ -10,7 +10,8 @@
 
 /* ===== 深度思考折叠块 ===== */
 .tao-reasoning {
-  margin: 2px 0 10px;
+  /* 行间距交给容器 gap，自身不再带外边距 */
+  margin: 0;
 }
 
 /* 展开态：整个块最大高度 220px（标题行 + 内容区），
@@ -24,7 +25,8 @@
 .tao-reasoning-header {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  /* 与动作行同档：间距 6px、字号 14px（同正文）、图标 20px（墨迹对齐，见下） */
+  gap: 6px;
   /* 展开态处于 flex 容器中：按内容宽度、不参与收缩（避免标题行被压扁） */
   align-self: flex-start;
   flex: none;
@@ -36,7 +38,7 @@
   font-size: 14px;
   line-height: 1.5;
   /* 标题浅于正文：层级由左侧竖线承担（对齐参考图） */
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
   cursor: pointer;
   user-select: none;
   border-radius: 8px;
@@ -65,10 +67,19 @@
   }
 }
 
+/* 思考图标（四瓣花，与标题同色：currentColor）
+ * 与 lucide 工具图标同盒子尺寸：花朵墨迹已铺满 viewBox（见 customIcons.tsx），
+ * 因此 14px 盒子下两个图标的笔画左缘都落在同一竖线上（盒内 0.58px），
+ * 图标与文字的间距也一致 —— 图标列与文字列都能对齐 */
+.tao-reasoning-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
 .tao-reasoning-chevron {
   flex: none;
-  margin-left: 2px;
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
   transition: transform var(--transition-fast);
 }
 
@@ -144,15 +155,120 @@
   color: var(--text-primary);
 }
 
+/* ===== 过程容器（TAO 全流程折叠：豆包工作风格） =====
+ * 终态收起为一行「共 N 轮 · M 次工具调用 · 耗时 X」，正文只留最终回答；
+ * 运行中展开并显示实时计时；展开后内部仍是思考/叙述/动作行交错的 TAO 序列。 */
+.tao-process {
+  margin: 2px 0 10px;
+  /* 过程信息层统一灰阶（单一来源）：行文字、行图标、箭头、卡片元信息都用它。
+   * 想整体调深浅只改这一行；「叙述段」走正文色，展开后的思考内容与卡片里的
+   * 引用内容（JSON / 来源标题）属内容层，不走此色。 */
+  --tao-meta: var(--text-secondary);
+}
+
+.tao-process-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* 向左外扩点击热区，视觉上仍与正文对齐 */
+  padding: 4px 8px 4px 2px;
+  margin-left: -2px;
+  border: none;
+  background: transparent;
+  /* 与正文（.chat-markdown 14px）同号，过程信息层不缩小字号 */
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--tao-meta);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.tao-process-header:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* 运行中：呼吸圆点，提示过程仍在推进 */
+.tao-process-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  animation: tao-pulse 1.4s ease-in-out infinite;
+}
+
+.tao-process-meta {
+  white-space: nowrap;
+}
+
+.tao-process-chevron {
+  flex: none;
+  transition: transform var(--transition-fast);
+}
+
+/* 收起态朝右、展开态朝下（与思考块/动作行一致） */
+.tao-process.is-open .tao-process-chevron {
+  transform: rotate(90deg);
+}
+
+.tao-process-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    grid-template-rows 0.22s ease,
+    opacity 0.18s ease,
+    transform 0.22s ease;
+}
+
+.tao-process.is-open .tao-process-body-wrap {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tao-process-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 过程行统一的垂直节奏：6px，且一律由父级 flex gap 提供
+ * （此前各行自带 2px/10px 上下外边距、批次内又是 6px，折叠/不折叠规则不同导致
+ *   出现 2px、8px、16px 三种行间距，看起来忽松忽紧） */
+.tao-process-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 容器标题行（自带 4px 下内边距）+ 2px = 与各行间距一致的 6px */
+  padding-top: 2px;
+}
+
+/* 叙述段与过程行严格同规格：同样的 4px 上下内边距 + 行高 1.5。
+ * 叙述段此前沿用正文行高 1.7 且无内边距，使「叙述↔行」的墨迹间距比「行↔行」
+ * 小 4px（实测 26 vs 30px）；对齐后两者完全相等。
+ * 仅作用于过程容器的直属 Markdown —— 思考内容区在更深层，保留自己的排版。 */
+.tao-process-body > .chat-markdown {
+  padding: 4px 0;
+  line-height: 1.5;
+}
+
 /* ===== 工具动作行（Action / Observation） ===== */
 .tao-tool {
-  margin: 2px 0 10px;
+  /* 行间距交给容器 gap，自身不再带外边距 */
+  margin: 0;
 }
 
 .tao-tool-header {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  /* 与思考标签同档：6px 间距 + 14px 字号（同正文）+ 14px lucide 图标（墨迹≈12.9px） */
+  gap: 6px;
   max-width: 100%;
   padding: 4px 8px 4px 2px;
   margin-left: -2px;
@@ -161,7 +277,7 @@
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text-secondary);
+  color: var(--tao-meta);
   cursor: pointer;
   text-align: left;
   user-select: none;
@@ -181,7 +297,7 @@
 
 .tao-tool-icon {
   flex: none;
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
 }
 
 /* 执行中：图标呼吸 + 高亮，提示该节点尚未完成 */
@@ -199,7 +315,7 @@
 
 .tao-tool-chevron {
   flex: none;
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
   transition: transform var(--transition-fast);
 }
 
@@ -219,7 +335,7 @@
 .tao-tool-detail-label {
   font-size: 12px;
   line-height: 1.4;
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
   margin-bottom: 4px;
 }
 
@@ -237,6 +353,44 @@
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ===== 动作批次聚合（一轮同类动作收成一行，展开看明细） =====
+ * 借鉴 WorkBuddy：「联网搜索 5 条查询 ⌄」一行收拢并列调用，
+ * 展开后逐条显示完整 query 与观测（明细行不做目标压缩）。 */
+.tao-tool--batch .tao-tool-icon.is-live {
+  color: var(--accent-blue);
+  animation: tao-pulse 1.4s ease-in-out infinite;
+}
+
+.tao-tool-batch-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.22s ease,
+    opacity 0.18s ease;
+}
+
+.tao-tool-batch-body-wrap.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.tao-tool-batch-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 明细与聚合行同左缘对齐（对齐 WorkBuddy 的排布：图标列一条线到底，
+ * 从属关系由「人话聚合行 + 紧随其后的明细」表达，不再额外缩进） */
+.tao-tool-batch-body {
+  display: flex;
+  flex-direction: column;
+  /* 与过程主体同一节奏：聚合行、明细行、前后块之间都恰好 6px
+   * （聚合行与首条明细之间的 6px 由 padding-top 承担：明细已不再自带外边距） */
+  gap: 6px;
+  padding-top: 6px;
 }
 
 /* ===== 搜索结果卡片（WorkBuddy 风格：浅灰圆角卡片 + 来源列表） ===== */
@@ -286,7 +440,8 @@
 .tao-source-link {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  /* 来源标题同正文号，层级靠颜色弱化而非缩小字号 */
+  font-size: 14px;
   line-height: 1.45;
   color: var(--text-secondary);
   text-decoration: none;
@@ -312,7 +467,7 @@
 
 .tao-tool-result-meta {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
 }
 
 .tao-tool-result-actions {
@@ -330,7 +485,7 @@
   border-radius: 6px;
   background: transparent;
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--tao-meta);
   cursor: pointer;
   transition:
     color var(--transition-fast),
@@ -387,12 +542,17 @@
   .tao-reasoning-chevron,
   .tao-tool-chevron,
   .tao-tool-result-raw-chevron,
-  .tao-tool-result-raw-wrap {
+  .tao-tool-result-raw-wrap,
+  .tao-process-body-wrap,
+  .tao-process-chevron,
+  .tao-tool-batch-body-wrap {
     transition: none;
     transform: none;
   }
   .tao-reasoning.is-streaming .tao-reasoning-title,
-  .tao-tool.is-streaming .tao-tool-icon {
+  .tao-tool.is-streaming .tao-tool-icon,
+  .tao-tool--batch .tao-tool-icon.is-live,
+  .tao-process.is-streaming .tao-process-dot {
     animation: none;
   }
 }

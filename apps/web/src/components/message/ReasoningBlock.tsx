@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Markdown } from '@/components/Markdown';
+import { ThinkingIcon } from '@/components/icons/customIcons';
 import type { TaoReasoningPhase } from '@/lib/taoBlocks';
 import './taoBlocks.css';
 
@@ -58,6 +59,7 @@ export function ReasoningBlock({ text, streaming = false, phase }: Props) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
+        <ThinkingIcon className="tao-reasoning-icon" />
         <span className="tao-reasoning-title">{title}</span>
         <ChevronRight size={14} strokeWidth={2.2} className="tao-reasoning-chevron" />
       </button>

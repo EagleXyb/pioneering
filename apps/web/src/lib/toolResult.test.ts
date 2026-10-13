@@ -43,9 +43,15 @@ describe('parseSearchToolResult', () => {
     expect(parsed?.source).toBe('tavily');
   });
 
-  it('硬截断（JSON 不完整）时挽救已完整的条目', () => {
+  it('硬截断（JSON 不完整）时挽救已完整的条目，并标记 salvaged（条数不完整）', () => {
     const parsed = parseSearchToolResult(cutInsideB());
     expect(parsed?.results.map((r) => r.title)).toEqual(['A']);
+    // salvaged=true：调用方（动作行摘要）据此不展示「参考 N 篇」等统计数字
+    expect(parsed?.salvaged).toBe(true);
+  });
+
+  it('完整 JSON 不带 salvaged 标记（统计数字可信）', () => {
+    expect(parseSearchToolResult(fullResultJson())?.salvaged).toBeUndefined();
   });
 
   it('带 "...[truncated]" 标记的截断结果同样可挽救', () => {

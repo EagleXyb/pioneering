@@ -15,7 +15,7 @@ import { AnalysisMessageList } from './AnalysisMessageList';
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/api/message', () => ({ feedbackMessage: vi.fn(async () => undefined) }));
 
-const emptyNotice = () => screen.queryByText(/Agent 本轮未返回内容/);
+const emptyNotice = () => screen.queryByText(/Agent 本轮未产出完整回答/);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -126,15 +126,144 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
     ],
   };
 
+  /** 展开过程容器（终态默认收起为一行摘要，内部块需先展开才可交互） */
+  function expandProcess(): void {
+    const header = screen.queryByRole('button', { name: /执行过程/ });
+    if (header && header.getAttribute('aria-expanded') === 'false') {
+      fireEvent.click(header);
+    }
+  }
+
+  it('过程容器：终态收成一行摘要、运行中展开（借鉴豆包工作）', () => {
+    const streamingMessage = {
+      ...taoMessage,
+      status: 'streaming' as const,
+      content: [
+        {
+          ...taoMessage.content[0],
+          status: 'streaming' as const,
+        },
+        taoMessage.content[1],
+      ],
+    };
+
+    const { rerender } = render(
+      <AnalysisMessageList status="streaming" messages={[streamingMessage as never]} />,
+    );
+
+    // 运行中：容器展开，标题带「运行中」
+    const live = screen.getByRole('button', { name: /执行过程/ });
+    expect(live).toHaveAttribute('aria-expanded', 'true');
+    expect(live.getAttribute('aria-label')).toMatch(/运行中/);
+
+    // 终态：自动收起，摘要为「已完成 · 耗时 X」（不再显示检索/工具次数）
+    rerender(<AnalysisMessageList status="complete" messages={[taoMessage as never]} />);
+    const done = screen.getByRole('button', { name: /执行过程/ });
+    expect(done).toHaveAttribute('aria-expanded', 'false');
+    expect(done.getAttribute('aria-label')).toMatch(/^执行过程，已完成 · 耗时 /);
+    expect(done.getAttribute('aria-label')).not.toMatch(/次(检索|工具调用)/);
+    // 收起态下正文仍在容器之外（只留回答）
+    expect(screen.getByText('最终回答')).toBeInTheDocument();
+  });
+
+  it('连续同类检索聚合为一行，展开后明细保留完整 query', () => {
+    const queries = [
+      'HITL agent design best practices 2025 clarification disambiguation',
+      'Devin Cursor agent plan confirm apply diff human approval mechanism',
+      'LangGraph interrupt human-in-the-loop pattern agent clarification',
+    ];
+    const batchMessage = {
+      id: 'a-batch',
+      role: 'assistant' as const,
+      status: 'complete' as const,
+      content: [
+        {
+          type: 'reasoning' as const,
+          data: [{ type: 'text' as const, data: '先并行检索。', status: 'complete' as const }],
+          status: 'complete' as const,
+        },
+        ...queries.map((q, i) => ({
+          type: 'toolcall' as const,
+          data: { toolCallId: `t${i}`, toolCallName: 'search_engine', args: `{"query":"${q}"}` },
+          status: 'complete' as const,
+        })),
+        { type: 'markdown' as const, data: '最终回答' },
+      ],
+    };
+
+    render(<AnalysisMessageList status="complete" messages={[batchMessage as never]} />);
+    expandProcess();
+
+    // 一轮 3 条检索收成一行人话摘要：收集「<首条关键词>」等 3 条资料
+    const batch = screen.getByRole('button', { name: /等 3 条资料/ });
+    expect(batch.getAttribute('aria-label')).toMatch(/^收集「HITL agent design best practic/);
+    expect(batch).toHaveAttribute('aria-expanded', 'false');
+    // 容器摘要不再出现检索次数
+    expect(
+      screen.getByRole('button', { name: /执行过程/ }).getAttribute('aria-label'),
+    ).not.toMatch(/次(检索|工具调用)/);
+    // 明细默认收起（收起态不在可访问树里）
+    expect(
+      screen.queryByRole('button', { name: /Devin Cursor agent plan confirm/ }),
+    ).toBeNull();
+
+    fireEvent.click(batch);
+    // 明细行保留完整 query（聚合行负责压缩，明细行不做压缩）
+    expect(
+      screen.getByRole('button', {
+        name: /联网搜索 Devin Cursor agent plan confirm apply diff human approval mechanism/,
+      }),
+    ).toBeInTheDocument();
+  });
+
   it('思考段渲染为“深度思考”折叠块（终态默认收起，可点击展开）', () => {
     render(<AnalysisMessageList status="complete" messages={[taoMessage as never]} />);
 
+    expandProcess();
     const header = screen.getByRole('button', { name: /深度思考/ });
     expect(header).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(header);
     expect(header).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('先加载技能。')).toBeInTheDocument();
+  });
+
+  it('多轮思考均为同一「深度思考」标签（不带轮次编号）', () => {
+    const multiRound = {
+      id: 'a-multi',
+      role: 'assistant' as const,
+      status: 'complete' as const,
+      content: [
+        {
+          type: 'reasoning' as const,
+          data: [{ type: 'text' as const, data: '第一轮思考。', status: 'complete' as const }],
+          status: 'complete' as const,
+        },
+        {
+          type: 'toolcall' as const,
+          data: { toolCallId: 't1', toolCallName: 'search_engine', args: '{"query":"a"}' },
+          status: 'complete' as const,
+        },
+        {
+          type: 'reasoning' as const,
+          data: [{ type: 'text' as const, data: '第二轮思考。', status: 'complete' as const }],
+          status: 'complete' as const,
+        },
+        { type: 'markdown' as const, data: '最终回答' },
+      ],
+    };
+
+    render(<AnalysisMessageList status="complete" messages={[multiRound as never]} />);
+    expandProcess();
+
+    // 两段思考各自成块、标题统一为「深度思考」，不带轮次编号
+    const headers = screen.getAllByRole('button', { name: '深度思考' });
+    expect(headers).toHaveLength(2);
+
+    // 各段内容独立（展开后互不串段）
+    headers.forEach((h) => fireEvent.click(h));
+    expect(screen.getByText('第一轮思考。')).toBeInTheDocument();
+    expect(screen.getByText('第二轮思考。')).toBeInTheDocument();
   });
 
   it('流式思考段默认展开（用户可实时看到推理推进）', () => {
@@ -209,6 +338,8 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
         messages={[messageOf(undefined, false, '正在分析…') as never]}
       />,
     );
+    // 终态过程容器同步收起：先展开容器，再断言思考块自身为收起态
+    expandProcess();
     expect(screen.getByRole('button', { name: /深度思考/ })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -218,6 +349,7 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
   it('工具调用渲染为一行式动作摘要，展开可见参数与观察（截图交互）', () => {
     render(<AnalysisMessageList status="complete" messages={[taoMessage as never]} />);
 
+    expandProcess();
     // 默认只有一行摘要：动词 + 目标对象
     const toolRow = screen.getByRole('button', { name: /加载技能/ });
     expect(toolRow).toHaveAttribute('aria-expanded', 'false');
@@ -261,8 +393,11 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
 
     render(<AnalysisMessageList status="complete" messages={[searchMessage as never]} />);
 
-    // 动作行摘要：动词（联网搜索）+ 目标对象
-    const row = screen.getByRole('button', { name: /联网搜索 Harness Engineering/ });
+    expandProcess();
+    // 动作行摘要（语义压缩）：联网搜索「关键词」· 参考 N 篇
+    const row = screen.getByRole('button', {
+      name: /联网搜索「Harness Engineering」\s*·\s*参考 2 篇/,
+    });
     fireEvent.click(row);
 
     // 来源列表：标题可点开原文 + 引擎来源信息
@@ -278,14 +413,28 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
     expect(rawToggle).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('同一消息内思考/行动/正文按块顺序交错渲染', () => {
+  it('过程收进容器、回答留在容器外；容器内仍是思考/行动交错顺序', () => {
     const { container } = render(
       <AnalysisMessageList status="complete" messages={[taoMessage as never]} />,
     );
 
-    // 只看消息主体的顶层子节点（排除操作栏 / 执行轨迹）
+    // 顶层：过程容器 + 回答正文（排除操作栏 / 执行轨迹）
     const body = container.querySelector('.chat-msg-ai-body')!;
-    const classes = Array.from(body.children)
+    const topClasses = Array.from(body.children)
+      .map((n) =>
+        n.classList.contains('tao-process')
+          ? 'process'
+          : n.classList.contains('chat-markdown')
+            ? 'text'
+            : 'other',
+      )
+      .filter((c) => c !== 'other');
+    expect(topClasses).toEqual(['process', 'text']);
+
+    // 容器内：TAO 块按事件顺序交错（思考 → 行动）
+    expandProcess();
+    const inner = body.querySelector('.tao-process-body')!;
+    const innerClasses = Array.from(inner.children)
       .map((n) =>
         n.classList.contains('tao-reasoning')
           ? 'reasoning'
@@ -296,7 +445,7 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
               : 'other',
       )
       .filter((c) => c !== 'other');
-    expect(classes).toEqual(['reasoning', 'tool', 'text']);
+    expect(innerClasses).toEqual(['reasoning', 'tool']);
   });
 });
 
@@ -370,5 +519,87 @@ describe('AnalysisMessageList 用户消息气泡（与 chat / task 对齐）', (
     fireEvent.click(screen.getByRole('button', { name: /发送/ }));
 
     expect(onSubmitEdit).toHaveBeenCalledWith('u1', '改后的内容');
+  });
+});
+
+/**
+ * 「本轮未产出完整回答」回归（缺陷：工具轮次触顶被中止）
+ *
+ * 真实事故：agent 在工具轮次上限处被强制终止，消息里只有若干过程叙述
+ * （"我先去核实一下…"），最后一段还没带 narration 标记 → 前端把它当正文渲染，
+ * 用户看到的"回答"只有一句话。本组锁定两道防线：
+ *   1) 只有过程叙述、没有真实回答时，回答区给出可见提示；
+ *   2) 没等到观测结果的工具调用显示「未执行」，不再假装执行中/已完成。
+ */
+describe('AnalysisMessageList — 未产出完整回答与未执行动作行', () => {
+  function expandProcess(): void {
+    const header = screen.queryByRole('button', { name: /执行过程/ });
+    if (header && header.getAttribute('aria-expanded') === 'false') {
+      fireEvent.click(header);
+    }
+  }
+
+  it('只有过程叙述、没有最终回答 → 回答区显示提示，叙述收在过程容器里', () => {
+    render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[
+          {
+            id: 'a-narration-only',
+            role: 'assistant',
+            status: 'complete',
+            content: [
+              {
+                type: 'reasoning',
+                data: [{ type: 'text', data: '先检索。', status: 'complete' }],
+                status: 'complete',
+              },
+              {
+                type: 'markdown',
+                data: '我先去核实一下业界实践的公开资料。',
+                ext: { narration: true },
+                status: 'complete',
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/Agent 本轮未产出完整回答/)).toBeInTheDocument();
+    expandProcess();
+    // 叙述句属于过程信息，收在容器内（不会显示成正文）
+    expect(screen.getByText('我先去核实一下业界实践的公开资料。')).toBeInTheDocument();
+  });
+
+  it('未执行的动作行标注「未执行」（触顶/中止后不再显示为执行中）', () => {
+    render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[
+          {
+            id: 'a-aborted-tool',
+            role: 'assistant',
+            status: 'complete',
+            content: [
+              {
+                type: 'toolcall',
+                data: {
+                  toolCallId: 't1',
+                  toolCallName: 'search_engine',
+                  args: '{"query":"HITL 澄清"}',
+                },
+                status: 'stop',
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expandProcess();
+    expect(
+      screen.getByRole('button', { name: /联网搜索.*未执行/ }),
+    ).toBeInTheDocument();
   });
 });

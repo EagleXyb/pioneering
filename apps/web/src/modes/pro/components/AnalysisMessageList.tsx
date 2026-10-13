@@ -17,10 +17,13 @@ import { RunTrace } from '../../../components/run-trace/RunTrace';
 import { Markdown } from '@/components/Markdown';
 import { UserMessageBubble } from '@/components/message/UserMessageBubble';
 import { ReasoningBlock } from '@/components/message/ReasoningBlock';
-import { ToolCallRow } from '@/components/message/ToolCallRow';
+import { ToolBatchRow, ToolCallRow } from '@/components/message/ToolCallRow';
+import { ProcessContainer } from '@/components/message/ProcessContainer';
+import { describeToolAction } from '@/lib/toolAction';
 import { ScrollToBottomButton } from '@/components/message/ScrollToBottomButton';
 import {
   blocksToPlainText,
+  isNarrationBlock,
   reasoningPhase,
   reasoningText,
   type TaoToolBlock,
@@ -138,47 +141,138 @@ function hasRenderableBlock(block: AIMessageContent): boolean {
 }
 
 /**
- * TAO 块序列渲染（截图同款交互）：
- * - reasoning → “深度思考”折叠面板（引用式内容，默认随流式展开、终态收起）
- * - toolcall → 工具动作行（一行摘要，展开可见参数与观测结果）
- * - markdown → 正文段落
- * 三者按事件到达顺序交错，完整复现「推理 → 行动 → 观察」闭环。
+ * 过程块判定：思考段 / 工具动作行 / 过程叙述（narration）都属于「过程」，
+ * 终态统一收进过程容器；不带 narration 标记的正文才是最终回答。
  */
-function TaoBlockSequence({ blocks }: { blocks: AIMessageContent[] }) {
+function isProcessBlock(block: AIMessageContent): boolean {
+  if (block.type === 'reasoning' || block.type === 'toolcall') return true;
+  return isNarrationBlock(block);
+}
+
+/**
+ * 渲染块序列（不含过程容器本身）：
+ * - reasoning → “深度思考”折叠面板（默认随流式展开、终态收起）
+ * - toolcall → 工具动作行；**连续同类动作聚合为一行**（借鉴 WorkBuddy：
+ *   一轮并列的 5 条检索收成「联网搜索 5 条查询 ⌄」，展开看完整明细）
+ * - markdown → 正文段落
+ * 按事件到达顺序交错，完整复现「推理 → 行动 → 观察」闭环。
+ */ 
+function renderBlocks(blocks: AIMessageContent[]) {
+  const nodes: React.ReactNode[] = [];
+  let idx = 0;
+
+  while (idx < blocks.length) {
+    const block = blocks[idx]!;
+    if (!hasRenderableBlock(block)) {
+      idx += 1;
+      continue;
+    }
+
+    if (block.type === 'toolcall') {
+      // 向后收集「连续同类」动作（图标类别一致）——并列调用天然相邻
+      const first = block as TaoToolBlock;
+      const firstDesc = describeToolAction(first.data?.toolCallName ?? '', first.data?.args);
+      let end = idx + 1;
+      while (end < blocks.length) {
+        const next = blocks[end]!;
+        if (next.type !== 'toolcall' || !hasRenderableBlock(next)) break;
+        const tb = next as TaoToolBlock;
+        const desc = describeToolAction(tb.data?.toolCallName ?? '', tb.data?.args);
+        if (desc.icon !== firstDesc.icon) break;
+        end += 1;
+      }
+
+      const group = blocks.slice(idx, end) as TaoToolBlock[];
+      if (group.length >= 2) {
+        nodes.push(
+          <ToolBatchRow
+            key={`toolbatch-${idx}`}
+            verb={firstDesc.verb}
+            icon={firstDesc.icon}
+            items={group.map((tb) => ({
+              toolName: tb.data?.toolCallName ?? '',
+              args: tb.data?.args,
+              result: tb.data?.result,
+              streaming: tb.status === 'streaming',
+              failed: tb.status === 'stop',
+            }))}
+          />,
+        );
+      } else {
+        nodes.push(
+          <ToolCallRow
+            key={`toolcall-${idx}`}
+            toolName={first.data?.toolCallName ?? ''}
+            args={first.data?.args}
+            result={first.data?.result}
+            streaming={first.status === 'streaming'}
+            failed={first.status === 'stop'}
+          />,
+        );
+      }
+      idx = end;
+      continue;
+    }
+
+    if (block.type === 'reasoning') {
+      nodes.push(
+        <ReasoningBlock
+          key={`reasoning-${idx}`}
+          text={reasoningText(block)}
+          streaming={block.status === 'streaming'}
+          phase={reasoningPhase(block)}
+        />,
+      );
+      idx += 1;
+      continue;
+    }
+
+    if (
+      (block.type === 'text' || block.type === 'markdown') &&
+      typeof block.data === 'string'
+    ) {
+      nodes.push(<Markdown key={`${block.type}-${idx}`} content={block.data} />);
+    }
+    idx += 1;
+  }
+
+  return nodes;
+}
+
+/**
+ * TAO 块序列渲染：
+ * - 过程块（思考/叙述/动作行）→ 收进过程容器：运行中展开并显示实时计时，
+ *   终态自动收起为一行摘要（借鉴豆包工作，避免多轮过程把正文推长）；
+ * - 回答正文 → 渲染在容器之后，保持正文区简洁。
+ * 切分规则：过程块在前、回答在后（后端按 TAO 顺序产出），取最后一个过程块位置切分。
+ */
+function TaoBlockSequence({
+  blocks,
+  streaming,
+  durationMs,
+}: {
+  blocks: AIMessageContent[];
+  streaming: boolean;
+  durationMs?: number | null;
+}) {
+  const lastProcessIdx = blocks.reduce(
+    (acc, b, i) => (isProcessBlock(b) ? i : acc),
+    -1,
+  );
+  const processBlocks = lastProcessIdx >= 0 ? blocks.slice(0, lastProcessIdx + 1) : [];
+  const answerBlocks = lastProcessIdx >= 0 ? blocks.slice(lastProcessIdx + 1) : blocks;
+
   return (
     <>
-      {blocks.map((block, idx) => {
-        if (!hasRenderableBlock(block)) return null;
-        if (block.type === 'reasoning') {
-          return (
-            <ReasoningBlock
-              key={`reasoning-${idx}`}
-              text={reasoningText(block)}
-              streaming={block.status === 'streaming'}
-              phase={reasoningPhase(block)}
-            />
-          );
-        }
-        if (block.type === 'toolcall') {
-          const tb = block as TaoToolBlock;
-          return (
-            <ToolCallRow
-              key={`toolcall-${idx}`}
-              toolName={tb.data?.toolCallName ?? ''}
-              args={tb.data?.args}
-              result={tb.data?.result}
-              streaming={block.status === 'streaming'}
-            />
-          );
-        }
-        if (
-          (block.type === 'text' || block.type === 'markdown') &&
-          typeof block.data === 'string'
-        ) {
-          return <Markdown key={`${block.type}-${idx}`} content={block.data} />;
-        }
-        return null;
-      })}
+      {processBlocks.length > 0 && (
+        <ProcessContainer
+          streaming={streaming}
+          durationMs={durationMs ?? null}
+        >
+          {renderBlocks(processBlocks)}
+        </ProcessContainer>
+      )}
+      {renderBlocks(answerBlocks)}
     </>
   );
 }
@@ -214,14 +308,18 @@ function AnalysisAssistantItem({
     message.status === 'error' ||
     (!message.status && (text.length > 0 || hasProcess));
   /**
-   * 空回复兜底：run 正常结束（status='complete'）但正文与过程块全空时，
+   * 空回复兜底：run 正常结束（status='complete'）但**没有任何最终回答**时给出提示，
    * 不能渲染成 null —— 那会让整条消息在界面上完全消失，用户无从判断
-   * 「Agent 没回复」还是「页面坏了」。典型触发：后端 max_tokens 截断导致
-   * finish_reason='length' 且 content=''（此时后端不会发 RUN_ERROR）。
-   * 仅对 complete 生效：HITL 占位消息（无 status）与历史消息（有正文）不受影响；
-   * 只有思考/工具过程而无正文时也不误报（过程块本身可见）。
+   * 「Agent 没回复」还是「页面坏了」。
+   *
+   * 触发场景：
+   *   - 模型输出被长度上限截断（content=''，后端不发 RUN_ERROR）；
+   *   - 工具轮次触顶被中止：只有过程叙述（narration）没有最终回答。
+   * `text` 已排除 narration（blocksToPlainText 口径），因此"只有过程话术"也算空回答，
+   * 与过程块是否存在无关（过程块可能很多，但都不是回答）。
+   * 仍只对 complete 生效：streaming / HITL 占位（无 status）不误报。
    */
-  const isEmptyFinal = !text && !hasProcess && !isStreaming && message.status === 'complete';
+  const isEmptyFinal = !text && !isStreaming && message.status === 'complete';
 
   /** 点踩/点赞：再点一次取消 */
   const toggleFeedback = (next: 'good' | 'bad') => {
@@ -286,14 +384,19 @@ function AnalysisAssistantItem({
     <div className="chat-msg-row chat-msg-row--ai">
       <div className="chat-msg-ai-body">
         {hasRenderable ? (
-          <TaoBlockSequence blocks={blocks} />
+          <TaoBlockSequence
+            blocks={blocks}
+            streaming={isStreaming}
+            durationMs={runByMessage?.get(message.id)?.durationMs ?? null}
+          />
         ) : isStreaming ? (
           <span className="chat-streaming-placeholder" />
         ) : null}
 
         {isEmptyFinal && (
           <span className="chat-empty-response">
-            Agent 本轮未返回内容，可能是模型输出被长度上限截断，请重试或补充更多细节。
+            Agent 本轮未产出完整回答（可能已达到工具调用上限或被中止），过程见上方。
+            可以重试、缩小问题范围，或直接要求「用已有信息作答」。
           </span>
         )}
 

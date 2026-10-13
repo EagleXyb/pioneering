@@ -99,4 +99,17 @@ describe('操作栏自绘图标', () => {
     const pupil = svg.querySelector('circle');
     expect(pupil?.getAttribute('fill')).toBe('currentColor');
   });
+
+  it('四瓣花墨迹与 lucide 同口径（盒内边距恰好 1/24，图标间距才能统一）', () => {
+    const svg = renderSvg(<ThinkingIcon className="tao-reasoning-icon" />);
+    const ellipse = svg.querySelector('ellipse');
+    const rx = Number(ellipse?.getAttribute('rx'));
+    const ry = Number(ellipse?.getAttribute('ry'));
+    const stroke = Number(svg.getAttribute('stroke-width'));
+    // 45° 旋转后的包围半宽 = sqrt((rx² + ry²) / 2) + 半个描边宽度
+    const halfExtent = Math.sqrt((rx ** 2 + ry ** 2) / 2) + stroke / 2;
+    // lucide 图标（circle r=10 + stroke 2）墨迹外缘距盒子边缘 1/24：
+    // 偏小 → 与地球同盒时笔画内缩，看起来"没左对齐"、图标↔文字间距也偏大
+    expect(12 - halfExtent).toBeCloseTo(1, 1);
+  });
 });

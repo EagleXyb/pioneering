@@ -14,6 +14,7 @@ import {
   dropPreparingBlock,
   finalizeBlocks,
   finalizeReasoning,
+  finalizeText,
   setToolObservation,
   startThinkingBlock,
 } from '../../../lib/taoBlocks';
@@ -137,6 +138,11 @@ export function useAgentChat(
   const flowStatusRef = useRef<FlowStatus>('idle');
   /** 当前运行是否为 resume 续写（决定终态时是否 dequeue） */
   const isResumeRunRef = useRef(false);
+  /**
+   * 当前文本段是否为 ReAct 中间轮叙述（TEXT_MESSAGE_START.narration）。
+   * 叙述渲染在正文里与工具动作行交错，但标记为过程信息（复制/分享排除）。
+   */
+  const textNarrationRef = useRef(false);
 
   // 同步外部 activeId 变化
   sessionIdRef.current = activeId;
@@ -216,6 +222,7 @@ export function useAgentChat(
     thinkingTextRef.current = '';
     toolCallKeyRef.current = null;
     toolArgsRef.current = '';
+    textNarrationRef.current = false;
     flowStatusRef.current = 'idle';
     stepCounterRef.current = 0;
     setMessages([]);
@@ -362,10 +369,27 @@ export function useAgentChat(
       }));
       setCurrentStateKey(null);
     },
+    onTextStart: (event) => {
+      // 叙述段标记（WorkBuddy 风格：ReAct 中间轮叙述渲染在正文里与工具行交错，
+      // 但语义上属于过程信息 —— 复制/分享据此排除）
+      textNarrationRef.current = event.narration === true;
+    },
     onTextDelta: (delta) => {
       assistantTextRef.current += delta;
-      // 直接输出正文（无思考段）：丢弃空「准备中」占位，正文成为首个块
-      blocksRef.current = appendTextDelta(dropPreparingBlock(blocksRef.current), delta);
+      // 直接输出正文（无思考段）：丢弃空「准备中」占位，正文成为首个块；
+      // narration 仅对新建块生效（续写沿用既有块身份）
+      blocksRef.current = appendTextDelta(
+        dropPreparingBlock(blocksRef.current),
+        delta,
+        textNarrationRef.current,
+      );
+      pushAssistantBlocks();
+    },
+    onTextEnd: () => {
+      // 每段正文独立成块：叙述段收尾后，下一段（下一轮叙述或最终回答）另起一块，
+      // 避免过程叙述与最终回答粘成同一段
+      blocksRef.current = finalizeText(blocksRef.current);
+      textNarrationRef.current = false;
       pushAssistantBlocks();
     },
     onRunFinished: () => {
@@ -505,6 +529,7 @@ export function useAgentChat(
       stepCounterRef.current = 0;
       flowStatusRef.current = 'running';
       isResumeRunRef.current = false;
+      textNarrationRef.current = false;
 
       const assistantMsg: ChatMessagesData = {
         id: assistantMsgId,

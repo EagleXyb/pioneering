@@ -67,6 +67,13 @@ export function ReplayRotateIcon({ size = 15, className }: ActionIconProps) {
 /**
  * 思考标识：四瓣花造型 + 居中实心圆点，流式时由 CSS 加呼吸动画。
  * lucide 无对应的四瓣花，故自绘；填充用 currentColor，不依赖底色。
+ *
+ * 几何口径与 lucide 严格一致：墨迹落在 viewBox 的 1/24–23/24 上
+ * （= lucide circle r=10 + stroke 2 的外缘），线宽 2 折合到 14px 盒子也是 1.17px。
+ * 这样与 lucide 图标（如联网搜索的地球）同盒尺寸时，笔画左缘、右缘、线重完全重合：
+ * 图标列能对齐，"图标 ↔ 文字"的间距也是同一个值（盒内 0.58px + gap 6px）。
+ * 数值来源：45° 旋转后的椭圆包围半宽 sqrt((rx² + ry²) / 2) + 1 = 11 → rx 5.27 / ry 13.13
+ * （rx/ry 与原设计同为 0.401，造型不变，仅整体等比放大）。
  */
 export function ThinkingIcon({ className }: { className?: string }) {
   return (
@@ -77,16 +84,16 @@ export function ThinkingIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="2"
       aria-hidden="true"
     >
       <g transform="rotate(45 12 12)">
-        <ellipse cx="12" cy="12" rx="3.5" ry="8.7" />
+        <ellipse cx="12" cy="12" rx="5.27" ry="13.13" />
       </g>
       <g transform="rotate(-45 12 12)">
-        <ellipse cx="12" cy="12" rx="3.5" ry="8.7" />
+        <ellipse cx="12" cy="12" rx="5.27" ry="13.13" />
       </g>
-      <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
     </svg>
   );
 }

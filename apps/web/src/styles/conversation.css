@@ -219,7 +219,9 @@
 .chat-reasoning-header {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  /* 花朵墨迹已铺满 viewBox（见 customIcons.tsx），间距按实际墨迹给 6px：
+   * 原 2px 是配 19px 大盒子里的内缩墨迹用的，图标缩小后需同步补齐 */
+  gap: 6px;
   /* 向左外扩点击热区，视觉上图标仍与正文对齐 */
   padding: 4px 8px 4px 2px;
   margin-left: -2px;
@@ -241,6 +243,9 @@
 }
 .chat-reasoning-icon {
   flex: none;
+  /* 与标题（14px）同大：花朵墨迹铺满 viewBox，盒子即视觉尺寸 */
+  width: 14px;
+  height: 14px;
 }
 /* 流式生成中：图标呼吸提示 */
 .chat-reasoning.is-streaming .chat-reasoning-icon {

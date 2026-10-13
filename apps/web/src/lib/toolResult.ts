@@ -27,6 +27,11 @@ export interface SearchToolResult {
   results: SearchResultItem[];
   /** 本次检索使用的引擎 */
   source?: string;
+  /**
+   * 结果来自截断 JSON 的挽救解析（持久化截断）——条数不完整，
+   * 展示「参考 N 篇」这类统计时需据此降级，避免给出错误数字。
+   */
+  salvaged?: boolean;
 }
 
 /** 超限追加的截断标记（tool-adapter._truncateToolResult） */
@@ -145,7 +150,7 @@ export function parseSearchToolResult(raw?: string): SearchToolResult | null {
   if (salvaged.length === 0) return null;
   // source 通常写在 results 之后（被截断时丢失）：尽力而为
   const engine = /"source"\s*:\s*"([^"]+)"/.exec(text)?.[1];
-  return { kind: 'search', results: salvaged, source: engine };
+  return { kind: 'search', results: salvaged, source: engine, salvaged: true };
 }
 
 /** 从 URL 提取站点域名（favicon 用）；非法 URL 返回空串 */

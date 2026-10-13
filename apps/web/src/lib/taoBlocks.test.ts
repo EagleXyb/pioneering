@@ -20,7 +20,9 @@ import {
   dropPreparingBlock,
   finalizeBlocks,
   finalizeReasoning,
+  finalizeText,
   isAgentContentBlocks,
+  isNarrationBlock,
   reasoningPhase,
   reasoningText,
   setToolObservation,
@@ -80,7 +82,7 @@ describe('taoBlocks — 实时流块操作', () => {
   });
 
   it('appendTextBlock 追加整段并立即收尾（错误/中止场景）', () => {
-    let blocks = appendTextBlock([], '请求失败: x', 'complete');
+    const blocks = appendTextBlock([], '请求失败: x', 'complete');
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.status).toBe('complete');
     expect(blocksToPlainText(blocks)).toBe('请求失败: x');
@@ -96,6 +98,26 @@ describe('taoBlocks — 实时流块操作', () => {
     const b = blocks[1] as TaoToolBlock;
     expect(b.data.result).toBe('b-result');
     expect(a.data.result).toBeUndefined();
+  });
+
+  it('收尾：未等到观测的工具调用标为 stop（触顶/中止），已执行的仍为 complete', () => {
+    let blocks: AIMessageContent[] = [
+      createToolBlock({ toolCallName: 'search_engine', toolCallId: 't1' }),
+      createToolBlock({ toolCallName: 'search_engine', toolCallId: 't2' }),
+    ];
+    blocks = setToolObservation(blocks, { toolCallId: 't1', result: '观测结果' });
+    blocks = finalizeBlocks(blocks);
+
+    expect((blocks[0] as TaoToolBlock).status).toBe('complete');
+    // 第二个调用没等到结果（run 在此前结束）→ 未执行
+    expect((blocks[1] as TaoToolBlock).status).toBe('stop');
+  });
+
+  it('空结果的工具调用也算执行过（不误报未执行）', () => {
+    let blocks: AIMessageContent[] = [createToolBlock({ toolCallName: 'write_file' })];
+    blocks = setToolObservation(blocks, { result: '' });
+    blocks = finalizeBlocks(blocks);
+    expect((blocks[0] as TaoToolBlock).status).toBe('complete');
   });
 });
 
@@ -124,6 +146,13 @@ describe('taoBlocks — 历史 contentBlocks 还原', () => {
     const tool2 = blocks[3] as TaoToolBlock;
     expect(tool2.data.result).toBe('文件内容');
     expect(blocksToPlainText(blocks)).toBe('最终回答');
+  });
+
+  it('落库 status=failed 的工具调用还原为未执行（stop），不显示为已完成', () => {
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'tool_call', status: 'failed', toolName: 'search_engine', executionId: 't9' },
+    ]);
+    expect((blocks[0] as TaoToolBlock).status).toBe('stop');
   });
 
   it('缺 executionId 的老数据：观测回填到前一个工具块', () => {
@@ -219,5 +248,58 @@ describe('taoBlocks — 思考段阶段交互（准备中 → 开始思考）', 
     let blocks: AIMessageContent[] = [createPreparingBlock()];
     blocks = appendReasoningDelta(blocks, '内容');
     expect(dropPreparingBlock(blocks)).toHaveLength(1);
+  });
+});
+
+describe('taoBlocks — 过程叙述段（WorkBuddy 风格：正文展示、复制排除）', () => {
+  it('叙述段与最终回答各自成块：收尾后增量不再续写同一块', () => {
+    // 叙述段（narration=true）→ TEXT_MESSAGE_END → 最终回答
+    let blocks = appendTextDelta([], '我先做几组并行检索。', true);
+    blocks = finalizeText(blocks);
+    blocks = appendTextDelta(blocks, '这是最终回答。');
+
+    expect(typesOf(blocks)).toEqual(['markdown', 'markdown']);
+    expect(isNarrationBlock(blocks[0]!)).toBe(true);
+    expect(isNarrationBlock(blocks[1]!)).toBe(false);
+  });
+
+  it('复制/分享只取最终回答：叙述段被排除', () => {
+    let blocks = appendTextDelta([], '我再补一组检索。', true);
+    blocks = finalizeText(blocks);
+    blocks = appendTextDelta(blocks, '结论：产品应分三层设计。');
+
+    expect(blocksToPlainText(blocks)).toBe('结论：产品应分三层设计。');
+  });
+
+  it('续写不改变既有块身份：同一段内的后续增量沿用 narration 标记', () => {
+    let blocks = appendTextDelta([], '叙述前半', true);
+    // 同一段内追加（新建参数对续写无效）
+    blocks = appendTextDelta(blocks, '，叙述后半', false);
+    expect(blocks).toHaveLength(1);
+    expect(isNarrationBlock(blocks[0]!)).toBe(true);
+    expect(blocks[0]!.data).toBe('叙述前半，叙述后半');
+  });
+
+  it('历史回放：text_stream.narration 还原为叙述块并同样排除在复制之外', () => {
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'thinking', summary: '思考内容' },
+      { type: 'text_stream', text: '我先并行检索三项。', narration: true },
+      { type: 'text_stream', text: '最终回答正文' },
+    ]);
+
+    expect(typesOf(blocks)).toEqual(['reasoning', 'markdown', 'markdown']);
+    expect(isNarrationBlock(blocks[1]!)).toBe(true);
+    expect(isNarrationBlock(blocks[2]!)).toBe(false);
+    expect(blocksToPlainText(blocks)).toBe('最终回答正文');
+  });
+
+  it('finalizeText 只收尾最后一个流式正文块（思考/工具块不受影响）', () => {
+    let blocks: AIMessageContent[] = [createReasoningBlock('思考', 'streaming')];
+    blocks = appendTextDelta(blocks, '正文', true);
+    blocks = finalizeText(blocks);
+
+    expect(blocks[0]!.status).toBe('streaming');
+    expect(blocks[1]!.status).toBe('complete');
+    expect(isNarrationBlock(blocks[1]!)).toBe(true);
   });
 });

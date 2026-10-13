@@ -25,8 +25,13 @@ import type {
   MarkdownContent,
 } from '../types/chat';
 
-/** 块级状态：与消息状态同源（streaming 表示该块仍在接收增量） */
-export type TaoBlockStatus = Extract<ChatMessageStatus, 'streaming' | 'complete'>;
+/**
+ * 块级状态：与消息状态同源。
+ * - streaming：该块仍在接收增量
+ * - complete：正常收尾
+ * - stop：未完成（工具调用没等到观测结果就随 run 结束 —— 触顶/中止），UI 显示「未执行」
+ */
+export type TaoBlockStatus = Extract<ChatMessageStatus, 'streaming' | 'complete' | 'stop'>;
 
 /**
  * 思考段的运行阶段（驱动“深度思考”标题的状态交互）：
@@ -66,11 +71,28 @@ export function toolBlockHasObservation(block: TaoToolBlock): boolean {
   return typeof result === 'string' && result.length > 0;
 }
 
-/** 提取所有正文（复制/预览用，不含思考与工具过程） */
+/**
+ * 工具块是否至少执行过（观测事件到达过，含空结果）。
+ * 与 toolBlockHasObservation 的差别：后者要求结果非空，用于「回填匹配」；
+ * 本函数用于收尾判定 —— 从未执行过的调用才该显示「未执行」。
+ */
+export function toolBlockWasExecuted(block: TaoToolBlock): boolean {
+  return block.ext?.observed === true || toolBlockHasObservation(block);
+}
+
+/**
+ * 提取「回答」正文（复制/分享/预览用）。
+ *
+ * 排除思考、工具过程与**过程叙述段**（narration）：叙述是 Agent 边做边说的话，
+ * 属于过程信息，不应混进用户要复制的回答里。
+ */
 export function blocksToPlainText(blocks: AIMessageContent[] | undefined): string {
   if (!Array.isArray(blocks)) return '';
   return blocks
-    .filter((c): c is TaoTextBlock => c.type === 'text' || c.type === 'markdown')
+    .filter(
+      (c): c is TaoTextBlock =>
+        (c.type === 'text' || c.type === 'markdown') && !isNarrationBlock(c),
+    )
     .map((c) => (typeof c.data === 'string' ? c.data : ''))
     .join('\n');
 }
@@ -129,8 +151,39 @@ export function createToolBlock(params: {
   };
 }
 
-export function createTextBlock(text = '', status: TaoBlockStatus = 'streaming'): TaoTextBlock {
-  return { type: 'markdown', data: text, status };
+export function createTextBlock(
+  text = '',
+  status: TaoBlockStatus = 'streaming',
+  narration = false,
+): TaoTextBlock {
+  return {
+    type: 'markdown',
+    data: text,
+    status,
+    // 过程叙述标记：ReAct 中间轮叙述渲染在正文里（WorkBuddy 风格），
+    // 但语义上属于过程信息 —— 复制/分享据此排除（见 blocksToPlainText）
+    ...(narration ? { ext: { narration: true } } : {}),
+  };
+}
+
+/** 是否过程叙述块（正文通道里的中间轮叙述，不属于「回答」） */
+export function isNarrationBlock(block: AIMessageContent): boolean {
+  if (block.type !== 'markdown' && block.type !== 'text') return false;
+  return (block.ext as { narration?: boolean } | undefined)?.narration === true;
+}
+
+/**
+ * 收尾当前流式正文块。
+ *
+ * 每段文本（叙述段 / 最终回答）独立成块：叙述收尾后，后续增量会在新块里继续，
+ * 避免叙述与最终回答粘成同一段（对齐后端每段 TEXT_MESSAGE_START/END 的语义）。
+ */
+export function finalizeText(blocks: AIMessageContent[]): AIMessageContent[] {
+  return updateLast(
+    blocks,
+    (b) => (b.type === 'markdown' || b.type === 'text') && isStreaming(b),
+    (b) => ({ ...b, status: 'complete' as const }),
+  );
 }
 
 // ========== 不可变更新 ==========
@@ -263,6 +316,8 @@ export function setToolObservation(
     return {
       ...tb,
       status: 'complete' as const,
+      // 显式标记"确实拿到过观测"：工具返回空结果时也能与"从未执行"区分开
+      ext: { ...tb.ext, observed: true },
       data: {
         ...tb.data,
         toolCallName: tb.data?.toolCallName || params.toolCallName || '',
@@ -272,8 +327,16 @@ export function setToolObservation(
   });
 }
 
-/** 追加正文增量：续写尾部流式 markdown 块，否则新建（最终回答可能分多段） */
-export function appendTextDelta(blocks: AIMessageContent[], delta: string): AIMessageContent[] {
+/**
+ * 追加正文增量：续写尾部流式 markdown 块，否则新建（叙述段与最终回答各自成段）。
+ *
+ * @param narration 新建块时是否标记为过程叙述（仅新建生效：续写沿用既有块的身份）
+ */
+export function appendTextDelta(
+  blocks: AIMessageContent[],
+  delta: string,
+  narration = false,
+): AIMessageContent[] {
   if (!delta) return blocks;
   const target = updateLast(
     blocks,
@@ -281,7 +344,7 @@ export function appendTextDelta(blocks: AIMessageContent[], delta: string): AIMe
     (b) => ({ ...b, data: `${typeof b.data === 'string' ? b.data : ''}${delta}` }) as AIMessageContent,
   );
   if (target !== blocks) return target;
-  return [...blocks, createTextBlock(delta)];
+  return [...blocks, createTextBlock(delta, 'streaming', narration)];
 }
 
 /** 追加一整段正文（错误信息、中止说明等）并立即收尾 */
@@ -294,15 +357,22 @@ export function appendTextBlock(
   return [...blocks, createTextBlock(text, status)];
 }
 
-/** 流收尾：所有 streaming 块置为 complete */
+/**
+ * 流收尾：所有 streaming 块置为 complete。
+ *
+ * 例外（缺陷修复）：从未等到观测结果的工具块说明本轮 run 在该调用执行前就结束了
+ * （工具轮次触顶 / 用户中止）—— 标记为 'stop'，UI 显示「未执行」，
+ * 而不是像正常完成一样静默收尾。
+ */
 export function finalizeBlocks(blocks: AIMessageContent[]): AIMessageContent[] {
   let changed = false;
   const next = blocks.map((b) => {
-    if (isStreaming(b)) {
-      changed = true;
-      return { ...b, status: 'complete' as const };
+    if (!isStreaming(b)) return b;
+    changed = true;
+    if (b.type === 'toolcall' && !toolBlockWasExecuted(b as TaoToolBlock)) {
+      return { ...b, status: 'stop' as const };
     }
-    return b;
+    return { ...b, status: 'complete' as const };
   });
   return changed ? next : blocks;
 }
@@ -330,6 +400,8 @@ export interface PersistedAgentBlock {
   round?: number;
   /** 兼容旧口径：思考内容写在 reasoningContent 字段 */
   reasoningContent?: string;
+  /** text_stream 是否为 ReAct 中间轮叙述（过程话术，复制/分享时排除） */
+  narration?: boolean;
 }
 
 /** 后端持久化块中属于 agent 通道（TAO 可还原）的类型集合 */
@@ -377,7 +449,8 @@ export function contentBlocksToTaoBlocks(blocks: unknown): AIMessageContent[] {
           toolCallId: raw.executionId,
           toolCallName: raw.toolName ?? '',
           args: raw.args,
-          status: 'complete',
+          // 落库 status='failed' = 该调用未执行（run 在此前结束）→ 显示「未执行」
+          status: raw.status === 'failed' ? 'stop' : 'complete',
         }),
       ];
       continue;
@@ -406,7 +479,8 @@ export function contentBlocksToTaoBlocks(blocks: unknown): AIMessageContent[] {
 
     if (raw.type === 'text_stream') {
       const text = raw.text ?? '';
-      if (text.trim()) out = [...out, createTextBlock(text, 'complete')];
+      // narration：ReAct 中间轮叙述（正文展示的过程话术），标记随块还原
+      if (text.trim()) out = [...out, createTextBlock(text, 'complete', raw.narration === true)];
       continue;
     }
 
