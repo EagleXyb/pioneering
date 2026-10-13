@@ -225,6 +225,63 @@ describe('useAgentChat', () => {
     expect(second.data?.[0]?.data).toBe('再核对节点。');
   });
 
+  it('运行启动先渲染「准备中」占位；THINKING_START 后就地提升为思考段', async () => {
+    // 手动推送事件的流：能观察运行中的中间态（准备中 → 开始思考）
+    let push: (evt: object) => void = () => {};
+    let closeStream: () => void = () => {};
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        push = (evt) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n`));
+        closeStream = () => controller.close();
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+    );
+
+    const { result } = renderHook(() => useAgentChat('session-prep', false));
+    act(() => {
+      result.current.sendMessage({ prompt: '分析' });
+    });
+
+    // ① 发送后立即出现占位：Agent 已启动、思考尚未开始
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(2);
+    });
+    const placeholder = result.current.messages[1]!.content![0] as {
+      type?: string;
+      ext?: { phase?: string };
+      data?: Array<{ data?: string }>;
+    };
+    expect(placeholder.type).toBe('reasoning');
+    expect(placeholder.ext?.phase).toBe('preparing');
+    expect(placeholder.data?.[0]?.data).toBe('');
+
+    // ② THINKING_START + 增量：同一块就地提升（数量与位置不变，标题切“开始思考”）
+    act(() => {
+      push({ type: 'THINKING_START', title: '深度思考' });
+      push({ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: '推理中…' });
+    });
+    await waitFor(() => {
+      const block = result.current.messages[1]!.content![0] as {
+        ext?: { phase?: string };
+        data?: Array<{ data?: string }>;
+      };
+      expect(block.ext?.phase).toBe('thinking');
+      expect(block.data?.[0]?.data).toBe('推理中…');
+    });
+    expect(result.current.messages[1]!.content).toHaveLength(1);
+
+    // ③ 收尾：思考段 complete（标题回到“深度思考”，组件默认收起）
+    act(() => {
+      push({ type: 'RUN_FINISHED' });
+      closeStream();
+    });
+    await waitFor(() => expect(result.current.status).toBe('complete'));
+    expect(result.current.messages[1]!.content![0]!.status).toBe('complete');
+  });
+
   it('无 activeId 时不发送消息', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const { result } = renderHook(() => useAgentChat(null, false));

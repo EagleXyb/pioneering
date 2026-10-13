@@ -13,11 +13,22 @@
   margin: 2px 0 10px;
 }
 
+/* 展开态：整个块最大高度 220px（标题行 + 内容区），
+ * 内容不足时自适应收缩；超出时以 220px 为上限、由内容区内部滚动 */
+.tao-reasoning.is-open {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+}
+
 .tao-reasoning-header {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  /* 向左外扩点击热区，视觉上图标仍与正文对齐 */
+  /* 展开态处于 flex 容器中：按内容宽度、不参与收缩（避免标题行被压扁） */
+  align-self: flex-start;
+  flex: none;
+  /* 向左外扩点击热区，视觉上标题仍与正文对齐 */
   padding: 4px 8px 4px 2px;
   margin-left: -2px;
   border: none;
@@ -39,12 +50,8 @@
   background: var(--bg-hover);
 }
 
-.tao-reasoning-icon {
-  flex: none;
-}
-
-/* 流式生成中：图标呼吸提示 */
-.tao-reasoning.is-streaming .tao-reasoning-icon {
+/* 流式生成中：标题呼吸提示（参考图标题行仅“深度思考 + 箭头”，无图标） */
+.tao-reasoning.is-streaming .tao-reasoning-title {
   animation: tao-pulse 1.4s ease-in-out infinite;
 }
 
@@ -70,7 +77,8 @@
   transform: rotate(90deg);
 }
 
-/* 展开/折叠容器：grid 0fr→1fr 高度过渡（双向平滑） */
+/* 展开/折叠容器：grid 0fr→1fr 高度过渡（双向平滑）；
+ * 展开时占满标题行之外的剩余高度（配合上层 220px 限高 → 内容区内部滚动） */
 .tao-reasoning-body-wrap {
   display: grid;
   grid-template-rows: 0fr;
@@ -84,6 +92,8 @@
 
 .tao-reasoning.is-open .tao-reasoning-body-wrap {
   grid-template-rows: 1fr;
+  flex: 1 1 auto;
+  min-height: 0;
   opacity: 1;
   transform: translateY(0);
 }
@@ -93,29 +103,35 @@
   min-height: 0;
 }
 
-/* 引用式内容块：仅保留左侧细竖线（去灰底/圆角，轻引用风格）
- * 层级全靠一条 2px 浅灰线划分，正文与正文回复同字号、中灰色 */
+/* 展开态：内容区撑满剩余高度；上下留白由 padding 承担
+ * （原 body 的上下 margin 会溢出滚动容器裁掉末行，故内移到这里） */
+.tao-reasoning.is-open .tao-reasoning-body-inner {
+  height: 100%;
+  padding: 2px 0 4px;
+}
+
+/* 引用式内容块：仅保留左侧竖线（去灰底/圆角，轻引用风格）
+ * 竖线 4px 浅灰（对齐参考图），正文深一档中灰、与正文回复同字号 */
 .tao-reasoning-body {
-  margin: 2px 0 4px;
+  height: 100%;
+  margin: 0;
   /* 左线由 border 承担；右侧 8px 给内部滚动条留呼吸空间 */
-  padding: 0 8px 0 12px;
-  border-left: 2px solid var(--border-light);
-  color: var(--text-secondary);
+  padding: 0 8px 0 16px;
+  border-left: 4px solid var(--border-light);
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--text-secondary));
   font-size: 14px;
   line-height: 1.75;
-  /* 最大高度 350px：超出后内部滚动查看 */
-  max-height: 350px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-/* Markdown 渲染层继承思考正文的中灰色（不用 tertiary，保证可读性） */
+/* Markdown 渲染层跟随思考正文颜色（不用 tertiary，保证可读性） */
 .tao-reasoning-body .chat-markdown {
-  color: var(--text-secondary);
+  color: inherit;
 }
 
 /* 降噪：标题与加粗比正文深一档（参考图：小标题为深色，正文为中灰）；
- * 等宽文本保持中性灰、不抢焦点（去掉全局紫色） */
+ * 行内代码保留全局浅灰底圆角（参考图样式），仅把全局紫色换成中性深色 */
 .tao-reasoning-body .chat-markdown h1,
 .tao-reasoning-body .chat-markdown h2,
 .tao-reasoning-body .chat-markdown h3,
@@ -125,9 +141,7 @@
 }
 
 .tao-reasoning-body .chat-markdown :not(pre) > code {
-  padding: 0;
-  background: transparent;
-  color: inherit;
+  color: var(--text-primary);
 }
 
 /* ===== 工具动作行（Action / Observation） ===== */
@@ -377,7 +391,7 @@
     transition: none;
     transform: none;
   }
-  .tao-reasoning.is-streaming .tao-reasoning-icon,
+  .tao-reasoning.is-streaming .tao-reasoning-title,
   .tao-tool.is-streaming .tao-tool-icon {
     animation: none;
   }

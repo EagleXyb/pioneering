@@ -28,6 +28,14 @@ import type {
 /** 块级状态：与消息状态同源（streaming 表示该块仍在接收增量） */
 export type TaoBlockStatus = Extract<ChatMessageStatus, 'streaming' | 'complete'>;
 
+/**
+ * 思考段的运行阶段（驱动“深度思考”标题的状态交互）：
+ * - preparing：Agent 已启动、尚未产出思考内容 → 标题「准备中」
+ * - thinking：思考进行中 → 标题「开始思考」
+ * 思考段收尾（status='complete'）后不再需要该字段 → 标题回到「深度思考」并默认收起。
+ */
+export type TaoReasoningPhase = 'preparing' | 'thinking';
+
 export type TaoReasoningBlock = ReasoningContent;
 export type TaoToolBlock = ToolCallContent;
 export type TaoTextBlock = MarkdownContent;
@@ -44,6 +52,12 @@ export function isRenderableBlock(block: AIMessageContent): boolean {
 export function reasoningText(block: TaoReasoningBlock): string {
   if (!Array.isArray(block.data)) return '';
   return block.data.map((c) => (typeof c.data === 'string' ? c.data : '')).join('');
+}
+
+/** 思考段运行阶段（历史/终态块无该字段） */
+export function reasoningPhase(block: TaoReasoningBlock): TaoReasoningPhase | undefined {
+  const phase = block.ext?.phase;
+  return phase === 'preparing' || phase === 'thinking' ? phase : undefined;
 }
 
 /** 工具块是否已拿到观测结果 */
@@ -77,14 +91,23 @@ export function blocksHaveProcess(blocks: AIMessageContent[] | undefined): boole
 export function createReasoningBlock(
   text = '',
   status: TaoBlockStatus = 'streaming',
+  phase?: TaoReasoningPhase,
 ): TaoReasoningBlock {
   return {
     type: 'reasoning',
     data: [{ type: 'text', data: text, status: 'complete' }],
     status,
     // 流式期间展开（用户能看到推理推进）；终态由组件按需收起
-    ext: { collapsed: false },
+    ext: { collapsed: false, ...(phase ? { phase } : {}) },
   };
+}
+
+/**
+ * 运行启动占位：Agent 已收到请求、尚未产出思考内容（标题显示「准备中」）。
+ * 收到 THINKING_START 后由 startThinkingBlock 就地提升为思考段。
+ */
+export function createPreparingBlock(): TaoReasoningBlock {
+  return createReasoningBlock('', 'streaming', 'preparing');
 }
 
 export function createToolBlock(params: {
@@ -132,7 +155,45 @@ function updateLast(
 
 const isStreaming = (b: AIMessageContent) => b.status === 'streaming';
 
-/** 追加思考增量到当前流式思考块（无匹配块时新建，容错乱序/缺 START 的流） */
+/** 是否为空「准备中」占位块（标题状态交互：准备中 → 开始思考） */
+function isPreparingPlaceholder(block: AIMessageContent): boolean {
+  return (
+    block.type === 'reasoning' &&
+    isStreaming(block) &&
+    reasoningText(block).length === 0 &&
+    reasoningPhase(block) === 'preparing'
+  );
+}
+
+/**
+ * 收到 THINKING_START：把尾部「准备中」占位就地提升为思考段
+ * （复用同一块的位置，标题从「准备中」切换为「开始思考」）；
+ * 多轮 ReAct 的后续轮次没有占位，按常规新建思考段。
+ */
+export function startThinkingBlock(blocks: AIMessageContent[]): AIMessageContent[] {
+  const last = blocks[blocks.length - 1];
+  if (last && isPreparingPlaceholder(last)) {
+    const next = blocks.slice();
+    next[next.length - 1] = {
+      ...last,
+      ext: { ...(last.ext ?? {}), phase: 'thinking' as const },
+    };
+    return next;
+  }
+  return [...blocks, createReasoningBlock('', 'streaming', 'thinking')];
+}
+
+/**
+ * 思考尚未开始即转入其他事件（工具调用 / 正文输出 / 收尾）：
+ * 丢弃空的「准备中」占位，避免残留一行无内容的思考标题。
+ */
+export function dropPreparingBlock(blocks: AIMessageContent[]): AIMessageContent[] {
+  const last = blocks[blocks.length - 1];
+  return last && isPreparingPlaceholder(last) ? blocks.slice(0, -1) : blocks;
+}
+
+/** 追加思考增量到当前流式思考块（无匹配块时新建，容错乱序/缺 START 的流）；
+ * 追加即视为思考已开始（容错缺失 THINKING_START 的流，标题脱离「准备中」） */
 export function appendReasoningDelta(
   blocks: AIMessageContent[],
   delta: string,
@@ -147,11 +208,12 @@ export function appendReasoningDelta(
       return {
         ...rb,
         data: [{ type: 'text' as const, data: prev + delta, status: 'complete' as const }],
+        ext: { ...(rb.ext ?? {}), phase: 'thinking' as const },
       };
     },
   );
   if (target !== blocks) return target;
-  return [...blocks, createReasoningBlock(delta)];
+  return [...blocks, createReasoningBlock(delta, 'streaming', 'thinking')];
 }
 
 /** 收尾当前思考块 */

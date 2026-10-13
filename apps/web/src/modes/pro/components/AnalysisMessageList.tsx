@@ -21,6 +21,7 @@ import { ToolCallRow } from '@/components/message/ToolCallRow';
 import { ScrollToBottomButton } from '@/components/message/ScrollToBottomButton';
 import {
   blocksToPlainText,
+  reasoningPhase,
   reasoningText,
   type TaoToolBlock,
 } from '../../../lib/taoBlocks';
@@ -121,9 +122,14 @@ function AnalysisMessageItem({
 /**
  * 块是否可渲染：空思考段与空正文块（流式占位期）不参与渲染，
  * 否则会在正文区留下空白，并把“流式占位 / 空回复兜底”挤掉。
+ * 例外：运行中的「准备中」占位虽无内容，但要占一行状态标题，
+ * 让用户看到 Agent 已启动（收尾后若仍为空则不再渲染）。
  */
 function hasRenderableBlock(block: AIMessageContent): boolean {
-  if (block.type === 'reasoning') return reasoningText(block).length > 0;
+  if (block.type === 'reasoning') {
+    if (reasoningText(block).length > 0) return true;
+    return block.status === 'streaming' && reasoningPhase(block) === 'preparing';
+  }
   if (block.type === 'toolcall') return true;
   if (block.type === 'text' || block.type === 'markdown') {
     return typeof block.data === 'string' && block.data.length > 0;
@@ -149,6 +155,7 @@ function TaoBlockSequence({ blocks }: { blocks: AIMessageContent[] }) {
               key={`reasoning-${idx}`}
               text={reasoningText(block)}
               streaming={block.status === 'streaming'}
+              phase={reasoningPhase(block)}
             />
           );
         }

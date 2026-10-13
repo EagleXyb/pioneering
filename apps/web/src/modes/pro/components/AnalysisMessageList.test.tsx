@@ -158,9 +158,60 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /深度思考/ })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /开始思考/ })).toHaveAttribute(
       'aria-expanded',
       'true',
+    );
+  });
+
+  it('运行阶段交互：准备中 → 开始思考 →（收尾）深度思考并默认收起', () => {
+    const messageOf = (phase: string | undefined, streaming: boolean, text: string) => ({
+      id: 'a-phase',
+      role: 'assistant',
+      status: streaming ? 'streaming' : 'complete',
+      content: [
+        {
+          type: 'reasoning',
+          data: [{ type: 'text', data: text, status: 'complete' }],
+          status: streaming ? 'streaming' : 'complete',
+          ext: phase ? { collapsed: false, phase } : { collapsed: false },
+        },
+      ],
+    });
+
+    const { rerender } = render(
+      <AnalysisMessageList
+        status="streaming"
+        messages={[messageOf('preparing', true, '') as never]}
+      />,
+    );
+
+    // ① Agent 已启动、尚未产出思考内容：出现“准备中”状态行
+    expect(screen.getByRole('button', { name: /准备中/ })).toBeInTheDocument();
+
+    // ② THINKING_START 后同一块提升：标题切换为“开始思考”，内容实时可见
+    rerender(
+      <AnalysisMessageList
+        status="streaming"
+        messages={[messageOf('thinking', true, '正在分析…') as never]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /开始思考/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByText('正在分析…')).toBeInTheDocument();
+
+    // ③ 思考收尾：标题回到“深度思考”，并自动收起（默认关闭态）
+    rerender(
+      <AnalysisMessageList
+        status="complete"
+        messages={[messageOf(undefined, false, '正在分析…') as never]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /深度思考/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
     );
   });
 

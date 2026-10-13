@@ -9,11 +9,13 @@ import {
   appendTextBlock,
   appendTextDelta,
   appendToolArgs,
-  createReasoningBlock,
+  createPreparingBlock,
   createToolBlock,
+  dropPreparingBlock,
   finalizeBlocks,
   finalizeReasoning,
   setToolObservation,
+  startThinkingBlock,
 } from '../../../lib/taoBlocks';
 import { useAppStore } from '../../../store/appStore';
 import {
@@ -240,8 +242,9 @@ export function useAgentChat(
       const key = `step_${stepCounterRef.current}`;
       thinkingKeyRef.current = key;
       thinkingTextRef.current = '';
-      // 每次 THINKING_START 开一个新的推理段：多轮 ReAct 下与工具行自然交错
-      blocksRef.current = [...blocksRef.current, createReasoningBlock()];
+      // THINKING_START：首轮把「准备中」占位就地提升为思考段（标题“开始思考”）；
+      // 多轮 ReAct 的后续轮次没有占位，新建独立段与工具行自然交错
+      blocksRef.current = startThinkingBlock(blocksRef.current);
       pushAssistantBlocks();
       setStateMap((prev) => ({
         ...prev,
@@ -294,9 +297,10 @@ export function useAgentChat(
       const toolName = (event.toolCallName as string) || '';
       const toolCallId = (event.toolCallId as string) || '';
       toolArgsRef.current = '';
-      // 动作行：一行摘要 + 可展开的参数/观测；观测结果稍后由 TOOL_CALL_RESULT 回填
+      // 动作行：一行摘要 + 可展开的参数/观测；观测结果稍后由 TOOL_CALL_RESULT 回填。
+      // 思考未开始就直接进入工具调用：丢弃空「准备中」占位
       blocksRef.current = [
-        ...blocksRef.current,
+        ...dropPreparingBlock(blocksRef.current),
         createToolBlock({ toolCallId, toolCallName: toolName }),
       ];
       pushAssistantBlocks();
@@ -360,7 +364,8 @@ export function useAgentChat(
     },
     onTextDelta: (delta) => {
       assistantTextRef.current += delta;
-      blocksRef.current = appendTextDelta(blocksRef.current, delta);
+      // 直接输出正文（无思考段）：丢弃空「准备中」占位，正文成为首个块
+      blocksRef.current = appendTextDelta(dropPreparingBlock(blocksRef.current), delta);
       pushAssistantBlocks();
     },
     onRunFinished: () => {
@@ -488,18 +493,11 @@ export function useAgentChat(
       const userMsgId = `u_${ts}`;
       const assistantMsgId = `a_${ts}`;
 
-      const assistantMsg: ChatMessagesData = {
-        id: assistantMsgId,
-        role: 'assistant' as const,
-        // TAO 块序列（reasoning / toolcall / markdown）由流事件按到达顺序写入
-        content: [],
-        status: 'streaming' as const,
-      };
-
-      // 重置流引用
+      // 重置流引用：初始块为「准备中」占位 —— Agent 已收到请求、思考尚未开始，
+      // 先渲染一行状态反馈；THINKING_START 到达后就地提升为思考段（标题切换）。
       assistantMsgIdRef.current = assistantMsgId;
       assistantTextRef.current = '';
-      blocksRef.current = [];
+      blocksRef.current = [createPreparingBlock()];
       thinkingKeyRef.current = null;
       thinkingTextRef.current = '';
       toolCallKeyRef.current = null;
@@ -507,6 +505,14 @@ export function useAgentChat(
       stepCounterRef.current = 0;
       flowStatusRef.current = 'running';
       isResumeRunRef.current = false;
+
+      const assistantMsg: ChatMessagesData = {
+        id: assistantMsgId,
+        role: 'assistant' as const,
+        // TAO 块序列（reasoning / toolcall / markdown）由流事件按到达顺序写入
+        content: blocksRef.current,
+        status: 'streaming' as const,
+      };
 
       if (params.editMessageId) {
         // 编辑重发：截断到目标消息为止并替换正文，再追加 assistant 占位

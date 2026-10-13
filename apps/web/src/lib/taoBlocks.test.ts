@@ -13,14 +13,19 @@ import {
   appendToolArgs,
   blocksToPlainText,
   contentBlocksToTaoBlocks,
+  createPreparingBlock,
   createReasoningBlock,
   createTextBlock,
   createToolBlock,
+  dropPreparingBlock,
   finalizeBlocks,
   finalizeReasoning,
   isAgentContentBlocks,
+  reasoningPhase,
   reasoningText,
   setToolObservation,
+  startThinkingBlock,
+  type TaoReasoningBlock,
   type TaoToolBlock,
 } from './taoBlocks';
 import type { AIMessageContent } from '../types/chat';
@@ -165,5 +170,54 @@ describe('taoBlocks — 历史 contentBlocks 还原', () => {
   it('createTextBlock 生成的块可被复制文本提取', () => {
     const blocks = [createTextBlock('A'), createTextBlock('B')];
     expect(blocksToPlainText(blocks)).toBe('A\nB');
+  });
+});
+
+describe('taoBlocks — 思考段阶段交互（准备中 → 开始思考）', () => {
+  it('发送后的「准备中」占位：无内容、流式、阶段为 preparing', () => {
+    const block = createPreparingBlock();
+    expect(block.type).toBe('reasoning');
+    expect(block.status).toBe('streaming');
+    expect(reasoningText(block)).toBe('');
+    expect(reasoningPhase(block)).toBe('preparing');
+  });
+
+  it('THINKING_START 就地把占位提升为思考段（不新增块、位置不变）', () => {
+    let blocks: AIMessageContent[] = [createPreparingBlock()];
+    blocks = startThinkingBlock(blocks);
+    expect(blocks).toHaveLength(1);
+    expect(reasoningPhase(blocks[0] as TaoReasoningBlock)).toBe('thinking');
+
+    // 后续增量续写同一块；收尾后阶段不再影响标题（回到“深度思考”）
+    blocks = appendReasoningDelta(blocks, '先读资料');
+    expect(reasoningText(blocks[0] as TaoReasoningBlock)).toBe('先读资料');
+    blocks = finalizeReasoning(blocks);
+    expect(blocks[0]!.status).toBe('complete');
+  });
+
+  it('多轮 ReAct：没有占位时新建思考段，不与前一段粘连', () => {
+    let blocks: AIMessageContent[] = [createPreparingBlock()];
+    blocks = startThinkingBlock(blocks);
+    blocks = appendReasoningDelta(blocks, '第一轮');
+    blocks = finalizeReasoning(blocks);
+
+    blocks = startThinkingBlock(blocks);
+    expect(blocks).toHaveLength(2);
+    expect(reasoningPhase(blocks[1] as TaoReasoningBlock)).toBe('thinking');
+  });
+
+  it('缺 THINKING_START 的容错：增量追加到占位时阶段自动升级为 thinking', () => {
+    const blocks = appendReasoningDelta([createPreparingBlock()], '直接来了内容');
+    expect(blocks).toHaveLength(1);
+    expect(reasoningPhase(blocks[0] as TaoReasoningBlock)).toBe('thinking');
+  });
+
+  it('思考未开始就进入工具/正文：丢弃空占位，不残留无内容的标题行', () => {
+    expect(dropPreparingBlock([createPreparingBlock()])).toEqual([]);
+
+    // 有内容的思考段不受影响
+    let blocks: AIMessageContent[] = [createPreparingBlock()];
+    blocks = appendReasoningDelta(blocks, '内容');
+    expect(dropPreparingBlock(blocks)).toHaveLength(1);
   });
 });
