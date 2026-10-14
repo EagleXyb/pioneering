@@ -150,64 +150,181 @@ function runToResponse(r: {
   }
 }
 
+/**
+ * 续写合并：上一段已落库正文 + 本段新正文（保守去重）。
+ *
+ * HITL 暂停时半截消息已落库，resume 段正文需追加到同一条消息；三种情形
+ * 都不产生重复内容，无法判断包含关系时按"前 + 后"拼接。
+ */
+export function mergeContinueContent(previous: string, next: string): string {
+  const prev = previous ?? ''
+  const cur = next ?? ''
+  if (!prev) return cur
+  if (!cur) return prev
+  if (cur.startsWith(prev)) return cur
+  if (prev.endsWith(cur)) return prev
+  return `${prev}${cur}`
+}
+
+/**
+ * 落库 metadata.plan_phase 判定：
+ *   - 错误（流错误 / RUN_ERROR）→ 'error'
+ *   - 暂停（HITL interrupt）    → 'executing'（进行中，前端据此恢复步骤面板）
+ *   - P1-3：有步骤数据时按**步骤实际状态**推导 ——
+ *     仍有 pending / running / retrying 步骤 → 'incomplete'。
+ *     修复前恒定返回 'done'，导致"步骤 2~6 从未执行、step_1 还是 running"
+ *     的任务在刷新后徽章显示"已完成"，而进度区显示"已完成 0/7 步"，
+ *     两个视图结论相反（实测会话 sess_d7185e5c…）。
+ *   - 其余（全部终态 / 无步骤数据）→ 'done'
+ */
+export function resolvePersistPlanPhase(
+  ctx: StreamContext,
+  steps?: Array<{ status?: string | null }>,
+): 'executing' | 'error' | 'incomplete' | 'done' {
+  if (ctx.hasError || ctx.planPhase === 'error') return 'error'
+  if (ctx.paused) return 'executing'
+  if (Array.isArray(steps) && steps.length > 0) {
+    const unfinished = steps.some((s) => {
+      const st = String(s?.status ?? '')
+      return st === 'pending' || st === 'running' || st === 'retrying'
+    })
+    return unfinished ? 'incomplete' : 'done'
+  }
+  return 'done'
+}
+
 // 对应 Python: agent_completion 中的持久化逻辑
 // 流结束后持久化 assistant 消息 + 工具执行记录 + plan 步骤终态，并更新会话计数
 // P4: 新增 plan_steps 持久化（仅当本次产生过 plan 数据时），
 //     并在 chat_messages.metadata 写入 plan_phase / plan_error 终态元数据。
 //     注意：Prisma 字段名为 extraMetadata（映射到 DB 列 metadata），写入时使用 extraMetadata。
+// 2026-10-14: 支持续写模式（continueMessageId）——HITL 暂停时半截消息已落库，
+//     resume / 再次暂停 / 错误收尾时更新同一条消息，避免分片与刷新后内容丢失。
 async function persistAssistantMessage(
   prisma: PrismaClient,
-  opts: { sessionId: string; userId: string; ctx: StreamContext },
+  opts: {
+    sessionId: string
+    userId: string
+    ctx: StreamContext
+    /**
+     * 续写模式（2026-10-14）：更新该已存在的 assistant 消息，而非新建。
+     * HITL 暂停时半截消息已落库（保证刷新可见）；resume / 再次暂停 / 错误时
+     * 把本段正文追加到同一条，刷新前后端展示一致。
+     */
+    continueMessageId?: string | null
+  },
 ): Promise<{ assistantMsg: ChatMessage; planStepsCount: number }> {
   const { sessionId, userId, ctx } = opts
-  const assistantMsgId = genId('msg_')
+  const continueId = opts.continueMessageId ?? null
 
-  // 仅当本次产生过 plan 数据时才写入 metadata（避免污染非 plan_execute 消息）
+  // 仅当本次产生过 plan 数据、或续写的是计划消息时才写入 metadata
+  // （避免污染非 plan_execute 消息）
   const hasPlanData = ctx.planData.length > 0
-  const extraMetadata = hasPlanData
-    ? { plan_phase: ctx.planPhase ?? 'done', plan_error: ctx.planError }
+  const isPlanMessage = hasPlanData || Boolean(continueId)
+
+  // P1-3：先合并出步骤终态，metadata.plan_phase 才能按步骤实际状态推导
+  // （此前恒为 'done'，与前端实时判定不一致）
+  const mergedSteps = hasPlanData ? mergePlanSteps(ctx.planData, ctx.stepUpdates) : []
+
+  const extraMetadata = isPlanMessage
+    ? {
+        plan_phase: resolvePersistPlanPhase(ctx, mergedSteps),
+        plan_error: ctx.planError,
+        // 暂停标记：完成后随 metadata 整体替换自动清除
+        ...(ctx.paused ? { paused: true } : {}),
+      }
     : undefined
 
-  const assistantMsg = await prisma.chatMessage.create({
-    data: {
-      id: assistantMsgId,
-      sessionId,
-      userId,
-      role: 'assistant',
-      content: ctx.answerContent,
-      contentBlocks: ctx.contentBlocks.length > 0 ? ctx.contentBlocks : Prisma.JsonNull,
-      promptTokens: ctx.promptTokens || null,
-      completionTokens: ctx.completionTokens || null,
-      latencyMs: ctx.latencyMs || null,
-      // P4: plan 终态元数据（Prisma 字段名 extraMetadata，映射 DB 列 metadata）
-      extraMetadata: extraMetadata ?? undefined,
-    },
-  })
+  let assistantMsg: ChatMessage
+  let assistantMsgId: string
 
-  // ===== P4 新增：持久化 plan 步骤终态 =====
-  let planStepsCount = 0
-  if (hasPlanData) {
-    const merged = mergePlanSteps(ctx.planData, ctx.stepUpdates)
-    for (let i = 0; i < merged.length; i++) {
-      const s = merged[i]
-      await prisma.planStep.create({
+  if (continueId) {
+    const existing = await prisma.chatMessage.findUnique({ where: { id: continueId } })
+    if (existing && existing.sessionId === sessionId && existing.role === 'assistant') {
+      assistantMsgId = continueId
+      const prevContent = existing.content ?? ''
+      const prevBlocks = Array.isArray(existing.contentBlocks)
+        ? (existing.contentBlocks as Record<string, any>[])
+        : []
+      assistantMsg = await prisma.chatMessage.update({
+        where: { id: continueId },
         data: {
-          id: genId('pstep_'),
-          messageId: assistantMsgId,
-          sessionId,
-          userId,
-          stepId: s.step_id,
-          stepIndex: i,
-          title: s.title,
-          description: s.description ?? null,
-          dependsOn: s.depends_on ?? undefined,
-          status: s.status,
-          result: s.result ?? null,
-          error: s.error ?? null,
-          startedAt: s.started_at ? new Date(s.started_at) : null,
-          finishedAt: s.finished_at ? new Date(s.finished_at) : null,
+          content: mergeContinueContent(prevContent, ctx.answerContent),
+          contentBlocks:
+            ctx.contentBlocks.length > 0
+              ? ([...prevBlocks, ...ctx.contentBlocks] as any)
+              : (existing.contentBlocks ?? Prisma.JsonNull),
+          extraMetadata: extraMetadata ?? undefined,
         },
       })
+    } else {
+      // 目标缺失/不匹配（越权或已删除）：降级为新建，保证内容不丢
+      return persistAssistantMessage(prisma, {
+        sessionId,
+        userId,
+        ctx,
+        continueMessageId: null,
+      })
+    }
+  } else {
+    assistantMsgId = genId('msg_')
+    assistantMsg = await prisma.chatMessage.create({
+      data: {
+        id: assistantMsgId,
+        sessionId,
+        userId,
+        role: 'assistant',
+        content: ctx.answerContent,
+        contentBlocks: ctx.contentBlocks.length > 0 ? ctx.contentBlocks : Prisma.JsonNull,
+        promptTokens: ctx.promptTokens || null,
+        completionTokens: ctx.completionTokens || null,
+        latencyMs: ctx.latencyMs || null,
+        // P4: plan 终态元数据（Prisma 字段名 extraMetadata，映射 DB 列 metadata）
+        extraMetadata: extraMetadata ?? undefined,
+      },
+    })
+  }
+
+  // ===== P4 新增：持久化 plan 步骤终态 =====
+  // 续写模式先清空再重建（幂等）：resume 端点已把既有步骤注入 ctx.planData 基线，
+  // mergePlanSteps(基线 + 本段 stepUpdates) 即完整终态，避免分片或状态回退。
+  let planStepsCount = 0
+  if (hasPlanData) {
+    const merged = mergedSteps
+    if (continueId) {
+      await prisma.planStep.deleteMany({ where: { messageId: assistantMsgId } })
+    }
+    // P1-3：改为事务内批量写入 —— 此前逐条 create，任一条失败会留下
+    // "消息已写、步骤只写了一半"的半截状态，且无回滚。
+    //
+    // 注意：不要写 duration_ms —— plan_steps 表由 Python init_db() 维护，
+    // 该列是 PostgreSQL **生成列**（GENERATED ALWAYS AS），插入会报
+    // 428C9 cannot insert a non-DEFAULT value into column "duration_ms"。
+    // 耗时由数据库按 started_at / finished_at 自动计算。
+    const rows = merged.map((s, i) => {
+      const startedAt = s.started_at ? new Date(s.started_at) : null
+      const finishedAt = s.finished_at ? new Date(s.finished_at) : null
+      return {
+        id: genId('pstep_'),
+        messageId: assistantMsgId,
+        sessionId,
+        userId,
+        stepId: s.step_id,
+        stepIndex: i,
+        title: s.title,
+        description: s.description ?? null,
+        dependsOn: s.depends_on ?? undefined,
+        status: s.status,
+        result: s.result ?? null,
+        error: s.error ?? null,
+        startedAt,
+        finishedAt,
+      }
+    })
+    if (rows.length > 0) {
+      await prisma.$transaction(
+        rows.map((data) => prisma.planStep.create({ data })),
+      )
     }
     planStepsCount = merged.length
   }
@@ -231,11 +348,12 @@ async function persistAssistantMessage(
     })
   }
 
-  // 更新会话计数（对应 Python: session.message_count += 1; session.last_message_id = ...）
+  // 更新会话计数（续写不重复计数；last_message_id 始终指向该消息）
+  // （对应 Python: session.message_count += 1; session.last_message_id = ...）
   await prisma.chatSession.update({
     where: { id: sessionId },
     data: {
-      messageCount: { increment: 1 },
+      ...(continueId ? {} : { messageCount: { increment: 1 } }),
       lastMessageId: assistantMsgId,
     },
   })
@@ -424,8 +542,29 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           const stopController = new AbortController()
           const stopRunId = genId('arun_')
           agentRunningRuns.set(stopRunId, { sessionId, userId, controller: stopController })
+
+          // P2-2：SSE 心跳。此前流内长时间无数据（LLM 思考/工具执行可达数十秒~数分钟），
+          // 中间代理（nginx 等）可能按 idle timeout 断开连接，表现为"任务无缘无故中断"。
+          // 每 15s 发一行注释帧（SSE 规范中的 comment，前端解析器会忽略非 data: 行）。
+          const heartbeat = setInterval(() => {
+            try {
+              if (!reply.raw.writableEnded) {
+                reply.raw.write(': ping\n\n')
+              }
+            } catch {
+              // 连接已关闭，忽略
+            }
+          }, 15_000)
+
           reply.raw.on('close', () => {
+            clearInterval(heartbeat)
             agentRunningRuns.delete(stopRunId)
+            // P2-2：客户端断开时中止上游（此前只删除注册表，Agent 仍在空跑、
+            // 持续消耗模型配额并向已关闭的 socket 写入）。
+            if (!stopController.signal.aborted) {
+              fastify.log.info({ sessionId }, '[agent.completions] client disconnected, aborting upstream')
+              stopController.abort()
+            }
           })
 
           fastify.log.info(
@@ -476,11 +615,26 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             '[agent.completions] stream.end',
           )
 
-          // 5. 持久化 assistant 消息（对应 Python: 流结束后持久化）
-          // 流前异常时不持久化（对齐 Python: event_generator 抛错时持久化代码不执行）
-          // HITL（阶段零 D2）：被 interrupt 暂停的 run 不持久化空/半截 assistant 消息，
-          // 待 resume 后由 /agent/resume 落库为完整终态消息。
-          if (!streamError && !ctx.paused && !ctx.abortReason) {
+          // 5. 持久化 assistant 消息（2026-10-14 调整：暂停/错误/中止同样落库）
+          //
+          // 缺陷背景（用户报告"刷新后回复就不见了"）：原实现仅在"正常完成"时落库，
+          // HITL 暂停 / 流错误 / 用户中止的 run 一律不落库——前端内存中可见的全部内容
+          // 在刷新后丢失。现改为"有内容就落库"：
+          //   - paused  → 落半截消息（metadata.paused=true / plan_phase='executing'），
+          //                resume 完成后更新同一条（见 persist.continueMessageId）
+          //   - 错误     → 落已生成内容（plan_phase='error' + plan_error）
+          //   - 用户中止 → 落已生成内容
+          const isPlanExecuteRun = ctx.planData.length > 0
+          const hasPersistable =
+            ctx.answerContent.length > 0 ||
+            ctx.contentBlocks.length > 0 ||
+            isPlanExecuteRun
+          // 暂停（HITL）：仅 plan_execute 落半截消息（resume 接续同一条）；
+          // 纯 ReAct（pro 模式）保持原语义——resume 完成后再落库，
+          // 避免"前端续写目标在占位消息、DB 合并到暂停消息"的错位。
+          // 错误 / 用户中止：所有模式都落库（原实现直接丢弃已生成内容）。
+          const shouldPersist = !ctx.paused || isPlanExecuteRun
+          if (hasPersistable && shouldPersist) {
             try {
               const { assistantMsg, planStepsCount } =
                 await persistAssistantMessage(fastify.prisma, { sessionId, userId, ctx })
@@ -491,24 +645,28 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
                   '[agent.completions] persist.plan_steps',
                 )
               }
-              // T2.5：记录用量（无真实 usage，走文本长度估算）
-              await recordUsage(fastify.prisma, {
-                userId,
-                sessionId,
-                messageId: assistantMsg.id,
-                model: session?.model ?? env.LLM_DEFAULT_MODEL,
-                promptText: dto.message,
-                completionText: ctx.answerContent,
-              })
+              // T2.5：记录用量（仅正常完成；暂停/错误段待最终消息落库时计量）
+              if (!ctx.paused && !streamError && !ctx.abortReason) {
+                await recordUsage(fastify.prisma, {
+                  userId,
+                  sessionId,
+                  messageId: assistantMsg.id,
+                  model: session?.model ?? env.LLM_DEFAULT_MODEL,
+                  promptText: dto.message,
+                  completionText: ctx.answerContent,
+                })
+              }
             } catch (e: any) {
               // 持久化失败不影响已发送的 SSE 流
               fastify.log.error({ err: e, sessionId }, 'Failed to persist agent assistant message')
             }
-          } else if (ctx.paused) {
+          } else {
             fastify.log.info(
-              { sessionId },
-              '[agent.completions] skip_persist.run_paused',
+              { sessionId, paused: ctx.paused, streamError },
+              '[agent.completions] skip_persist.empty',
             )
+          }
+          if (ctx.paused) {
             // T2.2：真暂停（等待用户答复）才注册 TTL sweep；HITL_ABORTED 不跟踪
             if (ctx.runPaused) trackInterruptSession(sessionId)
           }
@@ -628,6 +786,64 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         const ctx = new StreamContext()
         let resumeMessageId: string | undefined
 
+        // 2026-10-14：续写定位——找到暂停时落库的半截 assistant 消息与其 plan 基线。
+        // completions 暂停时已落库半截消息（metadata.paused=true）；resume 段正文
+        // 追加到同一条，避免刷新前（内存一条）后（DB 两条）展示不一致。
+        let continueMessageId: string | null = null
+        try {
+          const pausedRun = await fastify.prisma.agentRun.findFirst({
+            where: { sessionId: dto.sessionId, userId, status: 'paused' },
+            orderBy: { startedAt: 'desc' },
+            select: { messageId: true },
+          })
+          continueMessageId = pausedRun?.messageId ?? null
+          if (!continueMessageId) {
+            // 兜底：agent_runs 未关联 messageId（历史数据）时按暂停标记查找最近一条
+            const pausedMsg = await fastify.prisma.chatMessage.findFirst({
+              where: {
+                sessionId: dto.sessionId,
+                userId,
+                role: 'assistant',
+                extraMetadata: { path: ['paused'], equals: true },
+              },
+              orderBy: { createdAt: 'desc' },
+              select: { id: true },
+            })
+            continueMessageId = pausedMsg?.id ?? null
+          }
+          if (continueMessageId) {
+            // plan 基线：resume 段只含 step_update（不重发全量 plan），
+            // 以既有 plan_steps 作为 ctx.planData 基线，mergePlanSteps 后即完整终态。
+            const steps = await fastify.prisma.planStep.findMany({
+              where: { messageId: continueMessageId },
+              orderBy: { stepIndex: 'asc' },
+            })
+            // P1-3 数据丢失修复：基线必须带上 result / error / 时间戳。
+            // 此前只映射 step_id/title/description/status —— 而续写落库是
+            // `deleteMany + create`（以 merged 为准重建），结果就是：
+            // resume 之后所有已完成步骤的产物（result）与时间信息被清空
+            // （实测：5 步全部 result=""、started_at/finished_at 全 null）。
+            ctx.planData = steps.map((s) => ({
+              step_id: s.stepId,
+              title: s.title,
+              description: s.description ?? '',
+              status: s.status,
+              ...(s.result != null ? { result: s.result } : {}),
+              ...(s.error != null ? { error: s.error } : {}),
+              ...(s.startedAt ? { started_at: s.startedAt.getTime() } : {}),
+              ...(s.finishedAt ? { finished_at: s.finishedAt.getTime() } : {}),
+              ...(Array.isArray(s.dependsOn)
+                ? { depends_on: s.dependsOn as string[] }
+                : {}),
+            }))
+          }
+        } catch (e: any) {
+          fastify.log.warn(
+            { err: e, sessionId: dto.sessionId },
+            '[agent.resume] continue-locate failed; fallback to new message',
+          )
+        }
+
         // T2.3：注册 stopController（供 /completions/stop 中止 resume 流）
         const resumeStopController = new AbortController()
         const resumeRunId = genId('arun_')
@@ -681,29 +897,38 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           '[agent.resume] stream.end',
         )
 
-        // resume 正常完成（未再次暂停、无错误、未中止）→ 落库完整终态 assistant 消息
-        if (!streamError && !ctx.paused && !ctx.abortReason) {
+        // 2026-10-14 调整：resume 段结束（完成/再次暂停/错误/中止）统一落库——
+        // 续写暂停时已落库的同一条消息（continueMessageId），有内容即落，
+        // 保证"刷新后内容不丢"（原实现仅在正常完成时落库，错误/再次暂停会丢内容）。
+        const hasResumePersistable =
+          ctx.answerContent.length > 0 ||
+          ctx.contentBlocks.length > 0 ||
+          ctx.planData.length > 0
+        if (hasResumePersistable) {
           try {
             const { assistantMsg } = await persistAssistantMessage(fastify.prisma, {
               sessionId: dto.sessionId,
               userId,
               ctx,
+              continueMessageId,
             })
             resumeMessageId = assistantMsg.id
-            // T2.5：记录用量
-            await recordUsage(fastify.prisma, {
-              userId,
-              sessionId: dto.sessionId,
-              messageId: assistantMsg.id,
-              model: env.LLM_DEFAULT_MODEL,
-              promptText: dto.feedback ?? '',
-              completionText: ctx.answerContent,
-            })
+            // T2.5：记录用量（仅正常完成；暂停/错误段随最终消息计量）
+            if (!streamError && !ctx.paused && !ctx.abortReason) {
+              await recordUsage(fastify.prisma, {
+                userId,
+                sessionId: dto.sessionId,
+                messageId: assistantMsg.id,
+                model: env.LLM_DEFAULT_MODEL,
+                promptText: dto.feedback ?? '',
+                completionText: ctx.answerContent,
+              })
+            }
           } catch (e: any) {
             fastify.log.error({ err: e, sessionId: dto.sessionId }, 'Failed to persist resume assistant message')
           }
         } else if (ctx.paused) {
-          // 再次被 interrupt 暂停（串行多轮审批）→ 不持久化，前端继续等待下一轮答复
+          // 再次被 interrupt 暂停且本段无内容（罕见）→ 跳过，前端继续等待下一轮答复
           fastify.log.info(
             { sessionId: dto.sessionId },
             '[agent.resume] skip_persist.re_paused',

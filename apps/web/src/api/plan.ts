@@ -31,8 +31,12 @@ export interface PersistedPlanStep {
 /** 后端返回的 plan 快照（GET /messages/:id/plan 响应） */
 export interface PlanSnapshot {
   messageId: string;
-  /** plan 终态阶段：done / error / null（无 plan 数据） */
-  phase: 'done' | 'error' | null;
+  /**
+   * plan 终态阶段。
+   * P1-3：后端新增 'incomplete'（仍有 pending/running/retrying 步骤时），
+   * 与前端实时判定 resolveTerminalPhase 对齐，避免实时/刷新两种视图结论相反。
+   */
+  phase: 'done' | 'incomplete' | 'error' | null;
   /** 全局错误信息（phase=error 时存在） */
   error: string | null;
   /** 用户手动折叠状态快照（step_id → 是否折叠） */

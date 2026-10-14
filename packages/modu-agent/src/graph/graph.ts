@@ -54,6 +54,7 @@ import {
   makeForceFinalizeNode,
   responseNode,
   routeAfterAgent,
+  routeAfterForceFinalize,
   routeAfterHumanReview,
   routeAfterMemoryQuery,
   routeAfterPerception,
@@ -75,6 +76,7 @@ import { make_supervisor_node, route_from_supervisor } from './subgraph/supervis
 import {
   makePlanContextInjector,
   makePlannerNode,
+  makePlanSummarizeNode,
   makeStepDispatchNode,
   makeStepFinalizeNode,
   routeAfterPlan,
@@ -649,6 +651,12 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
       factory: () => makeStepFinalizeNode(),
       when: (p) => p.planExecuteEnabled,
     },
+    // P1-2: 计划收敛后的汇总节点（整合各步骤产物为最终答复；单步时零开销直接透传）
+    {
+      name: 'plan_summarize',
+      factory: (deps) => makePlanSummarizeNode(deps.rawLlm ?? deps.llm),
+      when: (p) => p.planExecuteEnabled,
+    },
   ]
 
   const edges: EdgeSpec[] = [
@@ -716,11 +724,19 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
       router: stepDispatch,
       targets: (has) => ({
         agent: 'agent',
-        response: 'finalize_response',
+        // P1-2：计划收敛后先经 plan_summarize 整合各步骤产物为最终答复，
+        // 再由 finalize_response（responseNode）提取。未挂载时行为不变。
+        response: has('plan_summarize') ? 'plan_summarize' : 'finalize_response',
         planner: 'planner',
         ...(has('supervisor') ? { supervisor: 'supervisor' } : {}),
       }),
     },
+    when: (p) => p.planExecuteEnabled,
+  })
+  // P1-2：汇总完成 → 进入响应节点（responseNode 取最后一条 AIMessage 即汇总正文）
+  edges.push({
+    from: 'plan_summarize',
+    to: 'finalize_response',
     when: (p) => p.planExecuteEnabled,
   })
   edges.push({
@@ -741,6 +757,9 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
         __end__: 'finalize_response',
         // 工具/推理轮次触顶 → 禁用工具收尾作答（不再直接结束）
         force_finalize: 'force_finalize',
+        // P0-2: plan_execute 模式下触顶 → 同样进 force_finalize 收尾作答，
+        // 但其出边（见下方 force_finalize 条件边）会回到 step_finalize 续跑后续步骤
+        plan_force_finalize: 'force_finalize',
         // P4: plan_execute 模式下 routeAfterAgent 可能返回 'step_finalize'（当前步骤完成）
         ...(has('step_finalize') ? { step_finalize: 'step_finalize' } : {}),
         // 文档生成强制回退路由
@@ -750,8 +769,21 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
       }),
     },
   })
-  // 收尾作答完成后进入响应节点（responseNode 从 messages 末条 AIMessage 提取正文）
-  edges.push({ from: 'force_finalize', to: 'finalize_response' })
+  // P0-2: 收尾作答完成后的去向——
+//   · ReAct（plan_phase 为空）→ finalize_response（原行为，等价静态边）
+//   · plan_execute（plan_phase='executing'）→ step_finalize：
+//     预算触顶只终结**当前步骤**，步骤仍会正常收尾（写 step_results / 推进游标 / 发终态 SSE），
+//     再由 stepDispatch 决定继续派发后续步骤还是收敛。
+edges.push({
+    from: 'force_finalize',
+    to: {
+      router: routeAfterForceFinalize,
+      targets: (has) => ({
+        ...(has('step_finalize') ? { step_finalize: 'step_finalize' } : {}),
+        finalize_response: 'finalize_response',
+      }),
+    },
+  })
   // human_review 后条件路由：通过 → tools，拒绝/错误 → finalize_response
   edges.push({
     from: 'human_review',

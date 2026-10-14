@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { ChatMessagesData, ChatStatus } from '../../../types/chat';
 import { parseAguiStream, type AguiStreamHandlers } from '../../../lib/parseAguiStream';
-import { usePlanExecuteStore } from '../../../store/planExecuteStore';
+import { usePlanExecuteStore, type Phase } from '../../../store/planExecuteStore';
 import { getMessages } from '../../../api/message';
 import { fetchSessionMessages } from '../../../lib/load-session-messages';
 import { getMessagePlan, patchCollapsedSteps } from '../../../api/plan';
@@ -49,6 +49,36 @@ function payloadToHitlInput(p: UserQuestionRequestPayload): HitlItemInput {
 
 type FlowStatus = 'idle' | 'running' | 'paused' | 'aborted' | 'error';
 
+/**
+ * P0 修复：流结束时的终态判定——流正常结束 ≠ 任务完成。
+ *
+ * 全部步骤收敛到 done/failed/skipped 时才允许置 'done'；只要仍有
+ * pending/running 步骤（后端静默终止、执行中断等），置 'incomplete'，
+ * 避免"已完成"徽章与 "已完成 0/N" 进度自相矛盾的假成功展示。
+ *
+ * 无计划场景（规划失败降级直答 / temp 会话）维持既有语义：置 'done'。
+ */
+function resolveTerminalPhase(): Phase {
+  const { items, rootIds } = usePlanExecuteStore.getState();
+  if (rootIds.length === 0) return 'done';
+  const hasUnfinished = rootIds.some((id) => {
+    const status = items[id]?.status;
+    // retrying（步骤级重试中间态）同样视为未完成，避免流提前结束时误判"已完成"
+    return status === 'pending' || status === 'running' || status === 'retrying';
+  });
+  return hasUnfinished ? 'incomplete' : 'done';
+}
+
+/** 提取消息正文（用于 HITL 刷新恢复时建立续写基线） */
+function messageText(msg: ChatMessagesData): string {
+  return (msg.content ?? [])
+    .map((c) => {
+      const data = (c as { data?: unknown }).data;
+      return typeof data === 'string' ? data : '';
+    })
+    .join('');
+}
+
 export function usePlanExecuteChat(activeId: string | null) {
   const [messages, setMessages] = useState<ChatMessagesData[]>([]);
   const [status, setStatus] = useState<ChatStatus>('idle');
@@ -84,6 +114,33 @@ export function usePlanExecuteChat(activeId: string | null) {
       ),
     );
   }, []);
+
+  /**
+   * P1-5：流式渲染节流。
+   *
+   * 修复前每个 TEXT_MESSAGE_CONTENT delta 都触发一次 `setMessages` 全量重渲染，
+   * 而任务模式正文可达 5 万+ 字符（实测 56156 字），长文档型任务下明显掉帧。
+   * 改为 ~60ms 合并刷新；流结束时由调用方 `flushAssistantText()` 强制收尾。
+   */
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleAssistantFlush = useCallback(() => {
+    if (flushTimerRef.current != null) return;
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null;
+      const msgId = assistantMsgIdRef.current;
+      if (msgId) updateAssistantContent(msgId, assistantTextRef.current);
+    }, 60);
+  }, [updateAssistantContent]);
+
+  /** 立即把当前累积文本写入消息（流结束/中止/错误时调用） */
+  const flushAssistantText = useCallback(() => {
+    if (flushTimerRef.current != null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const msgId = assistantMsgIdRef.current;
+    if (msgId) updateAssistantContent(msgId, assistantTextRef.current);
+  }, [updateAssistantContent]);
 
   /**
    * 流结束后异步回传用户折叠状态快照至后端，确保历史恢复时视觉细节一致。
@@ -123,14 +180,27 @@ export function usePlanExecuteChat(activeId: string | null) {
         autoOpenPipeline();
       }
     },
+    /**
+     * P1-5：消费 TEXT_MESSAGE_START —— 每个消息段（步骤叙述 / 最终答复）
+     * 之间插入空行分隔。修复前只做 `+=` 累加，5 万+字符的正文糊成一整块，
+     * 用户无法区分"过程话术"与"最终交付物"。
+     */
+    onTextStart: () => {
+      if (assistantTextRef.current.length > 0) {
+        assistantTextRef.current += '\n\n';
+      }
+      scheduleAssistantFlush();
+    },
     onTextDelta: (delta) => {
       assistantTextRef.current += delta;
-      const msgId = assistantMsgIdRef.current;
-      if (msgId) updateAssistantContent(msgId, assistantTextRef.current);
+      scheduleAssistantFlush();
     },
     onRunFinished: () => {
+      // P1-5：流结束前把最后一段未刷新的正文写入（节流可能还压着一批 delta）
+      flushAssistantText();
       setStatus('complete');
-      setPhase('done');
+      // P0 修复：按实际步骤完成度判定终态（全部收敛 → done；仍有未完成步骤 → incomplete）
+      setPhase(resolveTerminalPhase());
       setHitlLock(false);
       if (isResumeRunRef.current) useHitlStore.getState().dequeue();
       if (activeId) void persistCollapsedSnapshot(activeId);
@@ -186,19 +256,26 @@ export function usePlanExecuteChat(activeId: string | null) {
           controller.signal,
         );
 
-        if (result.reason === 'paused') return; // 等待用户答复
+        if (result.reason === 'paused') {
+          // P1-5：暂停时也要落盘当前正文（用户刷新后可见）
+          flushAssistantText();
+          return; // 等待用户答复
+        }
         if (result.reason === 'error-event') return; // onRunError 已落地
         if (result.reason === 'aborted') {
+          flushAssistantText();
           setStatus('complete');
           return;
         }
         if (flowStatusRef.current === 'aborted') return; // onHitlAborted 已收尾
 
         // closed 兜底
+        flushAssistantText();
         setStatus((prev) => (prev === 'streaming' ? 'complete' : prev));
         const currentPhase = usePlanExecuteStore.getState().phase;
         if (currentPhase === 'planning' || currentPhase === 'executing') {
-          setPhase('done');
+          // P0 修复：closed 兜底同样按实际完成度判定（不允许把未完成当已完成）
+          setPhase(resolveTerminalPhase());
         }
         setHitlLock(false);
         if (isResumeRunRef.current) useHitlStore.getState().dequeue();
@@ -225,6 +302,7 @@ export function usePlanExecuteChat(activeId: string | null) {
       setPhase,
       setHitlLock,
       updateAssistantContent,
+      flushAssistantText,
       persistCollapsedSnapshot,
     ],
   );
@@ -374,21 +452,33 @@ export function usePlanExecuteChat(activeId: string | null) {
 
   const restoreHitlPause = useCallback(
     (input: RestoreHitlPauseInput) => {
-      const msgId = `assistant-hitl-${input.sessionId}-${Date.now()}`;
-      const placeholder: ChatMessagesData = {
-        id: msgId,
-        role: 'assistant',
-        content: [{ type: 'text' as const, data: '' }],
-      };
-      assistantMsgIdRef.current = msgId;
-      assistantTextRef.current = '';
+      const placeholderId = `assistant-hitl-${input.sessionId}-${Date.now()}`;
+      // 修复（2026-10-14）：暂停时消息已落库（刷新可见）——若列表末尾已是 assistant
+      // 消息（即 DB 恢复的半截消息），复用它作为续写目标：
+      //   1. 避免出现"半截消息 + 空占位"两个气泡；
+      //   2. 把已有正文设为续写基线，否则 resume 增量会覆盖已恢复的内容。
+      const last = messages[messages.length - 1];
+      if (last && last.role === 'assistant') {
+        assistantMsgIdRef.current = last.id;
+        assistantTextRef.current = messageText(last);
+      } else {
+        assistantMsgIdRef.current = placeholderId;
+        assistantTextRef.current = '';
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: placeholderId,
+            role: 'assistant',
+            content: [{ type: 'text' as const, data: '' }],
+          } as ChatMessagesData,
+        ]);
+      }
       flowStatusRef.current = 'paused';
       isResumeRunRef.current = false;
-      setMessages((prev) => [...prev, placeholder]);
       setStatus('complete');
       setHitlLock(true);
     },
-    [setHitlLock],
+    [messages, setHitlLock],
   );
 
   const finalizeHitlStale = useCallback(
@@ -403,8 +493,15 @@ export function usePlanExecuteChat(activeId: string | null) {
       flowStatusRef.current = 'idle';
       setHitlLock(false);
       setStatus('complete');
+      // 修复（2026-10-14）：HITL 失效收尾同样要终结 plan 阶段——暂停时 phase
+      // 保持 'executing'，不收尾会让任务流水线 badge 永久停留"执行中 0/N"，
+      // 与"[已失效]"提示自相矛盾（用户无法判断任务是否还能继续）。
+      const currentPhase = usePlanExecuteStore.getState().phase;
+      if (currentPhase === 'planning' || currentPhase === 'executing') {
+        setPhase(resolveTerminalPhase());
+      }
     },
-    [activeId, setHitlLock, updateAssistantContent],
+    [activeId, setHitlLock, setPhase, updateAssistantContent],
   );
 
   // 注册模式运行时（卸载时注销）

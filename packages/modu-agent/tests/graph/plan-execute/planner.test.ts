@@ -597,7 +597,13 @@ describe('makePlannerNode (P-修复: 渐进式降级重试)', () => {
     // 降级直答
     expect(result.plan).toEqual([])
     expect(result.plan_phase).toBe('')
-    expect(result.plan_delta).toBeNull()
+    // P2-3：降级必须显式告知前端（此前 plan_delta=null，用户只看到"没有面板的
+    // 直接回答"，无法区分"本就无需计划"与"规划失败"）
+    expect(result.plan_delta).toMatchObject({
+      phase: 'plan',
+      plan: [],
+      planning_failed: true,
+    })
   })
 
   it('首次 LLM 抛异常 → 触发重试', async () => {
@@ -627,6 +633,8 @@ describe('makePlannerNode (P-修复: 渐进式降级重试)', () => {
     const result = await planner(state)
     expect(result.plan).toEqual([])
     expect(result.plan_phase).toBe('')
+    // P2-3：空 goal 属于"无需计划"，不应被误报为规划失败（该分支不返回 plan_delta）
+    expect(result.plan_delta).toBeUndefined()
     // 未调用 LLM
     expect((llm as any)._calls).toHaveLength(0)
   })

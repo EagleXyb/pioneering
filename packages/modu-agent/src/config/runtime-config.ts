@@ -118,7 +118,16 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     max_replans: 2,
     planner_temperature: 0.2,
     continue_on_failure: false,
+    // 注入到**下一步上下文**的每步摘要长度（控制上下文膨胀）
     step_summary_max_chars: 500,
+    // P1-1: step_results[].output 保存的**完整产物**上限（防 checkpoint 无限膨胀）。
+    // 此前 output 直接按 step_summary_max_chars(500) 截断，导致后续步骤与前端面板
+    // 都只看得到 500 字符，长文档/长清单类步骤产物几乎全部丢失。
+    step_result_max_chars: 8000,
+    // P1-2: 汇总节点（plan_summarize）整合各步骤产物时的字符预算
+    //   单步上限 / 总预算——控制汇总提示词长度，避免撑爆上下文
+    summarize_max_chars_per_step: 3000,
+    summarize_max_total_chars: 24000,
     // 补齐此前「已消费未声明」的键（否则 YAML 校验无法覆盖这些键的类型安全）
     // 消费点：graph/plan-execute/planner.ts（planner_max_tokens）
     //         graph/plan-execute/dispatcher.ts（step_retry.*）

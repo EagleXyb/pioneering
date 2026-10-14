@@ -22,6 +22,8 @@ const PHASE_BADGE: Record<string, { text: string; className: string }> = {
   planning: { text: '规划中', className: 'task-pipeline-badge--planning' },
   executing: { text: '执行中', className: 'task-pipeline-badge--executing' },
   done: { text: '已完成', className: 'task-pipeline-badge--done' },
+  // P0 修复：流结束但仍有未完成步骤——不得显示"已完成"
+  incomplete: { text: '未完成', className: 'task-pipeline-badge--incomplete' },
   error: { text: '失败', className: 'task-pipeline-badge--error' },
 };
 

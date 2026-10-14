@@ -87,8 +87,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       staticEdges: [
         'START→perception',
         'memory_query→agent',
-        'force_finalize→finalize_response',
-        'tools→tool_processor',
+                'tools→tool_processor',
         'tool_processor→agent',
         'doc_gen_enforce→agent',
         'doc_final_answer→agent',
@@ -99,8 +98,19 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'perception', targets: ['memory_query', 'finalize_response'] },
         {
           from: 'agent',
-          targets: ['tools', 'finalize_response', 'force_finalize', 'doc_gen_enforce', 'doc_final_answer'],
+          targets: [
+            'tools',
+            'finalize_response',
+            'force_finalize',
+            // P0-2：plan_execute 下预算触顶专用（收尾作答后回到 step_finalize）
+            // 注意：快照展示的是「目标节点名」，plan_force_finalize 路由值同样指向 force_finalize
+            'force_finalize',
+            'doc_gen_enforce',
+            'doc_final_answer',
+          ],
         },
+        // P0-2：由静态边改为条件边（plan 中收尾后继续跑后续步骤）
+        { from: 'force_finalize', targets: ['finalize_response'] },
       ],
     })
   })
@@ -127,8 +137,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'START→perception',
         'clarify→memory_query',
         'memory_query→agent',
-        'force_finalize→finalize_response',
-        'tools→tool_processor',
+                'tools→tool_processor',
         'tool_processor→agent',
         'doc_gen_enforce→agent',
         'doc_final_answer→agent',
@@ -140,8 +149,17 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'perception', targets: ['memory_query', 'finalize_response', 'clarify'] },
         {
           from: 'agent',
-          targets: ['human_review', 'finalize_response', 'force_finalize', 'doc_gen_enforce', 'doc_final_answer'],
+          targets: [
+            'human_review',
+            'finalize_response',
+            'force_finalize',
+            // 注意：快照展示的是「目标节点名」，plan_force_finalize 路由值同样指向 force_finalize
+            'force_finalize',
+            'doc_gen_enforce',
+            'doc_final_answer',
+          ],
         },
+        { from: 'force_finalize', targets: ['finalize_response'] },
         { from: 'human_review', targets: ['tools', 'finalize_response'] },
       ],
     })
@@ -167,8 +185,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
       ],
       staticEdges: [
         'START→perception',
-        'force_finalize→finalize_response',
-        'subagent_run→consensus',
+                'subagent_run→consensus',
         'consensus→finalize_response',
         'tools→tool_processor',
         'tool_processor→agent',
@@ -182,8 +199,17 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'memory_query', targets: ['agent', 'supervisor'] },
         {
           from: 'agent',
-          targets: ['tools', 'finalize_response', 'force_finalize', 'doc_gen_enforce', 'doc_final_answer'],
+          targets: [
+            'tools',
+            'finalize_response',
+            'force_finalize',
+            // 注意：快照展示的是「目标节点名」，plan_force_finalize 路由值同样指向 force_finalize
+            'force_finalize',
+            'doc_gen_enforce',
+            'doc_final_answer',
+          ],
         },
+        { from: 'force_finalize', targets: ['finalize_response'] },
         { from: 'supervisor', targets: ['subagent_run'] },
       ],
     })
@@ -204,14 +230,16 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'doc_final_answer',
         'memory_update',
         'planner',
-        'step_dispatch',
-        'step_finalize',
-      ],
-      staticEdges: [
-        'START→perception',
-        'step_finalize→step_dispatch',
-        'force_finalize→finalize_response',
-        'tools→tool_processor',
+                'step_dispatch',
+                'step_finalize',
+                // P1-2：计划收敛后的汇总节点
+                'plan_summarize',
+              ],
+              staticEdges: [
+                'START→perception',
+                'plan_summarize→finalize_response',
+                'step_finalize→step_dispatch',
+                'tools→tool_processor',
         'tool_processor→agent',
         'doc_gen_enforce→agent',
         'doc_final_answer→agent',
@@ -222,18 +250,23 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'perception', targets: ['memory_query', 'finalize_response'] },
         { from: 'memory_query', targets: ['agent', 'planner'] },
         { from: 'planner', targets: ['step_dispatch', 'finalize_response'] },
-        { from: 'step_dispatch', targets: ['agent', 'finalize_response', 'planner'] },
+        // P1-2：收敛后先汇总各步骤产物
+        { from: 'step_dispatch', targets: ['agent', 'plan_summarize', 'planner'] },
         {
           from: 'agent',
           targets: [
             'tools',
             'finalize_response',
             'force_finalize',
+            // 注意：快照展示的是「目标节点名」，plan_force_finalize 路由值同样指向 force_finalize
+            'force_finalize',
             'step_finalize',
             'doc_gen_enforce',
             'doc_final_answer',
           ],
         },
+        // P0-2：plan_execute 下收尾作答后回到 step_finalize，继续执行后续步骤
+        { from: 'force_finalize', targets: ['step_finalize', 'finalize_response'] },
       ],
     })
   })
@@ -263,12 +296,13 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         'planner',
         'step_dispatch',
         'step_finalize',
+        'plan_summarize',
       ],
       staticEdges: [
         'START→perception',
+        'plan_summarize→finalize_response',
         'step_finalize→step_dispatch',
-        'force_finalize→finalize_response',
-        'subagent_run→consensus',
+                'subagent_run→consensus',
         'consensus→step_finalize',
         'tools→tool_processor',
         'tool_processor→agent',
@@ -284,7 +318,7 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
         { from: 'planner', targets: ['step_dispatch', 'finalize_response'] },
         {
           from: 'step_dispatch',
-          targets: ['agent', 'finalize_response', 'planner', 'supervisor'],
+          targets: ['agent', 'plan_summarize', 'planner', 'supervisor'],
         },
         {
           from: 'agent',
@@ -292,11 +326,14 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
             'human_review',
             'finalize_response',
             'force_finalize',
+            // 注意：快照展示的是「目标节点名」，plan_force_finalize 路由值同样指向 force_finalize
+            'force_finalize',
             'step_finalize',
             'doc_gen_enforce',
             'doc_final_answer',
           ],
         },
+        { from: 'force_finalize', targets: ['step_finalize', 'finalize_response'] },
         { from: 'human_review', targets: ['tools', 'finalize_response'] },
         { from: 'supervisor', targets: ['subagent_run'] },
       ],

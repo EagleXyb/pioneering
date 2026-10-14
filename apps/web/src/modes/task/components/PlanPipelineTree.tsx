@@ -1,6 +1,6 @@
 import { usePlanExecuteStore } from '../../../store/planExecuteStore';
 import type { PlanItem } from '../../../store/planExecuteStore';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { StepStatusGlyph } from '@/components/icons/customIcons';
 
 /**
@@ -25,10 +25,16 @@ const STATUS_CONFIG: Record<
 > = {
   pending: { className: 'timeline-item--pending', label: '等待中' },
   running: { className: 'timeline-item--running', label: '执行中' },
+  // P0-1：步骤级重试的中间态（后端 step_finalize retry 分支下发），
+  // 此前未登记导致 STATUS_CONFIG 查表落空 → config.className 抛 TypeError 面板崩溃
+  retrying: { className: 'timeline-item--retrying', label: '重试中' },
   done: { className: 'timeline-item--done', label: '已完成' },
   failed: { className: 'timeline-item--failed', label: '失败' },
   skipped: { className: 'timeline-item--skipped', label: '已跳过' },
 };
+
+/** 兜底配置：store 已做状态归一化，这里再兜一层，确保任何意外状态都不会击穿渲染 */
+const STATUS_FALLBACK = STATUS_CONFIG.pending;
 
 /**
  * 判断步骤是否应展开。
@@ -51,7 +57,7 @@ function isStepExpanded(
   if (allCompleted) {
     return index === 0;
   }
-  return step.status === 'running' || step.status === 'failed';
+  return step.status === 'running' || step.status === 'retrying' || step.status === 'failed';
 }
 
 /**
@@ -113,7 +119,9 @@ function extractStepResult(raw: string): string {
 }
 
 function StatusDot({ status }: { status: PlanItem['status'] }) {
-  if (status === 'running') {
+  // P0-1：retrying（步骤级重试中间态）同样是"进行中"，复用 spinner 形态，
+  // 颜色由 .timeline-item--retrying 区分（琥珀 vs 蓝）
+  if (status === 'running' || status === 'retrying') {
     return <div className="timeline-dot-spinner" />;
   }
   if (status === 'pending') {
@@ -132,7 +140,7 @@ interface TimelineItemProps {
 }
 
 function TimelineItem({ step, index, total, isLast, expanded, onToggle }: TimelineItemProps) {
-  const config = STATUS_CONFIG[step.status];
+  const config = STATUS_CONFIG[step.status] ?? STATUS_FALLBACK;
   const headerId = `timeline-header-${step.step_id}`;
   const bodyId = `timeline-body-${step.step_id}`;
   // 首步不画上半段连线，末项不画下半段连线，中间项上下都画
@@ -172,8 +180,18 @@ function TimelineItem({ step, index, total, isLast, expanded, onToggle }: Timeli
             <span className="timeline-title-text">{step.title}</span>
           </span>
           <div className="timeline-header-right">
+            {/* P0-1：重试中间态展示"重试中 n/m"，让用户知道步骤在重试而非卡死 */}
+            {step.status === 'retrying' && (
+              <span className="timeline-progress-badge">
+                重试中
+                {typeof step.retry_count === 'number' && step.retry_count > 0
+                  ? ` ${step.retry_count}/${step.max_attempts ?? step.retry_count}`
+                  : ''}
+              </span>
+            )}
+            {/* P3 修复：原 "(n/N)" 形似进度且易被读作"已完成 n 项"，改为中性的步骤序号文案 */}
             <span className="timeline-progress-badge">
-              ({index + 1}/{total})
+              第 {index + 1} / {total} 步
             </span>
             <span className="timeline-chevron">
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -189,11 +207,18 @@ function TimelineItem({ step, index, total, isLast, expanded, onToggle }: Timeli
           {step.description && (
             <div className="timeline-desc">{step.description}</div>
           )}
-          {step.status === 'done' && step.result && (
+          {/* P0-3：skipped 步骤同样展示原因（后端把跳过理由放在 result 字段） */}
+          {(step.status === 'done' || step.status === 'skipped') && step.result && (
             <div className="timeline-result">{extractStepResult(step.result)}</div>
           )}
           {step.status === 'failed' && step.error && (
             <div className="timeline-error">{step.error}</div>
+          )}
+          {/* P2-4：输出被模型长度上限截断 → 提示内容可能不完整 */}
+          {step.truncated && (
+            <div className="timeline-error">
+              ⚠ 本步输出因模型单次长度上限被截断，内容可能不完整（可缩小步骤范围后重试）
+            </div>
           )}
         </div>
       </div>
@@ -206,6 +231,8 @@ export function PlanPipelineTree() {
   const rootIds = usePlanExecuteStore((s) => s.rootIds);
   const phase = usePlanExecuteStore((s) => s.phase);
   const error = usePlanExecuteStore((s) => s.error);
+  // P1-4：计划级提示（如计划被步骤上限截断）
+  const planWarning = usePlanExecuteStore((s) => s.planWarning);
   const collapsedSteps = usePlanExecuteStore((s) => s.collapsedSteps);
   const toggleStep = usePlanExecuteStore((s) => s.toggleStep);
   // 数据来源标记：history 时禁用 running 脉冲动画，保证历史展示与初次生成像素级一致
@@ -236,6 +263,18 @@ export function PlanPipelineTree() {
         </div>
       );
     }
+    // P2-3：规划失败降级为直答时，面板需说清"为什么没有步骤"
+    if (planWarning) {
+      return (
+        <div className="timeline-empty timeline-empty--warning">
+          <div className="timeline-empty-icon">
+            <AlertTriangle size={16} />
+          </div>
+          <div className="timeline-empty-title">未按计划执行</div>
+          <div className="timeline-empty-detail">{planWarning}</div>
+        </div>
+      );
+    }
     return (
       <div className="timeline-empty">
         {phase === 'planning'
@@ -258,11 +297,37 @@ export function PlanPipelineTree() {
         )}
       </div>
 
+      {/* P0 修复：流结束但仍有未完成步骤——显式提示，避免"已完成"假成功 */}
+      {phase === 'incomplete' && (
+        <div className="timeline-global-warning">
+          <AlertTriangle
+            size={14}
+            className="timeline-global-warning-icon"
+            aria-hidden="true"
+          />
+          <span className="timeline-global-warning-text">
+            任务未执行完成（流程已结束，仍有步骤未执行）
+          </span>
+        </div>
+      )}
+
       {/* 全局错误信息（plan 已收到但后续执行失败） */}
       {phase === 'error' && error && (
         <div className="timeline-global-error">
           <X size={14} strokeWidth={3} className="timeline-global-error-icon" />
           <span className="timeline-global-error-text">{error}</span>
+        </div>
+      )}
+
+      {/* P1-4：计划被步骤上限截断的提示（此前静默丢步，用户无从得知） */}
+      {planWarning && (
+        <div className="timeline-global-warning">
+          <AlertTriangle
+            size={14}
+            className="timeline-global-warning-icon"
+            aria-hidden="true"
+          />
+          <span className="timeline-global-warning-text">{planWarning}</span>
         </div>
       )}
 

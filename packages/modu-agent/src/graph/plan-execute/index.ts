@@ -27,3 +27,5 @@ export {
   makeStepFinalizeNode,
 } from './dispatcher.js'
 export { makePlanContextInjector } from './context.js'
+// P1-2: 计划收敛后的汇总节点（整合各步骤产物为最终答复）
+export { makePlanSummarizeNode } from './summarize.js'

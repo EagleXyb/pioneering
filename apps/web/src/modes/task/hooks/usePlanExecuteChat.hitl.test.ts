@@ -9,7 +9,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 const clientMocks = vi.hoisted(() => ({
   post: vi.fn(async () => undefined),
-  get: vi.fn(async () => null),
+  get: vi.fn(async (): Promise<unknown> => null),
 }));
 
 vi.mock('../../../api/client', () => ({
@@ -209,5 +209,87 @@ describe('usePlanExecuteChat — HITL 全链路', () => {
       '/agent/abort',
       expect.objectContaining({ sessionId: 'session-1', reason: 'user_cancel' }),
     )
+  })
+
+  it('刷新恢复：恢复暂停时复用末尾 assistant 消息（不再追加空占位，避免双气泡）', async () => {
+    completionsEvents = [
+      {
+        type: 'STATE_DELTA',
+        phase: 'plan',
+        plan: [{ step_id: 'step_1', title: '步骤1', description: 'D', status: 'pending' }],
+      },
+      { type: 'TEXT_MESSAGE_CONTENT', delta: '准备执行' },
+      {
+        type: 'USER_QUESTION_REQUEST',
+        kind: 'tool_confirm',
+        session_id: 'session-1',
+        tool_calls: [{ id: 'c1', name: 'code_executor', args: {} }],
+      },
+      { type: 'RUN_PAUSED' },
+    ];
+
+    const { result } = renderHook(() => usePlanExecuteChat('session-1'));
+    await act(async () => {
+      await result.current.sendMessage({ prompt: '执行任务' });
+    });
+    await waitFor(() => expect(result.current.hitl).not.toBeNull());
+    const before = result.current.messages.length;
+    expect(before).toBe(2); // user + assistant
+
+    // 刷新恢复：后端仍处于暂停态（pending=true）→ restoreHitlPause
+    clientMocks.get.mockResolvedValueOnce({
+      session_id: 'session-1',
+      pending: true,
+      kind: 'tool_confirm',
+      pending_tool_calls: [{ id: 'c1', name: 'code_executor', args: {} }],
+    });
+    await act(async () => {
+      await useHitlStore.getState().recover('session-1');
+    });
+
+    await waitFor(() => expect(result.current.hitl).not.toBeNull());
+    // 复用末尾 assistant 消息：不追加新占位（修复前会变为 3 条）
+    expect(result.current.messages.length).toBe(before);
+  });
+
+  it('HITL 失效收尾：recover 判定 pending=false → [已失效] 且 phase 收敛为 incomplete', async () => {
+    completionsEvents = [
+      {
+        type: 'STATE_DELTA',
+        phase: 'plan',
+        plan: [
+          { step_id: 'step_1', title: '步骤1', description: 'D', status: 'running' },
+          { step_id: 'step_2', title: '步骤2', description: 'D', status: 'pending' },
+        ],
+      },
+      {
+        type: 'USER_QUESTION_REQUEST',
+        kind: 'tool_confirm',
+        session_id: 'session-1',
+        tool_calls: [{ id: 'c1', name: 'code_executor', args: {} }],
+      },
+      { type: 'RUN_PAUSED' },
+    ];
+
+    const { result } = renderHook(() => usePlanExecuteChat('session-1'));
+    await act(async () => {
+      await result.current.sendMessage({ prompt: '执行任务' });
+    });
+
+    await waitFor(() => expect(result.current.hitl).not.toBeNull());
+    expect(usePlanExecuteStore.getState().phase).toBe('executing');
+
+    // 后端暂停态丢失（pending=false）→ 前端失效收尾（finalizeHitlStale）
+    clientMocks.get.mockResolvedValueOnce({ session_id: 'session-1', pending: false });
+    await act(async () => {
+      await useHitlStore.getState().recover('session-1');
+    });
+
+    // 修复断言：plan 阶段收敛为 incomplete（修复前永久停留"执行中 0/N"），
+    // 且助手消息追加 [已失效] 文案
+    await waitFor(() => expect(usePlanExecuteStore.getState().phase).toBe('incomplete'));
+    const last = result.current.messages[result.current.messages.length - 1];
+    expect(String((last?.content?.[0] as { data?: string })?.data)).toContain('[已失效]');
+    expect(result.current.hitl).toBeNull();
   })
 })

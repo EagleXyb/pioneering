@@ -136,6 +136,8 @@ export interface ModuAgentState {
   step_msg_baseline?: number
   // transient: PlanStateDelta，供 EventBridge 发 SSE
   plan_delta?: Record<string, any> | null
+  // P0-2: 当前步骤已用工具/推理轮次（逐步骤计数，step_finalize 归零）
+  step_round_count?: number
 
   // === P0 优化（ReAct 模式业务定制化） ===
   // P0-1: 复杂度评估结果（perception 节点写入，agentNode/routeAfterAgent 读取）
@@ -174,6 +176,8 @@ export interface ModuAgentState {
   forced_finalize?: boolean
   // 收尾原因（目前仅 'tool_budget'）
   termination_reason?: string | null
+  // P2-4：最近一次 LLM 输出是否因 max_tokens 上限被截断
+  output_truncated?: boolean
 }
 
 /**
@@ -341,6 +345,21 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   current_step: Annotation<Record<string, any>>(_lw(() => ({}))),
   step_msg_baseline: Annotation<number>(_lw(() => 0)),
   plan_delta: Annotation<Record<string, any> | null>(_lw<Record<string, any> | null>(() => null)),
+  /**
+   * P0-2 修复：当前步骤已用的工具/推理轮次（**逐步骤**计数，last-write-wins）。
+   *
+   * 缺陷背景：`reasoning_round_count` 是纯累加 reducer 且全 run 累加、从不重置。
+   * plan_execute 多步任务里 budget 常在第 1 步就触顶（routeAfterAgent → force_finalize
+   * → finalize_response 直连），剩余步骤被静默丢弃（实测 7 步计划只跑完第 1 步，
+   * DB 中 step_1=running、step_2~6=pending）。
+   *
+   * 语义分工：
+   *   - `reasoning_round_count`：整轮 ReAct 预算（ReAct 模式继续使用，行为不变）
+   *   - `step_round_count`：plan_execute 的**单步**预算，由 agentNode「读旧值 +1」写入
+   *     （因此可用 last-write-wins），由 step_finalize 归零。
+   * 效果：某一步工具用多了只终结**当前步**（该步判 done/failed），不再吃掉整个计划。
+   */
+  step_round_count: Annotation<number>(_lw(() => 0)),
 
   // 状态 schema 版本号（对应文档 §2.3 建议3）
   // Checkpointer 持久化时一并保存；读取时由 migrate_state 按版本迁移
@@ -374,6 +393,12 @@ export const ModuAgentStateAnnotation = Annotation.Root({
   // 工具预算耗尽收尾标记（last-write-wins，force_finalize 节点写入）
   forced_finalize: Annotation<boolean>(_lw<boolean>(() => false)),
   termination_reason: Annotation<string | null>(_lw<string | null>(() => null)),
+  /**
+   * P2-4：最近一次 LLM 输出是否因 `max_tokens` 上限被截断
+   * （finish_reason === 'length'）。agent 节点写入 true，step_finalize 读取后
+   * 写入 step_results 并把本字段复位为 false（避免污染下一步）。
+   */
+  output_truncated: Annotation<boolean>(_lw<boolean>(() => false)),
 
   // === Artifact 产物追踪（append reducer，toolResultProcessor 写入）===
   artifacts: Annotation<Array<Record<string, any>>>({
@@ -512,6 +537,7 @@ export function makeInitialState(
     current_step: {},
     step_msg_baseline: 0,
     plan_delta: null,
+    step_round_count: 0,
     state_schema_version: STATE_SCHEMA_VERSION,
     // P0 优化字段初始化
     complexity_assessment: null,
@@ -528,6 +554,7 @@ export function makeInitialState(
     doc_final_answer_enforced: false,
     forced_finalize: false,
     termination_reason: null,
+    output_truncated: false,
   }
 }
 

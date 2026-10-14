@@ -30,6 +30,10 @@ const _MAX_RETRY_BASE_DELAY_SECONDS = 10
 /** 单次重试等待上限（毫秒），防止指数退避放大成请求级挂起。 */
 const _MAX_RETRY_DELAY_MS = 30_000
 
+/** P0-3：步骤被"提前交付收敛"跳过时展示给用户的原因 */
+const _SKIP_REASON_EARLY_COMPLETION =
+  '前序步骤已产出完整交付物（文档/终稿），本步为纯推理/写作类步骤，已跳过以避免重复产出。'
+
 /**
  * P1-15：supervisor 子图是否实际挂载可用。
  *
@@ -89,6 +93,14 @@ export function makeStepDispatchNode(): (
     const step = plan[idx] ?? {}
     const stepStatus = String(step['status'] ?? '')
 
+    // P0-3 提前交付收敛：若前序步骤已产出完整交付物（终稿/文档），
+    // 后续"纯推理、不需要外部数据"的步骤再执行只是重复劳动，
+    // 且会让最终答复被最后一次重复输出覆盖。此处一次性跳过它们并激活下一个
+    // 真正需要执行的步骤（requires_tool=true 或最后一步）。
+    if (stepStatus === 'pending' && _shouldSkipForEarlyCompletion(state, plan, idx)) {
+      return _skipRedundantStepsAndActivateNext(state, plan, idx)
+    }
+
     // v1.2 #1: DAG 场景下 step_finalize 汇聚到 step_dispatch 节点时，
     // current_step_index 可能指向已 done/running 的步骤（多分支 last-write-wins）。
     // 此时不应重复标记 running 或写入 current_step，让 stepDispatch 路由通过 Send 处理。
@@ -140,6 +152,139 @@ export function makeStepDispatchNode(): (
   }
 
   return _stepDispatchNode
+}
+
+/**
+ * P2-1：构造 `Send('step_dispatch', …)` 的 payload。
+ *
+ * LangGraph 语义：Send 的 args 就是目标节点的**唯一输入**，不会与 channel 状态合并
+ * （`node_modules/@langchain/langgraph/dist/pregel/algo.cjs`：`input: packet.args`）。
+ * 因此必须把 step_dispatch 节点需要的字段全部带上，否则节点读到 `plan === undefined`
+ * 会直接 return {} —— 计划状态不推进，路由下一轮又算出同一批 Send，
+ * 直到 `recursionLimit` 报错（最小复现：路由被调用 4095 次）。
+ */
+function _sendPayload(
+  state: ModuAgentState,
+  idx: number,
+): Record<string, any> {
+  const plan = state.plan ?? []
+  return {
+    plan,
+    current_step_index: idx,
+    current_step: { ...(plan[idx] ?? {}), status: 'running' },
+    step_msg_baseline: (state.messages ?? []).length,
+    step_results: state.step_results ?? [],
+    replan_count: state.replan_count ?? 0,
+    plan_phase: state.plan_phase ?? 'executing',
+    artifacts: state.artifacts ?? [],
+    trace_id: state.trace_id ?? '',
+  }
+}
+
+/**
+ * P0-3：判定某一步是否可以被"提前交付收敛"跳过。
+ *
+ * 跳过条件（全部满足）：
+ *   1. 本代际已有步骤被 step_finalize 标记为 `early_completion`
+ *      （即该步已经产出了整体交付物：完整文档/终稿）
+ *   2. 该步骤不需要外部/实时数据（`requires_tool !== true`）——
+ *      需要真实数据的步骤不能跳过，否则会失去外部信息
+ *   3. 该步骤不是最后一步——最后一步通常是整合/校验，必须执行
+ */
+function _shouldSkipForEarlyCompletion(
+  state: ModuAgentState,
+  plan: Array<Record<string, any>>,
+  idx: number,
+): boolean {
+  const early = _currentGenerationResults(state).some(
+    (r) => r?.['early_completion'] === true,
+  )
+  if (!early) return false
+
+  const step = plan[idx] ?? {}
+  if (Boolean(step['requires_tool'])) return false
+  // 最后一步保留执行（整合/校验/交付）
+  if (idx >= plan.length - 1) return false
+  return true
+}
+
+/**
+ * P0-3：跳过冗余步骤并激活下一个真正需要执行的步骤。
+ *
+ * 与"逐个跳过"的区别：这里在**一次节点调用内**把所有可跳过的 pending 步骤
+ * 一次性标记 skipped（每条发一个 SSE step_update），再激活下一个需执行的步骤。
+ * 若逐个跳过，路由会落在 `_identifyReadySteps` 的多步就绪分支（Send 路径），
+ * 而该分支在当前 LangGraph 语义下拿不到图状态（见 P2-1），会空转至递归上限。
+ */
+function _skipRedundantStepsAndActivateNext(
+  state: ModuAgentState,
+  plan: Array<Record<string, any>>,
+  idx: number,
+): Partial<ModuAgentState> {
+  const now = Date.now()
+  const updatedPlan: Array<Record<string, any>> = [...plan]
+  const stepUpdates: Array<Record<string, any>> = []
+
+  let nextIdx = -1
+  for (let i = idx; i < updatedPlan.length; i++) {
+    const s = updatedPlan[i] ?? {}
+    if (String(s['status'] ?? '') !== 'pending') continue
+
+    const isLastStep = i >= updatedPlan.length - 1
+    if (Boolean(s['requires_tool']) || isLastStep) {
+      nextIdx = i
+      break
+    }
+
+    // 可跳过：纯推理/写作且非末步
+    updatedPlan[i] = { ...s, status: 'skipped', finished_at: now }
+    stepUpdates.push({
+      id: String(s['step_id'] ?? `step_${i + 1}`),
+      index: i,
+      status: 'skipped',
+      result: _SKIP_REASON_EARLY_COMPLETION,
+      finished_at: now,
+    })
+  }
+
+  // 全部可跳过（无需要执行的步骤）→ 计划收敛
+  if (nextIdx < 0) {
+    logger.info(
+      'Early-completion convergence: skipped %d redundant step(s), plan finished trace_id=%s',
+      stepUpdates.length, state.trace_id ?? '',
+    )
+    return {
+      plan: updatedPlan,
+      plan_phase: 'finalizing',
+      plan_delta: { phase: 'execute', step_updates: stepUpdates },
+    }
+  }
+
+  const nextStep = updatedPlan[nextIdx] ?? {}
+  const nextStepId = String(nextStep['step_id'] ?? `step_${nextIdx + 1}`)
+  updatedPlan[nextIdx] = { ...nextStep, status: 'running', started_at: now }
+  stepUpdates.push({
+    id: nextStepId,
+    index: nextIdx,
+    status: 'running',
+    started_at: now,
+  })
+
+  logger.info(
+    'Early-completion convergence: skipped %d redundant step(s), activating step %d/%d (%s) trace_id=%s',
+    stepUpdates.filter((u) => u.status === 'skipped').length,
+    nextIdx + 1, updatedPlan.length, nextStepId, state.trace_id ?? '',
+  )
+
+  return {
+    plan: updatedPlan,
+    current_step_index: nextIdx,
+    current_step: { ...nextStep, status: 'running', started_at: now },
+    step_msg_baseline: (state.messages ?? []).length,
+    plan_phase: 'executing',
+    step_round_count: 0,
+    plan_delta: { phase: 'execute', step_updates: stepUpdates },
+  }
 }
 
 /**
@@ -209,23 +354,70 @@ export function stepDispatch(state: ModuAgentState): string | Send[] {
     )
   }
 
+  // P0 修复（回归：含依赖计划第一步即死）：
+  // step_dispatch 节点已把当前步由 pending 标记为 running（见 _stepDispatchNode），
+  // 而 _identifyReadySteps 只收集 pending 步骤——当前步被排除后，其下游步骤因依赖
+  // 未满足同样不就绪，路由会误判 "No ready steps" 并静默终止。
+  // 此处优先识别"已被节点激活、等待派发"的当前步，直接交给 agent 执行。
+  // 安全性：plan 中 status='running' 只可能由 _stepDispatchNode 写入（agent 执行期间
+  // 不改 plan），因此该分支不会重复派发真正在执行中的步骤。
+  if (
+    idx >= 0 &&
+    idx < plan.length &&
+    String(plan[idx]?.['status'] ?? '') === 'running'
+  ) {
+    // delegation 步骤保持组合模式语义：委托给 supervisor 子图（P1-15 守卫：
+    // 未挂载 supervisor 时降级普通 agent），与单步就绪分支的路由保持一致，
+    // 避免"已激活"快捷路径绕过 delegation 判定。
+    const activatedStep = plan[idx] ?? {}
+    const activatedTaskType = String(activatedStep['task_type'] ?? '')
+    if (activatedTaskType === 'delegation' && _isSupervisorAvailable()) {
+      const messagesLen = (state.messages ?? []).length
+      return [new SendClass('supervisor', {
+        current_step_index: idx,
+        current_step: { ...activatedStep, status: 'running' },
+        step_msg_baseline: messagesLen,
+      })]
+    }
+    logger.debug(
+      'step_dispatch: plan[%d] activated (running), dispatching to agent',
+      idx,
+    )
+    return 'agent'
+  }
+
   // v1.2 #1: DAG 调度——识别就绪步骤集合
   const readyIndices = _identifyReadySteps(plan)
 
   if (readyIndices.length === 0) {
-    // 无就绪步骤但有未完成步骤：可能存在循环依赖或全部在 running（不应发生）
-    // 兜底：执行 current_step_index 指向的步骤（若已 done 则跳过）
+    // 无就绪步骤但有未完成步骤：可能存在循环依赖或依赖 failed/skipped 步骤的悬空分支
+    // 兜底：执行 current_step_index 指向的步骤（若仍为 pending 则直接派发）
     if (idx < plan.length) {
       const stepStatus = String(plan[idx]?.['status'] ?? '')
       if (stepStatus === 'pending') {
         return 'agent'
       }
     }
-    logger.warning(
-      'No ready steps but plan not finished (idx=%d, plan_len=%d), terminating',
-      idx, plan.length,
+    // P0 修复：无可执行步骤时不得静默按"成功"收尾——原实现 return 'response' 会让上游
+    // 发出 RUN_FINISHED，前端横幅显示"已完成"但实际一步未执行（假成功）。
+    // 抛错让上游发 RUN_ERROR，用户可见"失败"与具体卡住的步骤。
+    const stalledPending = plan
+      .map((s, i) => ({
+        id: String(s?.['step_id'] ?? `step_${i + 1}`),
+        status: String(s?.['status'] ?? ''),
+        deps: Array.isArray(s?.['depends_on']) ? s['depends_on'] : [],
+      }))
+      .filter((s) => s.status === 'pending')
+      .slice(0, 5)
+    logger.error(
+      'No ready steps but plan not finished (idx=%d, plan_len=%d), aborting with error. pending=%s',
+      idx, plan.length, JSON.stringify(stalledPending),
     )
-    return 'response'
+    throw new Error(
+      'Plan execution stalled: no executable steps. ' +
+      `currentIndex=${idx}, total=${plan.length}, ` +
+      `pending=[${stalledPending.map((s) => `${s.id}(deps=${JSON.stringify(s.deps)})`).join(', ')}]`,
+    )
   }
 
   if (readyIndices.length === 1) {
@@ -264,31 +456,40 @@ export function stepDispatch(state: ModuAgentState): string | Send[] {
       'Single ready step at idx=%d, but current_step_index=%d; using Send to redirect',
       readyIdx, idx,
     )
-    return [new SendClass('step_dispatch', { current_step_index: readyIdx })]
+    // P2-1：Send 的 payload 就是目标节点的**完整输入**（LangGraph 语义：
+    // `input: packet.args`，不会与 channel 状态合并）。此前只带 current_step_index，
+    // 节点读到 `state.plan === undefined` → 直接 return {} → 计划状态不推进 →
+    // 路由每轮算出同一批 Send → 空转直到 recursion limit（已用最小复现图验证）。
+    // 修复：payload 携带节点所需的全部状态字段。
+    return [new SendClass('step_dispatch', _sendPayload(state, readyIdx))]
   }
 
-  // 多步就绪：通过 Send API 并行分发
+  // 多步就绪
   // v1.2 #6: task_type=delegation 的步骤路由到 supervisor，其他步骤路由到 agent
   // P1-15: supervisor 未挂载时 delegation 步骤同样降级 agent（混合并行不炸图）
   const supervisorAvailable = _isSupervisorAvailable()
   if (!supervisorAvailable && readyIndices.some((i) => String(plan[i]?.['task_type'] ?? '') === 'delegation')) {
     logger.warning('DAG batch contains delegation step(s) but supervisor is disabled; dispatching them to agent')
   }
+
+  // P2-1：真并行暂不启用，改为按就绪顺序逐个派发。
+  //
+  // 原因（两类缺陷，均已实测/源码确认）：
+  //   1. 状态竞争：每个并行分支都会整表替换 `plan`，而 plan 是 last-write-wins
+  //      reducer —— 后完成的分支会覆盖先完成的，导致其余步骤的 running 标记丢失，
+  //      这些步骤再也不会被 step_finalize 收尾（永远停在 pending）。
+  //   2. Send payload 语义：Send 的 args 是目标节点的唯一输入，早期实现只带
+  //      current_step_index，节点读不到 plan → return {} → 路由每轮算出同一批
+  //      Send → 空转至 recursion limit。
+  // 现状下"激活分支"本就先于本分支短路（顺序执行），因此逐个派发与当前实际
+  // 行为一致，且保留了正确的执行语义。待 plan 具备按 index 合并的 reducer 后
+  // 再启用真并行。
+  const firstReady = readyIndices[0]
   logger.info(
-    'DAG parallel dispatch: %d ready steps (indices=%s) trace_id=%s',
-    readyIndices.length, readyIndices.join(','), state.trace_id ?? '',
+    'DAG dispatch: %d ready step(s) (indices=%s) → dispatching first (idx=%d) trace_id=%s',
+    readyIndices.length, readyIndices.join(','), firstReady, state.trace_id ?? '',
   )
-  const messagesLen = (state.messages ?? []).length
-  return readyIndices.map((i) => {
-    const step = plan[i] ?? {}
-    const taskType = String(step['task_type'] ?? '')
-    const target = taskType === 'delegation' && supervisorAvailable ? 'supervisor' : 'agent'
-    return new SendClass(target, {
-      current_step_index: i,
-      current_step: { ...step, status: 'running' },
-      step_msg_baseline: messagesLen,
-    })
-  })
+  return [new SendClass('step_dispatch', _sendPayload(state, firstReady))]
 }
 
 /**
@@ -539,6 +740,8 @@ export function makeStepFinalizeNode(): (
           current_step_index: idx,
           current_step: {},  // 清空，让 step_dispatch 重新写入
           plan_phase: 'executing',
+          // P0-2: 本步重新执行 → 当前步骤轮次归零，重试不该继承已耗尽的预算
+          step_round_count: 0,
           // SSE: 发出 retry 事件
           plan_delta: {
             phase: 'execute',
@@ -563,13 +766,43 @@ export function makeStepFinalizeNode(): (
       )
     }
 
+    // P0-3：检测本步是否已产出"整体交付物"（越级完成）。
+    // 判定（同时满足才算）：
+    //   · 本步成功且有正文
+    //   · 本步不是最后一步
+    //   · 后面仍有 pending 步骤
+    //   · 已产出文档产物（artifacts 含 document/doc_writer）**或** 正文长度达到终稿量级
+    // 该标记会被 step_dispatch 读取，用于跳过后续纯推理/写作类的冗余步骤。
+    const isLastStep = idx >= plan.length - 1
+    const remainingPending = plan.filter(
+      (s, i) => i > idx && String(s?.['status'] ?? '') === 'pending',
+    ).length
+    const hasDocArtifact = (state.artifacts ?? []).some(
+      (a) => a && (String(a['type'] ?? '') === 'document' || String(a['tool'] ?? '') === 'doc_writer'),
+    )
+    // 判定只以「已产出文档产物」为硬证据。
+    // 不采用"正文长度"作为依据：实测中 step_1 的"知识框架/大纲"就能写到 2000+ 字，
+    // 若按长度判定会把 step_2~step_6（真正的内容撰写步骤）误判为冗余而跳过，
+    // 最终只剩大纲 —— 比不收敛更糟。文档产物是明确的交付证据，误判风险最低。
+    const earlyCompletion = remainingPending > 0 && !isLastStep && hasDocArtifact
+
     const status: StepResult['status'] = failed ? 'failed' : 'done'
 
     // 3. 组装步骤结果（replan 代际标签隔离重规划前旧结果）
+    //
+    // P1-1：此前 `output` 直接按 step_summary_max_chars（默认 500）截断，
+    // 导致：①后续步骤只能看到前序步骤 500 字符摘要；②前端步骤面板与
+    // DB plan_steps.result 同样只有 500 字符 —— 长文档/长清单类步骤的产物几乎全部丢失。
+    // 现在 `output` 保存完整产物（受 step_result_max_chars 上限保护，防 checkpoint 膨胀），
+    // 另存 `output_summary` 供上下文注入（仍按 step_summary_max_chars 截断）。
+    const resultMaxChars = Number(
+      config.get('plan_execute.step_result_max_chars', 8000),
+    )
     const stepResult: Record<string, any> = {
       step_id: stepId,
       status,
-      output: _truncate(lastAiContent, summaryMaxChars),
+      output: _truncate(lastAiContent, resultMaxChars),
+      output_summary: _truncate(lastAiContent, summaryMaxChars),
       tool_refs: toolRefs,
       replan: state.replan_count ?? 0,
       finished_at: finishedAt,
@@ -582,6 +815,19 @@ export function makeStepFinalizeNode(): (
     const finalRetryCount = typeof step['retry_count'] === 'number' ? step['retry_count'] : 0
     if (finalRetryCount > 0) {
       stepResult['retry_count'] = finalRetryCount
+    }
+    // P2-4：本步输出曾被 max_tokens 截断 → 记录到步骤结果，前端提示"可能不完整"
+    if (state.output_truncated) {
+      stepResult['truncated'] = true
+    }
+    // P0-3：标记"本步已产出整体交付物"，供 step_dispatch 收敛后续冗余步骤
+    if (earlyCompletion && status !== 'failed') {
+      stepResult['early_completion'] = true
+      logger.info(
+        'Step %s produced the whole deliverable ahead of schedule (%d chars, doc=%s); ' +
+        'redundant reasoning steps will be skipped',
+        stepId, lastAiContent.length, String(hasDocArtifact),
+      )
     }
     if (degraded) {
       // 降级模式标记：工具失败但 LLM 产出了降级内容，便于后续步骤和 response 节点感知
@@ -610,6 +856,15 @@ export function makeStepFinalizeNode(): (
       current_step_index: idx + 1,
       current_step: {},
       plan_phase: idx + 1 >= plan.length ? 'finalizing' : 'executing',
+      // P0-2: 当前步骤结束 → 步骤轮次归零。
+      // 否则后续步骤会继承本步已用尽的工具预算，一进 agent 就再次触顶
+      // （原缺陷：reasoning_round_count 全 run 累加且永不重置）
+      step_round_count: 0,
+      // P0-2: 清除"本轮因工具上限中止"标记（force_finalize 写入），
+      // 避免该标记泄漏到后续步骤、让后续步骤的兜底文案误报"已中止"
+      ...(state.forced_finalize ? { forced_finalize: false } : {}),
+      // P2-4：复位截断标记（避免泄漏到下一步）
+      ...(state.output_truncated ? { output_truncated: false } : {}),
       // SSE: step completed
       plan_delta: {
         phase: 'execute',
@@ -620,6 +875,8 @@ export function makeStepFinalizeNode(): (
           status,
           result: stepResult['output'],
           ...(stepResult['error'] ? { error: stepResult['error'] } : {}),
+          // P2-4：输出被 max_tokens 截断 → 前端提示"本步内容可能不完整"
+          ...(stepResult['truncated'] ? { truncated: true } : {}),
           started_at: startedAt,
           finished_at: finishedAt,
           ...(finalRetryCount > 0 ? { retry_count: finalRetryCount } : {}),

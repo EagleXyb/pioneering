@@ -58,16 +58,27 @@ export function TaskInput({
     takeMessageSuffix,
   } = useAttachments();
 
-  /** 文本 + 附件 Markdown 后缀组合后交给上层 onSend */
+  /**
+   * 按钮/键盘统一发送出口（与 chat/pro 模式的 dispatchSend 对齐）。
+   *
+   * 返回 false 表示发送被拦截（附件仍在上传 / 无有效内容）：不清空输入框，
+   * useTaskInput.handleSend 也会保留输入与草稿。
+   *
+   * 修复（2026-10-14）：原实现不返回结果，且发送按钮 onClick 直接调用本函数、
+   * 绕过 useTaskInput.handleSend 中唯一的 setValue('') —— 点击按钮发送后消息
+   * 已发出但输入框文本残留（用户误以为未发出）。现由按钮侧依据返回值清空。
+   */
   const composeSend = useCallback(
-    (text: string) => {
+    (text: string): boolean => {
       if (hasPending) {
         toast.error('附件仍在上传，请稍候');
-        return;
+        return false;
       }
       const suffix = takeMessageSuffix();
-      if (!text && !suffix) return;
-      onSend(`${text}${suffix}`);
+      const trimmed = text.trim();
+      if (!trimmed && !suffix) return false;
+      onSend(`${trimmed}${suffix}`);
+      return true;
     },
     [onSend, hasPending, takeMessageSuffix],
   );
@@ -230,7 +241,11 @@ export function TaskInput({
               <button
                 type="button"
                 className="chat-send-btn chat-tooltip"
-                onClick={() => composeSend(value)}
+                onClick={() => {
+                  // 发送成功才清空：附件上传中/无有效内容时保留输入（与 pro 模式一致）
+                  if (!composeSend(value)) return;
+                  setValue('');
+                }}
                 disabled={!canSendNow || locked}
                 aria-label="发送"
                 data-tooltip="发送"

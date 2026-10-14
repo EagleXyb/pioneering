@@ -249,6 +249,8 @@ model PlanStep {
   error       String?   @db.Text
   startedAt   DateTime? @map("started_at") @db.Timestamptz
   finishedAt  DateTime? @map("finished_at") @db.Timestamptz
+  // 注意：DB 中 duration_ms 是**生成列**（GENERATED ALWAYS AS，由 Python init_db() 定义）。
+  // Prisma 不感知生成列，但写入会报 428C9，因此 TS 侧**绝不写入**该字段。
   durationMs  Int?      @map("duration_ms")
   metadata    Json?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz

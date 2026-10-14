@@ -91,6 +91,15 @@ const logger = {
 let _sharedMemoryCheckpointer: any = null
 
 /**
+ * sqlite Saver 不可用标记（进程级）。
+ *
+ * 首次尝试加载失败后置位：后续构建直接走共享 MemorySaver，不再重复
+ * 动态 import 与告警刷屏（每次请求重建图都会调用 build_checkpointer）。
+ * 若环境补齐构建工具，重启进程后标记重置，会重新尝试 sqlite。
+ */
+let _sqliteSaverUnavailable = false
+
+/**
  * 默认防幻觉系统提示词（P0-优化 + P0-强化）。
  *
  * 当宿主应用未传入 system_prompt 时使用，约束 LLM：
@@ -176,6 +185,10 @@ export async function build_checkpointer(
   }
 
   if (checkpointerType === 'sqlite') {
+    // 已确认不可用（如原生绑定缺失）：直接复用共享单例，不重复尝试与告警
+    if (_sqliteSaverUnavailable) {
+      return _getOrCreateSharedMemoryCheckpointer()
+    }
     try {
       // 动态导入 SQLite saver（可选依赖，可能未安装）
       const { SqliteSaver } = await import('@langchain/langgraph-checkpoint-sqlite')
@@ -187,9 +200,15 @@ export async function build_checkpointer(
       }
       throw new Error('SqliteSaver not found in module')
     } catch (e: any) {
+      _sqliteSaverUnavailable = true
       logger.warning('SqliteSaver not available, falling back to MemorySaver: %s', String(e))
-      const { MemorySaver } = await import('@langchain/langgraph')
-      return new MemorySaver()
+      // 修复（2026-10-14）：降级也必须复用模块级共享单例。
+      // 原实现 `return new MemorySaver()` 每次调用都新建实例——plan_execute 请求图
+      // 与 GET /agent/state（recover）/ resume 的图因 configurable 差异各自重建
+      // （get_runner 缓存 hash 不同），checkpoint 数据互不可见，导致：
+      //   1) recover 时 pending=false → 前端显示"[已失效] 待确认的操作已失效"；
+      //   2) resume 找不到 interrupt，暂停任务永远无法继续。
+      return _getOrCreateSharedMemoryCheckpointer()
     }
   }
 
@@ -197,9 +216,19 @@ export async function build_checkpointer(
   // HITL 依赖：interrupt 状态保存在 checkpointer 中，跨请求 resume 需要复用
   // 同一个 MemorySaver 实例——若每次 create_agent() 新建，中断状态会随实例销毁丢失。
   // 改为惰性单例后，所有图实例共享同一份 checkpoint 数据（与 get_runner 缓存语义一致）。
-  //
-  // P1-7：使用 BoundedMemorySaver（MemorySaver 子类），按 memory.checkpointer_max_threads
-  // 做 LRU 淘汰，防止长跑多会话进程中 checkpoint state 无界增长。
+  return _getOrCreateSharedMemoryCheckpointer()
+}
+
+/**
+ * 获取/创建模块级共享 MemorySaver 单例（惰性）。
+ *
+ * P1-7：使用 BoundedMemorySaver（MemorySaver 子类），按 memory.checkpointer_max_threads
+ * 做 LRU 淘汰，防止长跑多会话进程中 checkpoint state 无界增长。
+ *
+ * 修复（2026-10-14）：由 memory 分支与 sqlite 降级分支共用——两者必须是同一实例，
+ * 否则 HITL 暂停态（interrupt）在图实例间不可见（recover/resume 失效）。
+ */
+export async function _getOrCreateSharedMemoryCheckpointer(): Promise<any> {
   if (_sharedMemoryCheckpointer === null) {
     const { MemorySaver } = await import('@langchain/langgraph')
     const { BoundedMemorySaver } = await import('./bounded-memory-saver.js')

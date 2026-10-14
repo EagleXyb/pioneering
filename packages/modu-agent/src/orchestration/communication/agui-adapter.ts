@@ -415,6 +415,17 @@ type AGUIEvent = Record<string, string>
  */
 const _TEXT_STREAM_MIN_CHARS = 160
 
+/**
+ * P1 修复：这些图节点的 AI 消息仅供内部编排使用，禁止进入正文通道
+ * （TEXT_MESSAGE_CONTENT）与落库。
+ *
+ * - planner：Plan-and-Execute 的计划生成节点。planner 使用 streaming LLM 产出
+ *   计划（withStructuredOutput 失败时走 JSON-in-text 降级），其 token 会经
+ *   messages 流到达 _process_langgraph_event；不过滤会被误判为"最终回答"
+ *   逐段直发正文并写入 chat_messages.content——表现为聊天气泡出现大段计划 JSON。
+ */
+const _TEXT_SUPPRESSED_NODES: ReadonlySet<string> = new Set(['planner'])
+
 export class AGUIStateMachine {
   trace_id: string
   message_id: string
@@ -1456,6 +1467,18 @@ export class AGUIStreamAdapter {
 
     if (event_type === 'messages') {
       const msg = event.event ?? event.data ?? {}
+
+      // P1 修复：内部编排节点（planner 等）的 AI 输出不得进入正文/落库，
+      // 详见 _TEXT_SUPPRESSED_NODES 注释。metadata.langgraph_node 由 runner
+      // 的 messages 归一化分支保留（runner.ts 的 [message_chunk, metadata] 元组）。
+      const nodeName =
+        typeof (event as any)?.metadata?.langgraph_node === 'string'
+          ? String((event as any).metadata.langgraph_node)
+          : ''
+      if (nodeName && _TEXT_SUPPRESSED_NODES.has(nodeName)) {
+        logger.debug('transform.messages.suppressed node=%s', nodeName)
+        return []
+      }
 
       // 只处理 AI 消息（AIMessageChunk）：messages 流中混有 ToolMessage（工具结果）
       // 与 HumanMessage 等非 AI 消息。ToolMessage 不带 tool_calls，若进入缓冲器，

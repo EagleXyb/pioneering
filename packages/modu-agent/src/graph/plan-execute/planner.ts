@@ -75,6 +75,144 @@ function _extractJson(text: string): Record<string, any> | null {
   return null
 }
 
+/** PlanStep 的合法字段集合（与 PlanStepSchema 对齐），用于未知键诊断。 */
+const _KNOWN_STEP_KEYS = new Set([
+  'step_id', 'title', 'description', 'depends_on', 'status',
+  'requires_tool', 'expected_output', 'verification_hint', 'retry_policy', 'task_type',
+])
+
+/**
+ * P2 修复：规整 LLM 输出的计划对象（必须在 zod 校验前执行，strip 后不可恢复）。
+ *
+ * 1. 字段别名归一：弱模型常把 depends_on 写成 dependencies / depends，
+ *    zod 默认 strip 未知键会让依赖静默丢失（步骤全部可并行，语义漂移）；
+ * 2. 未知键诊断：记录将被 strip 的字段，便于排障（不改变校验结果）。
+ */
+function _normalizePlanSteps(obj: Record<string, any>): void {
+  const steps = Array.isArray(obj?.['steps']) ? obj['steps'] : []
+  for (const s of steps) {
+    if (!s || typeof s !== 'object') {
+      continue
+    }
+    if (s['depends_on'] === undefined) {
+      if (Array.isArray(s['dependencies'])) {
+        s['depends_on'] = s['dependencies']
+      } else if (Array.isArray(s['depends'])) {
+        s['depends_on'] = s['depends']
+      }
+    }
+    const unknown = Object.keys(s).filter((k) => !_KNOWN_STEP_KEYS.has(k))
+    if (unknown.length > 0) {
+      logger.debug(
+        'Plan step has unknown keys (will be stripped by schema): %s',
+        unknown.join(','),
+      )
+    }
+  }
+}
+
+/**
+ * P2 修复：把步骤的 depends_on 引用统一映射到规整化后的 step_id（`step_{i+1}`）。
+ *
+ * _parsePlan 会把 step_id 强制重编号为 `step_{i+1}`，原实现却原样保留 depends_on：
+ * 只要 LLM 用非 `step_N` 形式引用依赖（"1" / "步骤1" / 标题等），引用就永远匹配不上，
+ * dispatcher 的 _identifyReadySteps 判定为"永不就绪"，最终走 "No ready steps"。
+ *
+ * 支持形式：原始 step_id、序号（1 / step1 / step_1 / step 1 / 步骤1 / 第1步）、
+ * 步骤标题；无法解析的引用丢弃（降级为无依赖，避免死锁）。
+ */
+function _normalizeDependsOn(
+  deps: unknown,
+  steps: Array<Record<string, any>>,
+): string[] | undefined {
+  if (!Array.isArray(deps) || deps.length === 0) {
+    return undefined
+  }
+  const idMap = new Map<string, string>()
+  const register = (key: unknown, value: string): void => {
+    const k = String(key ?? '').trim()
+    if (k && !idMap.has(k)) {
+      idMap.set(k, value)
+    }
+  }
+  steps.forEach((s, i) => {
+    const newId = `step_${i + 1}`
+    register(s?.['step_id'], newId)
+    register(s?.['title'], newId)
+    const n = String(i + 1)
+    register(n, newId)
+    register(`step_${n}`, newId)
+    register(`step${n}`, newId)
+    register(`step ${n}`, newId)
+    register(`步骤${n}`, newId)
+    register(`步骤 ${n}`, newId)
+    register(`第${n}步`, newId)
+  })
+  const out: string[] = []
+  for (const raw of deps) {
+    const key = String(raw ?? '').trim()
+    if (!key) {
+      continue
+    }
+    const mapped = idMap.get(key)
+    if (mapped) {
+      if (!out.includes(mapped)) {
+        out.push(mapped)
+      }
+    } else {
+      // P1-4：由 debug 提升为 warning —— 依赖丢失会让下游步骤提前就绪、
+      // 执行顺序静默错乱（此前完全无痕，排查困难）。
+      logger.warning(
+        'Unresolved plan dependency reference dropped (step will run without waiting): %s',
+        key,
+      )
+    }
+  }
+  return out.length > 0 ? out : undefined
+}
+
+/**
+ * P2 修复：replan 时对新生成步骤重新编号，避开保留步骤已占用的 step_id。
+ *
+ * 部分重规划的 finalPlan = [已完成步骤（沿用旧 id）, ...新步骤（从 step_1 重新编号）]，
+ * 两段编号重叠会产生重复 step_id：前端 items[id] 相互覆盖、step_update 落到错误节点、
+ * 落库 (step_id, step_index) 语义错乱。
+ *
+ * @param plan   新生成步骤（_parsePlan 输出，内部引用已是 step_{i+1}）
+ * @param offset 保留步骤数量（新编号从 offset+1 开始）
+ */
+export function _renumberReplanPlan(
+  plan: PlanStep[],
+  offset: number,
+): PlanStep[] {
+  const idMap = new Map<string, string>()
+  plan.forEach((s, i) => {
+    idMap.set(String(s.step_id), `step_${offset + i + 1}`)
+  })
+  return plan.map((s, i) => {
+    const next = { ...s, step_id: `step_${offset + i + 1}` } as PlanStep
+    const deps = (s as Record<string, any>)['depends_on']
+    if (Array.isArray(deps) && deps.length > 0) {
+      const mapped: string[] = []
+      for (const d of deps) {
+        const key = String(d)
+        // 新步骤内部引用 → 新编号；未知引用原样保留（保留步骤 id 不变）
+        const target = idMap.get(key) ?? key
+        if (!mapped.includes(target)) {
+          mapped.push(target)
+        }
+      }
+      const filtered = mapped.filter((d) => d !== next.step_id) // 自引用过滤
+      if (filtered.length > 0) {
+        ;(next as Record<string, any>)['depends_on'] = filtered
+      } else {
+        delete (next as Record<string, any>)['depends_on']
+      }
+    }
+    return next
+  })
+}
+
 /**
  * 自动推断步骤是否需要工具调用（不依赖 LLM 输出 requires_tool 字段）。
  *
@@ -231,17 +369,32 @@ export function _parsePlan(
   raw: string,
   maxSteps: number,
   realtimeToolNames: string[] = [],
+  /** P1-4：输出"被截断丢弃的步骤数"，便于把计划被砍的事实透出到前端 */
+  truncatedOut?: { count: number },
 ): PlanStep[] | null {
   const obj = _extractJson(raw)
   if (!obj) {
     return null
   }
+  // P2 修复：字段别名归一（dependencies → depends_on）+ 未知键诊断（zod strip 前）
+  _normalizePlanSteps(obj)
   const parsed = PlanSchema.safeParse(obj)
   if (!parsed.success) {
     logger.debug('Plan schema validation failed: %s', String(parsed.error))
     return null
   }
-  const steps = parsed.data.steps.slice(0, maxSteps)
+  // P1-4：截断前显式告警 —— 此前 slice 静默丢步，用户/前端无从得知"计划被砍"。
+  // 且 PlanSchema 允许 20 步而 max_steps 默认 10，二者不一致时极易静默丢内容。
+  const rawSteps = parsed.data.steps
+  if (rawSteps.length > maxSteps) {
+    logger.warning(
+      'Plan truncated: LLM produced %d steps but plan_execute.max_steps=%d; ' +
+      '%d step(s) dropped (tail steps may contain integration/verification work)',
+      rawSteps.length, maxSteps, rawSteps.length - maxSteps,
+    )
+    if (truncatedOut) truncatedOut.count = rawSteps.length - maxSteps
+  }
+  const steps = rawSteps.slice(0, maxSteps)
 
   // 内容合理性后检：拦截 schema 通过但语义异常的步骤（如嵌套 plan 塌陷）
   for (const s of steps) {
@@ -284,8 +437,13 @@ export function _parsePlan(
       description: s.description,
       status: 'pending' as const,
     }
-    if (s.depends_on && s.depends_on.length > 0) {
-      step.depends_on = s.depends_on
+    // P2 修复：depends_on 与重编号后的 step_id 同步映射（含 "1"/"步骤1"/标题等形式），
+    // 无法解析的引用丢弃、自引用过滤——避免下游永不就绪造成执行死锁。
+    const normalizedDeps = _normalizeDependsOn(s.depends_on, steps)?.filter(
+      (d) => d !== step.step_id,
+    )
+    if (normalizedDeps && normalizedDeps.length > 0) {
+      step.depends_on = normalizedDeps
     }
     if (finalRequiresTool) {
       step.requires_tool = true
@@ -378,6 +536,7 @@ async function _tryStructuredOutput(
   bindOpts: Record<string, any>,
   maxSteps: number,
   realtimeToolNames: string[],
+  truncatedOut?: { count: number },
 ): Promise<PlanStep[] | null> {
   if (typeof llm?.withStructuredOutput !== 'function') {
     return null
@@ -402,7 +561,7 @@ async function _tryStructuredOutput(
     // 复用 _parsePlan 的校验与规整化逻辑：把结构化输出序列化为 JSON 再走 _parsePlan
     // 这样保证所有路径下的内容合理性检查、step_id 规整化、requires_tool 推断一致
     const json = JSON.stringify(result)
-    return _parsePlan(json, maxSteps, realtimeToolNames)
+    return _parsePlan(json, maxSteps, realtimeToolNames, truncatedOut)
   } catch (e) {
     logger.debug('withStructuredOutput failed, falling back to JSON parse: %s', String(e))
     return null
@@ -507,6 +666,8 @@ export function makePlannerNode(
     // v1.2 #3: 每次尝试优先调用 withStructuredOutput，失败时降级到 JSON-in-text
     let plan: PlanStep[] | null = null
     let usedStructuredOutput = false
+    // P1-4：记录计划被 max_steps 截断丢弃的步骤数（透出到 plan_delta，前端提示用户）
+    const truncated: { count: number } = { count: 0 }
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const isRetry = attempt > 0
@@ -536,7 +697,7 @@ export function makePlannerNode(
         if (!isRetry) {
           // 仅首次尝试用结构化输出（重试时 LLM 已不可靠，结构化输出成功率低，直接用 JSON 解析）
           const structuredPlan = await _tryStructuredOutput(
-            llm, effectiveMessages, bindOpts, effectiveMaxSteps, realtimeToolNames,
+            llm, effectiveMessages, bindOpts, effectiveMaxSteps, realtimeToolNames, truncated,
           )
           if (structuredPlan) {
             plan = structuredPlan
@@ -567,7 +728,7 @@ export function makePlannerNode(
         const raw = typeof response?.content === 'string'
           ? response.content
           : String(response?.content ?? '')
-        plan = _parsePlan(raw, effectiveMaxSteps, realtimeToolNames)
+        plan = _parsePlan(raw, effectiveMaxSteps, realtimeToolNames, truncated)
         if (plan) {
           break
         }
@@ -587,7 +748,10 @@ export function makePlannerNode(
         plan: [],
         plan_phase: '',
         replan_count: newReplanCount,
-        plan_delta: null,
+        // P2-3：此前下发 `plan_delta: null`，前端完全无感知——用户只看到
+        // "没有任务面板的直接回答"，无法区分"本就不需要计划"与"规划失败"。
+        // 现在显式下发 planning_failed，前端据此提示。
+        plan_delta: { phase: 'plan', plan: [], planning_failed: true },
       }
     }
 
@@ -610,11 +774,14 @@ export function makePlannerNode(
         }
       }
       if (completedStepDefs.length > 0) {
-        finalPlan = [...completedStepDefs, ...plan]
+        // P2 修复：新步骤重新编号（从保留步骤数量之后开始），避免与保留步骤的
+        // step_id 重复（重复 id 会让前端 step_update 落到错误节点、展示错乱）
+        const renumbered = _renumberReplanPlan(plan, completedStepDefs.length)
+        finalPlan = [...completedStepDefs, ...renumbered]
         finalStepIndex = completedStepDefs.length
         logger.info(
-          'Partial replan: keeping %d completed steps, generating %d new steps (replan_count=%d)',
-          completedStepDefs.length, plan.length, newReplanCount,
+          'Partial replan: keeping %d completed steps, generating %d new steps (renumbered from step_%d, replan_count=%d)',
+          completedStepDefs.length, plan.length, completedStepDefs.length + 1, newReplanCount,
         )
       }
     }
@@ -641,6 +808,9 @@ export function makePlannerNode(
       plan_delta: {
         phase: 'plan',
         plan: finalPlan as unknown as Array<Record<string, any>>,
+        // P1-4：计划被 max_steps 截断时告知前端"还有 N 步被丢弃"，
+        // 避免"少做几步还装作做完"（此前完全静默）
+        ...(truncated.count > 0 ? { truncated_steps: truncated.count } : {}),
       },
     }
   }

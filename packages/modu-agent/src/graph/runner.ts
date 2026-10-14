@@ -1359,6 +1359,12 @@ export async function get_interrupt_state(
       trace_id: payloadTraceId || values['trace_id'] || '',
       user_id: payloadUserId || values['user_id'] || '',
       created_at: createdAt,
+      // P4 扩展（2026-10-14）：透出 plan_execute 中断上下文——
+      // resume 恢复时需据此选择对应 profile 的图（plan_execute 图才注册
+      // step_finalize 条件目标），否则 routeAfterAgent 返回的 'step_finalize'
+      // 会被 LangGraph 判为 unknown destination 并中止整个 run。
+      plan_phase: values['plan_phase'] ?? '',
+      plan_steps: Array.isArray(values['plan']) ? values['plan'].length : 0,
     }
   } catch (e: any) {
     logger.debug('Failed to query interrupt state: %s', String(e))

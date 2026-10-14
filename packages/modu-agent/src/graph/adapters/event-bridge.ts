@@ -463,6 +463,17 @@ export class LangGraphEventBridge {
               type: 'step_update',
               data: planDelta,
             })
+          } else if (planDelta.phase === 'execute' && Array.isArray(planDelta.step_updates)) {
+            // P0-3：一次节点调用可以批量更新多个步骤（提前交付收敛会一次性跳过
+            // 若干冗余步骤并激活下一个待执行步骤）。拆成多条 step_update 下发，
+            // 协议上每条仍是单步增量，前端无需感知批量来源。
+            for (const su of planDelta.step_updates) {
+              if (!su || typeof su !== 'object') continue
+              sseEvents.push({
+                type: 'step_update',
+                data: { phase: 'execute', step_update: su },
+              })
+            }
           } else {
             // 兜底：未知 phase 时透传原始 delta，保持前后端协议弹性
             sseEvents.push({

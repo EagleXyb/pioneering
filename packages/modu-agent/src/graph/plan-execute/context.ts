@@ -48,6 +48,40 @@ export function makePlanContextInjector(): (
       description,
     ]
 
+    // P0-3：把 planner 产出但此前**从未被消费**的验收标准注入执行上下文。
+    // （字段来源：plan-execute/types.ts 的 expected_output / verification_hint，
+    //   planner.ts:434-439 解析透传。此前全仓无消费点，"验收标准"形同虚设。）
+    const expectedOutput = String(currentStep['expected_output'] ?? '')
+    const verificationHint = String(currentStep['verification_hint'] ?? '')
+    if (expectedOutput) {
+      lines.push(`Expected output of this step: ${expectedOutput}`)
+    }
+    if (verificationHint) {
+      lines.push(`Self-check before finishing: ${verificationHint}`)
+    }
+
+    // P0-3：步骤职责边界约束。
+    // 缺陷背景（实测 sess_d7185e5c…）：planner 拆出 7 步，LLM 却在 step_1
+    // （职责="构建知识框架与输出结构"）直接产出完整终稿并写盘，
+    // 导致 step_2~step_6 全部无意义、计划被架空。
+    const isLastStep = idx >= plan.length - 1
+    if (!isLastStep) {
+      lines.push(
+        '',
+        'SCOPE: This is NOT the final step. Produce ONLY the deliverable of THIS step ' +
+        `(step ${idx + 1}/${plan.length}), not the complete/final answer to the whole task. ` +
+        'Do not write the full final document or the complete final report now — later steps ' +
+        'will build on your output and produce the integrated result. ' +
+        'If your output would already constitute the whole answer, output the structure/' +
+        'outline/section content only and stop.',
+      )
+    } else {
+      lines.push(
+        '',
+        'SCOPE: This is the final step — you may produce the integrated final deliverable.',
+      )
+    }
+
     // 前序步骤摘要（仅本代际，截断防上下文膨胀）
     const replanCount = state.replan_count ?? 0
     const maxChars = Number(getConfig().get('plan_execute.step_summary_max_chars', 500))
@@ -57,7 +91,11 @@ export function makePlanContextInjector(): (
     if (completed.length > 0) {
       const summary = completed
         .map((r) => {
-          const output = _truncate(String(r?.['output'] ?? ''), maxChars)
+          // P1-1：step_results[].output 现在是完整产物，直接注入会撑爆上下文。
+          // 优先用 output_summary（写入时已按 step_summary_max_chars 截断），
+          // 兼容旧数据（只有 output）时在此截断。
+          const raw = String(r?.['output_summary'] ?? r?.['output'] ?? '')
+          const output = _truncate(raw, maxChars)
           return `- ${r?.['step_id'] ?? 'unknown'} (${r?.['status'] ?? 'unknown'}): ${output}`
         })
         .join('\n')

@@ -315,6 +315,34 @@
   white-space: pre-wrap;
 }
 
+/* "未完成"提示条（P0：流结束但仍有未执行步骤） */
+.timeline-global-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 6px;
+  border-left: 2px solid var(--accent-amber, #f59e0b);
+  flex-shrink: 0;
+}
+
+.timeline-global-warning-icon {
+  color: var(--accent-amber, #f59e0b);
+  flex-shrink: 0;
+  /* 与 12px/1.5 行盒居中对齐（同 error 变体） */
+  margin-top: 2px;
+}
+
+.timeline-global-warning-text {
+  font-size: 12px;
+  color: var(--accent-amber, #f59e0b);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
 /* 时间轴容器 */
 .timeline-tree {
   display: flex;
@@ -448,6 +476,13 @@
   animation: timeline-pulse 1.5s ease-in-out infinite;
 }
 
+/* P0-1：步骤级重试中间态（retrying）——琥珀色 + 脉冲，与 running 区分但同样"进行中" */
+.timeline-item--retrying .timeline-dot {
+  border-color: var(--accent-amber, #f59e0b);
+  background: var(--accent-amber, #f59e0b);
+  animation: timeline-pulse 1.5s ease-in-out infinite;
+}
+
 .timeline-item--done .timeline-dot {
   border-color: var(--accent-green, #10b981);
   background: var(--accent-green, #10b981);
@@ -478,6 +513,11 @@
   border-top-color: #ffffff;
   border-radius: 50%;
   animation: timeline-spin 0.8s linear infinite;
+}
+
+/* P2-3：规划失败 / 未按计划执行的空态（琥珀色警告） */
+.timeline-empty--warning .timeline-empty-icon {
+  color: var(--accent-amber, #f59e0b);
 }
 
 /* 历史恢复模式：禁用所有 running 脉冲/spinner 动画，保证展示与初次生成像素级一致。
@@ -590,6 +630,11 @@
   color: var(--accent-blue, #3b82f6);
 }
 
+/* P0-1：重试中间态标题色（与 dot 的琥珀色一致） */
+.timeline-item--retrying .timeline-title {
+  color: var(--accent-amber, #f59e0b);
+}
+
 .timeline-item--done .timeline-title {
   color: var(--text-primary);
 }
@@ -693,6 +738,10 @@
 .task-pipeline-badge--done {
   background: rgba(34, 197, 94, 0.12);
   color: var(--accent-green, #22c55e);
+}
+.task-pipeline-badge--incomplete {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber, #f59e0b);
 }
 .task-pipeline-badge--error {
   background: rgba(239, 68, 68, 0.12);

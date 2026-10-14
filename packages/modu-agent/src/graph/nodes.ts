@@ -665,6 +665,73 @@ export function routeAfterPerception(state: ModuAgentState): string {
  * "承诺但未执行"的提前终止。仅打 warning 日志,不改变路由(避免过度工程
  * 破坏正常对话流);日志便于事后追踪与调优提示词。
  */
+/**
+ * P0-4（resume 健壮性）：净化消息序列中"没有工具响应"的孤儿 tool_calls。
+ *
+ * provider（DeepSeek/OpenAI）要求：带 tool_calls 的 assistant 消息后面必须跟随
+ * 与每个 tool_call_id 一一对应的 tool messages，否则返回 400。
+ * HITL 暂停 / 中断恢复 / 审批超时拒绝等场景下很容易留下这类孤儿。
+ *
+ * 处理：为每个 AIMessage 只保留"已有对应 ToolMessage"的 tool_calls；
+ * 全部无响应时清空该消息的 tool_calls（保留正文，避免内容丢失）。
+ *
+ * @returns { messages 净化后的消息序列, fixed 被移除的孤儿 tool_call 数 }
+ */
+export function _sanitizeOrphanToolCalls(
+  messages: BaseMessage[],
+): { messages: BaseMessage[]; fixed: number } {
+  const responded = new Set<string>()
+  for (const m of messages) {
+    const type = typeof (m as any)?._getType === 'function'
+      ? (m as any)._getType()
+      : ((m as any)?.type ?? '')
+    if (type === 'tool') {
+      responded.add(String((m as any)?.tool_call_id ?? ''))
+    }
+  }
+
+  const out: BaseMessage[] = []
+  let fixed = 0
+  for (const m of messages) {
+    const type = typeof (m as any)?._getType === 'function'
+      ? (m as any)._getType()
+      : ((m as any)?.type ?? '')
+    const calls = (m as any)?.tool_calls
+    if (type !== 'ai' || !Array.isArray(calls) || calls.length === 0) {
+      out.push(m)
+      continue
+    }
+    const kept = calls.filter((c: any) => responded.has(String(c?.id ?? '')))
+    if (kept.length === calls.length) {
+      out.push(m)
+      continue
+    }
+    fixed += calls.length - kept.length
+    out.push(
+      new AIMessage({
+        content: (m as any)?.content ?? '',
+        ...(kept.length > 0 ? { tool_calls: kept as any } : {}),
+        ...((m as any)?.additional_kwargs ? { additional_kwargs: (m as any).additional_kwargs } : {}),
+      }),
+    )
+  }
+  // 无改动时返回原数组引用（避免每次调用都复制整个消息历史）
+  return fixed === 0 ? { messages, fixed: 0 } : { messages: out, fixed }
+}
+
+/**
+ * P0-4：本轮是否已有文档产物（doc_writer 写出的文档）。
+ *
+ * 与 `task_type` 的区别：task_type 是 perception 对**用户原文**的意图猜测，
+ * 而"本次运行是否真的写过文档"是既成事实。plan_execute 的文档步骤由 planner 生成，
+ * 用户原文未必含"文档/报告"等词，因此必须以产物为准。
+ */
+function _hasDocumentArtifact(state: ModuAgentState): boolean {
+  return (state.artifacts ?? []).some(
+    (a) => a && (String(a['tool'] ?? '') === 'doc_writer' || String(a['type'] ?? '') === 'document'),
+  )
+}
+
 export function routeAfterAgent(state: ModuAgentState): string {
   const messages = state.messages ?? []
   if (messages.length === 0) {
@@ -679,12 +746,31 @@ export function routeAfterAgent(state: ModuAgentState): string {
     // P0-1: 有 tool_calls 时检测推理轮数，超出预算则强制终止（防止无限循环）
     // 通过返回 Partial<ModuAgentState> 无法在路由函数中更新 state，
     // 故此处仅做 advisory 检测；实际计数由 agentNode 返回时累加。
-    const roundCount = state.reasoning_round_count ?? 0
+    //
+    // P0-2: plan_execute 模式下改用**逐步骤**计数器 `step_round_count`，
+    // 因为它由 step_finalize 归零；而 `reasoning_round_count` 全 run 累加、从不重置，
+    // 若继续用它，多步任务的第 1 步触顶后后续每一步都会立刻再次触顶。
+    const roundCount =
+      state.plan_phase === 'executing'
+        ? (state.step_round_count ?? 0)
+        : (state.reasoning_round_count ?? 0)
     const assessment = state.complexity_assessment
 
     // === 文档生成任务特殊保护：防止 doc_writer 无限重试 ===
-    const isDocGen = state.task_type === 'document_generation'
+    //
+    // P0-4：防护此前只认 `task_type === 'document_generation'`，而该字段由 perception
+    // 按**用户原文关键词**判定（见本文件 _resolvePerceptionFields 的 docAction/docTarget）。
+    // plan_execute 下"写文档"往往是 planner 自己拆出来的步骤（用户原文没有"文档/报告"等词），
+    // 于是 task_type=null → 防护完全失效 → doc_writer 可被重复调用、每次都触发 HITL 审批
+    // （实测：同一任务连续两次 doc_writer 审批，第二次还换了标题重写一份）。
+    // 因此补充"本轮已产出文档产物"这一更贴近事实的判定依据。
+    const isDocGen =
+      state.task_type === 'document_generation' || _hasDocumentArtifact(state)
     if (isDocGen) {
+      // P0-4：plan_execute 下"保护性终止"只终结**当前步骤**（回到 step_finalize 正常收尾），
+      // 不能像 ReAct 那样直接 __end__ —— 否则剩余步骤被静默丢弃（与 P0-2 同源缺陷）。
+      const docGenStop: string =
+        state.plan_phase === 'executing' ? 'step_finalize' : '__end__'
       // 保护1: doc_writer 已成功 → 阻止再调用任何工具（防止重复写文档）。
       // 但不能直接结束：LLM 尚未输出最终回复正文（规则 26 的确认语+核心内容速览），
       // 直接结束会导致 responseNode 只能产出程序化兜底模板。
@@ -700,7 +786,7 @@ export function routeAfterAgent(state: ModuAgentState): string {
         logger.warning(
           '[doc-gen-guard] doc_writer already succeeded and final-answer reminder already injected, forcing termination',
         )
-        return '__end__'
+        return docGenStop
       }
       // 保护2: doc_writer 连续失败次数过多 → 强制终止，避免无限重试
       const failCount = state.doc_writer_fail_count ?? 0
@@ -709,7 +795,7 @@ export function routeAfterAgent(state: ModuAgentState): string {
           '[doc-gen-guard] doc_writer failed %d times, forcing termination to avoid infinite loop',
           failCount,
         )
-        return '__end__'
+        return docGenStop
       }
       // 保护3: 检查本次 tool_calls 是否只包含 doc_writer（如果是，且已有 artifacts，说明可能重复调用）
       const hasDocWriterCall = toolCalls.some((tc: any) => tc.name === 'doc_writer')
@@ -719,7 +805,8 @@ export function routeAfterAgent(state: ModuAgentState): string {
           logger.warning(
             '[doc-gen-guard] doc_writer artifact already exists, blocking duplicate doc_writer call',
           )
-          return '__end__'
+          // P0-4：plan_execute 下回到 step_finalize 收尾本步（避免计划被静默丢弃）
+          return docGenStop
         }
       }
     }
@@ -728,13 +815,20 @@ export function routeAfterAgent(state: ModuAgentState): string {
     // 触顶处理：路由到 force_finalize（禁用工具收尾作答），而不是直接 __end__ ——
     // 直接结束会把本轮已下发的 tool_calls 静默丢弃、且不产出最终回答，
     // 用户只能看到最后一段过程话术（表现为"正文只有一句话"）。
+    //
+    // P0-2: plan_execute 模式下触顶走 'plan_force_finalize'（同样进入 force_finalize 节点
+    // 用无工具 LLM 收尾作答），但该节点的出边改为条件路由 —— 收尾后回到 step_finalize
+    // 正常结束当前步骤并继续派发后续步骤；ReAct 模式保持原路径直连 finalize_response。
+    const budgetExhausted: string =
+      state.plan_phase === 'executing' ? 'plan_force_finalize' : 'force_finalize'
+
     if (assessment && assessment.reasoning_budget > 0) {
       if (roundCount >= assessment.reasoning_budget) {
         logger.warning(
-          '[P0-1] Reasoning budget exhausted: %d >= %d (tier=%s), finalizing without tools',
-          roundCount, assessment.reasoning_budget, assessment.tier,
+          '[P0-1] Reasoning budget exhausted: %d >= %d (tier=%s, plan=%s), finalizing without tools',
+          roundCount, assessment.reasoning_budget, assessment.tier, String(state.plan_phase ?? ''),
         )
-        return 'force_finalize'
+        return budgetExhausted
       }
     } else {
       // 优先级2: 兜底限制——不依赖 complexity_assessment，直接使用 max_reasoning_iterations 配置
@@ -745,10 +839,10 @@ export function routeAfterAgent(state: ModuAgentState): string {
         const hardLimit = maxIterations + 3
         if (roundCount >= hardLimit) {
           logger.warning(
-            '[route-after-agent] Max tool iterations reached: %d >= %d (max_iterations=%d + 3 tolerance), finalizing without tools',
-            roundCount, hardLimit, maxIterations,
+            '[route-after-agent] Max tool iterations reached: %d >= %d (max_iterations=%d + 3 tolerance, plan=%s), finalizing without tools',
+            roundCount, hardLimit, maxIterations, String(state.plan_phase ?? ''),
           )
-          return 'force_finalize'
+          return budgetExhausted
         }
       } catch {
         // 配置读取异常时使用保守的硬编码限制（8 轮）
@@ -757,7 +851,7 @@ export function routeAfterAgent(state: ModuAgentState): string {
             '[route-after-agent] Max tool iterations reached (fallback limit): %d >= 8, finalizing without tools',
             roundCount,
           )
-          return 'force_finalize'
+          return budgetExhausted
         }
       }
     }
@@ -810,6 +904,25 @@ export function routeAfterAgent(state: ModuAgentState): string {
   _detectPrematureTermination(messages, lastMsg)
 
   return '__end__'
+}
+
+/**
+ * P0-2: force_finalize（工具/推理预算触顶后的无工具收尾作答）之后的路由。
+ *
+ * 缺陷背景：graph.ts 原实现为静态边 `force_finalize → finalize_response`。
+ * plan_execute 下这意味着**当前步骤的预算用尽会直接终结整轮**：
+ * step_finalize 永不执行（步骤卡在 running），剩余步骤全部丢弃且用户无任何提示
+ * （实测：7 步计划只跑完第 1 步，DB 中 step_2~6 恒为 pending）。
+ *
+ * 修复：收尾作答完成后回到 step_finalize，让当前步骤正常收尾（写 step_results、
+ * 推进游标、下发终态 SSE），再由 stepDispatch 决定继续派发还是收敛。
+ * 非 plan_execute 场景（plan_phase 为空）行为完全不变。
+ */
+export function routeAfterForceFinalize(state: ModuAgentState): string {
+  if (state.plan_phase === 'executing') {
+    return 'step_finalize'
+  }
+  return 'finalize_response'
 }
 
 /**
@@ -1159,6 +1272,28 @@ export function makeAgentNode(
       messages.push(new HumanMessage({ content: cleanedText }))
     }
 
+    // P0-4（resume 健壮性）：净化"没有工具响应"的孤儿 tool_calls。
+    //
+    // 场景：HITL 暂停时最后一条消息是带 tool_calls 的 AIMessage（等待审批）。
+    // resume / 重跑 agent 时若这些 tool_calls 没有对应的 ToolMessage 就发起 LLM 调用，
+    // provider 直接 400：
+    //   "An assistant message with 'tool_calls' must be followed by tool messages
+    //    responding to each 'tool_call_id'."
+    // （实测：任务模式第 N 步调 doc_writer 被暂停，恢复后整轮以 RUN_ERROR 告终）。
+    //
+    // 注意不能只处理"末尾"：resume 后 human_review / doc_final_answer 等节点可能
+    // 又追加了消息，孤儿 tool_calls 会落在序列中间，因此这里做全局净化。
+    const sanitized = _sanitizeOrphanToolCalls(messages)
+    if (sanitized.fixed > 0) {
+      logger.warning(
+        '[agent-node] sanitized %d orphan tool_call(s) without tool response before LLM invoke ' +
+        '(resume/HITL 场景下的 400 防护)',
+        sanitized.fixed,
+      )
+      messages.length = 0
+      messages.push(...sanitized.messages)
+    }
+
     // P0-2: 按 tier 动态拼接 CoT 锚点 prompt
     // tier 缺失时 composeCotPrompt 按 tier_2 处理（tier_2 启用锚点）
     // _cotAnchorEnabled=false 时返回空字符串，等价原行为
@@ -1310,13 +1445,38 @@ export function makeAgentNode(
       'agent LLM invoke',
     )
 
+    // P2-4：检测输出是否被 max_tokens 截断。
+    // 此前 finish_reason='length' 时正文被硬截断却毫无提示——长文档生成场景下
+    // 用户拿到"半截内容"却以为任务已完成（config.yaml 的 8192 预算与思考共享，
+    // 思考吃满时正文甚至为空）。
+    const finishReason = String(
+      (response as any)?.response_metadata?.finish_reason ??
+      (response as any)?.additional_kwargs?.finish_reason ??
+      '',
+    )
+    if (finishReason === 'length') {
+      logger.warning(
+        '[P2-4] LLM output truncated by max_tokens (finish_reason=length). ' +
+        'The answer may be incomplete; consider raising llm.max_tokens or splitting the task.',
+      )
+    }
+
     // P0-1: 递增 Thought 轮数计数器
     // routeAfterAgent 读取此值判定是否超出 reasoning_budget
     // reducer 为累加语义，返回 1 即在原值上 +1
     const update: Partial<ModuAgentState> = { messages: [response] }
+    // P2-4：把"本次输出被截断"写入 state，供 step_finalize 记录到步骤结果
+    if (finishReason === 'length') {
+      update.output_truncated = true
+    }
     const aiMsg = response as any
     if (aiMsg && Array.isArray(aiMsg.tool_calls) && aiMsg.tool_calls.length > 0) {
       update.reasoning_round_count = 1
+      // P0-2: plan_execute 模式下另计「当前步骤」轮次（last-write-wins，故显式读旧值 +1）。
+      // step_finalize 会把它归零，使"某步工具用多了"只终结当前步，不再吃掉整个计划。
+      if (state.plan_phase === 'executing') {
+        update.step_round_count = (state.step_round_count ?? 0) + 1
+      }
     }
 
     // P0-4: 自适应终止判定（第一阶段 advisory 模式）

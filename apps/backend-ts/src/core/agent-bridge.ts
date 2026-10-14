@@ -274,6 +274,32 @@ export interface ResumeAgentOptions {
 }
 
 /**
+ * 探测被中断的会话是否处于 plan_execute 执行态（决定 resume 恢复用哪个 profile 的图）。
+ *
+ * 读取失败 / 无 checkpoint / 无 interrupt 时返回 false（按普通 ReAct 处理，保持既有行为）。
+ * 依据 checkpoint 状态（而非请求参数）判定——中断时的状态是唯一权威来源。
+ */
+export async function _probePlanExecutePaused(
+  graph: any,
+  sessionId: string,
+): Promise<boolean> {
+  try {
+    const state = await get_interrupt_state(graph, sessionId)
+    if (!state) return false
+    // get_interrupt_state 自 2026-10-14 起透出 plan_phase / plan_steps（见 runner.ts）
+    if (String(state['plan_phase'] ?? '') === 'executing') return true
+    return Number(state['plan_steps'] ?? 0) > 0
+  } catch (e: any) {
+    logger.info(
+      'resume.plan_execute_probe.fail session=%s err=%s',
+      sessionId,
+      String(e?.message ?? e),
+    )
+    return false
+  }
+}
+
+/**
  * 恢复被 interrupt() 暂停的 Agent run，产出与 streamAgentCompletion 一致的 AG-UI SSE dict。
  *
  * 包装 runner.resume_stream（内部 `new Command({ resume })` 按 thread_id=sessionId 续跑），
@@ -286,8 +312,31 @@ export async function* streamAgentResume(
   const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId, signal, ctx } =
     opts
   const trace = traceId ?? randomUUID()
-  // T2.6：resume 复用缓存图（checkpointer 共享，能读取中断 checkpoint）
-  const graph = await get_runner()
+
+  // 修复（2026-10-14）：resume 必须使用与中断时相同 profile 的图。
+  // 缺陷背景：plan_execute 的中断发生在 plan_execute 图（含 planner/step_dispatch/
+  // step_finalize 节点），checkpoint 状态 plan_phase='executing'；而 routeAfterAgent
+  // 在 plan_phase='executing' 时返回 'step_finalize'。若 resume 用默认（plan_execute
+  // 关闭）图恢复，该条件边未注册 step_finalize 目标，LangGraph 直接抛错：
+  //   "Branch condition returned unknown or null destination"
+  // （用户侧表现为：任务最后一步写文档时报错、整单失败）。
+  // 修复：先经共享 checkpointer 探测中断状态判定模式，再选择对应 profile 的图。
+  const probeGraph = await get_runner()
+  const isPlanExecute = await _probePlanExecutePaused(probeGraph, sessionId)
+  let graph = probeGraph
+  if (isPlanExecute) {
+    const configurable: Record<string, any> = { plan_execute_enabled: true }
+    // 与 streamAgentCompletion 一致：场景包已激活时注入领域 prompt（保持中断前后一致）
+    const domainName = MODE_DOMAIN['plan_execute']
+    if (domainName && getDomainAdapter(domainName) !== null) {
+      configurable.domain = domainName
+    }
+    graph = await create_agent({ configurable })
+    logger.info(
+      'resume.plan_execute_graph session=%s (checkpoint plan_phase=executing)',
+      sessionId,
+    )
+  }
 
   const adapter = new AGUIStreamAdapter(trace)
   logger.info(
@@ -641,12 +690,19 @@ export function mergePlanSteps(
   for (const s of planData) {
     const id = s.step_id ?? s.id ?? ''
     if (!id) continue
+    // P1-3：骨架同样要保留 result / error / 时间戳。
+    // resume 端点把 DB 中既有 plan_steps 作为 planData 基线注入，若骨架丢弃这些字段，
+    // 续写落库（deleteMany + create）就会把已完成的步骤产物清空。
     map.set(id, {
       step_id: id,
       title: s.title ?? '',
       description: s.description ?? '',
       depends_on: s.depends_on,
       status: s.status ?? 'pending',
+      ...(s.result !== undefined ? { result: s.result } : {}),
+      ...(s.error !== undefined ? { error: s.error } : {}),
+      ...(s.started_at !== undefined ? { started_at: s.started_at } : {}),
+      ...(s.finished_at !== undefined ? { finished_at: s.finished_at } : {}),
     })
   }
   for (const u of stepUpdates) {
