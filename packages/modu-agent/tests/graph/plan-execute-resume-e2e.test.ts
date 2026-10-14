@@ -232,4 +232,48 @@ describe('Plan-and-Execute 端到端：HITL resume 后计划收敛', () => {
     // 7. 最终答复来自 plan_summarize 的整合结果（覆盖各步骤产物，而非只有末步一句话）
     expect(String(finalState.response ?? '')).toContain('FINAL_SUMMARY')
   }, 30000)
+
+  it('拒绝审批后：被拒步骤 failed、剩余步骤 skipped、整轮正常收敛（不允许假 running）', async () => {
+    const { compiled, agentLlm, codeTool } = await buildPlanExecuteGraph()
+    const threadId = 'plan-hitl-rejected-thread'
+
+    // 1. 首次执行：planner 出计划 → step_1 调敏感工具 → human_review 暂停
+    await compiled.invoke(makeInitialState(threadId), {
+      configurable: { thread_id: threadId, plan_execute_enabled: true },
+    })
+    const paused = await get_interrupt_state(compiled, threadId)
+    expect(paused).not.toBeNull()
+    expect(paused!.next_nodes).toContain('human_review')
+
+    // 2. 拒绝并恢复（P0 修复：拒绝不再直连 finalize_response，而是回 step_finalize）
+    const result = await resume_sync(compiled, threadId, false, 'rejected by user', 'trace-reject', {
+      extraConfigurable: { plan_execute_enabled: true },
+    })
+    expect(result.status).toBe('success')
+    // 拒绝后工具绝不能执行
+    expect(codeTool.invokeCount).toBe(0)
+
+    // 3. 关键契约：计划必须完整收敛——不允许任何步骤停留在 running / pending
+    //    （修复前：step_1 恒 running、step_2 恒 pending，前端显示"流程已结束，仍有步骤未执行"）
+    const snapshot = await compiled.getState({ configurable: { thread_id: threadId } })
+    const finalState: any = snapshot.values
+    const plan = finalState.plan ?? []
+    expect(plan).toHaveLength(2)
+    expect(String(plan[0].status)).toBe('failed')   // 被拒步骤：明确失败
+    expect(String(plan[1].status)).toBe('skipped')  // 剩余步骤：收敛跳过
+    expect(plan.some((s: any) => s.status === 'running' || s.status === 'pending')).toBe(false)
+
+    // 4. 失败原因与标记写入 step_results（供前端展示 / 落库）
+    const stepResults = finalState.step_results ?? []
+    expect(stepResults.length).toBeGreaterThanOrEqual(1)
+    expect(stepResults[0].approval_blocked).toBe(true)
+    expect(String(stepResults[0].error ?? '')).toContain('approval')
+
+    // 5. 审批态已清理，图不再停留在 interrupt
+    expect(String(finalState.approval_status ?? '')).toBe('')
+    expect((snapshot.next ?? []).length).toBe(0)
+
+    // 6. agent 只在暂停前被调用 1 轮（拒绝后不再回 agent，也不会再次弹审批）
+    expect(agentLlm.callCount).toBe(1)
+  }, 30000)
 })

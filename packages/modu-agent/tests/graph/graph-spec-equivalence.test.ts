@@ -334,7 +334,8 @@ describe('P2/T-13: 拓扑等价快照（composeDefaultGraph ⇄ 改造前 addNod
           ],
         },
         { from: 'force_finalize', targets: ['step_finalize', 'finalize_response'] },
-        { from: 'human_review', targets: ['tools', 'finalize_response'] },
+        // P0 修复：plan 执行中审批拒绝/超时回 step_finalize 收尾当前步骤
+        { from: 'human_review', targets: ['tools', 'finalize_response', 'step_finalize'] },
         { from: 'supervisor', targets: ['subagent_run'] },
       ],
     })

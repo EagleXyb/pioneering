@@ -784,12 +784,18 @@ edges.push({
       }),
     },
   })
-  // human_review 后条件路由：通过 → tools，拒绝/错误 → finalize_response
+  // human_review 后条件路由：通过 → tools；
+  // 拒绝/超时/错误 → plan_execute 执行中回 step_finalize 收尾当前步骤（P0 修复：
+  // 否则步骤永远停在 running、剩余步骤被丢弃），其余场景维持 finalize_response。
   edges.push({
     from: 'human_review',
     to: {
       router: routeAfterHumanReview,
-      targets: { tools: 'tools', finalize_response: 'finalize_response' },
+      targets: (has) => ({
+        tools: 'tools',
+        finalize_response: 'finalize_response',
+        ...(has('step_finalize') ? { step_finalize: 'step_finalize' } : {}),
+      }),
     },
     when: (p) => p.hitlEnabled,
   })

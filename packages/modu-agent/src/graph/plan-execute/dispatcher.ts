@@ -34,6 +34,10 @@ const _MAX_RETRY_DELAY_MS = 30_000
 const _SKIP_REASON_EARLY_COMPLETION =
   '前序步骤已产出完整交付物（文档/终稿），本步为纯推理/写作类步骤，已跳过以避免重复产出。'
 
+/** P0 修复：审批被拒/超时导致上一步失败后，剩余步骤收敛跳过时展示给用户的原因 */
+const _SKIP_REASON_APPROVAL_REJECTED =
+  '前序步骤因人工审批被拒绝或超时未执行，本步依赖其产物，已自动跳过以避免重复触发审批。'
+
 /**
  * P1-15：supervisor 子图是否实际挂载可用。
  *
@@ -92,6 +96,18 @@ export function makeStepDispatchNode(): (
 
     const step = plan[idx] ?? {}
     const stepStatus = String(step['status'] ?? '')
+
+    // P0 修复：上一步因审批被拒/超时而失败 → 不再派发后续步骤，也不触发重规划。
+    // 一次性把剩余 pending 步骤标记 skipped（下发 SSE），plan_phase 置 'finalizing'，
+    // 让 stepDispatch 路由到收尾链路正常结束整轮。
+    // 语义：用户拒绝的是具体操作（如写文档），重规划大概率再次生成同样操作、
+    // 再次弹审批；且剩余步骤通常依赖被拒步骤的产物，继续执行没有意义。
+    const genResults = _currentGenerationResults(state)
+    const prevResult = genResults[genResults.length - 1]
+    if (prevResult?.['approval_blocked'] === true) {
+      const converged = _skipRemainingStepsAfterApprovalRejection(state, plan)
+      if (converged) return converged
+    }
 
     // P0-3 提前交付收敛：若前序步骤已产出完整交付物（终稿/文档），
     // 后续"纯推理、不需要外部数据"的步骤再执行只是重复劳动，
@@ -283,6 +299,52 @@ function _skipRedundantStepsAndActivateNext(
     step_msg_baseline: (state.messages ?? []).length,
     plan_phase: 'executing',
     step_round_count: 0,
+    plan_delta: { phase: 'execute', step_updates: stepUpdates },
+  }
+}
+
+/**
+ * P0 修复：审批被拒/超时后收敛剩余步骤。
+ *
+ * 上一步因人工审批被拒/超时而 failed（stepResult.approval_blocked=true）时，
+ * 把剩余所有 pending 步骤一次性标记 skipped（每条下发 SSE step_update），
+ * plan_phase 置 'finalizing'，让 stepDispatch 路由到收尾链路正常结束整轮。
+ *
+ * 不做重规划：重规划大概率再次生成同类工具操作 → 再次弹审批，形成
+ * "拒绝 → 重规划 → 再拒绝"循环；且剩余步骤通常依赖被拒步骤的产物。
+ *
+ * @returns 有 pending 步骤被跳过时返回状态更新；无剩余 pending 时返回 null（交回原逻辑）
+ */
+function _skipRemainingStepsAfterApprovalRejection(
+  state: ModuAgentState,
+  plan: Array<Record<string, any>>,
+): Partial<ModuAgentState> | null {
+  const now = Date.now()
+  const updatedPlan: Array<Record<string, any>> = [...plan]
+  const stepUpdates: Array<Record<string, any>> = []
+
+  for (let i = 0; i < updatedPlan.length; i++) {
+    const s = updatedPlan[i] ?? {}
+    if (String(s['status'] ?? '') !== 'pending') continue
+    updatedPlan[i] = { ...s, status: 'skipped', finished_at: now }
+    stepUpdates.push({
+      id: String(s['step_id'] ?? `step_${i + 1}`),
+      index: i,
+      status: 'skipped',
+      result: _SKIP_REASON_APPROVAL_REJECTED,
+      finished_at: now,
+    })
+  }
+
+  if (stepUpdates.length === 0) return null
+
+  logger.info(
+    'Approval rejected: skipped %d remaining step(s), converging plan trace_id=%s',
+    stepUpdates.length, state.trace_id ?? '',
+  )
+  return {
+    plan: updatedPlan,
+    plan_phase: 'finalizing',
     plan_delta: { phase: 'execute', step_updates: stepUpdates },
   }
 }
@@ -690,9 +752,22 @@ export function makeStepFinalizeNode(): (
     // 工具失败 ≠ 步骤失败：LLM 基于工具失败状态生成降级回应（如告知用户工具不可用 +
     // 提供常识性参考）是合理的执行行为。将其判 failed 会触发无意义的重规划（相同工具
     // 仍会失败）并丢失降级输出。仅当工具失败且 LLM 无任何输出时才判 failed。
+    //
+    // P0 修复：审批被拒/超时/错误 → 本步直接判 failed。
+    // 场景：human_review resume 后回 step_finalize 收尾（见 routeAfterHumanReview）。
+    // 以 approval_status 为硬证据判定，不依赖消息层面的推断——否则
+    // "LLM 过程正文 + rejection ToolMessage" 会被降级模式误判为 done。
+    const approvalBlocked =
+      state.plan_phase === 'executing' &&
+      (state.approval_status === 'rejected' ||
+        state.approval_status === 'timeout' ||
+        state.approval_status === 'error')
+
     let allToolsFailed = allToolsFailedRaw
     let degraded = false
-    if (allToolsFailedRaw && lastAiContent) {
+    // 审批被拒/超时不属于"工具失败降级"（approvalBlocked 已强制 failed），
+    // 跳过降级判定，避免打出误导性的 "marking as done (degraded mode)" 日志
+    if (allToolsFailedRaw && lastAiContent && !approvalBlocked) {
       allToolsFailed = false
       degraded = true
       logger.info(
@@ -701,10 +776,12 @@ export function makeStepFinalizeNode(): (
       )
     }
 
-    const failed = missingToolCall || allToolsFailed || noOutput
+    const failed = approvalBlocked || missingToolCall || allToolsFailed || noOutput
 
-    // v1.2 #2: 步骤级重试——failed 时先尝试重试，避免浪费 replan 预算
-    if (failed) {
+    // v1.2 #2: 步骤级重试——failed 时先尝试重试，避免浪费 replan 预算。
+    // 审批被拒/超时例外：用户已明确拒绝该操作，自动重试会立即再次触发审批弹窗，
+    // 毫无意义——直接落 failed，由 step_dispatch 收敛剩余步骤。
+    if (failed && !approvalBlocked) {
       const retryDecision = _decideStepRetry(step, config)
       if (retryDecision.canRetry) {
         const newRetryCount = retryDecision.currentRetryCount + 1
@@ -811,6 +888,11 @@ export function makeStepFinalizeNode(): (
     if (startedAt) {
       stepResult['started_at'] = startedAt
     }
+    // P0 修复：标记"本步失败源于审批被拒/超时"，供 step_dispatch 收敛剩余步骤
+    // （不再触发重规划——重规划大概率再次生成同样操作、再次弹审批）。
+    if (approvalBlocked) {
+      stepResult['approval_blocked'] = true
+    }
     // v1.2 #2: 记录最终重试次数（耗尽重试后的 failed 记录或成功完成的步骤）
     const finalRetryCount = typeof step['retry_count'] === 'number' ? step['retry_count'] : 0
     if (finalRetryCount > 0) {
@@ -829,7 +911,12 @@ export function makeStepFinalizeNode(): (
         stepId, lastAiContent.length, String(hasDocArtifact),
       )
     }
-    if (degraded) {
+    if (approvalBlocked) {
+      // P0 修复：审批被拒/超时——优先于降级/工具失败文案，明确标注本步未执行
+      stepResult['error'] =
+        `Step "${String(step['title'] ?? stepId)}" was not executed: ` +
+        `tool approval ${String(state.approval_status ?? '')} (rejected by reviewer or timed out).`
+    } else if (degraded) {
       // 降级模式标记：工具失败但 LLM 产出了降级内容，便于后续步骤和 response 节点感知
       stepResult['degraded'] = true
       stepResult['error'] =
@@ -865,6 +952,11 @@ export function makeStepFinalizeNode(): (
       ...(state.forced_finalize ? { forced_finalize: false } : {}),
       // P2-4：复位截断标记（避免泄漏到下一步）
       ...(state.output_truncated ? { output_truncated: false } : {}),
+      // P0 修复：审批拒绝/超时收尾后清理审批态，避免泄漏到后续步骤
+      // （step_finalize 以 approval_status 判定"本步被审批拦截"，必须归零）
+      ...(approvalBlocked
+        ? { approval_status: '', approval_feedback: '', tool_requires_approval: false }
+        : {}),
       // SSE: step completed
       plan_delta: {
         phase: 'execute',

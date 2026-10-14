@@ -2652,6 +2652,15 @@ export function makeHumanReviewNode(
  * - "rejected" / "timeout" / "error" → "finalize_response"（跳过工具执行，进入响应阶段）
  *   （P9.4.3: timeout 也走 finalize_response 路径）
  * - 其他（approved / not_required / no_tool_calls / skipped）→ "tools"（执行 ToolNode）
+ *
+ * P0 修复（plan_execute 收敛缺口）：
+ *   plan 执行中（plan_phase='executing'）审批被拒/超时 = 当前步骤执行失败，
+ *   必须回 "step_finalize" 正常收尾（标记 failed + 下发终态 SSE），再由
+ *   step_dispatch 收敛剩余步骤。原实现无条件去 finalize_response 终结整轮：
+ *   step_finalize 永不执行 → 当前步骤永远停在 running、剩余步骤全部丢弃，
+ *   前端显示"任务未执行完成（流程已结束，仍有步骤未执行）"
+ *   （实测：第 8 步 doc_writer 审批被拒 → step_8 恒 running / step_9 恒 pending）。
+ *   修复模式与 routeAfterForceFinalize（预算触顶回 step_finalize）同源。
  */
 export function routeAfterHumanReview(state: ModuAgentState): string {
   const approvalStatus = state.approval_status ?? ''
@@ -2660,6 +2669,9 @@ export function routeAfterHumanReview(state: ModuAgentState): string {
     approvalStatus === 'timeout' ||
     approvalStatus === 'error'
   ) {
+    if (state.plan_phase === 'executing') {
+      return 'step_finalize'
+    }
     return 'finalize_response'
   }
   return 'tools'
