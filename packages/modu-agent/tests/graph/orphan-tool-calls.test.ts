@@ -83,4 +83,59 @@ describe('_sanitizeOrphanToolCalls', () => {
     expect(fixed).toBe(0)
     expect(messages).toBe(msgs)
   })
+
+  /**
+   * 2026-10-14 真实任务复现的 400：LangChain 解析失败时 `tool_calls` 是空数组，
+   * 但 `additional_kwargs.tool_calls` 仍带 provider 原始字段 —— 只清前者无效，
+   * 序列化回请求时 provider 照样判定"有 tool_calls 无响应"。
+   */
+  it('additional_kwargs.tool_calls 中的孤儿同样被清除（真实 400 场景）', () => {
+    const msg = new AIMessage({
+      content: '我来调用工具',
+      // 模拟：标准字段已空，但原始字段还在
+      additional_kwargs: {
+        tool_calls: [{ id: 'call_orphan', type: 'function', function: { name: 'doc_writer', arguments: '{}' } }],
+      } as any,
+    })
+    const { messages, fixed } = _sanitizeOrphanToolCalls([msg])
+
+    expect(fixed).toBe(1)
+    const cleaned: any = messages[0]
+    expect(cleaned.additional_kwargs?.tool_calls).toBeUndefined()
+    expect(cleaned.tool_calls ?? []).toHaveLength(0)
+    expect(cleaned.content).toBe('我来调用工具')
+  })
+
+  it('additional_kwargs 的其他字段（如 reasoning_content）必须保留', () => {
+    const msg = new AIMessage({
+      content: '思考后调用工具',
+      additional_kwargs: {
+        reasoning_content: 'deepseek 思考内容',
+        tool_calls: [{ id: 'call_orphan', type: 'function', function: { name: 'search', arguments: '{}' } }],
+      } as any,
+    })
+    const { messages } = _sanitizeOrphanToolCalls([msg])
+
+    const cleaned: any = messages[0]
+    expect(cleaned.additional_kwargs?.reasoning_content).toBe('deepseek 思考内容')
+    expect(cleaned.additional_kwargs?.tool_calls).toBeUndefined()
+  })
+
+  it('有响应的 additional_kwargs.tool_calls 保留（行为不回归）', () => {
+    const msg = new AIMessage({
+      content: '调用工具',
+      tool_calls: [{ id: 'call_ok', name: 'search_engine', args: {} }] as any,
+      additional_kwargs: {
+        tool_calls: [{ id: 'call_ok', type: 'function', function: { name: 'search_engine', arguments: '{}' } }],
+      } as any,
+    })
+    const msgs = [msg, new ToolMessage({ content: 'ok', tool_call_id: 'call_ok' })]
+    const { messages, fixed } = _sanitizeOrphanToolCalls(msgs)
+
+    expect(fixed).toBe(0)
+    expect(messages).toBe(msgs)
+    const kept: any = messages[0]
+    expect(kept.tool_calls).toHaveLength(1)
+    expect(kept.additional_kwargs?.tool_calls).toHaveLength(1)
+  })
 })

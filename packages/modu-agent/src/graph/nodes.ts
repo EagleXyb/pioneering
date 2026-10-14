@@ -675,18 +675,49 @@ export function routeAfterPerception(state: ModuAgentState): string {
  * 处理：为每个 AIMessage 只保留"已有对应 ToolMessage"的 tool_calls；
  * 全部无响应时清空该消息的 tool_calls（保留正文，避免内容丢失）。
  *
+ * 关键（2026-10-14 复现的 400）：**两处都要清理**——
+ *   1. `AIMessage.tool_calls`（LangChain 解析后的标准字段）
+ *   2. `AIMessage.additional_kwargs.tool_calls`（provider 原始返回字段）
+ * 当 LangChain 解析失败时 `tool_calls` 为空数组，但 `additional_kwargs` 里
+ * 仍带着原始 tool_calls；序列化回请求时 provider 照样判定"有 tool_calls 无响应"
+ * → 400 "An assistant message with 'tool_calls' must be followed by tool messages"。
+ * 只清前者会漏掉这一类（此前版本正是因此在真实任务上复现）。
+ *
  * @returns { messages 净化后的消息序列, fixed 被移除的孤儿 tool_call 数 }
  */
 export function _sanitizeOrphanToolCalls(
   messages: BaseMessage[],
 ): { messages: BaseMessage[]; fixed: number } {
+  /** 从 tool_call 提取 id（兼容 LangChain / OpenAI 两种形态） */
+  const callId = (c: any): string =>
+    String(c?.id ?? c?.tool_call_id ?? c?.function?.call_id ?? c?.function?.id ?? '')
+
+  /** 收集一条消息里"所有形态"的 tool_calls（按 id 去重：同一调用会同时出现在两处） */
+  const callsOf = (m: any): any[] => {
+    const raw = [
+      ...(Array.isArray(m?.tool_calls) ? m.tool_calls : []),
+      ...(Array.isArray(m?.additional_kwargs?.['tool_calls']) ? m.additional_kwargs['tool_calls'] : []),
+    ]
+    const seen = new Set<string>()
+    const out: any[] = []
+    for (const c of raw) {
+      const key = callId(c) || JSON.stringify(c)
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(c)
+    }
+    return out
+  }
+
   const responded = new Set<string>()
   for (const m of messages) {
     const type = typeof (m as any)?._getType === 'function'
       ? (m as any)._getType()
       : ((m as any)?.type ?? '')
     if (type === 'tool') {
-      responded.add(String((m as any)?.tool_call_id ?? ''))
+      responded.add(
+        String((m as any)?.tool_call_id ?? (m as any)?.additional_kwargs?.['tool_call_id'] ?? ''),
+      )
     }
   }
 
@@ -696,22 +727,40 @@ export function _sanitizeOrphanToolCalls(
     const type = typeof (m as any)?._getType === 'function'
       ? (m as any)._getType()
       : ((m as any)?.type ?? '')
-    const calls = (m as any)?.tool_calls
-    if (type !== 'ai' || !Array.isArray(calls) || calls.length === 0) {
+    const calls = callsOf(m)
+    if (type !== 'ai' || calls.length === 0) {
       out.push(m)
       continue
     }
-    const kept = calls.filter((c: any) => responded.has(String(c?.id ?? '')))
-    if (kept.length === calls.length) {
+    const orphanCount = calls.filter((c: any) => !responded.has(callId(c))).length
+    if (orphanCount === 0) {
       out.push(m)
       continue
     }
-    fixed += calls.length - kept.length
+    fixed += orphanCount
+
+    const alive = new Set(
+      calls.filter((c: any) => responded.has(callId(c))).map((c: any) => callId(c)),
+    )
+
+    // 清理 additional_kwargs.tool_calls（保留 reasoning_content 等其他字段）
+    const ak: Record<string, any> = { ...((m as any)?.additional_kwargs ?? {}) }
+    if (Array.isArray(ak['tool_calls'])) {
+      const keptAk = ak['tool_calls'].filter((c: any) => alive.has(callId(c)))
+      if (keptAk.length > 0) ak['tool_calls'] = keptAk
+      else delete ak['tool_calls']
+    }
+
+    const keptCalls = Array.isArray((m as any)?.tool_calls)
+      ? (m as any).tool_calls.filter((c: any) => alive.has(callId(c)))
+      : []
+
     out.push(
       new AIMessage({
         content: (m as any)?.content ?? '',
-        ...(kept.length > 0 ? { tool_calls: kept as any } : {}),
-        ...((m as any)?.additional_kwargs ? { additional_kwargs: (m as any).additional_kwargs } : {}),
+        ...(keptCalls.length > 0 ? { tool_calls: keptCalls as any } : {}),
+        ...(Object.keys(ak).length > 0 ? { additional_kwargs: ak } : {}),
+        ...((m as any)?.id ? { id: (m as any).id } : {}),
       }),
     )
   }
@@ -1120,19 +1169,31 @@ export function docFinalAnswerNode(state: ModuAgentState): Partial<ModuAgentStat
   // 不会送去 tools 节点执行。若原样保留，agent 节点再次调用 LLM 时 API 会报
   // INVALID_TOOL_RESULTS（tool_calls 后缺少对应 ToolMessage）。
   // LangGraph 的 messages reducer 按 id 原地更新，用同 id 的无 tool_calls 消息替换即可。
+  //
+  // 2026-10-14 修复：除 `tool_calls` 外，**必须同时清 additional_kwargs.tool_calls**。
+  // LangChain 解析失败时 tool_calls 是空数组，但 additional_kwargs 仍带 provider
+  // 原始字段；只清前者会在真实任务上复现 400（已实测）。
   const stateMessages = state.messages ?? []
   const lastMsg = stateMessages[stateMessages.length - 1]
-  if (lastMsg instanceof AIMessage && (lastMsg.tool_calls?.length ?? 0) > 0) {
-    newMessages.push(
-      new AIMessage({
-        content: lastMsg.content,
-        id: lastMsg.id,
-      }),
-    )
-    logger.info(
-      '[doc-final-answer] stripped %d dangling tool_call(s) from last AIMessage',
-      lastMsg.tool_calls?.length ?? 0,
-    )
+  if (lastMsg instanceof AIMessage) {
+    const akToolCalls = (lastMsg as any).additional_kwargs?.['tool_calls']
+    const hasAkCalls = Array.isArray(akToolCalls) && akToolCalls.length > 0
+    if ((lastMsg.tool_calls?.length ?? 0) > 0 || hasAkCalls) {
+      const ak: Record<string, any> = { ...((lastMsg as any).additional_kwargs ?? {}) }
+      delete ak['tool_calls']
+      newMessages.push(
+        new AIMessage({
+          content: lastMsg.content,
+          id: lastMsg.id,
+          ...(Object.keys(ak).length > 0 ? { additional_kwargs: ak } : {}),
+        }),
+      )
+      logger.info(
+        '[doc-final-answer] stripped dangling tool_calls from last AIMessage (tool_calls=%d, ak=%d)',
+        lastMsg.tool_calls?.length ?? 0,
+        hasAkCalls ? akToolCalls.length : 0,
+      )
+    }
   }
 
   newMessages.push(new SystemMessage({ content: reminderContent }))
@@ -1813,14 +1874,17 @@ export function makeForceFinalizeNode(
     const toolResults = (state.tool_results ?? []) as Array<Record<string, any>>
     const successCount = toolResults.filter((r) => r?.['status'] === 'success').length
 
-    // 1) 复制历史，裁掉尾部未被执行的 assistant(tool_calls)（原因见上方注释）
-    const messages: BaseMessage[] = [...(state.messages ?? [])]
-    while (messages.length > 0) {
-      const last = messages[messages.length - 1] as any
-      const hasToolCalls = Array.isArray(last?.tool_calls) && last.tool_calls.length > 0
-      if (!hasToolCalls) break
-      messages.pop()
-    }
+    // 1) 复制历史并净化"无响应"的孤儿 tool_calls。
+    //
+    // 原实现只裁剪**末尾**连续的 assistant(tool_calls)，两个不足：
+    //   a) 中间位置的孤儿（HITL 恢复后 human_review / doc_final_answer 追加过消息）
+    //      不会被裁到；
+    //   b) 只看 `tool_calls` 字段，漏掉 `additional_kwargs.tool_calls`
+    //      （provider 原始字段），序列化回请求时照样 400。
+    // 现在统一走 _sanitizeOrphanToolCalls（保留已响应的 tool_calls 与正文）。
+    const messages: BaseMessage[] = _sanitizeOrphanToolCalls(
+      [...(state.messages ?? [])],
+    ).messages
 
     // 2) 保证人设 system prompt 在场（新建/恢复的 state 可能没有）
     if (systemPrompt && (messages.length === 0 || !(messages[0] instanceof SystemMessage))) {
