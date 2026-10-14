@@ -10,8 +10,8 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Archive,
-  PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeft,
+  PanelRight,
   SquarePen,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -224,9 +224,9 @@ export function Sidebar() {
                   aria-label={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
                 >
                   {sidebarOpen ? (
-                    <PanelLeftClose size={18} />
+                    <PanelLeft size={18} strokeWidth={1.75} />
                   ) : (
-                    <PanelLeftOpen size={18} />
+                    <PanelRight size={18} strokeWidth={1.75} />
                   )}
                 </button>
               </TooltipTrigger>

@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { Menu, PanelLeftOpen, PanelRight } from 'lucide-react';
+import { Menu, PanelRight } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import {
   Tooltip,
@@ -34,7 +34,7 @@ export function TopNav() {
         style={navStyle}
       >
         <button className="btn-sidebar-toggle" onClick={toggleSidebar} aria-label="切换侧边栏">
-          <Menu size={20} />
+          <Menu size={18} strokeWidth={1.75} />
         </button>
 
         {!sidebarOpen && (
@@ -45,7 +45,7 @@ export function TopNav() {
                 onClick={toggleSidebar}
                 aria-label="展开侧边栏"
               >
-                <PanelLeftOpen size={20} />
+                <PanelRight size={18} strokeWidth={1.75} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">展开侧边栏</TooltipContent>
@@ -66,7 +66,7 @@ export function TopNav() {
                 aria-label={pipelineOpen ? '收起推理面板' : '展开推理面板'}
                 aria-expanded={pipelineOpen}
               >
-                <PanelRight size={18} />
+                <PanelRight size={18} strokeWidth={1.75} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

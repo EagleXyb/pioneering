@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelLeftOpen, PanelRight } from 'lucide-react';
+import { PanelRight } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
 
 export function AnalysisLayout({ children }: { children: React.ReactNode }) {
@@ -17,7 +17,7 @@ AnalysisLayout.Main = function AnalysisMain({ children }: { children: React.Reac
       <div className="pro-main-header">
         {!sidebarOpen && (
           <button className="pro-main-expand" onClick={toggleSidebar} aria-label="展开侧边栏">
-            <PanelLeftOpen size={20} />
+            <PanelRight size={18} strokeWidth={1.75} />
           </button>
         )}
         <div className="pro-main-spacer" />
@@ -29,7 +29,7 @@ AnalysisLayout.Main = function AnalysisMain({ children }: { children: React.Reac
             aria-label="展开推理面板"
             data-tooltip="展开推理面板"
           >
-            <PanelRight size={18} />
+            <PanelRight size={18} strokeWidth={1.75} />
           </button>
         )}
       </div>

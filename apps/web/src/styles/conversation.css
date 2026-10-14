@@ -50,6 +50,8 @@
 }
 
 .chat-msg-user-bubble {
+  /* 折叠浮标（.chat-user-collapse-toggle）的定位基准 */
+  position: relative;
   max-width: 100%;
   padding: 9px 14px;
   border-radius: 12px;
@@ -59,6 +61,72 @@
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* 可折叠消息（正文超 5 行）：底部为「展开 / 收起」按钮预留一行，
+ * 按钮与正文分行、不遮挡内容（参考元宝布局） */
+.chat-msg-user-bubble.is-collapsible {
+  padding-bottom: 29px;
+}
+/* 折叠态：限高作用在内容层（5 行正文 = 14px × 1.6 × 5 = 112px），
+ * 气泡高度随之收缩，且底部按钮行（.is-collapsible 的 padding-bottom）始终在内容之外 ——
+ * 若把 overflow:hidden 加在气泡上，溢出内容会填充 padding 区域（裁剪边界是 padding box），
+ * 按钮区仍会被文字占满。溢出判定与展开状态见 UserMessageBubble。 */
+.chat-msg-user-bubble.is-collapsed {
+  cursor: pointer;
+}
+.chat-msg-user-bubble.is-collapsed .chat-user-bubble-content {
+  max-height: 112px;
+  overflow: hidden;
+}
+/* 折叠态正文区底部渐隐：覆盖层与气泡同底色（暗色自动适配）、向上透明，
+ * 只覆盖正文（bottom = 底部按钮行的 29px），不压住「展开」按钮。
+ * 不用 mask-image 的原因：mask 会一并淡化子元素，按钮文字将不可辨；
+ * 覆盖层 pointer-events:none，不影响文本选择与按钮点击。 */
+.chat-msg-user-bubble.is-collapsed::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 29px;
+  /* 约一行（22.4px）略多：最后一整行渐隐淡出，前 4 行保持清晰 */
+  height: 26px;
+  background: linear-gradient(to bottom, transparent, var(--bg-input) 92%);
+  pointer-events: none;
+}
+/* 展开 / 收起入口：仅超长消息渲染，位于气泡右下角的预留行内（与正文分行），
+ * 文字按钮「展开 ⌄ / 收起 ⌃」；z-index 浮于渐隐覆盖层之上，保持清晰可辨 */
+.chat-user-collapse-toggle {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 5px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  /* 参考元宝的展开按钮配色（暗色主题由下方规则提亮） */
+  color: #4d6099;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+.chat-user-collapse-toggle:hover,
+.chat-user-collapse-toggle:focus-visible {
+  background: var(--accent-blue-light);
+}
+/* 暗色主题：#4D6099 在深色气泡上对比不足，同色相提亮一档 */
+[data-theme='dark'] .chat-user-collapse-toggle {
+  color: #9db0dc;
+}
+.chat-user-collapse-toggle svg {
+  /* 小 chevron 紧跟文字，视觉上与文字基线对齐 */
+  margin-top: 1px;
 }
 /* 含附件的用户消息：Markdown 接管渲染（图片/链接），收尾段不留多余间距 */
 .chat-msg-user-bubble .chat-markdown {
@@ -409,6 +477,11 @@
 
 /* 有参考来源时操作栏常驻可见（"N 篇来源"是主操作之一，不应只在 hover 时出现） */
 .chat-action-bar.has-sources {
+  opacity: 1;
+}
+
+/* 有执行轨迹时同样常驻可见（「执行轨迹」胶囊是 agent 消息的主操作之一） */
+.chat-action-bar.has-run-trace {
   opacity: 1;
 }
 .chat-action-group {

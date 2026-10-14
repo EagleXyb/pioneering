@@ -319,3 +319,106 @@ describe('UserMessageBubble — 编辑态', () => {
     expect(onCancelEdit).not.toHaveBeenCalled();
   });
 });
+
+describe('UserMessageBubble — 超长消息折叠（约 5 行）', () => {
+  /**
+   * 覆盖 HTMLElement.prototype.offsetHeight：jsdom 无布局引擎恒为 0，
+   * 组件按「正文内容层高度是否超过 5 行」判定溢出（回退行高 22.4px → 阈值 ≈ 113px）。
+   */
+  function stubContentHeight(value: number): () => void {
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'offsetHeight',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get: () => value,
+    });
+    return () => {
+      if (original) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original);
+      } else {
+        delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+      }
+    };
+  }
+
+  let restoreContentHeight: (() => void) | null = null;
+
+  afterEach(() => {
+    restoreContentHeight?.();
+    restoreContentHeight = null;
+  });
+
+  const bubbleEl = (container: HTMLElement) =>
+    container.querySelector('.chat-msg-user-bubble') as HTMLElement;
+
+  it('内容未超过折叠高度：不折叠、不渲染浮标', () => {
+    restoreContentHeight = stubContentHeight(80);
+    const { container } = render(<UserMessageBubble message={makeMessage()} />);
+
+    const bubble = bubbleEl(container);
+    expect(bubble.classList.contains('is-collapsed')).toBe(false);
+    expect(bubble.classList.contains('is-collapsible')).toBe(false);
+    expect(screen.queryByRole('button', { name: '展开消息' })).toBeNull();
+  });
+
+  it('内容超过折叠高度：默认折叠并显示展开浮标（aria-expanded=false）', () => {
+    restoreContentHeight = stubContentHeight(400);
+    const { container } = render(<UserMessageBubble message={makeMessage()} />);
+
+    const bubble = bubbleEl(container);
+    expect(bubble.classList.contains('is-collapsed')).toBe(true);
+    expect(bubble.classList.contains('is-collapsible')).toBe(true);
+    expect(screen.getByRole('button', { name: '展开消息' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('点击浮标展开，再次点击收起', () => {
+    restoreContentHeight = stubContentHeight(400);
+    const { container } = render(<UserMessageBubble message={makeMessage()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '展开消息' }));
+    expect(bubbleEl(container).classList.contains('is-collapsed')).toBe(false);
+    const collapseBtn = screen.getByRole('button', { name: '收起消息' });
+    expect(collapseBtn).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(collapseBtn);
+    expect(bubbleEl(container).classList.contains('is-collapsed')).toBe(true);
+  });
+
+  it('点击气泡本体同样可切换展开 / 收起', () => {
+    restoreContentHeight = stubContentHeight(400);
+    const { container } = render(<UserMessageBubble message={makeMessage()} />);
+
+    fireEvent.click(bubbleEl(container));
+    expect(bubbleEl(container).classList.contains('is-collapsed')).toBe(false);
+
+    fireEvent.click(bubbleEl(container));
+    expect(bubbleEl(container).classList.contains('is-collapsed')).toBe(true);
+  });
+
+  it('点击气泡内链接不切换折叠（含附件消息）', () => {
+    restoreContentHeight = stubContentHeight(400);
+    const { container } = render(
+      <UserMessageBubble
+        message={makeMessage({
+          content: [
+            {
+              type: 'text',
+              data: '看这张图 [报告](https://cdn.example.com/a.png)',
+            },
+          ] as ChatMessageData['content'],
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      container.querySelector('a[href="https://cdn.example.com/a.png"]') as Element,
+    );
+
+    expect(bubbleEl(container).classList.contains('is-collapsed')).toBe(true);
+  });
+});

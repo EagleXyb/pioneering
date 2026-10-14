@@ -1,4 +1,4 @@
-import { Menu, PanelLeft, PanelRight } from 'lucide-react';
+import { Menu, PanelRight } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useArtifactStore } from '../../store/artifactStore';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ export function TaskTopBar() {
         aria-label="切换侧边栏"
         className="md:hidden"
       >
-        <Menu className="h-5 w-5" />
+        <Menu className="h-[18px] w-[18px]" strokeWidth={1.75} />
       </Button>
 
       {!sidebarOpen && (
@@ -50,7 +50,7 @@ export function TaskTopBar() {
                 aria-label="展开侧边栏"
                 className="hidden md:inline-flex task-top-bar-expand"
               >
-                <PanelLeft className="h-[18px] w-[18px]" />
+                <PanelRight className="h-[18px] w-[18px]" strokeWidth={1.75} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">展开侧边栏</TooltipContent>
@@ -74,7 +74,7 @@ export function TaskTopBar() {
                   togglePipeline();
                 }}
               >
-                <PanelRight className="h-[18px] w-[18px]" />
+                <PanelRight className="h-[18px] w-[18px]" strokeWidth={1.75} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">展开任务流水线</TooltipContent>
