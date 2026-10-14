@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AnalysisMessageList } from './AnalysisMessageList';
+import type { AgentRunData } from '../../../api/agent';
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/api/message', () => ({ feedbackMessage: vi.fn(async () => undefined) }));
@@ -446,6 +447,46 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
       )
       .filter((c) => c !== 'other');
     expect(innerClasses).toEqual(['reasoning', 'tool']);
+  });
+
+  it('有 run 时：操作栏常驻（has-run-trace），轨迹胶囊位于操作栏行内', () => {
+    const run: AgentRunData = {
+      id: 'run-1',
+      sessionId: 's1',
+      messageId: 'a-tao',
+      agentMode: 'react_agent',
+      status: 'completed',
+      traceId: 'run-1',
+      events: [{ seq: 1, type: 'RUN_FINISHED', ts: 1 }],
+      usage: null,
+      errorCode: null,
+      errorMessage: null,
+      startedAt: new Date(0).toISOString(),
+      endedAt: null,
+      durationMs: 100,
+    };
+    const { container } = render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[taoMessage as never]}
+        runByMessage={new Map([['a-tao', run]])}
+      />,
+    );
+
+    const bar = container.querySelector('.chat-action-bar')!;
+    expect(bar).toHaveClass('has-run-trace');
+    expect(bar.querySelector('.run-trace')).not.toBeNull();
+    expect(screen.getByText('执行轨迹')).toBeInTheDocument();
+  });
+
+  it('无 run 时：操作栏保持 hover 显隐（无 has-run-trace），不渲染轨迹胶囊', () => {
+    const { container } = render(
+      <AnalysisMessageList status="complete" messages={[taoMessage as never]} />,
+    );
+
+    const bar = container.querySelector('.chat-action-bar')!;
+    expect(bar).not.toHaveClass('has-run-trace');
+    expect(bar.querySelector('.run-trace')).toBeNull();
   });
 });
 

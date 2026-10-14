@@ -295,6 +295,8 @@ function AnalysisAssistantItem({
   // TAO 块序列（reasoning / toolcall / markdown 按事件顺序交错）
   // 仅 assistant 分支进入本组件，content 为 AIMessageContent[]
   const blocks = (message.content ?? []) as AIMessageContent[];
+  /** 本条消息对应的 run（操作栏右侧「执行轨迹」胶囊入口数据源） */
+  const run = runByMessage?.get(message.id);
   const hasProcess = blocks.some(
     (b) =>
       b.type === 'toolcall' ||
@@ -401,34 +403,31 @@ function AnalysisAssistantItem({
         )}
 
         {isFinal && (
-          <>
-            <div className="chat-action-bar" role="toolbar" aria-label="消息操作">
-              <span className="chat-action-group">
-                {actions.map((a) => {
-                  const Icon = a.icon;
-                  return (
-                    <button
-                      key={a.key}
-                      type="button"
-                      className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
-                      aria-label={a.label}
-                      data-tooltip={a.label}
-                      aria-pressed={a.active ?? false}
-                      onClick={a.onClick}
-                    >
-                      <Icon size={15} />
-                    </button>
-                  );
-                })}
-              </span>
-            </div>
-            {runByMessage?.has(message.id) && (
-              <RunTrace
-                runId={runByMessage.get(message.id)!.id}
-                initialRun={runByMessage.get(message.id)}
-              />
-            )}
-          </>
+          <div
+            className={`chat-action-bar${run ? ' has-run-trace' : ''}`}
+            role="toolbar"
+            aria-label="消息操作"
+          >
+            <span className="chat-action-group">
+              {actions.map((a) => {
+                const Icon = a.icon;
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
+                    aria-label={a.label}
+                    data-tooltip={a.label}
+                    aria-pressed={a.active ?? false}
+                    onClick={a.onClick}
+                  >
+                    <Icon size={15} />
+                  </button>
+                );
+              })}
+            </span>
+            {run && <RunTrace runId={run.id} initialRun={run} />}
+          </div>
         )}
       </div>
     </div>

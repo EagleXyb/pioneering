@@ -235,6 +235,8 @@ function TaskActions({
     (msg as { comment?: ChatComment }).comment ??
       (feedback === 'like' ? 'good' : feedback === 'dislike' ? 'bad' : ''),
   );
+  /** 本条消息对应的 run（操作栏右侧「执行轨迹」胶囊入口数据源） */
+  const run = runByMessage?.get(msg.id);
 
   /** 点踩/点赞：再点一次取消 */
   const toggleFeedback = (next: 'good' | 'bad') => {
@@ -296,34 +298,31 @@ function TaskActions({
   ];
 
   return (
-    <>
-      <div className="chat-action-bar" role="toolbar" aria-label="消息操作">
-        <span className="chat-action-group">
-          {actions.map((a) => {
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.key}
-                type="button"
-                className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
-                aria-label={a.label}
-                data-tooltip={a.label}
-                aria-pressed={a.active ?? false}
-                onClick={a.onClick}
-              >
-                <Icon size={15} />
-              </button>
-            );
-          })}
-        </span>
-      </div>
-      {runByMessage?.has(msg.id) && (
-        <RunTrace
-          runId={runByMessage.get(msg.id)!.id}
-          initialRun={runByMessage.get(msg.id)}
-        />
-      )}
-    </>
+    <div
+      className={`chat-action-bar${run ? ' has-run-trace' : ''}`}
+      role="toolbar"
+      aria-label="消息操作"
+    >
+      <span className="chat-action-group">
+        {actions.map((a) => {
+          const Icon = a.icon;
+          return (
+            <button
+              key={a.key}
+              type="button"
+              className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
+              aria-label={a.label}
+              data-tooltip={a.label}
+              aria-pressed={a.active ?? false}
+              onClick={a.onClick}
+            >
+              <Icon size={15} />
+            </button>
+          );
+        })}
+      </span>
+      {run && <RunTrace runId={run.id} initialRun={run} />}
+    </div>
   );
 }
 

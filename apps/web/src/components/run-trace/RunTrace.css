@@ -1,34 +1,47 @@
+/* ===== 消息操作栏内「执行轨迹」胶囊入口 =====
+ * 对齐 chat 模式 .chat-sources-chip（"N 篇来源"）范式：
+ * 行内右端靠齐（margin-left:auto）的圆角胶囊，hover 高亮。 */
 .run-trace {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #667085);
-}
-
-.run-trace-toggle {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border: 1px solid var(--border, #e4e7ec);
-  border-radius: 6px;
-  background: var(--bg-secondary, #f9fafb);
-  color: inherit;
-  cursor: pointer;
-  line-height: 1.4;
-}
-.run-trace-toggle:hover {
-  background: var(--bg-hover, #f2f4f7);
-}
-
-.run-trace-chevron {
-  font-size: 10px;
-  color: var(--text-tertiary, #98a2b3);
-}
-.run-trace-title {
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--border-light, #e4e7ec);
+  border-radius: 15px;
+  background: transparent;
+  color: var(--text-secondary, #667085);
+  font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-primary, #1d2939);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast, 0.15s);
+}
+.run-trace:hover {
+  border-color: var(--accent-blue, #3b82f6);
+  color: var(--accent-blue, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
+}
+.run-trace:hover .run-trace-count {
+  color: inherit;
 }
 
+/* 胶囊内状态点：颜色映射 run 状态（与面板概要和事件时间轴同一套色调） */
+.run-trace-status-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #98a2b3;
+}
+.run-trace-status-dot--running { background: #2e90fa; }
+.run-trace-status-dot--completed { background: #12b76a; }
+.run-trace-status-dot--error { background: #f04438; }
+.run-trace-status-dot--cancelled { background: #98a2b3; }
+.run-trace-status-dot--paused { background: #f79009; }
+
+/* 面板概要行 / 胶囊共用的状态徽章与统计 */
 .run-trace-badge {
   padding: 0 6px;
   border-radius: 10px;
@@ -46,20 +59,81 @@
   color: var(--text-tertiary, #98a2b3);
 }
 
-.run-trace-body {
-  margin-top: 8px;
+/* ===== 右栏「执行轨迹」tab 内容 ===== */
+.run-trace-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 覆盖 .pro-pipeline / .task-pipeline 继承的 white-space:nowrap */
+  white-space: normal;
+  font-size: 12px;
+  color: var(--text-secondary, #667085);
+}
+
+/* 当前聚焦 run 的概要行：状态徽章 + 开始时间（右对齐事件数 / 耗时） */
+.run-trace-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 0 20px 10px;
+}
+
+.run-trace-panel-time {
+  color: var(--text-tertiary, #98a2b3);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-trace-panel-stats {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.run-trace-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px 16px 26px;
+}
+
+/* 时间轴左侧竖线（dot 定位相对 .run-trace-item，恰好骑在竖线上） */
+.run-trace-panel-body .run-trace-timeline {
   border-left: 1px solid var(--border, #e4e7ec);
   padding-left: 10px;
+}
+
+/* ===== 空态与提示 ===== */
+.run-trace-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-tertiary);
+  padding: 40px 20px;
+}
+
+.run-trace-empty-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.run-trace-empty-desc {
+  font-size: 12px;
+  text-align: center;
 }
 
 .run-trace-hint {
   padding: 4px 0;
   color: var(--text-tertiary, #98a2b3);
 }
-.run-trace-hint-err {
-  color: #b42318;
-}
 
+/* ===== 事件时间轴 ===== */
 .run-trace-timeline {
   list-style: none;
   margin: 0;

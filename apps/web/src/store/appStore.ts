@@ -30,6 +30,9 @@ function loadSourcesWidth(): number {
   return loadWidth(SOURCES_WIDTH_KEY, DEFAULT_SOURCES_WIDTH, MIN_SOURCES_WIDTH, MAX_SOURCES_WIDTH);
 }
 
+/** 右侧面板 tab：'process' = 推理过程 / 任务流水线，'trace' = 执行轨迹 */
+export type PipelineTab = 'process' | 'trace';
+
 interface AppStore {
   sidebarOpen: boolean;
   toggleSidebar: () => void;
@@ -42,7 +45,16 @@ interface AppStore {
   pipelineUserDismissed: boolean;
   /** Agent 有信息输出时调用：未被用户手动折叠则自动展开 */
   autoOpenPipeline: () => void;
-  /** 切换会话时重置：空会话折叠、有历史步骤的会话由 hook 决定是否展开 */
+  /** 右侧面板当前 tab（pro / task 共用） */
+  pipelineTab: PipelineTab;
+  setPipelineTab: (tab: PipelineTab) => void;
+  /** 执行轨迹 tab 聚焦的 run id；null = 自动跟随（running 优先，否则最新一条） */
+  activeRunId: string | null;
+  setActiveRunId: (runId: string | null) => void;
+  /** 消息内「执行轨迹」入口：展开右栏、切到轨迹 tab 并聚焦该 run */
+  openRunTrace: (runId: string) => void;
+  /** 切换会话时重置：空会话折叠、有历史步骤的会话由 hook 决定是否展开；
+   * 轨迹聚焦一并清除（runs 数据上下文已换） */
   resetPipelineForSession: (hasSteps: boolean) => void;
   /** 右侧面板宽度（px），可拖动调整 */
   pipelineWidth: number;
@@ -71,8 +83,15 @@ export const useAppStore = create<AppStore>((set) => ({
         ? s
         : { pipelineOpen: true },
     ),
+  // tab 为纯用户偏好：跨会话/模式保留，不清回 process
+  pipelineTab: 'process',
+  setPipelineTab: (tab) => set({ pipelineTab: tab }),
+  activeRunId: null,
+  setActiveRunId: (runId) => set({ activeRunId: runId }),
+  openRunTrace: (runId) =>
+    set({ pipelineOpen: true, pipelineTab: 'trace', activeRunId: runId }),
   resetPipelineForSession: (hasSteps) =>
-    set({ pipelineUserDismissed: false, pipelineOpen: hasSteps }),
+    set({ pipelineUserDismissed: false, pipelineOpen: hasSteps, activeRunId: null }),
   pipelineWidth: loadPipelineWidth(),
   setPipelineWidth: (w) => {
     const clamped = Math.min(MAX_PIPELINE_WIDTH, Math.max(MIN_PIPELINE_WIDTH, Math.round(w)));

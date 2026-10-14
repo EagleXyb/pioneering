@@ -6,10 +6,16 @@ import {
 import type { ChatStatus } from '../types/chat';
 
 /**
+ * 流式期间轮询间隔：run 在流开始前即以 running 状态落库（事件时间轴收尾时才写入），
+ * 定期刷新让右侧执行轨迹面板能尽早发现并跟随正在执行的 run。
+ */
+const STREAMING_POLL_MS = 2500;
+
+/**
  * 按会话加载 Agent run 记录，构建 messageId → run 映射。
  *
  * - 会话切换 / 首次：拉取该会话全部 runs；
- * - 每次执行从流式回到 idle（run 刚收尾）：自动刷新，保证刚完成的消息能看到轨迹；
+ * - 流式期间：定期刷新（发现 running 的 run）；结束后刷新（run 在流末尾落库完整事件）；
  * - temp_ 临时会话或无 sessionId：返回空，不发请求。
  */
 export function useSessionRuns(
@@ -34,17 +40,15 @@ export function useSessionRuns(
     }
   }, [sessionId])
 
-  // 会话切换加载
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  // 执行回到 idle 时刷新（run 在流末尾落库）
+  // 会话切换 / 挂载加载；流式期间定期刷新（尽早发现 running 的 run）；
+  // 回到 idle 时刷新（run 已收尾，事件时间轴写入）
   const streaming = status === 'streaming'
   useEffect(() => {
-    if (!streaming) void reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streaming])
+    void reload()
+    if (!streaming) return
+    const timer = window.setInterval(() => void reload(), STREAMING_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [streaming, reload])
 
   const byMessage = useMemo(() => {
     const m = new Map<string, AgentRunData>()

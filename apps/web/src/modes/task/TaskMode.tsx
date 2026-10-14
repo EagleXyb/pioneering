@@ -53,7 +53,7 @@ export default function TaskMode() {
   } = usePlanExecuteChat(activeId);
 
   // T5.5：按会话加载 run 记录（messageId → 执行轨迹）
-  const { byMessage: runByMessage } = useSessionRuns(activeId, status);
+  const { runs, byMessage: runByMessage } = useSessionRuns(activeId, status);
 
   useChatSync(activeId, messages);
 
@@ -135,7 +135,7 @@ export default function TaskMode() {
       {/* 右侧面板：有 artifact 预览时显示 ArtifactPanel，否则显示 TaskPipeline（含 PlanPipelineTree） */}
       {/* resizer 仅在右侧面板实际可见（非折叠 / 有 artifact）时显示 */}
       {showResizer && <TaskResizer />}
-      {hasActiveArtifact ? <ArtifactPanel /> : <TaskPipeline />}
+      {hasActiveArtifact ? <ArtifactPanel /> : <TaskPipeline runs={runs} />}
     </div>
   );
 }

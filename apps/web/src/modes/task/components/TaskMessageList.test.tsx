@@ -17,6 +17,7 @@ import React from 'react';
 import { TaskMessageList } from './TaskMessageList';
 import { useArtifactStore } from '@/store/artifactStore';
 import type { ChatMessagesData } from '@/types/chat';
+import type { AgentRunData } from '@/api/agent';
 
 /** 捕获组件创建的 IntersectionObserver 回调，手动模拟哨兵可见性变化 */
 const ioCallbacks: IntersectionObserverCallback[] = [];
@@ -248,6 +249,45 @@ describe('TaskMessageList', () => {
       expect(btn).not.toHaveAttribute('title');
     }
     expect(container.querySelectorAll('[title]')).toHaveLength(0);
+  });
+
+  it('有 run 时：操作栏常驻（has-run-trace），轨迹胶囊位于操作栏行内', () => {
+    const messages = [
+      makeMessage({
+        id: 'a1',
+        role: 'assistant',
+        status: 'complete',
+        content: [{ type: 'markdown', data: '回复正文' }],
+      }),
+    ];
+    const run: AgentRunData = {
+      id: 'run-1',
+      sessionId: 's1',
+      messageId: 'a1',
+      agentMode: 'react_agent',
+      status: 'completed',
+      traceId: 'run-1',
+      events: [{ seq: 1, type: 'RUN_FINISHED', ts: 1 }],
+      usage: null,
+      errorCode: null,
+      errorMessage: null,
+      startedAt: new Date(0).toISOString(),
+      endedAt: null,
+      durationMs: 100,
+    };
+
+    const { container } = render(
+      <TaskMessageList
+        messages={messages}
+        status="idle"
+        runByMessage={new Map([['a1', run]])}
+      />,
+    );
+
+    const bar = container.querySelector('.chat-action-bar')!;
+    expect(bar).toHaveClass('has-run-trace');
+    expect(bar.querySelector('.run-trace')).not.toBeNull();
+    expect(screen.getByText('执行轨迹')).toBeInTheDocument();
   });
 
   it('editingMessageId 命中时该条进入编辑态（气泡替换为编辑卡片）', () => {

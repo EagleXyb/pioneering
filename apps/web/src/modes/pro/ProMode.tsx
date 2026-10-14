@@ -35,7 +35,7 @@ export default function ProMode() {
   } = useAgentChat(activeId, false);
 
   // T5.5：按会话加载 run 记录（messageId → 执行轨迹）
-  const { byMessage: runByMessage } = useSessionRuns(activeId, status);
+  const { runs, byMessage: runByMessage } = useSessionRuns(activeId, status);
 
   useChatSync(activeId, messages);
 
@@ -102,7 +102,11 @@ export default function ProMode() {
       {/* 右侧面板（推理过程）展开时显示可拖拽分隔条，折叠时隐藏 */}
       {pipelineOpen && <TaskResizer />}
       <AnalysisLayout.Panel>
-        <ProcessPanel stateMap={stateMap} currentStateKey={currentStateKey} />
+        <ProcessPanel
+          stateMap={stateMap}
+          currentStateKey={currentStateKey}
+          runs={runs}
+        />
       </AnalysisLayout.Panel>
     </AnalysisLayout>
   );
