@@ -120,9 +120,13 @@
 .chat-user-collapse-toggle:focus-visible {
   background: var(--accent-blue-light);
 }
-/* 暗色主题：#4D6099 在深色气泡上对比不足，同色相提亮一档 */
+/* 暗色主题：#4D6099 在深炭灰气泡上对比不足，改为中性浅灰（去蓝调，WorkBuddy 口径） */
 [data-theme='dark'] .chat-user-collapse-toggle {
-  color: #9db0dc;
+  color: #a8a8a8;
+}
+[data-theme='dark'] .chat-user-collapse-toggle:hover,
+[data-theme='dark'] .chat-user-collapse-toggle:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
 }
 .chat-user-collapse-toggle svg {
   /* 小 chevron 紧跟文字，视觉上与文字基线对齐 */
@@ -940,7 +944,7 @@
   transform: translateX(-50%);
   padding: 8px 14px;
   border-radius: 10px;
-  background: rgba(28, 31, 38, 0.92);
+  background: rgba(31, 31, 31, 0.94);
   color: #fff;
   font-size: 13px;
   font-weight: 400;
@@ -1049,6 +1053,34 @@
 }
 .chat-send-btn--stop {
   background: var(--text-secondary);
+}
+/* 暗色主题：深炭灰卡片上纯黑按钮发闷，改为 WorkBuddy 风格浅灰圆钮（深色箭头）；
+   disabled 态仍走 --bg-input 的抬升灰，停止态保持中性灰 */
+[data-theme='dark'] .chat-send-btn:not(:disabled):not(.chat-send-btn--stop) {
+  background: #ededed;
+  color: #141414;
+}
+[data-theme='dark'] .chat-send-btn--stop {
+  background: var(--text-secondary);
+  color: #fff;
+}
+/* system 深色模式同步（无 data-theme 属性时） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .chat-user-collapse-toggle {
+    color: #a8a8a8;
+  }
+  :root:not([data-theme='light']) .chat-user-collapse-toggle:hover,
+  :root:not([data-theme='light']) .chat-user-collapse-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  :root:not([data-theme='light']) .chat-send-btn:not(:disabled):not(.chat-send-btn--stop) {
+    background: #ededed;
+    color: #141414;
+  }
+  :root:not([data-theme='light']) .chat-send-btn--stop {
+    background: var(--text-secondary);
+    color: #fff;
+  }
 }
 
 /* 版权声明 */

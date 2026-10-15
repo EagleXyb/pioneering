@@ -399,10 +399,11 @@
 
 /* Account 下拉菜单（挂在 shadcn DropdownMenuContent 上，
    容器底色/边框/浮层动画由 shadcn 提供，这里定宽度/弹出原点/圆角）。
-   嵌套圆角与 .model-select__menu 同规格：外层(16) = 行圆角(10) + 内边距(6)。
-   分隔线与行文字同左缘：内边距 6 + 行内边距 10 = 16px，两者对齐关系不变 */
+   视觉对齐豆包账号菜单（2026-10 实测）：
+   宽 240 · 行高 ~40 · 图标 19 · 文字 15 · 图标近主文字色 ·
+   外层圆角 16 = 行圆角 10 + 容器内边距 6（嵌套同心） */
 .account-popover {
-  min-width: 210px;
+  min-width: 240px;
   padding: 6px;
   border-radius: var(--radius-lg);
   transform-origin: bottom left;
@@ -411,12 +412,14 @@
 .account-popover-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
   margin: 2px 0;
-  padding: 9px 10px;
-  font-size: 14px;
-  font-weight: 500;
+  /* 豆包实测：行高约 41px（11 + 19 图标 + 11） */
+  padding: 11px 12px;
+  /* 豆包实测：16px 常规体（非 500 中粗） */
+  font-size: 16px;
+  font-weight: 400;
   color: var(--text-primary);
   border-radius: 10px;
   transition: background var(--transition-fast), color var(--transition-fast);
@@ -430,127 +433,69 @@
 }
 
 .account-popover-item svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+  /* 豆包菜单图标与文字同色（近黑/近白），hover 不变色，只浮起圆底 */
+  color: var(--text-primary);
+  transition: color var(--transition-fast);
+}
+
+/* 置灰占位项（收藏夹/官网/下载电脑版：功能未上线）：
+   弱文字色 + 禁止光标，悬停/聚焦均不浮起圆底。
+   未分层样式天然压过 shadcn dropdown 的 focus:bg-accent 工具类 */
+.account-popover-item--pending {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+.account-popover-item--pending svg {
+  color: var(--text-tertiary);
+}
+.account-popover-item--pending:hover,
+.account-popover-item--pending:focus,
+.account-popover-item--pending[data-highlighted] {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+/* 外观设置级联子菜单触发器：复用菜单项规格；
+   shadcn SubTrigger 自带的尾部 ChevronRight 弱化为 16px 次级灰 */
+.account-popover-subtrigger > svg:last-child {
   width: 16px;
   height: 16px;
-  flex-shrink: 0;
   color: var(--text-tertiary);
-  transition: color var(--transition-fast);
 }
 
-.account-popover-item:hover svg {
-  color: var(--text-secondary);
+/* 子菜单容器：与父菜单同规格（6px 内边距 + 16px 圆角 + 41px 行） */
+.account-popover--sub {
+  min-width: 196px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
 }
 
-/* 外观行 - 左侧文字 + 右侧分段切换（整行作为一组） */
-.account-popover-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 2px 0;
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 10px;
-  transition: background var(--transition-fast);
-}
-
-.account-popover-row:hover {
-  background: var(--bg-sidebar-hover);
-}
-
-.account-popover-item-static {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: default;
-  border: none;
-  background: none;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  padding: 0;
-}
-
-.account-popover-item-static:hover {
-  background: none;
-}
-
-/* 内联主题切换：自绘滑动分段控件（浅色/深色） */
-.theme-switch {
-  position: relative;
-  display: inline-flex;
+/* 选中主题的右侧对勾（豆包口径：仅当前项显示，贴右缘） */
+.account-popover-check {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
-  background: var(--bg-sidebar-hover);
-  border-radius: 20px;
-  padding: 3px;
-}
-
-.theme-switch-option {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 4px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--text-tertiary);
-  background: none;
-  border: none;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: color var(--transition-fast);
-  white-space: nowrap;
-}
-
-.theme-switch-option svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-.theme-switch-option:hover:not(.active) {
-  color: var(--text-secondary);
-}
-
-.theme-switch-option.active {
   color: var(--text-primary);
 }
 
-/* 滑动指示块 */
-.theme-switch-thumb {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc(50% - 3px);
-  background: var(--bg-secondary);
-  border-radius: 18px;
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--transition-fast);
-  pointer-events: none;
-}
-
-.theme-switch-thumb--dark {
-  transform: translateX(100%);
-}
-
-/* 分隔线（与菜单项文字左对齐） */
+/* 分隔线（对齐豆包：近通栏，仅左右 4px 内缩） */
 .account-popover-divider {
   height: 1px;
-  margin: 6px 10px;
+  margin: 6px 4px;
   background: var(--border-light);
 }
 
-/* 退出登录（危险操作：hover 时红色强调） */
+/* 退出登录（危险操作：常态与其他项同色，hover 时整行红色强调） */
 .account-popover-logout {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .account-popover-logout svg {
-  color: var(--text-tertiary);
+  color: var(--text-primary);
   transition: color var(--transition-fast);
 }
 

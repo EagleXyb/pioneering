@@ -59,77 +59,82 @@
      docs/login-app/styles/tokens.css），此处不再保留 --auth-* 遗留变量。 */
 }
 
-/* ===== Dark Theme ===== */
+/* ===== Dark Theme（WorkBuddy 实测色板：中性炭灰，靠明度差分层） =====
+ * 像素取色自 WorkBuddy 截图（2026-10）：
+ *   主内容 #141414 · 侧栏/输入卡片 #1F1F1F ·
+ *   悬浮行 #2C2C2C · 选中行 #313131（实测）·
+ *   主文字 #EDEDED · 次级 #A8A8A8 · 弱 #7A7A7A · 链接蓝 #46A8F0
+ */
 [data-theme="dark"] {
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d26;
-  --bg-sidebar: #0d0f14;
-  --bg-sidebar-hover: #1e2130;
-  --bg-sidebar-active: #262a3a;
-  --bg-card: #1e2130;
-  --bg-input: #1e2130;
-  --bg-code: #14161e;
+  --bg-primary: #141414;
+  --bg-secondary: #141414;
+  --bg-sidebar: #1f1f1f;
+  --bg-sidebar-hover: #2c2c2c;
+  --bg-sidebar-active: #313131;
+  --bg-card: #1f1f1f;
+  --bg-input: #2c2c2c;
+  --bg-code: #1c1c1c;
 
-  --text-primary: #e8eaed;
-  --text-secondary: #9aa0ab;
-  --text-tertiary: #6b7280;
-  --text-inverse: #f0f2f5;
-  --text-sidebar: #b0b6c4;
-  --text-sidebar-dim: #6b7280;
+  --text-primary: #ededed;
+  --text-secondary: #a8a8a8;
+  --text-tertiary: #7a7a7a;
+  --text-inverse: #f0f0f0;
+  --text-sidebar: #b8b8b8;
+  --text-sidebar-dim: #7a7a7a;
 
-  --accent-blue: #5b9cf6;
-  --accent-blue-light: #1e2d4a;
+  --accent-blue: #46a8f0;
+  --accent-blue-light: #1f2d3d;
   --accent-green: #34d399;
-  --accent-green-light: #13332a;
+  --accent-green-light: #14322a;
   --accent-amber: #fbbf24;
   --accent-amber-light: #332b14;
   --accent-purple: #a78bfa;
-  --accent-purple-light: #221e3a;
+  --accent-purple-light: #2a2540;
   --accent-red: #f87171;
   --accent-red-light: #3a1c1c;
 
-  --border-light: #2a2e3a;
-  --border-medium: #363b4a;
-  --border-sidebar: #1e2130;
+  --border-light: #2a2a2a;
+  --border-medium: #383838;
+  --border-sidebar: #262626;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.45);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.55);
 
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg-primary: #0f1117;
-    --bg-secondary: #1a1d26;
-    --bg-sidebar: #0d0f14;
-    --bg-sidebar-hover: #1e2130;
-    --bg-sidebar-active: #262a3a;
-    --bg-card: #1e2130;
-    --bg-input: #1e2130;
-    --bg-code: #14161e;
-    --text-primary: #e8eaed;
-    --text-secondary: #9aa0ab;
-    --text-tertiary: #6b7280;
-    --text-inverse: #f0f2f5;
-    --text-sidebar: #b0b6c4;
-    --text-sidebar-dim: #6b7280;
-    --accent-blue: #5b9cf6;
-    --accent-blue-light: #1e2d4a;
+    /* 与 [data-theme="dark"] 保持同一 WorkBuddy 实测色板（两处需同步维护） */
+    --bg-primary: #141414;
+    --bg-secondary: #141414;
+    --bg-sidebar: #1f1f1f;
+    --bg-sidebar-hover: #2c2c2c;
+    --bg-sidebar-active: #313131;
+    --bg-card: #1f1f1f;
+    --bg-input: #2c2c2c;
+    --bg-code: #1c1c1c;
+    --text-primary: #ededed;
+    --text-secondary: #a8a8a8;
+    --text-tertiary: #7a7a7a;
+    --text-inverse: #f0f0f0;
+    --text-sidebar: #b8b8b8;
+    --text-sidebar-dim: #7a7a7a;
+    --accent-blue: #46a8f0;
+    --accent-blue-light: #1f2d3d;
     --accent-green: #34d399;
-    --accent-green-light: #13332a;
+    --accent-green-light: #14322a;
     --accent-amber: #fbbf24;
     --accent-amber-light: #332b14;
     --accent-purple: #a78bfa;
-    --accent-purple-light: #221e3a;
+    --accent-purple-light: #2a2540;
     --accent-red: #f87171;
     --accent-red-light: #3a1c1c;
-    --border-light: #2a2e3a;
-    --border-medium: #363b4a;
-    --border-sidebar: #1e2130;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
-
+    --border-light: #2a2a2a;
+    --border-medium: #383838;
+    --border-sidebar: #262626;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.45);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.55);
   }
 }

@@ -121,6 +121,23 @@
   background: var(--bg-secondary);
   box-shadow: var(--shadow-lg);
 }
+/* 暗色主题：bg-secondary 比卡片更暗，hover 应像 WorkBuddy 一样轻微抬亮（hover 档 #2C2C2C） */
+[data-theme='dark'] .chat-welcome-card:hover {
+  background: #2c2c2c;
+}
+/* 暗色下蓝色光晕收敛，避免顶部泛蓝 */
+[data-theme='dark'] .chat-welcome-glow {
+  opacity: 0.32;
+}
+/* system 模式（无 data-theme，跟随系统深色）同样生效 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .chat-welcome-card:hover {
+    background: #2c2c2c;
+  }
+  :root:not([data-theme='light']) .chat-welcome-glow {
+    opacity: 0.32;
+  }
+}
 .chat-welcome-card-icon {
   display: inline-flex;
   align-items: center;

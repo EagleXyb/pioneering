@@ -696,37 +696,16 @@
   min-width: 0;
 }
 
-/* 玻璃衬板：绝对定位、四周留隙悬浮于星云之上，不参与文档流，
-   故内容布局与交互完全不变。模糊走 GPU 合成层（pointer-events 关闭，
-   不拦截任何点击）。 */
+/* 品牌区全透明：不渲染玻璃衬板（无边框 / 底色 / 模糊 / 投影），
+   内容直接悬浮于星云之上。 */
 .hero::before {
-  content: '';
-  position: absolute;
-  z-index: 0;
-  inset: var(--nova-hero-plate-inset);
-  border-radius: var(--nova-r-card);
-  background: var(--nova-hero-glass-bg);
-  border: 1px solid var(--nova-hero-glass-border);
-  box-shadow:
-    var(--nova-hero-glass-shadow),
-    var(--nova-hero-glass-inset);
-  backdrop-filter: var(--nova-hero-glass-filter);
-  -webkit-backdrop-filter: var(--nova-hero-glass-filter);
-  pointer-events: none;
+  display: none;
 }
 
-/* 品牌内容抬升到衬板之上（static → relative 不改变布局位置） */
+/* 品牌内容抬升层（static → relative 不改变布局位置） */
 .hero > * {
   position: relative;
   z-index: 1;
-}
-
-/* 不支持 backdrop-filter 的浏览器（旧 Firefox / 部分国产内核）退化为半实色底，
-   保证标题在星云亮区上的对比度 */
-@supports not ((-webkit-backdrop-filter: blur(18px)) or (backdrop-filter: blur(18px))) {
-  .hero::before {
-    background: var(--nova-hero-glass-fallback);
-  }
 }
 
 .brandLogo {

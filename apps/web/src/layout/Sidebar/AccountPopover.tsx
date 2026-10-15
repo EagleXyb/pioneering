@@ -1,19 +1,25 @@
 /**
  * 侧边栏底部账号弹层（从 Sidebar.tsx 拆出）
  * - DropdownMenu / ui-avatar / sonner / lucide
- * - 登出撤销 token、主题切换、设置/帮助/个人中心入口等逻辑保持不变；
- *   个人资料明细已并入设置框「账户」分区（个人中心入口定位到该分区），
- *   外观行沿用自绘滑动分段控件（.theme-switch*）
+ * - 登出撤销 token、主题切换、设置/帮助入口等逻辑保持不变；
+ *   菜单顺序对齐豆包：设置 / 外观设置（级联：跟随系统·浅色·深色）/
+ *   收藏夹 / 官网 / 下载电脑版 / 帮助与反馈 / 退出，
+ *   其中收藏夹、官网、下载电脑版为置灰占位项（toast「功能开发中」）
  */
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import {
+  BookmarkPlus,
+  Check,
   CircleHelp,
+  Globe,
   LogOut,
+  Monitor,
+  MonitorDown,
   Moon,
+  Palette,
   Settings,
   Sun,
-  UserRound,
 } from 'lucide-react';
 import { useTheme } from '../../store/themeContext';
 import { useSettingsDialogStore } from '../../store/settingsDialogStore';
@@ -28,6 +34,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -106,47 +115,7 @@ export function AccountPopover() {
           sideOffset={8}
           className="account-popover"
         >
-          <DropdownMenuItem
-            className="account-popover-item"
-            onSelect={() => {
-              resetBodyPointerEvents();
-              openSettings('account');
-            }}
-          >
-            <UserRound />
-            个人中心
-          </DropdownMenuItem>
-
-          {/* 外观行：自定义非菜单项，点击不关闭弹层 */}
-          <div className="account-popover-row">
-            <div className="account-popover-item-static">外观</div>
-            <div className="theme-switch" role="radiogroup" aria-label="主题外观">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={theme === 'light'}
-                className={`theme-switch-option${theme === 'light' ? ' active' : ''}`}
-                onClick={() => setTheme('light')}
-              >
-                <Sun />
-                浅色
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={theme === 'dark'}
-                className={`theme-switch-option${theme === 'dark' ? ' active' : ''}`}
-                onClick={() => setTheme('dark')}
-              >
-                <Moon />
-                深色
-              </button>
-              <span
-                className={`theme-switch-thumb theme-switch-thumb--${theme === 'dark' ? 'dark' : 'light'}`}
-              />
-            </div>
-          </div>
-
+          {/* 菜单顺序对齐豆包：设置 / 外观 / 收藏夹 ｜ 官网 / 检查更新 / 帮助 ｜ 退出 */}
           <DropdownMenuItem
             className="account-popover-item"
             onSelect={() => {
@@ -156,6 +125,82 @@ export function AccountPopover() {
           >
             <Settings />
             设置
+          </DropdownMenuItem>
+
+          {/* 外观设置：级联子菜单（跟随系统 / 浅色模式 / 深色模式），右侧箭头展开，
+              当前模式末位显示对勾（对齐豆包） */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="account-popover-item account-popover-subtrigger">
+              <Palette />
+              外观设置
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent
+              className="account-popover account-popover--sub"
+              sideOffset={8}
+            >
+              <DropdownMenuItem
+                className="account-popover-item"
+                onSelect={() => {
+                  resetBodyPointerEvents();
+                  setTheme('system');
+                }}
+              >
+                <Monitor />
+                跟随系统
+                {theme === 'system' && <Check className="account-popover-check" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="account-popover-item"
+                onSelect={() => {
+                  resetBodyPointerEvents();
+                  setTheme('light');
+                }}
+              >
+                <Sun />
+                浅色模式
+                {theme === 'light' && <Check className="account-popover-check" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="account-popover-item"
+                onSelect={() => {
+                  resetBodyPointerEvents();
+                  setTheme('dark');
+                }}
+              >
+                <Moon />
+                深色模式
+                {theme === 'dark' && <Check className="account-popover-check" />}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          {/* 收藏夹：功能未上线，置灰占位（不使用 Radix disabled，需保留点击 toast） */}
+          <DropdownMenuItem
+            className="account-popover-item account-popover-item--pending"
+            onSelect={() => toast.info('功能开发中')}
+          >
+            <BookmarkPlus />
+            收藏夹
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="account-popover-divider" />
+
+          {/* 创路Agent 官网：链接未提供，置灰占位 */}
+          <DropdownMenuItem
+            className="account-popover-item account-popover-item--pending"
+            onSelect={() => toast.info('功能开发中')}
+          >
+            <Globe />
+            创路Agent官网
+          </DropdownMenuItem>
+
+          {/* 下载创路电脑版：下载链接未提供，置灰占位 */}
+          <DropdownMenuItem
+            className="account-popover-item account-popover-item--pending"
+            onSelect={() => toast.info('功能开发中')}
+          >
+            <MonitorDown />
+            下载创路电脑版
           </DropdownMenuItem>
 
           <DropdownMenuItem
