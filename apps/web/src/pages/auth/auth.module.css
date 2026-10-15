@@ -106,6 +106,43 @@
   /* ---- 阴影（原型 --sh-*） ---- */
   --nova-card-shadow: 0 20px 48px rgba(38, 26, 77, 0.14), 0 2px 20px rgba(109, 40, 217, 0.08);
   --nova-card-shadow-mobile: 0 16px 40px rgba(38, 26, 77, 0.14);
+
+  /* ---- 玻璃卡片（.authCard）：半透渐变 + 透射模糊 + 自含高光层。
+     浅色背景下卡片背后基本无星云可透，玻璃感靠顶层径向高光 +
+     右下角淡薰衣草紫染色 + 上下双内缘塑造，不依赖背后内容 ---- */
+  --nova-card-glass-bg:
+    radial-gradient(
+      130% 85% at 15% -12%,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(255, 255, 255, 0) 56%
+    ),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.7) 0%, rgba(243, 240, 251, 0.62) 100%);
+  --nova-card-glass-border: rgba(255, 255, 255, 0.78);
+  --nova-card-glass-inset:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(109, 40, 217, 0.07);
+  --nova-card-glass-filter: blur(24px) saturate(180%);
+
+  /* ---- 品牌区玻璃衬板（.hero::before）：高透白玻璃 + 顶部白色镜面高光，
+     弱于登录卡片（卡片为视觉焦点），仅描出悬浮层次 ---- */
+  --nova-hero-plate-inset: 28px;
+  --nova-hero-glass-bg:
+    radial-gradient(
+      120% 72% at 12% -10%,
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0) 55%
+    ),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.2) 0%, rgba(244, 241, 251, 0.15) 100%);
+  --nova-hero-glass-border: rgba(109, 40, 217, 0.1);
+  --nova-hero-glass-inset:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -1px 0 rgba(109, 40, 217, 0.04);
+  --nova-hero-glass-shadow:
+    0 18px 44px rgba(38, 26, 77, 0.1),
+    0 2px 16px rgba(109, 40, 217, 0.05);
+  --nova-hero-glass-filter: blur(18px) saturate(130%);
+  /* 不支持 backdrop-filter 时的可读降级底 */
+  --nova-hero-glass-fallback: rgba(255, 255, 255, 0.82);
   --nova-shadow-btn: 0 8px 22px rgba(109, 40, 217, 0.32);
   --nova-shadow-btn-hover: 0 12px 30px rgba(109, 40, 217, 0.4);
   --nova-shadow-logo: 0 6px 18px rgba(109, 40, 217, 0.18);
@@ -245,8 +282,59 @@
   --nova-icon-dim: #7e7699;
   --nova-icon-logo: #8b72e0;
 
-  --nova-card-shadow: 0 24px 60px rgba(5, 3, 20, 0.55), 0 2px 30px rgba(115, 89, 242, 0.1);
-  --nova-card-shadow-mobile: 0 18px 44px rgba(5, 3, 20, 0.55);
+  /* ---- 卡片悬浮阴影：远距环境投影 + 近距接触阴影 + 品牌紫光晕三层叠加 ---- */
+  --nova-card-shadow:
+    0 32px 72px rgba(4, 2, 14, 0.62),
+    0 10px 28px rgba(5, 3, 20, 0.42),
+    0 2px 36px rgba(115, 89, 242, 0.14);
+  --nova-card-shadow-mobile:
+    0 22px 52px rgba(4, 2, 14, 0.6),
+    0 2px 26px rgba(115, 89, 242, 0.12);
+
+  /* ---- 玻璃卡片（深色：顶部紫色镜面高光 + 半透深紫渐变透出星云光晕；
+     blur 34px 平滑粒子、saturate 135% 提色防发灰；底色 alpha 0.7~0.8
+     兼顾通透度与标题等直接落于卡面文字的对比度。
+     旧值 alpha 0.84~0.9 过实，玻璃感弱；更早的 0.58~0.66 + saturate(160%)
+     则会把加法混合的粒子糊成发灰毛面，均不采用） ---- */
+  --nova-card-glass-bg:
+    radial-gradient(
+      130% 78% at 15% -12%,
+      rgba(172, 146, 255, 0.13) 0%,
+      rgba(172, 146, 255, 0) 54%
+    ),
+    linear-gradient(
+      155deg,
+      rgba(30, 21, 58, 0.7) 0%,
+      rgba(11, 7, 24, 0.8) 100%
+    );
+  --nova-card-glass-border: rgba(178, 158, 240, 0.2);
+  --nova-card-glass-inset:
+    inset 0 1px 0 rgba(216, 202, 255, 0.2),
+    inset 0 -1px 0 rgba(128, 97, 255, 0.1);
+  --nova-card-glass-filter: blur(34px) saturate(135%);
+
+  /* ---- 品牌区玻璃衬板（.hero::before）：86%~88% 高透深紫玻璃透出星云，
+     仅顶部一抹紫色镜面高光；模糊半径取 18px（低于卡片 34px），
+     星云为持续 rAF 动画，控制每帧 backdrop 重合成开销。
+     投影刻意弱于登录卡片，保持卡片为视觉焦点 ---- */
+  --nova-hero-plate-inset: 28px;
+  --nova-hero-glass-bg:
+    radial-gradient(
+      120% 72% at 12% -10%,
+      rgba(172, 146, 255, 0.1) 0%,
+      rgba(172, 146, 255, 0) 55%
+    ),
+    linear-gradient(155deg, rgba(30, 21, 58, 0.14) 0%, rgba(11, 7, 24, 0.12) 100%);
+  --nova-hero-glass-border: rgba(178, 158, 240, 0.14);
+  --nova-hero-glass-inset:
+    inset 0 1px 0 rgba(216, 202, 255, 0.14),
+    inset 0 -1px 0 rgba(128, 97, 255, 0.06);
+  --nova-hero-glass-shadow:
+    0 24px 56px rgba(4, 2, 14, 0.38),
+    0 2px 24px rgba(115, 89, 242, 0.08);
+  --nova-hero-glass-filter: blur(18px) saturate(130%);
+  /* 不支持 backdrop-filter 时的可读降级底（保证标题对比） */
+  --nova-hero-glass-fallback: rgba(20, 14, 40, 0.72);
   --nova-shadow-btn: 0 8px 26px rgba(125, 92, 235, 0.42);
   --nova-shadow-btn-hover: 0 12px 30px rgba(125, 92, 235, 0.48);
   --nova-shadow-logo: 0 6px 22px rgba(107, 82, 230, 0.45);
@@ -306,7 +394,7 @@
     --nova-sf-cert-stroke: rgba(255, 255, 255, 0.1);
     --nova-sf-langpill: #16122a;
     --nova-sf-langpill-stroke: rgba(92, 84, 133, 0.55);
-    --nova-sf-lang-active: #3a3163;
+    --nova-sf-lang-active: #6d55d8;
 
     --nova-divider: #2e2748;
 
@@ -327,8 +415,59 @@
     --nova-brand-tag-bg: #1e1840;
     --nova-brand-tag-stroke: rgba(128, 107, 209, 0.45);
 
-    --nova-card-shadow: 0 24px 60px rgba(5, 3, 20, 0.55), 0 2px 30px rgba(115, 89, 242, 0.1);
-    --nova-card-shadow-mobile: 0 18px 44px rgba(5, 3, 20, 0.55);
+    /* ---- 卡片悬浮阴影：远距环境投影 + 近距接触阴影 + 品牌紫光晕三层叠加 ---- */
+    --nova-card-shadow:
+      0 32px 72px rgba(4, 2, 14, 0.62),
+      0 10px 28px rgba(5, 3, 20, 0.42),
+      0 2px 36px rgba(115, 89, 242, 0.14);
+    --nova-card-shadow-mobile:
+      0 22px 52px rgba(4, 2, 14, 0.6),
+      0 2px 26px rgba(115, 89, 242, 0.12);
+
+    /* ---- 玻璃卡片（深色：顶部紫色镜面高光 + 半透深紫渐变透出星云光晕；
+       blur 34px 平滑粒子、saturate 135% 提色防发灰；底色 alpha 0.7~0.8
+       兼顾通透度与标题等直接落于卡面文字的对比度。
+       旧值 alpha 0.84~0.9 过实，玻璃感弱；更早的 0.58~0.66 + saturate(160%)
+       则会把加法混合的粒子糊成发灰毛面，均不采用） ---- */
+    --nova-card-glass-bg:
+      radial-gradient(
+        130% 78% at 15% -12%,
+        rgba(172, 146, 255, 0.13) 0%,
+        rgba(172, 146, 255, 0) 54%
+      ),
+      linear-gradient(
+        155deg,
+        rgba(30, 21, 58, 0.7) 0%,
+        rgba(11, 7, 24, 0.8) 100%
+      );
+    --nova-card-glass-border: rgba(178, 158, 240, 0.2);
+    --nova-card-glass-inset:
+      inset 0 1px 0 rgba(216, 202, 255, 0.2),
+      inset 0 -1px 0 rgba(128, 97, 255, 0.1);
+    --nova-card-glass-filter: blur(34px) saturate(135%);
+
+    /* ---- 品牌区玻璃衬板（.hero::before）：86%~88% 高透深紫玻璃透出星云，
+       仅顶部一抹紫色镜面高光；模糊半径取 18px（低于卡片 34px），
+       星云为持续 rAF 动画，控制每帧 backdrop 重合成开销。
+       投影刻意弱于登录卡片，保持卡片为视觉焦点 ---- */
+    --nova-hero-plate-inset: 28px;
+    --nova-hero-glass-bg:
+      radial-gradient(
+        120% 72% at 12% -10%,
+        rgba(172, 146, 255, 0.1) 0%,
+        rgba(172, 146, 255, 0) 55%
+      ),
+      linear-gradient(155deg, rgba(30, 21, 58, 0.14) 0%, rgba(11, 7, 24, 0.12) 100%);
+    --nova-hero-glass-border: rgba(178, 158, 240, 0.14);
+    --nova-hero-glass-inset:
+      inset 0 1px 0 rgba(216, 202, 255, 0.14),
+      inset 0 -1px 0 rgba(128, 97, 255, 0.06);
+    --nova-hero-glass-shadow:
+      0 24px 56px rgba(4, 2, 14, 0.38),
+      0 2px 24px rgba(115, 89, 242, 0.08);
+    --nova-hero-glass-filter: blur(18px) saturate(130%);
+    /* 不支持 backdrop-filter 时的可读降级底（保证标题对比） */
+    --nova-hero-glass-fallback: rgba(20, 14, 40, 0.72);
     --nova-shadow-btn: 0 8px 26px rgba(125, 92, 235, 0.42);
     --nova-shadow-btn-hover: 0 12px 30px rgba(125, 92, 235, 0.48);
     --nova-shadow-logo: 0 6px 22px rgba(107, 82, 230, 0.45);
@@ -456,32 +595,37 @@
   background: var(--nova-divider);
 }
 
-/* 语言切换（原型 .langswitch） */
+/* 语言切换（原型 .langswitch）：两格等宽胶囊，激活格填充品牌紫 */
 .langSwitch {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   height: 28px;
-  padding: 4px 4px 4px 12px;
+  padding: 4px;
   border-radius: 14px;
   background: var(--nova-sf-langpill);
   border: 1px solid var(--nova-sf-langpill-stroke);
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .langBtn,
 .langBtnActive {
+  width: 40px;
   height: 20px;
-  padding: 0 9px;
+  padding: 0;
   border: none;
   border-radius: 10px;
   background: none;
   font-family: inherit;
   font-size: 11px;
   line-height: 20px;
+  text-align: center;
   cursor: pointer;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .langBtn {
@@ -490,12 +634,20 @@
 
 .langBtn:hover {
   color: var(--nova-text);
+  background: color-mix(in srgb, var(--nova-accent) 10%, transparent);
+}
+
+.langBtn:focus-visible,
+.langBtnActive:focus-visible {
+  outline: 2px solid var(--nova-focus);
+  outline-offset: 1px;
 }
 
 .langBtnActive {
   background: var(--nova-sf-lang-active);
   color: #ffffff;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 /* 主题切换（对应原型 .themetoggle，紧随语言切换之后） */
@@ -535,12 +687,46 @@
 
 /* ----- 品牌区（原型 .brand） ----- */
 .hero {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
   padding: var(--nova-brand-pt) var(--nova-brand-pr) var(--nova-brand-pb) var(--nova-brand-pl);
   min-width: 0;
+}
+
+/* 玻璃衬板：绝对定位、四周留隙悬浮于星云之上，不参与文档流，
+   故内容布局与交互完全不变。模糊走 GPU 合成层（pointer-events 关闭，
+   不拦截任何点击）。 */
+.hero::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  inset: var(--nova-hero-plate-inset);
+  border-radius: var(--nova-r-card);
+  background: var(--nova-hero-glass-bg);
+  border: 1px solid var(--nova-hero-glass-border);
+  box-shadow:
+    var(--nova-hero-glass-shadow),
+    var(--nova-hero-glass-inset);
+  backdrop-filter: var(--nova-hero-glass-filter);
+  -webkit-backdrop-filter: var(--nova-hero-glass-filter);
+  pointer-events: none;
+}
+
+/* 品牌内容抬升到衬板之上（static → relative 不改变布局位置） */
+.hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 不支持 backdrop-filter 的浏览器（旧 Firefox / 部分国产内核）退化为半实色底，
+   保证标题在星云亮区上的对比度 */
+@supports not ((-webkit-backdrop-filter: blur(18px)) or (backdrop-filter: blur(18px))) {
+  .hero::before {
+    background: var(--nova-hero-glass-fallback);
+  }
 }
 
 .brandLogo {
@@ -670,17 +856,22 @@
   max-width: 100%;
   padding: var(--nova-card-pt) var(--nova-card-pl) var(--nova-card-pb);
   border-radius: var(--nova-r-card);
-  background: var(--nova-surface);
-  border: 1px solid var(--nova-border);
-  box-shadow: var(--nova-card-shadow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  /* 玻璃拟态：半透渐变底色 + 背景透射模糊/提饱和 + 顶部一线内高光 */
+  background: var(--nova-card-glass-bg);
+  border: 1px solid var(--nova-card-glass-border);
+  box-shadow:
+    var(--nova-card-shadow),
+    var(--nova-card-glass-inset);
+  backdrop-filter: var(--nova-card-glass-filter);
+  -webkit-backdrop-filter: var(--nova-card-glass-filter);
 }
 
 /* 不支持 backdrop-filter 的浏览器（旧 Firefox / 部分国产内核）退化为接近不透明底色 */
 @supports not ((-webkit-backdrop-filter: blur(18px)) or (backdrop-filter: blur(18px))) {
   .authCard {
     background: var(--nova-surface-solid);
+    border-color: var(--nova-border);
+    box-shadow: var(--nova-card-shadow);
   }
 }
 
@@ -1145,6 +1336,7 @@
     --nova-brand-pt: 64px;
     --nova-form-pl: 48px;
     --nova-form-pt: 48px;
+    --nova-hero-plate-inset: 24px;
   }
 
   .brandTitle {
@@ -1174,6 +1366,7 @@
     --nova-form-pl: 32px;
     --nova-form-pt: 40px;
     --nova-w-card: 400px;
+    --nova-hero-plate-inset: 20px;
   }
 
   .brandTitle {
@@ -1245,7 +1438,9 @@
   }
 
   .authCard {
-    box-shadow: var(--nova-card-shadow-mobile);
+    box-shadow:
+      var(--nova-card-shadow-mobile),
+      var(--nova-card-glass-inset);
   }
 
   .welcomeTitle {
