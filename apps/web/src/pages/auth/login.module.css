@@ -1,7 +1,7 @@
 /* ==========================================================================
    登录页 — 卡片内表单区样式
    严格对齐原型 docs/login-app/styles/login.css（.tabs / .field / .btn-primary /
-   .altrow / .altbtns / .trust / .enroll / .formalert / .meta），
+   .altrow / .altbtns / .trust / .formalert / .meta），
    间距通过 margin 还原原型 .card__gap--NN 占位块，取值不变。
 
    令牌（--nova-*）由 auth.module.css 的 .pageContainer 提供，随主题切换。
@@ -11,6 +11,7 @@
    原型间距链：card__head → .card__gap--24 → tabs → .card__gap--22 → form
    以 margin 还原两处占位块：上 24px（卡片头之后）、下 22px（表单/横幅之前） */
 .tabs {
+  position: relative;
   display: flex;
   gap: 4px;
   height: var(--nova-h-tabs);
@@ -20,14 +21,38 @@
   background: var(--nova-sf-tabs);
 }
 
+/* 滑动指示器：绝对定位覆盖激活 tab，由 .tabsCode 驱动平移。
+   容器 padding 与 gap 均为 4px，单格宽 = (100% - 8 - 4) / 2 = 50% - 6px；
+   右移量 = 单格 + gap = 100% + 4px，左右内缩均为 4px。 */
+.tabIndicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 6px);
+  border-radius: var(--nova-r-tab);
+  background: var(--nova-sf-tab-active);
+  /* 极淡内描边：浅色保留品牌紫高光，深色下近乎若隐若现的光边 */
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--nova-sf-tab-active-stroke) 55%, transparent);
+  pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.tabsCode .tabIndicator {
+  transform: translateX(calc(100% + 4px));
+}
+
 .tabBtn {
+  position: relative;
+  z-index: 1;
   flex: 1 1 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 0;
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--nova-r-tab);
   background: none;
   font-family: inherit;
@@ -35,34 +60,49 @@
   color: var(--nova-text-dim);
   cursor: pointer;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    border-color 0.18s ease;
+    color 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .tabBtn:hover {
   color: var(--nova-text);
+  background: color-mix(in srgb, var(--nova-accent) 10%, transparent);
+}
+
+.tabBtn:focus-visible {
+  outline: 2px solid var(--nova-focus);
+  outline-offset: -2px;
 }
 
 .tabBtnActive {
+  position: relative;
+  z-index: 1;
   flex: 1 1 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 0;
-  border: 1px solid var(--nova-sf-tab-active-stroke);
+  border: none;
   border-radius: var(--nova-r-tab);
-  background: var(--nova-sf-tab-active);
+  background: none;
   font-family: inherit;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--nova-text);
   cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    border-color 0.18s ease;
+  transition: color 0.2s ease;
+}
+
+.tabBtnActive:focus-visible {
+  outline: 2px solid var(--nova-focus);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabIndicator {
+    transition: none;
+  }
 }
 
 /* ------------------------------------------- 表单级错误横幅（原型 .formalert） */
@@ -524,7 +564,7 @@
   align-items: center;
   gap: 9px;
   min-height: 36px;
-  margin: 0 0 18px;
+  margin: 0;
   padding: 0 12px;
   border-radius: 10px;
   background: var(--nova-sf-trust);
@@ -535,41 +575,6 @@
 
 .trust svg {
   flex: 0 0 auto;
-}
-
-/* ----------------------------------------------- 未注册引导（原型 .enroll） */
-.enroll {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 18px;
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--nova-text-dim);
-}
-
-.enrollLink {
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--nova-link);
-  cursor: pointer;
-  transition: opacity 0.18s ease;
-}
-
-.enrollLink:hover {
-  opacity: 0.82;
-}
-
-/* 移动端：引导行由卡片移入底部合规区（原型 #enrollCard vs .footbar__enroll） */
-@media (max-width: 767px) {
-  .enroll {
-    display: none;
-  }
 }
 
 /* ------------------------------------------- 验证码登录面板（本期占位，见重构说明） */
@@ -666,10 +671,6 @@
   .altBtns {
     margin-bottom: 14px;
   }
-
-  .trust {
-    margin-bottom: 12px;
-  }
 }
 
 /* ≤820px 高：1366×768 下累计再收紧 56px，配合卡片内边距压缩使卡片一屏可容纳 */
@@ -703,10 +704,6 @@
   }
 
   .altBtns {
-    margin-bottom: 10px;
-  }
-
-  .trust {
     margin-bottom: 10px;
   }
 

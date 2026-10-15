@@ -289,7 +289,13 @@ export default function LoginPage() {
       showEnroll
     >
       {/* 登录方式切换 */}
-      <div className={styles.tabs} role="tablist" aria-label="登录方式">
+      <div
+        className={`${styles.tabs} ${mode === 'code' ? styles.tabsCode : ''}`}
+        role="tablist"
+        aria-label="登录方式"
+      >
+        {/* 滑动指示器：随当前 tab 平移 */}
+        <span className={styles.tabIndicator} aria-hidden="true" />
         <button
           type="button"
           className={mode === 'password' ? styles.tabBtnActive : styles.tabBtn}
@@ -518,18 +524,6 @@ export default function LoginPage() {
       <p className={styles.trust}>
         <TrustLock />
         全链路 TLS 1.3 加密传输，凭证不落盘
-      </p>
-
-      {/* 未注册引导（桌面端位于卡片内；移动端由布局收敛至底部合规区） */}
-      <p className={styles.enroll}>
-        还没有企业账号？
-        <button
-          type="button"
-          className={styles.enrollLink}
-          onClick={() => navigate('/auth/register')}
-        >
-          申请开通&nbsp;&nbsp;Apply for Access
-        </button>
       </p>
     </AuthLayout>
   );
