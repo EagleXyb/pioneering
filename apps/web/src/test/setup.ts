@@ -29,6 +29,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = mock;
 }
 
+// jsdom 未实现 CanvasRenderingContext2D，getContext 会向 stderr 抛「Not implemented」噪音。
+// 认证页的粒子星云背景与图表类组件都会触发，此处统一以 null 桩替代
+// （与 jsdom 实际返回值一致，消费方均有 `if (!ctx) return` 保护）。
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = (() => null) as never;
+}
+
 // jsdom 不实现 IntersectionObserver，手动 polyfill（消息列表自动滚动哨兵）
 if (typeof globalThis.IntersectionObserver === 'undefined') {
   class MockIntersectionObserver {

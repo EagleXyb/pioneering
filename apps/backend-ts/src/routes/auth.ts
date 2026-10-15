@@ -128,6 +128,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (!user) {
           throw new UnauthorizedError('用户名或密码错误')
         }
+        // users.status !== 1 视为禁用（注册默认写 1）。此前该字段只写不读，
+        // 被禁用的账号仍可正常登录，这里补齐状态校验。
+        if (user.status !== 1) {
+          throw new UnauthorizedError('账号已被禁用，请联系管理员')
+        }
         if (!user.passwordHash) {
           throw new UnauthorizedError('该账号未设置密码，请使用微信登录')
         }

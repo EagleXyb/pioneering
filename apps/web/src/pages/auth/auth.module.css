@@ -1,389 +1,961 @@
-/* ===== 认证页面布局 — 对齐原型 V1.3 ===== */
+/* ==========================================================================
+   认证页共享样式 — 严格对齐原型 docs/login-app
+   --------------------------------------------------------------------------
+   结构（对应原型 DOM）：
+     .pageContainer        → 原型 .page（页面外壳，含粒子星云背景层）
+       .galaxyLayer        → 粒子星云（本项目替代原型的位图背景，见重构说明文档）
+       .topBar             → 原型 .topbar
+       .stage              → 原型 .layout
+         .hero             → 原型 .brand
+         .formPanel        → 原型 .formpane
+           .authCard       → 原型 .card
+       .footBar            → 原型 .footbar
+   令牌（--nova-*）逐值转译自原型 styles/tokens.css：
+     文本 --tx-1..14 / 强调 --ac-* / 表面 --sf-* / 边框 --bd-* / 语义 --sm-*
+     / 图形 --ic-* / 阴影 --sh-* / 圆角 --r-* / 间距 --s-* / 尺寸 --h-* --w-*
+   主题机制：跟随全局 ThemeProvider（data-theme），未显式指定 light 时用系统偏好兜底。
+   登录页表单区专属样式见 login.module.css。
 
+   ⚠ Register / ForgotPassword 复用本模块，以下类名为三页共用，请勿删除：
+     tabSwitch、tabBtn、tabBtnActive、formSection、field、fieldLabel、formInput、
+     formInputError、inputWrap、inputWithAction、eyeBtn、fieldError、errorText、
+     submitButton、footerLink、footerText、footerAction、passwordStrength、
+     strengthBar(+Weak/Medium/Strong)、strengthText(+Weak/Medium/Strong)、
+     confirmHint、hintDot、hintDotMatch、hintText、hintTextMatch、
+     comingSoon、comingSoonIcon、comingSoonTitle、comingSoonDesc、
+     welcomeHeader、welcomeTitle、welcomeSubtitle
+   ========================================================================== */
+
+/* ==========================================================================
+   令牌 — 浅色（对应原型 [data-theme="light"] 帧 2:264）
+   ========================================================================== */
 .pageContainer {
+  /* ---- 页面底色（原型 --bg-page） ---- */
+  --nova-bg: #f4f5f9;
+
+  /* ---- 文本（原型 --tx-1..14） ---- */
+  --nova-text: #150e2b; /* tx-1 主标题 / 输入值 */
+  --nova-text-claim: #4f4870; /* tx-2 价值主张英文 */
+  --nova-text-sub: #2e2850; /* tx-3 字段标签 */
+  --nova-text-chip: #2e2850; /* tx-4 能力标签 */
+  --nova-text-status: #4a3f6b; /* tx-5 运行时状态 */
+  --nova-text-help: #4f4870; /* tx-6 顶栏链接 / 记住登录 */
+  --nova-text-muted: #6a6285; /* tx-7 卡片副标题 / 顶栏合规 */
+  --nova-text-dim: #6a6285; /* tx-8 未激活 tab / 未注册引导 */
+  --nova-text-soft: #6a6285; /* tx-9 分割线文案 */
+  --nova-text-copy: #5c5578; /* tx-10 版权 */
+  --nova-text-icp: #736c90; /* tx-11 备案号 */
+  --nova-text-cert: #3f3a5c; /* tx-12 信任标识 */
+  --nova-text-alt: #2e2850; /* tx-13 辅助按钮 */
+  --nova-text-ph: #8b84a8; /* tx-14 占位符 */
+
+  /* ---- 强调（原型 --ac-*） ---- */
+  --nova-accent: #6d28d9; /* --ac-btn 主按钮 / 链接基色 */
+  --nova-accent-2: #6d28d9; /* 原型无渐变，与 accent 同值 */
+  --nova-btn-stroke: transparent;
+  --nova-checkbox: #6d28d9;
+  --nova-link: #6d28d9;
+  --nova-required: #6d28d9;
+  --nova-logo-glyph: #6d28d9;
+
+  /* ---- 表面（原型 --sf-*） ---- */
+  --nova-surface: #ffffff;
+  --nova-surface-solid: #ffffff;
+  --nova-border: #e5e0f2;
+  --nova-border-strong: #ded9ee;
+  --nova-input-bg: #f8f7fc;
+  --nova-input-stroke: #ded9ee;
+  --nova-sf-tabs: #f1f0f7;
+  --nova-sf-tab-active: #ffffff;
+  --nova-sf-tab-active-stroke: #9e8ce6;
+  --nova-chip: #ffffff;
+  --nova-chip-stroke: #ded9ee;
+  --nova-sf-altbtn: #ffffff;
+  --nova-sf-altbtn-stroke: #ded9ee;
+  --nova-sf-trust: #f0fbf6;
+  --nova-sf-trust-stroke: #a6d9c2;
+  --nova-sf-cert: #ffffff;
+  --nova-sf-cert-stroke: #ded9ee;
+  --nova-sf-langpill: #ffffff;
+  --nova-sf-langpill-stroke: #c7c2d8;
+  --nova-sf-lang-active: #6d28d9;
+
+  /* ---- 边框 / 分割（原型 --bd-*） ---- */
+  --nova-divider: #d8d4e6;
+
+  /* ---- 语义（原型 --sm-*） ---- */
+  --nova-ok: #047857;
+  --nova-err: #dc2626;
+  --nova-error-border: rgba(220, 38, 38, 0.85);
+  --nova-focus: #6d28d9;
+  --nova-focus-ring: rgba(109, 40, 217, 0.16);
+  --nova-valid-border: rgba(4, 120, 87, 0.45);
+
+  /* ---- 图形线框（原型 --ic-*） ---- */
+  --nova-icon: #6d5aa8;
+  --nova-icon-alt: #6d5aa8;
+  --nova-icon-dim: #6d5aa8;
+  --nova-icon-logo: #8b5cf6;
+
+  /* ---- 品牌标识底 / 运行态标签底（原型 .brand__mark / .brand__tag 的分主题覆盖） ---- */
+  --nova-brand-mark-bg: #ffffff;
+  --nova-brand-mark-stroke: #ded9ee;
+  --nova-brand-tag-bg: #ffffff;
+  --nova-brand-tag-stroke: #ded9ee;
+
+  /* ---- 阴影（原型 --sh-*） ---- */
+  --nova-card-shadow: 0 20px 48px rgba(38, 26, 77, 0.14), 0 2px 20px rgba(109, 40, 217, 0.08);
+  --nova-card-shadow-mobile: 0 16px 40px rgba(38, 26, 77, 0.14);
+  --nova-shadow-btn: 0 8px 22px rgba(109, 40, 217, 0.32);
+  --nova-shadow-btn-hover: 0 12px 30px rgba(109, 40, 217, 0.4);
+  --nova-shadow-logo: 0 6px 18px rgba(109, 40, 217, 0.18);
+  --nova-shadow-input-focus: 0 0 14px rgba(109, 40, 217, 0.14);
+  --nova-shadow-toggle-hover: rgba(20, 14, 43, 0.06);
+
+  /* ---- 通用（Register 页密码强度 / 下拉态） ---- */
+  --nova-hover: rgba(20, 14, 43, 0.06);
+  --nova-track: rgba(15, 23, 42, 0.1);
+
+  /* ---- 圆角（原型 --r-*） ---- */
+  --nova-r-card: 22px;
+  --nova-r-card-mobile: 18px;
+  --nova-r-pill: 24px;
+  --nova-r-input: 11px;
+  --nova-r-input-mobile: 10px;
+  --nova-r-tabs: 10px;
+  --nova-r-tab: 7px;
+  --nova-r-logo: 15px;
+  --nova-r-logo-mobile: 10px;
+  --nova-r-chip: 17px;
+  --nova-r-cert: 8px;
+  --nova-r-altbtn: 11px;
+  --nova-r-checkbox: 4px;
+
+  /* ---- 间距（原型 --s-*） ---- */
+  --nova-brand-pl: 112px;
+  --nova-brand-pr: 64px;
+  --nova-brand-pt: 88px;
+  --nova-brand-pb: 72px;
+  --nova-form-pl: 72px;
+  --nova-form-pt: 64px;
+  --nova-form-pb: 56px;
+  --nova-card-pl: 36px;
+  --nova-card-pt: 34px;
+  --nova-card-pb: 30px;
+
+  /* ---- 尺寸（原型 --w-* / --h-*） ---- */
+  --nova-w-card: 424px;
+  --nova-w-card-mobile: 350px;
+  --nova-h-topbar: 72px;
+  --nova-h-footbar: 88px;
+  --nova-h-input: 46px;
+  --nova-h-btn: 48px;
+  --nova-h-tabs: 38px;
+  --nova-h-logo: 52px;
+  --nova-h-logo-mobile: 34px;
+
+  /* ---- 字体（原型 --font-sans） ---- */
+  --nova-font: 'Inter', 'Noto Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
+    system-ui, -apple-system, sans-serif;
+
+  /* 声明本子树的色彩方案（原型 tokens.css 同样声明）：决定 UA 控件与自动填充
+     使用浅色还是深色渲染。仅在 .pageContainer 上声明，不外溢到工作台。 */
+  color-scheme: light;
+
+  position: relative;
   display: flex;
+  flex-direction: column;
   width: 100%;
+  /* 高度锁定在 #root（height:100%）内、由自身滚动：
+     若只给 min-height，内容高于视口时容器会随之增高并溢出 #root 的
+     overflow:hidden，底部合规区被裁切且无法滚动
+     （1366×768 实测容器 943px / 视口 768px，溢出 175px 全部不可达）。 */
+  height: 100%;
   min-height: 100vh;
-  max-width: 1920px;
-  margin: 0 auto;
-  overflow-y: auto;
+  min-height: 100dvh;
+  overflow: hidden auto;
+  color: var(--nova-text);
+  font-family: var(--nova-font);
+  background: var(--nova-bg);
 }
 
-/* ----- 左侧品牌面板 ----- */
-.brandPanel {
-  flex: 0 0 64.6%;
-  min-height: 100vh;
-  background: var(--auth-brand-bg);
+/* ==========================================================================
+   令牌 — 深色（对应原型 :root, [data-theme="dark"] 帧 2:3，设计稿主主题）
+   ========================================================================== */
+:global([data-theme='dark']) .pageContainer {
+  color-scheme: dark;
+
+  --nova-bg: #07050f;
+
+  --nova-text: #ffffff;
+  --nova-text-claim: #9c94c4;
+  --nova-text-sub: #bdb6dc;
+  --nova-text-chip: #c5bee4;
+  --nova-text-status: #b9b2dc;
+  --nova-text-help: #a9a2cc;
+  --nova-text-muted: #8e86b0;
+  --nova-text-dim: #7b749b;
+  --nova-text-soft: #6f6890;
+  --nova-text-copy: #6a6386;
+  --nova-text-icp: #51496b;
+  --nova-text-cert: #9a93b8;
+  --nova-text-alt: #cfc8e8;
+  --nova-text-ph: #5e5878;
+
+  --nova-accent: #7c63e8;
+  --nova-accent-2: #7c63e8;
+  --nova-btn-stroke: rgba(184, 158, 255, 0.55);
+  --nova-checkbox: #6d55d8;
+  --nova-link: #b9a6f5;
+  --nova-required: #c58ae8;
+  --nova-logo-glyph: #b79cff;
+
+  --nova-surface: rgba(18, 13, 36, 0.82);
+  --nova-surface-solid: rgba(14, 10, 28, 0.97);
+  --nova-border: rgba(255, 255, 255, 0.14);
+  --nova-border-strong: rgba(255, 255, 255, 0.16);
+  --nova-input-bg: #0b0818;
+  --nova-input-stroke: rgba(255, 255, 255, 0.16);
+  --nova-sf-tabs: #07050f;
+  --nova-sf-tab-active: #2a2249;
+  --nova-sf-tab-active-stroke: rgba(158, 133, 242, 0.42);
+  --nova-chip: #0e0b1e;
+  --nova-chip-stroke: rgba(255, 255, 255, 0.12);
+  --nova-sf-altbtn: #0f0b1f;
+  --nova-sf-altbtn-stroke: rgba(255, 255, 255, 0.16);
+  --nova-sf-trust: #0c0919;
+  --nova-sf-trust-stroke: rgba(255, 255, 255, 0.09);
+  --nova-sf-cert: #0d0a1c;
+  --nova-sf-cert-stroke: rgba(255, 255, 255, 0.1);
+  --nova-sf-langpill: #16122a;
+  --nova-sf-langpill-stroke: rgba(92, 84, 133, 0.55);
+  --nova-sf-lang-active: #3a3163;
+
+  --nova-divider: #2e2748;
+
+  --nova-ok: #6fcba8;
+  --nova-err: #fb7185;
+  --nova-error-border: rgba(250, 112, 133, 0.9);
+  --nova-focus: #997dfc;
+  --nova-focus-ring: rgba(128, 97, 255, 0.2);
+  --nova-valid-border: rgba(111, 203, 168, 0.55);
+
+  --nova-icon: #9c92c4;
+  --nova-icon-alt: #a79ed0;
+  --nova-icon-dim: #7e7699;
+  --nova-icon-logo: #8b72e0;
+
+  --nova-card-shadow: 0 24px 60px rgba(5, 3, 20, 0.55), 0 2px 30px rgba(115, 89, 242, 0.1);
+  --nova-card-shadow-mobile: 0 18px 44px rgba(5, 3, 20, 0.55);
+  --nova-shadow-btn: 0 8px 26px rgba(125, 92, 235, 0.42);
+  --nova-shadow-btn-hover: 0 12px 30px rgba(125, 92, 235, 0.48);
+  --nova-shadow-logo: 0 6px 22px rgba(107, 82, 230, 0.45);
+  --nova-shadow-input-focus: 0 0 16px rgba(128, 97, 255, 0.2);
+  --nova-shadow-toggle-hover: rgba(255, 255, 255, 0.06);
+
+  --nova-hover: rgba(255, 255, 255, 0.08);
+  --nova-track: rgba(255, 255, 255, 0.1);
+}
+
+/* 深色令牌 — 跟随系统（仅当用户未显式选择 light 时生效，机制同 ThemeProvider） */
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme='light'])) .pageContainer {
+    color-scheme: dark;
+
+    --nova-bg: #07050f;
+
+    --nova-text: #ffffff;
+    --nova-text-claim: #9c94c4;
+    --nova-text-sub: #bdb6dc;
+    --nova-text-chip: #c5bee4;
+    --nova-text-status: #b9b2dc;
+    --nova-text-help: #a9a2cc;
+    --nova-text-muted: #8e86b0;
+    --nova-text-dim: #7b749b;
+    --nova-text-soft: #6f6890;
+    --nova-text-copy: #6a6386;
+    --nova-text-icp: #51496b;
+    --nova-text-cert: #9a93b8;
+    --nova-text-alt: #cfc8e8;
+    --nova-text-ph: #5e5878;
+
+    --nova-accent: #7c63e8;
+    --nova-accent-2: #7c63e8;
+    --nova-btn-stroke: rgba(184, 158, 255, 0.55);
+    --nova-checkbox: #6d55d8;
+    --nova-link: #b9a6f5;
+    --nova-required: #c58ae8;
+    --nova-logo-glyph: #b79cff;
+
+    --nova-surface: rgba(18, 13, 36, 0.82);
+    --nova-surface-solid: rgba(14, 10, 28, 0.97);
+    --nova-border: rgba(255, 255, 255, 0.14);
+    --nova-border-strong: rgba(255, 255, 255, 0.16);
+    --nova-input-bg: #0b0818;
+    --nova-input-stroke: rgba(255, 255, 255, 0.16);
+    --nova-sf-tabs: #07050f;
+    --nova-sf-tab-active: #2a2249;
+    --nova-sf-tab-active-stroke: rgba(158, 133, 242, 0.42);
+    --nova-chip: #0e0b1e;
+    --nova-chip-stroke: rgba(255, 255, 255, 0.12);
+    --nova-sf-altbtn: #0f0b1f;
+    --nova-sf-altbtn-stroke: rgba(255, 255, 255, 0.16);
+    --nova-sf-trust: #0c0919;
+    --nova-sf-trust-stroke: rgba(255, 255, 255, 0.09);
+    --nova-sf-cert: #0d0a1c;
+    --nova-sf-cert-stroke: rgba(255, 255, 255, 0.1);
+    --nova-sf-langpill: #16122a;
+    --nova-sf-langpill-stroke: rgba(92, 84, 133, 0.55);
+    --nova-sf-lang-active: #3a3163;
+
+    --nova-divider: #2e2748;
+
+    --nova-ok: #6fcba8;
+    --nova-err: #fb7185;
+    --nova-error-border: rgba(250, 112, 133, 0.9);
+    --nova-focus: #997dfc;
+    --nova-focus-ring: rgba(128, 97, 255, 0.2);
+    --nova-valid-border: rgba(111, 203, 168, 0.55);
+
+    --nova-icon: #9c92c4;
+    --nova-icon-alt: #a79ed0;
+    --nova-icon-dim: #7e7699;
+    --nova-icon-logo: #8b72e0;
+
+    --nova-brand-mark-bg: #241c42;
+    --nova-brand-mark-stroke: rgba(140, 120, 224, 0.5);
+    --nova-brand-tag-bg: #1e1840;
+    --nova-brand-tag-stroke: rgba(128, 107, 209, 0.45);
+
+    --nova-card-shadow: 0 24px 60px rgba(5, 3, 20, 0.55), 0 2px 30px rgba(115, 89, 242, 0.1);
+    --nova-card-shadow-mobile: 0 18px 44px rgba(5, 3, 20, 0.55);
+    --nova-shadow-btn: 0 8px 26px rgba(125, 92, 235, 0.42);
+    --nova-shadow-btn-hover: 0 12px 30px rgba(125, 92, 235, 0.48);
+    --nova-shadow-logo: 0 6px 22px rgba(107, 82, 230, 0.45);
+    --nova-shadow-input-focus: 0 0 16px rgba(128, 97, 255, 0.2);
+    --nova-shadow-toggle-hover: rgba(255, 255, 255, 0.06);
+
+    --nova-hover: rgba(255, 255, 255, 0.08);
+    --nova-track: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* ----- 粒子星云背景层（本项目替代原型的位图背景 + 遮罩） ----- */
+.galaxyLayer {
+  position: absolute;
+  left: -8%;
+  bottom: -14%;
+  width: 62%;
+  height: 80%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ==========================================================================
+   顶栏（原型 .topbar）
+   ========================================================================== */
+.topBar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  height: var(--nova-h-topbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 var(--nova-brand-pl);
+}
+
+/* 移动端紧凑品牌（<768 显示，对应原型 .topbar__brand） */
+.topBrand {
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.topMarkSm {
+  flex: 0 0 auto;
+  width: var(--nova-h-logo-mobile);
+  height: var(--nova-h-logo-mobile);
+  border-radius: var(--nova-r-logo-mobile);
+  display: grid;
+  place-items: center;
+  background: var(--nova-brand-mark-bg);
+  border: 1px solid var(--nova-brand-mark-stroke);
+  color: var(--nova-logo-glyph);
+}
+
+.topBrandNaming {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topBrandName {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.6px;
+  color: var(--nova-text);
+}
+
+.topBrandNameEn {
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 1.4px;
+  color: var(--nova-text-muted);
+}
+
+.topCompliance {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  color: var(--nova-text-muted);
+}
+
+.topCompliance svg {
+  flex: 0 0 auto;
+}
+
+.topActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.topLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--nova-text-help);
+  transition: color 0.18s ease;
+}
+
+.topLink:hover {
+  color: var(--nova-text);
+}
+
+.topLinkMuted {
+  color: var(--nova-text-soft);
+}
+
+.topLinkMuted span {
+  margin-left: 0.4em;
+  letter-spacing: 0.02em;
+}
+
+.topDivider {
+  width: 1px;
+  height: 14px;
+  background: var(--nova-divider);
+}
+
+/* 语言切换（原型 .langswitch） */
+.langSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 14px;
+  background: var(--nova-sf-langpill);
+  border: 1px solid var(--nova-sf-langpill-stroke);
+}
+
+.langBtn,
+.langBtnActive {
+  height: 20px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 20px;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.langBtn {
+  color: var(--nova-text-soft);
+}
+
+.langBtn:hover {
+  color: var(--nova-text);
+}
+
+.langBtnActive {
+  background: var(--nova-sf-lang-active);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* 主题切换（对应原型 .themetoggle，紧随语言切换之后） */
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid var(--nova-sf-langpill-stroke);
+  background: var(--nova-sf-langpill);
+  color: var(--nova-text-soft);
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.themeToggle:hover {
+  color: var(--nova-text);
+}
+
+/* ==========================================================================
+   主体双栏（原型 .layout：52.1fr / 47.9fr）
+   ========================================================================== */
+.stage {
+  position: relative;
+  z-index: 1;
+  /* 高度充裕时 flex-grow 撑满剩余空间；内容高于视口时不收缩，
+     交由 .pageContainer 滚动，避免品牌区与卡片互相挤压变形。 */
+  flex: 1 0 auto;
+  display: grid;
+  grid-template-columns: 52.1fr 47.9fr;
+  align-items: stretch;
+}
+
+/* ----- 品牌区（原型 .brand） ----- */
+.hero {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
+  padding: var(--nova-brand-pt) var(--nova-brand-pr) var(--nova-brand-pb) var(--nova-brand-pl);
+  min-width: 0;
+}
+
+.brandLogo {
+  display: inline-flex;
   align-items: center;
-  padding: 80px 60px;
+  gap: 14px;
+}
+
+.brandMark {
   position: relative;
-  overflow: hidden;
+  flex: 0 0 auto;
+  width: var(--nova-h-logo);
+  height: var(--nova-h-logo);
+  border-radius: var(--nova-r-logo);
+  background: var(--nova-brand-mark-bg);
+  border: 1px solid var(--nova-brand-mark-stroke);
+  box-shadow: var(--nova-shadow-logo);
+  display: grid;
+  place-items: center;
 }
 
-.brandContent {
-  width: 100%;
-  max-width: 810px;
-  position: relative;
-  z-index: 10;
-}
-
-.logoRow {
+.brandNaming {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 40px;
-}
-
-.logoIcon {
-  width: 44px;
-  height: 44px;
-  background: var(--accent-blue);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 24px;
-  font-weight: 700;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  flex-direction: column;
+  gap: 4px;
 }
 
 .brandName {
-  font-size: 26px;
+  font-size: 19px;
   font-weight: 700;
-  color: var(--auth-text-title);
-}
-
-.mainTitle {
-  font-size: 48px;
-  font-weight: 800;
-  color: var(--auth-text-title);
   line-height: 1.2;
-  margin-bottom: 8px;
+  letter-spacing: 0.6px;
+  color: var(--nova-text);
 }
 
-.highlightTitle {
-  font-size: 48px;
-  font-weight: 800;
-  color: var(--accent-blue);
+.brandNameEn {
+  font-size: 10.5px;
+  font-weight: 600;
   line-height: 1.2;
-  margin-bottom: 20px;
+  letter-spacing: 2.1px;
+  color: var(--nova-text-muted);
 }
 
-.subtitle {
-  font-size: 18px;
-  color: var(--auth-text-subtitle);
-  line-height: 28px;
-  font-weight: 400;
+.brandTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 40px;
+  height: 26px;
+  padding: 0 14px;
+  border-radius: var(--nova-r-chip);
+  background: var(--nova-brand-tag-bg);
+  border: 1px solid var(--nova-brand-tag-stroke);
+  font-size: 11.5px;
+  letter-spacing: 0.3px;
+  color: var(--nova-text-status);
 }
 
-/* 3D 立方体装饰 — 相对定位避免溢出 */
-.decorContainer {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(500px, 60%);
-  aspect-ratio: 5 / 4;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.cubeTop {
-  position: absolute;
-  width: 32%;
-  height: 20%;
-  left: 28%;
-  top: 15%;
-  background: var(--auth-decor-blue-25);
-  border-radius: 2px;
-  border: 1.5px solid rgba(37, 99, 235, 0.4);
-  transform: rotate(-30deg);
-}
-
-.cubeRight {
-  position: absolute;
-  width: 28%;
-  height: 35%;
-  left: 53%;
-  top: 22%;
-  background: var(--auth-decor-blue-15);
-  border-radius: 2px;
-  border: 1.5px solid rgba(37, 99, 235, 0.4);
-}
-
-.cubeLeft {
-  position: absolute;
-  width: 32%;
-  height: 20%;
-  left: 14%;
-  top: 37%;
-  background: var(--auth-decor-blue-20);
-  border-radius: 2px;
-  border: 1.5px solid rgba(37, 99, 235, 0.4);
-  transform: rotate(30deg);
-}
-
-.circle1 {
-  position: absolute;
-  width: 24%;
-  height: 30%;
-  right: 20%;
-  top: 5%;
-  background: var(--auth-decor-blue-08);
+.brandDot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
+  background: var(--nova-ok);
 }
 
-.circle2 {
-  position: absolute;
-  width: 16%;
-  height: 20%;
-  left: 6%;
-  bottom: 5%;
-  background: var(--auth-decor-blue-08);
-  border-radius: 50%;
-}
-
-.circle3 {
-  position: absolute;
-  width: 12%;
-  height: 15%;
-  right: 12%;
-  bottom: 10%;
-  background: var(--auth-decor-blue-08);
-  border-radius: 50%;
-}
-
-/* ----- 右侧表单面板 ----- */
-.formPanel {
-  flex: 0 0 35.4%;
-  min-height: 100vh;
-  background: var(--auth-form-bg);
+.brandHeadline {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.brandTitle {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.8px;
+  color: var(--nova-text);
+}
+
+.brandClaim {
+  font-size: 15px;
+  line-height: 1.62;
+  color: var(--nova-text-claim);
+}
+
+.brandCaps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 44px;
+  list-style: none;
+}
+
+.cap {
+  display: inline-flex;
   align-items: center;
-  padding: 40px 45px;
+  gap: 7px;
+  height: 34px;
+  padding: 0 15px;
+  border-radius: var(--nova-r-chip);
+  background: var(--nova-chip);
+  border: 1px solid var(--nova-chip-stroke);
+  font-size: 12.5px;
+  color: var(--nova-text-chip);
+  white-space: nowrap;
 }
 
-/* 毛玻璃卡片 — 提供 backdrop-filter fallback */
+.cap svg {
+  flex: 0 0 auto;
+  color: var(--nova-icon-alt);
+}
+
+/* ----- 表单区（原型 .formpane） ----- */
+.formPanel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--nova-form-pt) var(--nova-form-pl) var(--nova-form-pb);
+  min-width: 0;
+}
+
+/* ----- 卡片（原型 .card） ----- */
 .authCard {
-  width: clamp(320px, 90vw, 420px);
-  background: var(--auth-card-bg-solid);
-  border: 1px solid var(--auth-card-border);
-  border-radius: 20px;
-  padding: 28px 36px;
-  box-shadow: var(--auth-card-shadow);
-  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  width: var(--nova-w-card);
+  max-width: 100%;
+  padding: var(--nova-card-pt) var(--nova-card-pl) var(--nova-card-pb);
+  border-radius: var(--nova-r-card);
+  background: var(--nova-surface);
+  border: 1px solid var(--nova-border);
+  box-shadow: var(--nova-card-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
-@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+/* 不支持 backdrop-filter 的浏览器（旧 Firefox / 部分国产内核）退化为接近不透明底色 */
+@supports not ((-webkit-backdrop-filter: blur(18px)) or (backdrop-filter: blur(18px))) {
   .authCard {
-    background: var(--auth-card-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    background: var(--nova-surface-solid);
   }
 }
 
 .welcomeHeader {
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
 .welcomeTitle {
-  font-size: 22px;
+  font-size: 25px;
   font-weight: 700;
-  color: var(--auth-text-title);
-  margin-bottom: 4px;
+  line-height: 1.3;
+  letter-spacing: -0.2px;
+  color: var(--nova-text);
 }
 
 .welcomeSubtitle {
-  font-size: 14px;
-  color: var(--auth-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--nova-text-muted);
 }
 
-/* Tab 切换 */
+/* ==========================================================================
+   底部合规区（原型 .footbar）
+   ========================================================================== */
+.footBar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  min-height: var(--nova-h-footbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 var(--nova-brand-pl);
+}
+
+/* 移动端未注册引导（原型 .footbar__enroll，桌面隐藏） */
+.footEnroll {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--nova-text-dim);
+}
+
+.footEnrollLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nova-link);
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+
+.footEnrollLink:hover {
+  opacity: 0.82;
+}
+
+.footLegal {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.footCopy {
+  font-size: 11.5px;
+  color: var(--nova-text-copy);
+}
+
+.footIcp {
+  font-size: 11px;
+  color: var(--nova-text-icp);
+}
+
+.footCerts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cert {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 13px;
+  border-radius: var(--nova-r-cert);
+  background: var(--nova-sf-cert);
+  border: 1px solid var(--nova-sf-cert-stroke);
+  font-size: 11.5px;
+  color: var(--nova-text-cert);
+  white-space: nowrap;
+}
+
+.cert svg {
+  flex: 0 0 auto;
+  color: var(--nova-icon-dim);
+}
+
+/* ==========================================================================
+   以下为 Register / ForgotPassword 复用的表单基元
+   （登录页表单区已迁至 login.module.css，此处保留三页共用类）
+   ========================================================================== */
+
+/* ----- Tab 切换（登录/注册页签、登录方式） ----- */
 .tabSwitch {
   display: flex;
-  background: #E6EDFA;
-  border-radius: 4px;
-  padding: 3px;
-  margin-bottom: 20px;
-  height: 44px;
+  gap: 4px;
+  /* 对应原型间距链：card__head → .card__gap--24 → tabs → .card__gap--22 → form */
+  margin: 24px 0 22px;
+  height: var(--nova-h-tabs);
+  padding: 4px;
+  border-radius: var(--nova-r-tabs);
+  background: var(--nova-sf-tabs);
+}
+
+.tabBtn,
+.tabBtnActive {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--nova-r-tab);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+  border: 1px solid transparent;
 }
 
 .tabBtn {
-  flex: 1;
-  height: 40px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 500;
-  color: #64748B;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
+  background: none;
+  color: var(--nova-text-dim);
+}
+
+.tabBtn:hover {
+  color: var(--nova-text);
 }
 
 .tabBtnActive {
-  flex: 1;
-  height: 38px;
-  border: none;
-  background: var(--bg-card);
-  border-radius: 3px;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--accent-blue);
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
+  background: var(--nova-sf-tab-active);
+  border-color: var(--nova-sf-tab-active-stroke);
+  color: var(--nova-text);
+  font-weight: 500;
 }
 
-/* 表单区域 */
 .formSection {
   display: block;
 }
 
-/* ===== shadcn 表单字段 ===== */
+/* ----- 字段 ----- */
 .field {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .fieldLabel {
   display: block;
-  padding-bottom: 8px;
-  font-size: 14px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: var(--auth-text-label);
+  color: var(--nova-text-sub);
 }
 
-.fieldError {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--accent-red);
+.inputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-/* 公共输入框类 — 对齐原型规格 */
 .formInput {
-  height: 48px;
-  border-radius: 8px;
-  background-color: transparent;
+  height: var(--nova-h-input) !important;
+  width: 100%;
+  border-radius: var(--nova-r-input) !important;
+  border: 1.5px solid var(--nova-input-stroke) !important;
+  background: var(--nova-input-bg) !important;
+  padding: 0 14px !important;
+  font-size: 14px;
+  color: var(--nova-text);
+  box-shadow: none !important;
 }
 
-/* 聚焦态对齐品牌蓝（覆盖 shadcn 的中性 ring） */
+.formInput::placeholder {
+  color: var(--nova-text-ph);
+  letter-spacing: normal;
+}
+
 .formInput:focus-visible {
-  border-color: var(--accent-blue);
-  box-shadow: var(--auth-focus-ring);
+  border-color: var(--nova-focus) !important;
+  box-shadow: var(--nova-shadow-input-focus) !important;
+  outline: none !important;
+}
+
+/* 浏览器自动填充覆盖：UA 以内部 !important 样式强加浅色底与深色文字，
+   需用 inset box-shadow 填底（此处加 !important 以压过上面的 focus 环）；
+   焦点态改由 border-color 体现，避免白底破坏深色主题。 */
+.formInput:-webkit-autofill,
+.formInput:-webkit-autofill:hover,
+.formInput:-webkit-autofill:focus,
+.formInput:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--nova-input-bg) inset !important;
+  box-shadow: 0 0 0 1000px var(--nova-input-bg) inset !important;
+  -webkit-text-fill-color: var(--nova-text);
+  caret-color: var(--nova-text);
+}
+
+.inputWithAction {
+  padding-right: 44px !important;
 }
 
 .formInputError,
 .formInputError:focus-visible {
-  border-color: var(--accent-red);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
-}
-
-/* 密码可见性切换按钮 */
-.inputWrap {
-  position: relative;
-}
-
-.inputWithAction {
-  padding-right: 40px;
+  border-color: var(--nova-error-border) !important;
 }
 
 .eyeBtn {
   position: absolute;
-  right: 10px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: var(--text-tertiary);
-  background: none;
+  width: 30px;
+  height: 30px;
   border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--nova-icon-alt);
   cursor: pointer;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .eyeBtn:hover {
-  color: var(--text-secondary);
-  background: var(--bg-input);
+  color: var(--nova-text);
+  background: var(--nova-shadow-toggle-hover);
 }
 
-/* 公共提交按钮类 — 统一 Login/Register 规格 */
-.submitButton {
-  height: 48px !important;
-  border-radius: 8px !important;
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.3em;
-  background: var(--auth-btn-gradient) !important;
-  border: none !important;
-  box-shadow: var(--auth-btn-shadow) !important;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast) !important;
+.fieldError {
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--nova-err);
 }
 
-.submitButton:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--auth-btn-shadow-hover) !important;
-}
-
-.submitButton:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.submitButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* 记住我 + 忘记密码 */
-.rememberRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  margin-top: 0;
-}
-
-/* 错误提示 — 带 fadeIn 动画与无障碍属性 */
+/* ----- 错误提示条（Register 页） ----- */
 .errorText {
-  color: var(--accent-red);
-  font-size: 13px;
-  margin-bottom: 16px;
-  text-align: center;
-  animation: fadeIn 0.25s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--nova-error-border);
+  background: color-mix(in srgb, var(--nova-err) 10%, transparent);
+  color: var(--nova-err);
+  font-size: 12px;
+  line-height: 1.4;
+  animation: novaFadeIn 0.25s ease;
 }
 
-@keyframes fadeIn {
+@keyframes novaFadeIn {
   from {
     opacity: 0;
     transform: translateY(-4px);
@@ -394,221 +966,432 @@
   }
 }
 
-/* 密码强度 */
+/* ----- 主提交按钮（Register / ForgotPassword） ----- */
+.submitButton {
+  height: var(--nova-h-btn) !important;
+  width: 100%;
+  border: 1px solid var(--nova-btn-stroke) !important;
+  border-radius: var(--nova-r-pill) !important;
+  background: var(--nova-accent) !important;
+  color: #ffffff !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: normal !important;
+  box-shadow: var(--nova-shadow-btn) !important;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease !important;
+}
+
+.submitButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--nova-shadow-btn-hover) !important;
+}
+
+.submitButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submitButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none !important;
+}
+
+/* ----- 底部文字链接 ----- */
+.footerAction {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nova-link);
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+
+.footerAction:hover {
+  opacity: 0.82;
+}
+
+.footerLink {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.footerText {
+  font-size: 12.5px;
+  color: var(--nova-text-dim);
+}
+
+/* ----- 注册页：密码强度 ----- */
 .passwordStrength {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .strengthBar {
   flex: 1;
   height: 4px;
-  background: var(--border-light);
   border-radius: 2px;
-  transition: background var(--transition-normal);
+  background: var(--nova-track);
+  transition: background-color 0.2s ease;
 }
 
 .strengthBarWeak {
-  background: var(--accent-red);
+  background: var(--nova-err);
 }
 
 .strengthBarMedium {
-  background: var(--accent-amber);
+  background: #f59e0b;
 }
 
 .strengthBarStrong {
-  background: var(--accent-green);
+  background: var(--nova-ok);
 }
 
 .strengthText {
-  font-size: 11px;
-  color: var(--auth-text-dim);
-  white-space: nowrap;
   margin-left: 4px;
+  font-size: 11.5px;
+  color: var(--nova-text-muted);
+  white-space: nowrap;
 }
 
 .strengthTextWeak {
-  color: var(--accent-red);
+  color: var(--nova-err);
 }
 
 .strengthTextMedium {
-  color: var(--accent-amber);
+  color: #d97706;
 }
 
 .strengthTextStrong {
-  color: var(--accent-green);
+  color: var(--nova-ok);
 }
 
-/* 确认密码提示 */
+/* ----- 注册页：确认密码提示 ----- */
 .confirmHint {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 20px;
+  gap: 6px;
+  margin-bottom: 16px;
 }
 
 .hintDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--border-light);
+  background: var(--nova-track);
   flex-shrink: 0;
 }
 
 .hintDotMatch {
-  background: var(--accent-green);
+  background: var(--nova-ok);
 }
 
 .hintText {
-  font-size: 11px;
-  color: var(--auth-text-dim);
+  font-size: 11.5px;
+  color: var(--nova-text-muted);
 }
 
 .hintTextMatch {
-  color: var(--accent-green);
+  color: var(--nova-ok);
 }
 
-/* 底部链接 */
-.footerLink {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 4px;
-  margin-top: 16px;
-}
-
-.footerText {
-  font-size: 13px;
-  color: var(--auth-text-muted);
-}
-
-.footerAction {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent-blue);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font-family: inherit;
-  text-decoration: none;
-  transition: opacity var(--transition-fast);
-}
-
-.footerAction:hover {
-  opacity: 0.8;
-  text-decoration: underline;
-}
-
-/* 占位提示（功能开发中） */
+/* ----- 占位提示（功能开发中） ----- */
 .comingSoon {
   text-align: center;
   padding: 24px 0;
 }
 
 .comingSoonIcon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.3;
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.7;
 }
 
 .comingSoonTitle {
-  font-size: 16px;
-  font-weight: 500;
   margin-bottom: 8px;
-  color: var(--auth-text-title);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--nova-text);
 }
 
 .comingSoonDesc {
-  color: var(--auth-text-muted);
-  margin-bottom: 24px;
-  line-height: 1.6;
-  font-size: 14px;
+  margin-bottom: 22px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--nova-text-muted);
 }
 
-/* ----- 响应式 ----- */
-/* 中等屏（1280-1440px） */
-@media (max-width: 1440px) {
-  .brandPanel {
-    flex: 0 0 55%;
-    padding: 60px 40px;
-  }
-  .formPanel {
-    flex: 0 0 45%;
-    padding: 40px 30px;
-  }
-  .mainTitle,
-  .highlightTitle {
-    font-size: 40px;
-  }
-}
+/* ==========================================================================
+   响应式 — 断点策略对应原型「表单状态规范」板
+   ≥1440 双栏完整 / 1280–1439 收紧留白、收起能力标签 / 768–1279 仅保留标识与主张
+   / <768 单列表单优先，品牌区收敛为顶栏紧凑标识
+   ========================================================================== */
 
-@media (max-width: 1024px) {
-  .brandPanel {
-    flex: 0 0 50%;
-  }
-  .formPanel {
-    flex: 0 0 50%;
-  }
-  .mainTitle,
-  .highlightTitle {
-    font-size: 36px;
-  }
-  .decorContainer {
-    transform: translate(-50%, -50%) scale(0.7);
-  }
-}
-
-/* 768px 平板：保留精简品牌 banner，避免完全失去品牌曝光 */
-@media (max-width: 768px) {
+/* 1440 以下：收紧留白，收起能力标签 */
+@media (max-width: 1439px) {
   .pageContainer {
-    flex-direction: column;
+    --nova-brand-pl: 72px;
+    --nova-brand-pr: 40px;
+    --nova-brand-pt: 64px;
+    --nova-form-pl: 48px;
+    --nova-form-pt: 48px;
   }
-  .brandPanel {
-    flex: 0 0 auto;
-    min-height: auto;
-    padding: 24px 20px;
+
+  .brandTitle {
+    font-size: 34px;
+    letter-spacing: -0.6px;
   }
-  .brandContent {
-    max-width: 100%;
-  }
-  .logoRow {
-    margin-bottom: 12px;
-  }
-  .mainTitle,
-  .highlightTitle {
-    font-size: 24px;
-    margin-bottom: 4px;
-  }
-  .subtitle {
+
+  .brandClaim {
     font-size: 14px;
-    line-height: 22px;
   }
-  .decorContainer {
+
+  .brandCaps {
     display: none;
   }
-  .formPanel {
-    flex: 1;
-    padding: 32px 24px;
-    min-height: auto;
-  }
-  .authCard {
-    max-width: 100%;
-    padding: 24px;
+
+  .brandCaps {
+    margin-top: 32px;
   }
 }
 
-@media (max-width: 480px) {
-  .mainTitle,
-  .highlightTitle {
-    font-size: 20px;
+/* 1280 以下：仅保留标识与主张标题 */
+@media (max-width: 1279px) {
+  .pageContainer {
+    --nova-brand-pl: 56px;
+    --nova-brand-pr: 32px;
+    --nova-brand-pt: 48px;
+    --nova-form-pl: 32px;
+    --nova-form-pt: 40px;
+    --nova-w-card: 400px;
   }
+
+  .brandTitle {
+    font-size: 30px;
+  }
+
+  .brandClaim {
+    display: none;
+  }
+
+  .brandTag {
+    margin-top: 24px;
+  }
+
+  .brandHeadline {
+    margin-top: 24px;
+  }
+}
+
+/* 768 以下：单列，表单优先 */
+@media (max-width: 767px) {
+  .stage {
+    grid-template-columns: 1fr;
+  }
+
+  /* 品牌区整体收起，仅顶栏保留紧凑标识 */
+  .hero {
+    display: none;
+  }
+
+  .topBrand {
+    display: inline-flex;
+  }
+
+  .topCompliance {
+    display: none;
+  }
+
+  .topBar {
+    height: 76px;
+    padding: 0 24px;
+  }
+
+  .topActions {
+    gap: 14px;
+  }
+
+  .topLink {
+    display: none;
+  }
+
+  .topDivider {
+    display: none;
+  }
+
   .formPanel {
-    padding: 24px 16px;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 100px 20px 0;
   }
+
+  .pageContainer {
+    --nova-r-card: var(--nova-r-card-mobile);
+    --nova-r-input: var(--nova-r-input-mobile);
+    --nova-w-card: var(--nova-w-card-mobile);
+    --nova-card-pl: 22px;
+    --nova-card-pt: 26px;
+    --nova-card-pb: 22px;
+  }
+
   .authCard {
-    padding: 20px 16px;
+    box-shadow: var(--nova-card-shadow-mobile);
+  }
+
+  .welcomeTitle {
+    font-size: 21px;
+  }
+
+  .welcomeSubtitle {
+    font-size: 12px;
+  }
+
+  /* 引导行由卡片移入底部合规区 */
+  .footEnroll {
+    display: flex;
+  }
+
+  .footBar {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 24px 22px;
+    min-height: 0;
+  }
+
+  .footLegal {
+    align-items: center;
+  }
+
+  .footCopy {
+    font-size: 10.5px;
+  }
+
+  .footIcp {
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .cert {
+    height: 24px;
+    padding: 0 11px;
+    font-size: 10.5px;
+    border-radius: 7px;
+  }
+
+  /* 移动端粒子星云退场：表单优先，避免与卡片争夺视觉焦点 */
+  .galaxyLayer {
+    display: none;
+  }
+}
+
+/* 极窄屏（<=359px）：卡片占满可用宽度 */
+@media (max-width: 359px) {
+  .formPanel {
+    padding: 88px 14px 0;
+  }
+
+  .pageContainer {
+    --nova-w-card: 100%;
+  }
+}
+
+/* 平板竖屏（768–980）：星云上移作为氛围背景 */
+@media (min-width: 768px) and (max-width: 980px) {
+  .galaxyLayer {
+    left: 4%;
+    bottom: -8%;
+    width: 92%;
+    height: 56%;
+    opacity: 0.8;
+  }
+}
+
+/* ==========================================================================
+   视口高度适配
+   原型基准为 1920×1080；笔记本（1440×900 / 1366×768）与横屏平板高度不足时，
+   按高度断点收紧垂直留白，使「顶栏 + 主区 + 底部合规区」在一屏内放得下。
+   宽度断点与高度断点同时命中时，高度断点（定义在后）生效。
+   ========================================================================== */
+
+/* ≤1000px 高：覆盖 1920×1080 屏幕全屏浏览（浏览器视口约 950px，含地址栏/书签栏）
+   以及 1440×900、1536×864 等窗口一屏放下 */
+@media (max-height: 1000px) {
+  .pageContainer {
+    --nova-brand-pt: 56px;
+    --nova-brand-pb: 44px;
+    --nova-form-pt: 32px;
+    --nova-form-pb: 28px;
+    --nova-card-pt: 30px;
+    --nova-card-pb: 26px;
+  }
+
+  .brandTag {
+    margin-top: 28px;
+  }
+
+  .brandHeadline {
+    margin-top: 22px;
+  }
+
+  .brandCaps {
+    margin-top: 32px;
+  }
+}
+
+/* ≤820px 高：1366×768 一类小笔记本进一步收紧，并压缩顶栏 / 底栏与卡片内边距 */
+@media (max-height: 820px) {
+  .pageContainer {
+    --nova-brand-pt: 32px;
+    --nova-brand-pb: 24px;
+    --nova-form-pt: 20px;
+    --nova-form-pb: 16px;
+    --nova-h-topbar: 60px;
+    --nova-h-footbar: 60px;
+    --nova-card-pt: 24px;
+    --nova-card-pb: 20px;
+  }
+
+  .brandTag {
+    margin-top: 20px;
+  }
+
+  .brandHeadline {
+    margin-top: 16px;
+  }
+}
+
+/* 移动端矮屏：原型 100px 顶部留白（画布 y=176 起始）在手机上过大，
+   一并压缩底部合规区上下内边距，使卡片与合规区一屏可达 */
+@media (max-width: 767px) and (max-height: 1000px) {
+  .formPanel {
+    padding-top: 32px;
+  }
+
+  .footBar {
+    gap: 6px;
+    padding: 12px 20px 14px;
+  }
+}
+
+/* ----- 降低动效偏好（对应原型 base.css 的全局降级） ----- */
+@media (prefers-reduced-motion: reduce) {
+  .pageContainer *,
+  .pageContainer *::before,
+  .pageContainer *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

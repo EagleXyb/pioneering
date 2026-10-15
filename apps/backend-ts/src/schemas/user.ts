@@ -10,9 +10,11 @@ export const RegisterRequestSchema = z.object({
 export type RegisterRequest = z.infer<typeof RegisterRequestSchema>
 
 // 对应 Python: LoginRequest
+// 长度上限对齐 users.username(@db.VarChar(100)) 与 RegisterRequest.password(max 128)，
+// 避免空串 / 超长值穿透到查询与 bcrypt 比对（此前 z.string() 无任何约束）。
 export const LoginRequestSchema = z.object({
-  username: z.string(),
-  password: z.string(),
+  username: z.string().min(1).max(100),
+  password: z.string().min(1).max(128),
 })
 export type LoginRequest = z.infer<typeof LoginRequestSchema>
 

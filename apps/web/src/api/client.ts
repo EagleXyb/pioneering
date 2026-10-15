@@ -90,29 +90,42 @@ async function tryRefreshToken(): Promise<boolean> {
   return refreshPromise;
 }
 
+/** 请求选项：在 RequestInit 之上追加认证策略开关 */
+interface RequestOptions extends RequestInit {
+  /**
+   * 跳过 401 自动刷新重试。
+   * 认证入口（/auth/login、/auth/register）必须开启：这些接口的 401 表示
+   * 「账号或密码错误」，而非「access token 过期」；若走自动刷新，
+   * 会在登录页多出一次无意义的 refresh 往返，且刷新成功还会覆盖本地旧 token。
+   */
+  skipAuthRetry?: boolean;
+}
+
 /** 统一请求方法
  * 401 时先尝试 token 刷新，刷新成功则重试原请求，刷新失败再清除 token
  */
 async function request<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestOptions = {},
 ): Promise<T> {
+  const { skipAuthRetry = false, ...init } = options;
+
   const doRequest = async (): Promise<Response> => {
     const url = `${BASE_URL}${path}`;
     const token = getToken();
 
-    const hasBody = options.method && options.method !== 'GET' && options.method !== 'DELETE' && options.body != null
+    const hasBody = init.method && init.method !== 'GET' && init.method !== 'DELETE' && init.body != null
 
     const headers: Record<string, string> = {
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-      ...((options.headers as Record<string, string>) || {}),
+      ...((init.headers as Record<string, string>) || {}),
     };
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    return fetch(url, { ...options, headers });
+    return fetch(url, { ...init, headers });
   };
 
   let response = await doRequest();
@@ -123,7 +136,8 @@ async function request<T>(
   }
 
   // 401 未授权 — 先尝试刷新 token，刷新成功则重试原请求
-  if (response.status === 401) {
+  // （skipAuthRetry 的请求直接按失败处理，如登录接口的凭证错误）
+  if (response.status === 401 && !skipAuthRetry) {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
       // 刷新成功，用新 token 重试原请求
@@ -176,11 +190,18 @@ export function get<T>(path: string, params?: Record<string, any>): Promise<T> {
   return request<T>(`${path}${search}`);
 }
 
-/** POST 请求 */
-export function post<T>(path: string, body?: any): Promise<T> {
+/** POST 请求
+ * @param opts.skipAuthRetry 跳过 401 自动刷新（认证入口使用）
+ */
+export function post<T>(
+  path: string,
+  body?: any,
+  opts?: { skipAuthRetry?: boolean },
+): Promise<T> {
   return request<T>(path, {
     method: 'POST',
     body: body ? JSON.stringify(body) : undefined,
+    skipAuthRetry: opts?.skipAuthRetry,
   });
 }
 

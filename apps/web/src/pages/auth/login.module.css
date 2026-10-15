@@ -1,0 +1,716 @@
+/* ==========================================================================
+   登录页 — 卡片内表单区样式
+   严格对齐原型 docs/login-app/styles/login.css（.tabs / .field / .btn-primary /
+   .altrow / .altbtns / .trust / .enroll / .formalert / .meta），
+   间距通过 margin 还原原型 .card__gap--NN 占位块，取值不变。
+
+   令牌（--nova-*）由 auth.module.css 的 .pageContainer 提供，随主题切换。
+   ========================================================================== */
+
+/* -------------------------------------------------- 登录方式切换（原型 .tabs）
+   原型间距链：card__head → .card__gap--24 → tabs → .card__gap--22 → form
+   以 margin 还原两处占位块：上 24px（卡片头之后）、下 22px（表单/横幅之前） */
+.tabs {
+  display: flex;
+  gap: 4px;
+  height: var(--nova-h-tabs);
+  margin: 24px 0 22px;
+  padding: 4px;
+  border-radius: var(--nova-r-tabs);
+  background: var(--nova-sf-tabs);
+}
+
+.tabBtn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--nova-r-tab);
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--nova-text-dim);
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.tabBtn:hover {
+  color: var(--nova-text);
+}
+
+.tabBtnActive {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  border: 1px solid var(--nova-sf-tab-active-stroke);
+  border-radius: var(--nova-r-tab);
+  background: var(--nova-sf-tab-active);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nova-text);
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+/* ------------------------------------------- 表单级错误横幅（原型 .formalert） */
+.formAlert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--nova-err) 10%, transparent);
+  border: 1px solid var(--nova-error-border);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--nova-err);
+  animation: novaFadeIn 0.25s ease;
+}
+
+.formAlert svg {
+  flex: 0 0 auto;
+}
+
+@keyframes novaFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------- 字段（原型 .field） */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 原型 .card__gap--18：账号 → 密码 */
+.fieldAccount {
+  margin-bottom: 18px;
+}
+
+/* 原型 .card__gap--16：密码 → 记住登录行 */
+.fieldPassword {
+  margin-bottom: 16px;
+}
+
+.fieldLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+}
+
+.fieldLabel {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nova-text-sub);
+}
+
+.fieldRequired {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--nova-required);
+}
+
+.fieldBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--nova-h-input);
+  padding: 0 14px;
+  border-radius: var(--nova-r-input);
+  background: var(--nova-input-bg);
+  border: 1.5px solid var(--nova-input-stroke);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+/* 带尾部按钮的输入框（密码显隐 / 获取验证码） */
+.fieldBoxHasBtn {
+  padding-right: 8px;
+}
+
+.fieldBox:focus-within {
+  border-color: var(--nova-focus);
+  box-shadow: var(--nova-shadow-input-focus);
+}
+
+/* 校验失败态 */
+.fieldInvalid .fieldBox {
+  border-color: var(--nova-error-border);
+}
+
+.fieldInvalid .fieldBox:focus-within {
+  box-shadow: 0 0 0 3px var(--nova-focus-ring);
+}
+
+/* 校验通过态 */
+.fieldValid .fieldBox {
+  border-color: var(--nova-valid-border);
+}
+
+.fieldIcon {
+  flex: 0 0 auto;
+  color: var(--nova-icon);
+}
+
+.fieldInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--nova-text);
+}
+
+.fieldInput::placeholder {
+  color: var(--nova-text-ph);
+}
+
+.fieldInput:focus {
+  outline: none;
+}
+
+.fieldInput:focus-visible {
+  outline: none;
+}
+
+/* 浏览器自动填充（Chrome / Edge 保存的账号密码）：UA 会用内部 !important 样式
+   给输入框强加浅色底与深色文字，普通 background / color 无法覆盖，
+   必须用 inset box-shadow 填充底色、并用 -webkit-text-fill-color 指定文字色。 */
+.fieldInput:-webkit-autofill,
+.fieldInput:-webkit-autofill:hover,
+.fieldInput:-webkit-autofill:focus,
+.fieldInput:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--nova-input-bg) inset;
+  box-shadow: 0 0 0 1000px var(--nova-input-bg) inset;
+  -webkit-text-fill-color: var(--nova-text);
+  caret-color: var(--nova-text);
+}
+
+/* 显隐切换按钮（原型 .field__toggle） */
+.fieldToggle {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--nova-icon-alt);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.fieldToggle:hover {
+  color: var(--nova-text);
+  background: var(--nova-shadow-toggle-hover);
+}
+
+.fieldToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* 提示与错误行（原型 .field__msg） */
+.fieldMsg {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 17px;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.fieldMsg:empty {
+  min-height: 0;
+}
+
+.fieldMsgOk {
+  color: var(--nova-ok);
+}
+
+.fieldMsgErr {
+  color: var(--nova-err);
+}
+
+/* ------------------------------------------- 记住登录 / 忘记密码（原型 .meta） */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+  margin-bottom: 22px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--nova-text-help);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkBox {
+  position: relative;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--nova-r-checkbox);
+  background: var(--nova-checkbox);
+  display: grid;
+  place-items: center;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.checkBox svg {
+  color: #ffffff;
+}
+
+/* 原生 checkbox 视觉隐藏，保留键盘可达性 */
+.checkInput {
+  position: absolute;
+  width: 0;
+  height: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.checkInput:not(:checked) + .checkBox {
+  background: transparent;
+  border: 1px solid var(--nova-input-stroke);
+}
+
+.checkInput:not(:checked) + .checkBox svg {
+  opacity: 0;
+}
+
+.checkInput:focus-visible + .checkBox {
+  outline: 2px solid var(--nova-focus);
+  outline-offset: 2px;
+}
+
+.checkInput:disabled + .checkBox {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.link {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nova-link);
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+
+.link:hover {
+  opacity: 0.82;
+}
+
+/* ------------------------------------------------ 主登录按钮（原型 .btn-primary） */
+.submitBtn {
+  position: relative;
+  width: 100%;
+  height: var(--nova-h-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0;
+  border: 1px solid var(--nova-btn-stroke);
+  border-radius: var(--nova-r-pill);
+  background: var(--nova-accent);
+  box-shadow: var(--nova-shadow-btn);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease,
+    background-color 0.18s ease;
+  /* 原型 .card__gap--18：主按钮 → 辅助登录行 */
+  margin-bottom: 18px;
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--nova-shadow-btn-hover);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submitBtn svg {
+  flex: 0 0 auto;
+}
+
+/* 禁用态：表单完全为空（初始态）或锁定期内置灰 */
+.submitBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+/* 加载态 */
+.submitBtnLoading {
+  cursor: progress;
+}
+
+.submitBtnLoading .submitBtnLabel,
+.submitBtnLoading .submitBtnArrow {
+  visibility: hidden;
+}
+
+.submitBtnSpinner {
+  position: absolute;
+  display: none;
+  width: 17px;
+  height: 17px;
+}
+
+.submitBtnLoading .submitBtnSpinner {
+  display: block;
+}
+
+.spinner {
+  animation: novaSpin 0.85s linear infinite;
+}
+
+.spinner circle {
+  opacity: 0.32;
+}
+
+@keyframes novaSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 成功态 */
+.submitBtnSuccess {
+  background: var(--nova-ok);
+  border-color: transparent;
+  box-shadow: none;
+  cursor: default;
+}
+
+/* 失败态 */
+.submitBtnError {
+  animation: novaShake 0.4s ease;
+}
+
+@keyframes novaShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(5px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+/* --------------------------------------------- 辅助登录方式（原型 .altrow / .altbtns） */
+.altRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 18px;
+  margin-bottom: 12px;
+}
+
+.altRowLine {
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--nova-divider);
+}
+
+.altRowText {
+  font-size: 11.5px;
+  color: var(--nova-text-soft);
+  white-space: nowrap;
+}
+
+.altBtns {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.btnAlt {
+  flex: 1 1 0;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  border-radius: var(--nova-r-altbtn);
+  background: var(--nova-sf-altbtn);
+  border: 1px solid var(--nova-sf-altbtn-stroke);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nova-text-alt);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.btnAlt:hover {
+  border-color: var(--nova-focus);
+  color: var(--nova-text);
+}
+
+.btnAlt svg {
+  flex: 0 0 auto;
+  color: var(--nova-icon-alt);
+}
+
+/* ----------------------------------------------- 安全加密提示（原型 .trust） */
+.trust {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  margin: 0 0 18px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--nova-sf-trust);
+  border: 1px solid var(--nova-sf-trust-stroke);
+  font-size: 11.5px;
+  color: var(--nova-ok);
+}
+
+.trust svg {
+  flex: 0 0 auto;
+}
+
+/* ----------------------------------------------- 未注册引导（原型 .enroll） */
+.enroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 18px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--nova-text-dim);
+}
+
+.enrollLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nova-link);
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+
+.enrollLink:hover {
+  opacity: 0.82;
+}
+
+/* 移动端：引导行由卡片移入底部合规区（原型 #enrollCard vs .footbar__enroll） */
+@media (max-width: 767px) {
+  .enroll {
+    display: none;
+  }
+}
+
+/* ------------------------------------------- 验证码登录面板（本期占位，见重构说明） */
+.otpPanel {
+  margin-bottom: 22px;
+}
+
+/* ------------------------------------------------ 占位提示（功能开发中） */
+.comingSoon {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.comingSoonIcon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.comingSoonTitle {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--nova-text);
+}
+
+.comingSoonDesc {
+  margin-bottom: 22px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--nova-text-muted);
+}
+
+.comingSoonBtn {
+  width: 100%;
+  height: var(--nova-h-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nova-btn-stroke);
+  border-radius: var(--nova-r-pill);
+  background: var(--nova-accent);
+  box-shadow: var(--nova-shadow-btn);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.comingSoonBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--nova-shadow-btn-hover);
+}
+
+/* ==========================================================================
+   视口高度适配（与 auth.module.css 的高度断点配套）
+   只压缩区块间距，不动字号与控件尺寸，保持原型比例关系
+   ========================================================================== */
+
+/* ≤1000px 高：累计收紧 42px，配合卡片内边距压缩满足 1080p 全屏 / 1536×864 / 1440×900 */
+@media (max-height: 1000px) {
+  .tabs {
+    margin: 18px 0 16px;
+  }
+
+  .field {
+    gap: 7px;
+  }
+
+  .fieldAccount {
+    margin-bottom: 16px;
+  }
+
+  .fieldPassword {
+    margin-bottom: 14px;
+  }
+
+  .meta {
+    margin-bottom: 16px;
+  }
+
+  .submitBtn {
+    margin-bottom: 16px;
+  }
+
+  .altRow {
+    margin-bottom: 10px;
+  }
+
+  .altBtns {
+    margin-bottom: 14px;
+  }
+
+  .trust {
+    margin-bottom: 12px;
+  }
+}
+
+/* ≤820px 高：1366×768 下累计再收紧 56px，配合卡片内边距压缩使卡片一屏可容纳 */
+@media (max-height: 820px) {
+  .tabs {
+    margin: 14px 0;
+  }
+
+  .field {
+    gap: 6px;
+  }
+
+  .fieldAccount {
+    margin-bottom: 12px;
+  }
+
+  .fieldPassword {
+    margin-bottom: 10px;
+  }
+
+  .meta {
+    margin-bottom: 12px;
+  }
+
+  .submitBtn {
+    margin-bottom: 12px;
+  }
+
+  .altRow {
+    margin-bottom: 8px;
+  }
+
+  .altBtns {
+    margin-bottom: 10px;
+  }
+
+  .trust {
+    margin-bottom: 10px;
+  }
+
+  .otpPanel {
+    margin-bottom: 14px;
+  }
+}

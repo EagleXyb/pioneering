@@ -31,10 +31,5 @@ export interface UserProfile {
   updatedAt: string;
 }
 
-/** Refresh Token 请求 — 对齐后端 RefreshTokenRequestDto */
-export interface RefreshTokenRequest {
-  refreshToken: string;
-}
-
 /** 认证状态 */
 export type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'error';
