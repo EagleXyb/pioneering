@@ -3,7 +3,9 @@
  *
  * 结构与原型 DOM 一一对应：
  *   .pageContainer（原型 .page）
- *     ├─ ParticleGalaxy          原型 .page__bg + .page__scrim（本项目以粒子星云替代位图背景）
+ *     ├─ 背景层               原型 .page__bg + .page__scrim
+ *     │    ├─ SpaceBackdrop   深色：整页全幅太空（银河照片 + 全屏星空 + 遮罩）
+ *     │    └─ ParticleGalaxy  浅色：WebGL2 粒子星云
  *     ├─ header.topBar           原型 .topbar（移动端紧凑品牌 / 合规标识 / 导航 / 语言切换 / 主题切换）
  *     ├─ main.stage              原型 .layout（52.1fr / 47.9fr）
  *     │    ├─ section.hero       原型 .brand（标识 + 运行态 + 主张 + 能力标签）
@@ -20,6 +22,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTheme } from '../../store/themeContext';
 import ParticleGalaxy from '../../components/particle-galaxy/ParticleGalaxy';
+import SpaceBackdrop from '../../components/space-backdrop/SpaceBackdrop';
 import {
   BrandMarkLg,
   BrandMarkSm,
@@ -63,25 +66,25 @@ export default function AuthLayout({
 
   return (
     <div className={styles.pageContainer}>
-      {/* 粒子星云背景（左下）：替代原型的位图背景 + 遮罩层（决策 1） */}
-      <ParticleGalaxy
-        className={styles.galaxyLayer}
-        /* 主题：深色走加法混合 + HDR 色调压缩，浅色走 normal 混合（加法在浅底会被吞） */
-        palette={isDark ? 'dark' : 'light'}
-        composite={isDark ? 'lighter' : 'source-over'}
-        arms={3}
-        /* 三层粒子（恒星 / 尘埃 / 背景深空星）按 90000:26000:2200 比例派生。
-           星云层只占视口 62%×80%（约为全屏面积的 1/3），取 45000 即可获得与
-           参考实现全屏 90000 等效的粒子密度，同时把几何生成的开销压到 ~40ms。 */
-        count={45000}
-        tilt={0.62}
-        camElev={42}
-        glow={isDark ? 0.85 : 0.5}
-        /* 渲染倍率上限：组件默认 2，会使 DPR≥3 的设备（如 4K@300% 缩放、高分 Android）
-           只渲染 2x 再放大显示。缓冲区尺寸 = 容器 CSS 尺寸 × ratio，与 DPR 无关，
-           提高上限不会增大显存占用或填充率。 */
-        dpr={3}
-      />
+      {/* 背景层：深色 = 整页全幅太空（SpaceBackdrop：银河照片 + 全屏星空 + 遮罩）；
+          浅色 = 粒子星云（WebGL2，见 components/particle-galaxy）。
+          两套定位各自独立（照片需全幅连续，星云则出血到左下角外沿）。 */}
+      {isDark ? (
+        <SpaceBackdrop />
+      ) : (
+        <ParticleGalaxy
+          className={styles.galaxyLayer}
+          /* 浅色页面没有"深空"语境：关泛光、走 normal 混合、不生成背景星 */
+          palette="light"
+          composite="source-over"
+          arms={3}
+          count={45000}
+          tilt={0.62}
+          camElev={42}
+          glow={0.5}
+          dpr={3}
+        />
+      )}
 
       {/* ============================ 顶栏（原型 .topbar） ============================ */}
       <header className={styles.topBar}>
@@ -148,46 +151,49 @@ export default function AuthLayout({
       <main className={styles.stage}>
         {/* ------------------------ 品牌区（原型 .brand） ------------------------ */}
         <section className={styles.hero} aria-label="品牌信息">
-          <div className={styles.brandLogo}>
-            <span className={styles.brandMark}>
-              <BrandMarkLg />
-            </span>
-            <span className={styles.brandNaming}>
-              <span className={styles.brandName}>创新创造智能体</span>
-              <span className={styles.brandNameEn}>NOVA · CREATIVE AGENT PLATFORM</span>
-            </span>
-          </div>
+          {/* 深色主题下 .heroCard 升级为全透明玻璃卡，包裹品牌内容 */}
+          <div className={styles.heroCard}>
+            <div className={styles.brandLogo}>
+              <span className={styles.brandMark}>
+                <BrandMarkLg />
+              </span>
+              <span className={styles.brandNaming}>
+                <span className={styles.brandName}>创新创造智能体</span>
+                <span className={styles.brandNameEn}>NOVA · CREATIVE AGENT PLATFORM</span>
+              </span>
+            </div>
 
-          <p className={styles.brandTag}>
-            <span className={styles.brandDot} aria-hidden="true" />
-            Agent Runtime · 已就绪
-          </p>
-
-          <div className={styles.brandHeadline}>
-            <h1 className={styles.brandTitle}>
-              让每一次创新创造，
-              <br />
-              都有智能体在场
-            </h1>
-            <p className={styles.brandClaim}>
-              An agent-native workspace for enterprise invention — secure, governed, always on.
+            <p className={styles.brandTag}>
+              <span className={styles.brandDot} aria-hidden="true" />
+              Agent Runtime · 已就绪
             </p>
-          </div>
 
-          <ul className={styles.brandCaps}>
-            <li className={styles.cap}>
-              <CapOrchestration />
-              多智能体编排
-            </li>
-            <li className={styles.cap}>
-              <CapAudit />
-              全链路审计
-            </li>
-            <li className={styles.cap}>
-              <CapDeploy />
-              私有化部署
-            </li>
-          </ul>
+            <div className={styles.brandHeadline}>
+              <h1 className={styles.brandTitle}>
+                让每一次创新创造，
+                <br />
+                都有智能体在场
+              </h1>
+              <p className={styles.brandClaim}>
+                An agent-native workspace for enterprise invention — secure, governed, always on.
+              </p>
+            </div>
+
+            <ul className={styles.brandCaps}>
+              <li className={styles.cap}>
+                <CapOrchestration />
+                多智能体编排
+              </li>
+              <li className={styles.cap}>
+                <CapAudit />
+                全链路审计
+              </li>
+              <li className={styles.cap}>
+                <CapDeploy />
+                私有化部署
+              </li>
+            </ul>
+          </div>
         </section>
 
         {/* ------------------------ 表单区（原型 .formpane） ------------------------ */}

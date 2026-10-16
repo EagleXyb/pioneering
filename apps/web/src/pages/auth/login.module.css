@@ -245,8 +245,8 @@
 .fieldInput:-webkit-autofill:hover,
 .fieldInput:-webkit-autofill:focus,
 .fieldInput:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px var(--nova-input-bg) inset;
-  box-shadow: 0 0 0 1000px var(--nova-input-bg) inset;
+  -webkit-box-shadow: 0 0 0 1000px var(--nova-input-bg-solid) inset;
+  box-shadow: 0 0 0 1000px var(--nova-input-bg-solid) inset;
   -webkit-text-fill-color: var(--nova-text);
   caret-color: var(--nova-text);
 }

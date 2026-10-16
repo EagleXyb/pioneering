@@ -64,6 +64,10 @@
   --nova-border: #e5e0f2;
   --nova-border-strong: #ded9ee;
   --nova-input-bg: #f8f7fc;
+  /* 供浏览器自动填充覆盖使用（autofill 的 inset box-shadow 填底，
+     见 .formInput:-webkit-autofill）；浅色下与输入框底色一致，
+     缺失会使 var 解析失败、Chrome 默认淡蓝底 (#e8f0fe) 露出 */
+  --nova-input-bg-solid: #f8f7fc;
   --nova-input-stroke: #ded9ee;
   --nova-sf-tabs: #f1f0f7;
   --nova-sf-tab-active: #ffffff;
@@ -191,6 +195,12 @@
   --nova-h-logo: 52px;
   --nova-h-logo-mobile: 34px;
 
+  /* ---- 星云背景定位 ----
+     仅服务浅色模式的粒子星云（出血到左下角外沿）。
+     深色模式的太空背景（银河照片卡 + 全屏星空）由
+     space-backdrop.module.css 自带定位：卡片四边与等宽说明行必须落在
+     视口内，与浅色的出血构图有意不同，两套定位不再共用令牌。 */
+
   /* ---- 字体（原型 --font-sans） ---- */
   --nova-font: 'Inter', 'Noto Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
     system-ui, -apple-system, sans-serif;
@@ -225,25 +235,25 @@
   --nova-bg: #07050f;
 
   --nova-text: #ffffff;
-  --nova-text-claim: #9c94c4;
-  --nova-text-sub: #bdb6dc;
+  --nova-text-claim: #b3abd8;
+  --nova-text-sub: #cdc6e8;
   --nova-text-chip: #c5bee4;
   --nova-text-status: #b9b2dc;
-  --nova-text-help: #a9a2cc;
-  --nova-text-muted: #8e86b0;
-  --nova-text-dim: #7b749b;
-  --nova-text-soft: #6f6890;
-  --nova-text-copy: #6a6386;
-  --nova-text-icp: #51496b;
-  --nova-text-cert: #9a93b8;
+  --nova-text-help: #b8b1d8;
+  --nova-text-muted: #a49cc6;
+  --nova-text-dim: #8b84ab;
+  --nova-text-soft: #7d76a0;
+  --nova-text-copy: #7a7398;
+  --nova-text-icp: #615a7d;
+  --nova-text-cert: #a9a2c6;
   --nova-text-alt: #cfc8e8;
-  --nova-text-ph: #5e5878;
+  --nova-text-ph: #6d6790;
 
   --nova-accent: #7c63e8;
   --nova-accent-2: #7c63e8;
   --nova-btn-stroke: rgba(184, 158, 255, 0.55);
   --nova-checkbox: #6d55d8;
-  --nova-link: #b9a6f5;
+  --nova-link: #c3b2f7;
   --nova-required: #c58ae8;
   --nova-logo-glyph: #b79cff;
 
@@ -251,22 +261,28 @@
   --nova-surface-solid: rgba(14, 10, 28, 0.97);
   --nova-border: rgba(255, 255, 255, 0.14);
   --nova-border-strong: rgba(255, 255, 255, 0.16);
-  --nova-input-bg: #0b0818;
-  --nova-input-stroke: rgba(255, 255, 255, 0.16);
-  --nova-sf-tabs: #07050f;
-  --nova-sf-tab-active: #2a2249;
-  --nova-sf-tab-active-stroke: rgba(158, 133, 242, 0.42);
-  --nova-chip: #0e0b1e;
-  --nova-chip-stroke: rgba(255, 255, 255, 0.12);
-  --nova-sf-altbtn: #0f0b1f;
-  --nova-sf-altbtn-stroke: rgba(255, 255, 255, 0.16);
-  --nova-sf-trust: #0c0919;
-  --nova-sf-trust-stroke: rgba(255, 255, 255, 0.09);
-  --nova-sf-cert: #0d0a1c;
-  --nova-sf-cert-stroke: rgba(255, 255, 255, 0.1);
-  --nova-sf-langpill: #16122a;
-  --nova-sf-langpill-stroke: rgba(92, 84, 133, 0.55);
-  --nova-sf-lang-active: #3a3163;
+  /* ---- 全透明玻璃：卡片本身几乎不fill色，可读性靠 backdrop blur + 描边；
+     卡内的小片（输入框 / tab 条 / chip / 次级按钮）也只留极淡的一层，
+     避免在玻璃卡片里出现"实心黑块"，破坏悬浮感。
+     --nova-input-bg-solid 供浏览器自动填充覆盖使用（autofill 的 box-shadow
+     叠在同色半透明底上会变深，必须用不透明色）。 ---- */
+  --nova-input-bg: rgba(9, 6, 20, 0.5);
+  --nova-input-bg-solid: #0b0818;
+  --nova-input-stroke: rgba(255, 255, 255, 0.2);
+  --nova-sf-tabs: rgba(7, 5, 15, 0.36);
+  --nova-sf-tab-active: rgba(58, 49, 99, 0.82);
+  --nova-sf-tab-active-stroke: rgba(158, 133, 242, 0.5);
+  --nova-chip: rgba(14, 11, 30, 0.44);
+  --nova-chip-stroke: rgba(255, 255, 255, 0.14);
+  --nova-sf-altbtn: rgba(15, 11, 31, 0.44);
+  --nova-sf-altbtn-stroke: rgba(255, 255, 255, 0.18);
+  --nova-sf-trust: rgba(12, 9, 25, 0.4);
+  --nova-sf-trust-stroke: rgba(255, 255, 255, 0.11);
+  --nova-sf-cert: rgba(13, 10, 28, 0.4);
+  --nova-sf-cert-stroke: rgba(255, 255, 255, 0.12);
+  --nova-sf-langpill: rgba(22, 18, 42, 0.44);
+  --nova-sf-langpill-stroke: rgba(140, 130, 190, 0.5);
+  --nova-sf-lang-active: rgba(74, 62, 124, 0.9);
 
   --nova-divider: #2e2748;
 
@@ -282,6 +298,12 @@
   --nova-icon-dim: #7e7699;
   --nova-icon-logo: #8b72e0;
 
+  /* ---- 品牌标识底 / 运行态标签底：半透明玻璃小片，透出身后的太空 ---- */
+  --nova-brand-mark-bg: rgba(36, 28, 66, 0.66);
+  --nova-brand-mark-stroke: rgba(140, 120, 224, 0.5);
+  --nova-brand-tag-bg: rgba(30, 24, 64, 0.62);
+  --nova-brand-tag-stroke: rgba(128, 107, 209, 0.45);
+
   /* ---- 卡片悬浮阴影：远距环境投影 + 近距接触阴影 + 品牌紫光晕三层叠加 ---- */
   --nova-card-shadow:
     0 32px 72px rgba(4, 2, 14, 0.62),
@@ -291,50 +313,48 @@
     0 22px 52px rgba(4, 2, 14, 0.6),
     0 2px 26px rgba(115, 89, 242, 0.12);
 
-  /* ---- 玻璃卡片（深色：顶部紫色镜面高光 + 半透深紫渐变透出星云光晕；
-     blur 34px 平滑粒子、saturate 135% 提色防发灰；底色 alpha 0.7~0.8
-     兼顾通透度与标题等直接落于卡面文字的对比度。
-     旧值 alpha 0.84~0.9 过实，玻璃感弱；更早的 0.58~0.66 + saturate(160%)
-     则会把加法混合的粒子糊成发灰毛面，均不采用） ---- */
+  /* ---- 玻璃卡片（深色「全透明玻璃」）：卡片悬浮在全幅太空上，玻璃感完全交给
+     backdrop-filter，自身只保留极淡墨色 + 一线镜面高光 + 细描边。
+     alpha 0.10~0.14 (full-transparent glass) 是通透感与可读性的平衡点——照片已压到 brightness .58，
+     再叠这层墨色后卡面小字（13px 副标题 / 字段标签）仍能保持 ≥4.5:1；
+     blur 64px 把银河带的高频星点糊成柔和光晕，避免"毛面"噪点；
+     saturate 180% 抵消模糊带来的发灰。 ---- */
   --nova-card-glass-bg:
     radial-gradient(
       130% 78% at 15% -12%,
-      rgba(172, 146, 255, 0.13) 0%,
+      rgba(172, 146, 255, 0.1) 0%,
       rgba(172, 146, 255, 0) 54%
     ),
-    linear-gradient(
-      155deg,
-      rgba(30, 21, 58, 0.7) 0%,
-      rgba(11, 7, 24, 0.8) 100%
-    );
-  --nova-card-glass-border: rgba(178, 158, 240, 0.2);
+    linear-gradient(155deg, rgba(18, 12, 38, 0.1) 0%, rgba(7, 5, 15, 0.14) 100%);
+  --nova-card-glass-border: rgba(214, 204, 255, 0.18);
   --nova-card-glass-inset:
-    inset 0 1px 0 rgba(216, 202, 255, 0.2),
-    inset 0 -1px 0 rgba(128, 97, 255, 0.1);
-  --nova-card-glass-filter: blur(34px) saturate(135%);
+    inset 0 1px 0 rgba(226, 214, 255, 0.22),
+    inset 0 -1px 0 rgba(128, 97, 255, 0.08);
+  --nova-card-glass-filter: blur(64px) saturate(180%);
 
-  /* ---- 品牌区玻璃衬板（.hero::before）：86%~88% 高透深紫玻璃透出星云，
-     仅顶部一抹紫色镜面高光；模糊半径取 18px（低于卡片 34px），
-     星云为持续 rAF 动画，控制每帧 backdrop 重合成开销。
-     投影刻意弱于登录卡片，保持卡片为视觉焦点 ---- */
+  /* ---- 品牌区玻璃卡（.heroCard）：比登录卡片更透（alpha 0.22~0.3），
+     只压住品牌内容那一块太空；模糊 22px 略低于卡片，投影也更弱，
+     保持「登录卡片为视觉焦点、品牌文字为第二层级」的主次关系 ---- */
   --nova-hero-plate-inset: 28px;
+  --nova-hero-plate-pad-y: 28px;
+  --nova-hero-plate-pad-x: 24px;
   --nova-hero-glass-bg:
     radial-gradient(
       120% 72% at 12% -10%,
       rgba(172, 146, 255, 0.1) 0%,
       rgba(172, 146, 255, 0) 55%
     ),
-    linear-gradient(155deg, rgba(30, 21, 58, 0.14) 0%, rgba(11, 7, 24, 0.12) 100%);
-  --nova-hero-glass-border: rgba(178, 158, 240, 0.14);
+    linear-gradient(155deg, rgba(18, 12, 38, 0.06) 0%, rgba(7, 5, 15, 0.1) 100%);
+  --nova-hero-glass-border: rgba(214, 204, 255, 0.14);
   --nova-hero-glass-inset:
-    inset 0 1px 0 rgba(216, 202, 255, 0.14),
-    inset 0 -1px 0 rgba(128, 97, 255, 0.06);
+    inset 0 1px 0 rgba(226, 214, 255, 0.16),
+    inset 0 -1px 0 rgba(128, 97, 255, 0.05);
   --nova-hero-glass-shadow:
-    0 24px 56px rgba(4, 2, 14, 0.38),
-    0 2px 24px rgba(115, 89, 242, 0.08);
-  --nova-hero-glass-filter: blur(18px) saturate(130%);
+    0 24px 56px rgba(4, 2, 14, 0.34),
+    0 2px 24px rgba(115, 89, 242, 0.06);
+  --nova-hero-glass-filter: blur(48px) saturate(170%);
   /* 不支持 backdrop-filter 时的可读降级底（保证标题对比） */
-  --nova-hero-glass-fallback: rgba(20, 14, 40, 0.72);
+  --nova-hero-glass-fallback: rgba(12, 8, 26, 0.72);
   --nova-shadow-btn: 0 8px 26px rgba(125, 92, 235, 0.42);
   --nova-shadow-btn-hover: 0 12px 30px rgba(125, 92, 235, 0.48);
   --nova-shadow-logo: 0 6px 22px rgba(107, 82, 230, 0.45);
@@ -353,25 +373,25 @@
     --nova-bg: #07050f;
 
     --nova-text: #ffffff;
-    --nova-text-claim: #9c94c4;
-    --nova-text-sub: #bdb6dc;
+    --nova-text-claim: #b3abd8;
+    --nova-text-sub: #cdc6e8;
     --nova-text-chip: #c5bee4;
     --nova-text-status: #b9b2dc;
-    --nova-text-help: #a9a2cc;
-    --nova-text-muted: #8e86b0;
-    --nova-text-dim: #7b749b;
-    --nova-text-soft: #6f6890;
-    --nova-text-copy: #6a6386;
-    --nova-text-icp: #51496b;
-    --nova-text-cert: #9a93b8;
+    --nova-text-help: #b8b1d8;
+    --nova-text-muted: #a49cc6;
+    --nova-text-dim: #8b84ab;
+    --nova-text-soft: #7d76a0;
+    --nova-text-copy: #7a7398;
+    --nova-text-icp: #615a7d;
+    --nova-text-cert: #a9a2c6;
     --nova-text-alt: #cfc8e8;
-    --nova-text-ph: #5e5878;
+    --nova-text-ph: #6d6790;
 
     --nova-accent: #7c63e8;
     --nova-accent-2: #7c63e8;
     --nova-btn-stroke: rgba(184, 158, 255, 0.55);
     --nova-checkbox: #6d55d8;
-    --nova-link: #b9a6f5;
+    --nova-link: #c3b2f7;
     --nova-required: #c58ae8;
     --nova-logo-glyph: #b79cff;
 
@@ -379,22 +399,23 @@
     --nova-surface-solid: rgba(14, 10, 28, 0.97);
     --nova-border: rgba(255, 255, 255, 0.14);
     --nova-border-strong: rgba(255, 255, 255, 0.16);
-    --nova-input-bg: #0b0818;
-    --nova-input-stroke: rgba(255, 255, 255, 0.16);
-    --nova-sf-tabs: #07050f;
-    --nova-sf-tab-active: #2a2249;
-    --nova-sf-tab-active-stroke: rgba(158, 133, 242, 0.42);
-    --nova-chip: #0e0b1e;
-    --nova-chip-stroke: rgba(255, 255, 255, 0.12);
-    --nova-sf-altbtn: #0f0b1f;
-    --nova-sf-altbtn-stroke: rgba(255, 255, 255, 0.16);
-    --nova-sf-trust: #0c0919;
-    --nova-sf-trust-stroke: rgba(255, 255, 255, 0.09);
-    --nova-sf-cert: #0d0a1c;
-    --nova-sf-cert-stroke: rgba(255, 255, 255, 0.1);
-    --nova-sf-langpill: #16122a;
-    --nova-sf-langpill-stroke: rgba(92, 84, 133, 0.55);
-    --nova-sf-lang-active: #6d55d8;
+    --nova-input-bg: rgba(9, 6, 20, 0.5);
+    --nova-input-bg-solid: #0b0818;
+    --nova-input-stroke: rgba(255, 255, 255, 0.2);
+    --nova-sf-tabs: rgba(7, 5, 15, 0.36);
+    --nova-sf-tab-active: rgba(58, 49, 99, 0.82);
+    --nova-sf-tab-active-stroke: rgba(158, 133, 242, 0.5);
+    --nova-chip: rgba(14, 11, 30, 0.44);
+    --nova-chip-stroke: rgba(255, 255, 255, 0.14);
+    --nova-sf-altbtn: rgba(15, 11, 31, 0.44);
+    --nova-sf-altbtn-stroke: rgba(255, 255, 255, 0.18);
+    --nova-sf-trust: rgba(12, 9, 25, 0.4);
+    --nova-sf-trust-stroke: rgba(255, 255, 255, 0.11);
+    --nova-sf-cert: rgba(13, 10, 28, 0.4);
+    --nova-sf-cert-stroke: rgba(255, 255, 255, 0.12);
+    --nova-sf-langpill: rgba(22, 18, 42, 0.44);
+    --nova-sf-langpill-stroke: rgba(140, 130, 190, 0.5);
+    --nova-sf-lang-active: rgba(109, 85, 216, 0.9);
 
     --nova-divider: #2e2748;
 
@@ -410,9 +431,9 @@
     --nova-icon-dim: #7e7699;
     --nova-icon-logo: #8b72e0;
 
-    --nova-brand-mark-bg: #241c42;
+    --nova-brand-mark-bg: rgba(36, 28, 66, 0.66);
     --nova-brand-mark-stroke: rgba(140, 120, 224, 0.5);
-    --nova-brand-tag-bg: #1e1840;
+    --nova-brand-tag-bg: rgba(30, 24, 64, 0.62);
     --nova-brand-tag-stroke: rgba(128, 107, 209, 0.45);
 
     /* ---- 卡片悬浮阴影：远距环境投影 + 近距接触阴影 + 品牌紫光晕三层叠加 ---- */
@@ -424,50 +445,41 @@
       0 22px 52px rgba(4, 2, 14, 0.6),
       0 2px 26px rgba(115, 89, 242, 0.12);
 
-    /* ---- 玻璃卡片（深色：顶部紫色镜面高光 + 半透深紫渐变透出星云光晕；
-       blur 34px 平滑粒子、saturate 135% 提色防发灰；底色 alpha 0.7~0.8
-       兼顾通透度与标题等直接落于卡面文字的对比度。
-       旧值 alpha 0.84~0.9 过实，玻璃感弱；更早的 0.58~0.66 + saturate(160%)
-       则会把加法混合的粒子糊成发灰毛面，均不采用） ---- */
+    /* ---- 玻璃卡片（深色「全透明玻璃」）：与上方 [data-theme='dark'] 块保持一致 ---- */
     --nova-card-glass-bg:
       radial-gradient(
         130% 78% at 15% -12%,
-        rgba(172, 146, 255, 0.13) 0%,
+        rgba(172, 146, 255, 0.1) 0%,
         rgba(172, 146, 255, 0) 54%
       ),
-      linear-gradient(
-        155deg,
-        rgba(30, 21, 58, 0.7) 0%,
-        rgba(11, 7, 24, 0.8) 100%
-      );
-    --nova-card-glass-border: rgba(178, 158, 240, 0.2);
+      linear-gradient(155deg, rgba(18, 12, 38, 0.1) 0%, rgba(7, 5, 15, 0.14) 100%);
+    --nova-card-glass-border: rgba(214, 204, 255, 0.18);
     --nova-card-glass-inset:
-      inset 0 1px 0 rgba(216, 202, 255, 0.2),
-      inset 0 -1px 0 rgba(128, 97, 255, 0.1);
-    --nova-card-glass-filter: blur(34px) saturate(135%);
+      inset 0 1px 0 rgba(226, 214, 255, 0.22),
+      inset 0 -1px 0 rgba(128, 97, 255, 0.08);
+    --nova-card-glass-filter: blur(64px) saturate(180%);
 
-    /* ---- 品牌区玻璃衬板（.hero::before）：86%~88% 高透深紫玻璃透出星云，
-       仅顶部一抹紫色镜面高光；模糊半径取 18px（低于卡片 34px），
-       星云为持续 rAF 动画，控制每帧 backdrop 重合成开销。
-       投影刻意弱于登录卡片，保持卡片为视觉焦点 ---- */
+    /* ---- 品牌区玻璃卡（.heroCard）：比登录卡片更透，主次分明 ---- */
     --nova-hero-plate-inset: 28px;
+    --nova-hero-plate-pad-y: 28px;
+    --nova-hero-plate-pad-x: 24px;
     --nova-hero-glass-bg:
       radial-gradient(
         120% 72% at 12% -10%,
         rgba(172, 146, 255, 0.1) 0%,
         rgba(172, 146, 255, 0) 55%
       ),
-      linear-gradient(155deg, rgba(30, 21, 58, 0.14) 0%, rgba(11, 7, 24, 0.12) 100%);
-    --nova-hero-glass-border: rgba(178, 158, 240, 0.14);
+      linear-gradient(155deg, rgba(18, 12, 38, 0.06) 0%, rgba(7, 5, 15, 0.1) 100%);
+    --nova-hero-glass-border: rgba(214, 204, 255, 0.14);
     --nova-hero-glass-inset:
-      inset 0 1px 0 rgba(216, 202, 255, 0.14),
-      inset 0 -1px 0 rgba(128, 97, 255, 0.06);
+      inset 0 1px 0 rgba(226, 214, 255, 0.16),
+      inset 0 -1px 0 rgba(128, 97, 255, 0.05);
     --nova-hero-glass-shadow:
-      0 24px 56px rgba(4, 2, 14, 0.38),
-      0 2px 24px rgba(115, 89, 242, 0.08);
-    --nova-hero-glass-filter: blur(18px) saturate(130%);
+      0 24px 56px rgba(4, 2, 14, 0.34),
+      0 2px 24px rgba(115, 89, 242, 0.06);
+    --nova-hero-glass-filter: blur(48px) saturate(170%);
     /* 不支持 backdrop-filter 时的可读降级底（保证标题对比） */
-    --nova-hero-glass-fallback: rgba(20, 14, 40, 0.72);
+    --nova-hero-glass-fallback: rgba(12, 8, 26, 0.72);
     --nova-shadow-btn: 0 8px 26px rgba(125, 92, 235, 0.42);
     --nova-shadow-btn-hover: 0 12px 30px rgba(125, 92, 235, 0.48);
     --nova-shadow-logo: 0 6px 22px rgba(107, 82, 230, 0.45);
@@ -479,7 +491,7 @@
   }
 }
 
-/* ----- 粒子星云背景层（本项目替代原型的位图背景 + 遮罩） ----- */
+/* ----- 粒子星云背景层（仅浅色主题；深色改用 SpaceBackdrop 银河照片卡） ----- */
 .galaxyLayer {
   position: absolute;
   left: -8%;
@@ -692,20 +704,41 @@
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  padding: var(--nova-brand-pt) var(--nova-brand-pr) var(--nova-brand-pb) var(--nova-brand-pl);
+  padding: var(--nova-brand-pt) var(--nova-brand-pr) var(--nova-brand-pb)
+    var(--nova-brand-pl);
   min-width: 0;
 }
 
-/* 品牌区全透明：不渲染玻璃衬板（无边框 / 底色 / 模糊 / 投影），
-   内容直接悬浮于星云之上。 */
-.hero::before {
-  display: none;
-}
-
-/* 品牌内容抬升层（static → relative 不改变布局位置） */
-.hero > * {
+/* 品牌玻璃卡（.heroCard）：包裹标识 / 主张 / 能力标签，贴合内容而非铺满整列。
+   浅色主题下只是一层透明容器（无边框 / 底色 / 模糊 / 投影），保持原样；
+   深色主题下同样全透——不加底色、无边框、无 inset 高光、不做 backdrop-filter
+   模糊（模糊会把星空糊成均匀暗色），星空完整透显，仅保留宽度借位与内边距。 */
+.heroCard {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+}
+
+:global([data-theme='dark']) .heroCard {
+  /* 向右吃掉栏内留白，让玻璃卡与栅格列右缘对齐：
+     主张文案（约 560px）必须单行，否则玻璃卡会为了换行而变高。
+     注意要同步放开基础规则里的 max-width: 100%，否则宽度会被它夹回栏宽。 */
+  width: calc(100% + var(--nova-brand-pr));
+  max-width: none;
+  padding: var(--nova-hero-plate-pad-y) var(--nova-hero-plate-pad-x);
+  border-radius: var(--nova-r-card);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme='light'])) .heroCard {
+    width: calc(100% + var(--nova-brand-pr));
+    max-width: none;
+    padding: var(--nova-hero-plate-pad-y) var(--nova-hero-plate-pad-x);
+    border-radius: var(--nova-r-card);
+  }
 }
 
 .brandLogo {
@@ -1061,8 +1094,8 @@
 .formInput:-webkit-autofill:hover,
 .formInput:-webkit-autofill:focus,
 .formInput:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px var(--nova-input-bg) inset !important;
-  box-shadow: 0 0 0 1000px var(--nova-input-bg) inset !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--nova-input-bg-solid) inset !important;
+  box-shadow: 0 0 0 1000px var(--nova-input-bg-solid) inset !important;
   -webkit-text-fill-color: var(--nova-text);
   caret-color: var(--nova-text);
 }
@@ -1325,6 +1358,19 @@
 
   .brandClaim {
     font-size: 14px;
+  }
+
+  /* 深色主题：品牌玻璃卡必须保持主张文案单行，否则卡片高度在断点处跳变。
+     实测 1280 视口下 14px 的文案需 558px，而卡内可用宽仅 547px →
+     降到 13px（≈518px）并让卡片再向右多借 16px（不动版心对齐）。 */
+  :global([data-theme='dark']) .brandClaim,
+  :global(:root:not([data-theme='light'])) .brandClaim {
+    font-size: 13px;
+  }
+
+  :global([data-theme='dark']) .heroCard,
+  :global(:root:not([data-theme='light'])) .heroCard {
+    width: calc(100% + var(--nova-brand-pr) + 16px);
   }
 
   .brandCaps {

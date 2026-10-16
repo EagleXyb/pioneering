@@ -1,0 +1,173 @@
+/* ==========================================================================
+   SpaceBackdrop —— 深色模式「太空」背景
+   --------------------------------------------------------------------------
+   层序（.backdrop 内自下而上）：
+     ① .deepField  中性冷灰色晕（只为避免死黑；曾有紫/蓝色晕，会把灰阶照片染紫）
+     ② .nebula     黑白银河照片，**全幅出血**铺满整个视口（object-fit: cover）
+     ③ .stars      全屏星空底纹，叠在照片之上（照片本身也含星点，两层错开更自然）
+     ④ .scrim      可读性遮罩：品牌区中心压暗 + 上下边缘压暗
+   分辨率：候选图与选档策略见 SpaceBackdrop.tsx 头注；本文件只做构图与调色，
+        所有尺寸相关的属性都用百分比/cover，任何视口都不会拉伸变形。
+   令牌：底色复用 --nova-bg（由 .pageContainer 下发）；其余为背景层私有 --space-*。
+   说明：登录卡片与品牌衬板都是 backdrop-filter 玻璃（见 auth.module.css 的
+        --nova-card-glass-* / --nova-hero-glass-*），因此照片必须整幅连续、
+        不能被卡片边框切断，"悬浮在太空中"才成立。
+   ========================================================================== */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--nova-bg);
+  /* 底色兜底：SpaceBackdrop 也可脱离 .pageContainer 单独使用 */
+  --space-base: var(--nova-bg, #07050f);
+}
+
+/* ----- ① 大尺度色晕：**中性冷灰**（对齐参考图的黑白银河质感），仅避免死黑 -----
+   曾用紫罗兰 + 冷蓝双色晕，与灰阶照片叠加会把照片「染紫」，破坏黑白调子；
+   现在只保留极淡的中性提亮，颜色全部交给照片与 UI。 */
+.deepField {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      78% 62% at 20% 86%,
+      rgba(150, 156, 170, 0.06) 0%,
+      rgba(150, 156, 170, 0) 62%
+    ),
+    radial-gradient(
+      62% 52% at 86% 10%,
+      rgba(150, 156, 170, 0.04) 0%,
+      rgba(150, 156, 170, 0) 60%
+    );
+}
+
+/* ----- ② 银河照片：全幅出血，作为整页太空的底图 ----- */
+.nebula {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* <picture> 只是候选源容器，尺寸完全交给里面的 img */
+.nebula picture {
+  display: contents;
+}
+
+/* 分辨率策略见 SpaceBackdrop.tsx 头注；这里只负责"不变形 + 构图稳定"：
+   object-fit: cover 保证任何宽高比都只裁不拉伸（不失真），
+   object-position 让银河带在各种视口下都落在画面中段偏上（不被裁掉）。
+   滤镜：纯灰阶（saturate 0）对齐参考图的黑白银河；降亮交给 .scrim，
+   不把照片本身压黑（压黑会让银河带与暗尘一起消失）。 */
+.nebulaImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 取景：原片是 2:3 竖幅，桌面视口（≤2:1）实际只用到中上部一条——
+     38% 落在银河带与密集星区，最接近参考图的构图（实测 30/50/68% 对比后取中） */
+  object-position: 50% 38%;
+  /* 对齐参考图的黑白银河：灰阶 + 略提对比，让暗尘带与亮星分层；
+     整体亮度保持接近原片，压暗工作全部交给 .scrim（可读性与观感分开调） */
+  filter: saturate(0) contrast(1.12) brightness(1.02);
+}
+
+/* 四角压暗：把注意力收回画面中心，也让边缘的星点自然消失 */
+.nebula::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    132% 112% at 50% 46%,
+    rgba(7, 5, 15, 0) 52%,
+    rgba(7, 5, 15, 0.26) 86%,
+    rgba(7, 5, 15, 0.48) 100%
+  );
+}
+
+/* ----- ③ 全屏星空底纹：多层 radial-gradient 平铺（零显存、任意 DPR 自适应） ----- */
+.stars {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  opacity: 0.82;
+  /* 边缘极淡，避免与顶栏/底栏文字抢注意力；同时弱化平铺接缝 */
+  -webkit-mask-image: radial-gradient(122% 104% at 50% 50%, #000 54%, rgba(0, 0, 0, 0.3) 100%);
+  mask-image: radial-gradient(122% 104% at 50% 50%, #000 54%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+/* ----- ④ 可读性遮罩（等价原型 .page__scrim） ----- */
+/* 品牌区标题为 44px 纯白且玻璃衬板很透，需要在页面级再压一档；
+   右侧登录卡片自带 backdrop-filter 模糊，遮罩中心避开它。 */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      46% 40% at 22% 52%,
+      rgba(7, 5, 15, 0.58) 0%,
+      rgba(7, 5, 15, 0.34) 58%,
+      rgba(7, 5, 15, 0) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(7, 5, 15, 0.5) 0%,
+      rgba(7, 5, 15, 0) 18%,
+      rgba(7, 5, 15, 0) 72%,
+      rgba(7, 5, 15, 0.55) 100%
+    );
+}
+
+/* ==========================================================================
+   响应式：与 auth.module.css 的断点一一对应
+   ========================================================================== */
+
+/* 1280 以下：品牌区只剩标识与标题，遮罩中心随之上移、强度略降 */
+@media (max-width: 1279px) {
+  .scrim {
+    background:
+      radial-gradient(
+        58% 40% at 22% 46%,
+        rgba(7, 5, 15, 0.72) 0%,
+        rgba(7, 5, 15, 0.42) 58%,
+        rgba(7, 5, 15, 0) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgba(7, 5, 15, 0.55) 0%,
+        rgba(7, 5, 15, 0) 18%,
+        rgba(7, 5, 15, 0) 72%,
+        rgba(7, 5, 15, 0.62) 100%
+      );
+  }
+}
+
+/* 平板竖屏（768–980）：宽高比 ≤4/5，命中的已是竖版裁切图（银河带在画面中部），
+   轻微上移让出底部表单区即可 */
+@media (min-width: 768px) and (max-width: 980px) {
+  .nebulaImg {
+    object-position: 50% 46%;
+  }
+}
+
+/* 768 以下：品牌区隐藏、表单单列 → 照片继续全幅，整体再压一档，
+   遮罩改为均匀压暗，保证输入框与提示文字可读 */
+@media (max-width: 767px) {
+  .nebulaImg {
+    object-position: 50% 50%;
+    filter: saturate(0) contrast(1.04) brightness(0.86);
+  }
+
+  .scrim {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(7, 5, 15, 0.66) 0%,
+        rgba(7, 5, 15, 0.44) 42%,
+        rgba(7, 5, 15, 0.58) 100%
+      );
+  }
+}
