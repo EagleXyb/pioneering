@@ -415,10 +415,10 @@
   gap: 11px;
   width: 100%;
   margin: 2px 0;
-  /* 豆包实测：行高约 41px（11 + 19 图标 + 11） */
-  padding: 11px 12px;
-  /* 豆包实测：16px 常规体（非 500 中粗） */
-  font-size: 16px;
+  /* 14px 字号配套：行高约 36px（10 + 16 图标 + 10） */
+  padding: 10px 12px;
+  /* 菜单行文字：14px 常规体 */
+  font-size: 14px;
   font-weight: 400;
   color: var(--text-primary);
   border-radius: 10px;
@@ -433,8 +433,8 @@
 }
 
 .account-popover-item svg {
-  width: 19px;
-  height: 19px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   /* 豆包菜单图标与文字同色（近黑/近白），hover 不变色，只浮起圆底 */
   color: var(--text-primary);
@@ -476,8 +476,8 @@
 /* 选中主题的右侧对勾（豆包口径：仅当前项显示，贴右缘） */
 .account-popover-check {
   margin-left: auto;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   color: var(--text-primary);
 }
