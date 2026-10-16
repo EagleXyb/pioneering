@@ -199,20 +199,60 @@
   -webkit-backdrop-filter: var(--nav-blur);
   backdrop-filter: var(--nav-blur);
   border-bottom: 1px solid transparent;
-  transition: border-color .2s, background .2s;
+  transition:
+    border-color .2s,
+    background .2s,
+    top .2s,
+    -webkit-backdrop-filter .2s,
+    backdrop-filter .2s;
 }
-/* 滚动后：50% 轻白面兜底深色区上的黑字可读性（miora 页面全浅无需此态） */
+/* 滚动后：外层让出全宽玻璃（转透明 + 去模糊）并整体下浮 10px。
+   玻璃面移交内层胶囊 —— .nav-in 本就是 .wrap（与内容区同宽），无需宽度动画；
+   sticky top 是纯视觉位移，不改文档流，避免收缩时内容跳动 */
 .brand-site .nav.scrolled {
-  background: var(--nav-glass-scrolled);
+  top: 10px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-/* 面板展开时导航条切换为与滚动态导航同款磨砂，与下方 Mega 面板连成同一块玻璃面 */
+/* 滚动后的胶囊形态：白面磨砂 + 胶囊圆角 + 柔和投影 */
+.brand-site .nav.scrolled .nav-in {
+  background: var(--nav-glass-scrolled);
+  -webkit-backdrop-filter: var(--nav-blur);
+  backdrop-filter: var(--nav-blur);
+  border-radius: 999px;
+  box-shadow:
+    0 12px 32px rgba(9, 9, 11, .10),
+    0 2px 8px rgba(9, 9, 11, .06);
+}
+/* 面板展开时导航条切换为与滚动态导航同款磨砂，与下方 Mega 面板连成同一块玻璃面；
+   同时复位 top 与胶囊形态，保证与 fixed 于 68px 的面板严丝合缝 */
 .brand-site .nav.is-open {
+  top: 0;
   background: var(--nav-glass-scrolled);
   -webkit-backdrop-filter: var(--nav-blur);
   backdrop-filter: var(--nav-blur);
   border-bottom-color: transparent;
 }
-.brand-site .nav-in { display: flex; align-items: center; gap: var(--sp-4); min-height: 68px; }
+.brand-site .nav.is-open .nav-in {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.brand-site .nav-in {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: 68px;
+  transition:
+    background .2s,
+    border-radius .2s,
+    box-shadow .2s,
+    -webkit-backdrop-filter .2s,
+    backdrop-filter .2s;
+}
 .brand-site .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: var(--fs-17); letter-spacing: .02em; }
 .brand-site .logo-mark { width: 26px; height: 26px; flex: none; }
 
@@ -400,6 +440,9 @@
   .brand-site .nav .btn-sm { min-height: 44px; }
   .brand-site .mega { display: none; }
   .brand-site .nav.is-open .nav-close { display: none; }
+  /* 移动端胶囊收进屏幕边 12px，避免胶囊端部顶满屏幕边缘 */
+  .brand-site .nav.scrolled { top: 8px; }
+  .brand-site .nav.scrolled .nav-in { margin-inline: 12px; }
 }
 
 /* 移动端全屏菜单（手风琴）——Portal 到 body，以 .mmenu 自身为作用域 */
@@ -640,6 +683,12 @@ body.mmenu-on .mcta { display: none; }
 .brand-site .hero-in { position: relative; z-index: 2; padding: var(--sp-16) 0 var(--sp-12); }
 .brand-site .hero h1 { font-family: var(--serif); font-size: 3.75rem; line-height: 1.18; max-width: 12em; color: var(--ink); }
 .brand-site .hero h1 .h1-muted { color: var(--graphite-l); }
+/* 标题逐字显影：opacity + 上浮 + 聚焦模糊三通道，延迟由 HomeHero 内联 animationDelay 按字排布 */
+.brand-site .hero h1 .h1-ch { display: inline-block; animation: h1-ch-reveal .7s cubic-bezier(.22, .61, .36, 1) both; }
+@keyframes h1-ch-reveal {
+  from { opacity: 0; transform: translateY(.4em); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
 .brand-site .hero .sub { font-size: var(--fs-20); color: var(--graphite); margin-top: var(--sp-3); max-width: 32em; line-height: 1.7; }
 .brand-site .kw-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: var(--sp-5); }
 .brand-site .kw {
@@ -678,6 +727,7 @@ body.mmenu-on .mcta { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .brand-site .hero-aurora .blob { animation: none; }
+  .brand-site .hero h1 .h1-ch { animation: none; }
 }
 
 /* ---------- 9. 证言区（渐变区，全站仅两处渐变之一） ---------- */
@@ -1060,6 +1110,7 @@ body.mmenu-on .mcta { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .brand-site .reveal { opacity: 1; transform: none; }
   .brand-site .nav,
+  .brand-site .nav-in,
   .brand-site .nav-link,
   .brand-site .nav-trigger,
   .brand-site .nav-login,
@@ -1071,11 +1122,16 @@ body.mmenu-on .mcta { display: none; }
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .brand-site .nav,
-  .brand-site .nav.scrolled,
+  .brand-site .nav:not(.scrolled),
   .brand-site .nav.is-open,
   .brand-site .mega,
   .mmenu {
+    background: var(--paper);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  /* 胶囊态：实底白面（.nav 外层保持透明，玻璃在 .nav-in 上） */
+  .brand-site .nav.scrolled .nav-in {
     background: var(--paper);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;

@@ -5,6 +5,21 @@ import { Button } from '@/components/site/ui/Button'
 // HomeHero — 首页渐变首屏（关键词行 + 双 CTA + 四项信任数据）
 // ============================================================
 
+// 标题逐字显影步进：每字延迟 45ms，两行 16 字总时长约 1.2s
+const CH_STEP_MS = 45
+
+/**
+ * 将标题按码位拆为独立 span（keyframes 见 brand.css .h1-ch）。
+ * offset 用于跨行连续延迟：第二行接在第一行之后排队。
+ */
+function revealChars(text: string, offset = 0) {
+  return Array.from(text, (ch, i) => (
+    <span key={i} className="h1-ch" style={{ animationDelay: `${(offset + i) * CH_STEP_MS}ms` }}>
+      {ch}
+    </span>
+  ))
+}
+
 export function HomeHero() {
   return (
     <section className="hero">
@@ -18,9 +33,11 @@ export function HomeHero() {
       <div className="wrap hero-in">
         <div className="eyebrow">{HERO.eyebrow}</div>
         <h1>
-          {HERO.titleLines[0]}
+          {revealChars(HERO.titleLines[0])}
           <br />
-          <span className="h1-muted">{HERO.titleLines[1]}</span>
+          <span className="h1-muted">
+            {revealChars(HERO.titleLines[1], HERO.titleLines[0].length)}
+          </span>
         </h1>
         <p className="sub">{HERO.sub}</p>
         <div className="kw-row">

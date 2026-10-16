@@ -4,7 +4,7 @@
 // SiteNav — 全站 sticky 导航（mega dropdown 版）
 // 桌面端：pill 触发器 + 大面板（功能条目 + 右侧 NEW 推广卡），
 // hover 展开、click 切换、Esc / 外部点击 / X 关闭；
-// 滚动加细线；≤1000px 收纳为汉堡键，手风琴面板见 MobileMenu。
+// 滚动收缩为悬浮胶囊（迟滞阈值）；≤1000px 收纳为汉堡键，手风琴面板见 MobileMenu。
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -72,9 +72,10 @@ export function SiteNav() {
     window.matchMedia('(hover: hover) and (pointer: fine)').matches
   const closeMobileMenu = useCallback(() => setMenuOpen(false), [])
 
-  // 滚动加细线
+  // 滚动收缩：迟滞阈值（>24 进入胶囊态、<8 退出），避免边界往返滚动时反复闪烁
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 10)
+    const onScroll = () =>
+      setScrolled((prev) => (prev ? window.scrollY > 8 : window.scrollY > 24))
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
