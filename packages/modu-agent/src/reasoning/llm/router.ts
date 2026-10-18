@@ -91,7 +91,7 @@ function _matchValue<T>(actual: T, expected: T | T[]): boolean {
  *       enabled: true
  *       default_route: 'default'
  *       routes:
- *         default: { provider: 'deepseek', model: 'deepseek-v4-flash' }
+ *         default: { provider: 'deepseek', model: 'deepseek-flash' }
  *         pro:     { provider: 'deepseek', model: 'deepseek-v4-pro' }
  *       rules:
  *         - when: { task_type: 'planning' }

@@ -375,23 +375,47 @@ export class QualityMonitor {
       return null
     }
 
-    let data: any
+    let data: any = null
     // 尝试直接解析（最理想情况）
     try {
       data = JSON.parse(content.trim())
     } catch {
       // fallback：用正则提取首个 {...} 块
       const match = QualityMonitor._JSON_PATTERN.exec(content)
-      if (!match) {
+      if (match) {
+        try {
+          data = JSON.parse(match[0])
+        } catch {
+          data = null
+        }
+      }
+    }
+
+    // P6：Judge 输出被 max_tokens 截断时，JSON 不完整（常见于带 reasoning 字段）。
+    // 逐字段正则抽取仍可拿到分数，避免整个评测回退到 rule（accuracy 缺失 → 0）。
+    if (data === null) {
+      data = {}
+      for (const key of [
+        'relevance',
+        'completeness',
+        'accuracy',
+        'confidence',
+        'tool_success',
+        'overall',
+      ]) {
+        const m = new RegExp(
+          `["']?${key}["']?\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)`,
+        ).exec(content)
+        if (m) data[key] = Number(m[1])
+      }
+      if (Object.keys(data).length === 0) {
         logger.warning('Failed to extract JSON from Judge response: %s', content.slice(0, 200))
         return null
       }
-      try {
-        data = JSON.parse(match[0])
-      } catch (e) {
-        logger.warning('Failed to parse Judge JSON: %s, raw=%s', String(e), match[0].slice(0, 200))
-        return null
-      }
+      logger.warning(
+        'Judge JSON truncated, extracted %d field(s) by regex',
+        Object.keys(data).length,
+      )
     }
 
     const clamp = (key: string, defaultVal: number = 0.5): number => {

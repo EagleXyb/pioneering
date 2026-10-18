@@ -18,6 +18,7 @@
 //   - routeAfterHumanReview (P3-12.3.2): 审批后路由（通过→tools，拒绝→response）
 import {
   AIMessage,
+  AIMessageChunk,
   HumanMessage,
   SystemMessage,
   ToolMessage,
@@ -496,7 +497,7 @@ export function makeMemoryUpdateNode(
         if (msg instanceof HumanMessage) {
           role = 'user'
           content = msg.content
-        } else if (msg instanceof AIMessage) {
+        } else if (msg instanceof AIMessage || msg instanceof AIMessageChunk) {
           role = 'assistant'
           content = msg.content
         } else if (msg instanceof ToolMessage) {
@@ -1010,8 +1011,8 @@ function _detectPrematureTermination(
   }
   if (!hasToolMessage) return
 
-  // 条件2: 最后一条是 AIMessage(无 tool_calls,由调用方保证)
-  if (!(lastMsg instanceof AIMessage)) return
+  // 条件2: 最后一条是 AI 消息(无 tool_calls,由调用方保证)
+  if (!(lastMsg instanceof AIMessage || lastMsg instanceof AIMessageChunk)) return
 
   // 条件3: 文本含承诺词
   const content = typeof lastMsg.content === 'string' ? lastMsg.content : ''
@@ -1175,7 +1176,7 @@ export function docFinalAnswerNode(state: ModuAgentState): Partial<ModuAgentStat
   // 原始字段；只清前者会在真实任务上复现 400（已实测）。
   const stateMessages = state.messages ?? []
   const lastMsg = stateMessages[stateMessages.length - 1]
-  if (lastMsg instanceof AIMessage) {
+  if (lastMsg instanceof AIMessage || lastMsg instanceof AIMessageChunk) {
     const akToolCalls = (lastMsg as any).additional_kwargs?.['tool_calls']
     const hasAkCalls = Array.isArray(akToolCalls) && akToolCalls.length > 0
     if ((lastMsg.tool_calls?.length ?? 0) > 0 || hasAkCalls) {
@@ -2005,7 +2006,10 @@ export function responseNode(
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (msg instanceof AIMessage) {
+    // P6：流式/函数调用返回的是 AIMessageChunk（不是 AIMessage 的子类）。
+    // 只判 instanceof AIMessage 会漏掉最终答案 → 走到工具摘要兜底，
+    // 表现为「工具执行成功但用户只看到过程叙述」（评测 smoke 0/6 的根因）。
+    if (msg instanceof AIMessage || msg instanceof AIMessageChunk) {
       // 带 tool_calls 的消息是「中间轮」：它的 content 是过渡话术（"我先检索一下…"），
       // 不是最终回答 —— 把它当 response 会让用户看到"回答只有一句话"
       // （真实事故：工具轮次触顶被中止）。跳过，继续往前找真正的回答。

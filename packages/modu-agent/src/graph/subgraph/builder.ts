@@ -9,7 +9,12 @@
 //   START → sub_agent → [route] ── 有 tool_calls → sub_tools → sub_agent (循环)
 //                             └── 无 tool_calls → sub_finalize → END
 import type { BaseMessage } from '@langchain/core/messages'
-import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  AIMessageChunk,
+  HumanMessage,
+  SystemMessage,
+} from '@langchain/core/messages'
 import type { StructuredTool } from '@langchain/core/tools'
 import { END, START, StateGraph, type CompiledStateGraph } from '@langchain/langgraph'
 import { ToolNode } from '@langchain/langgraph/prebuilt'
@@ -162,7 +167,8 @@ export function build_subagent_subgraph(
     let responseContent = ''
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg instanceof AIMessage && msg.content) {
+      // P6：子图同样可能收到 AIMessageChunk（流式/函数调用），漏判会丢失最终输出
+      if ((msg instanceof AIMessage || msg instanceof AIMessageChunk) && msg.content) {
         responseContent = msg.content as string
         break
       }

@@ -35,6 +35,16 @@ describe('QualityMonitor (rule mode)', () => {
     expect(['rule', 'rule_fallback']).toContain(r.evaluator_mode)
   })
 
+  it('解析被 max_tokens 截断的 Judge JSON（逐字段抽取）', () => {
+    const qm = new QualityMonitor(null, 'rule')
+    const parsed = (qm as any)._parseJudgeResponse(
+      '{"relevance": 1.0, "completeness": 0.95, "accuracy": 0.95, "confidence": 1.0, "tool_success": 1.0, "overall": 0.98, "reasoning": "回复正确但被截断',
+    )
+    expect(parsed).not.toBeNull()
+    expect(parsed.accuracy).toBeCloseTo(0.95)
+    expect(parsed.overall).toBeCloseTo(0.98)
+  })
+
   it('clamps LLM judge scores to [0,1]', () => {
     const qm = new QualityMonitor(null, 'rule')
     const parsed = (qm as any)._parseJudgeResponse(

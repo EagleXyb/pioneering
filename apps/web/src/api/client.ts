@@ -3,7 +3,10 @@
  * 统一处理请求头、Token 注入、错误拦截
  */
 
-const BASE_URL = '/api';
+import { apiUrl } from './base-url';
+
+// 兼容既有引用：base-url 的能力在此透出
+export { setApiBaseUrl, getApiBaseUrl, apiUrl } from './base-url';
 
 /** 从 localStorage 或 sessionStorage 获取 Token */
 export function getToken(): string | null {
@@ -66,7 +69,7 @@ async function tryRefreshToken(): Promise<boolean> {
 
   refreshPromise = (async () => {
     try {
-      const resp = await fetch(`${BASE_URL}/auth/refresh`, {
+      const resp = await fetch(apiUrl('/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
@@ -111,7 +114,7 @@ async function request<T>(
   const { skipAuthRetry = false, ...init } = options;
 
   const doRequest = async (): Promise<Response> => {
-    const url = `${BASE_URL}${path}`;
+    const url = apiUrl(path);
     const token = getToken();
 
     const hasBody = init.method && init.method !== 'GET' && init.method !== 'DELETE' && init.body != null

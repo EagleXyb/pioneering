@@ -27,8 +27,8 @@ export interface AguiEvent {
 const asText = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 export interface AguiStreamHandlers {
-  /** 每个成功解析的事件都会先触发（调试/打点用） */
-  onEvent?: (event: AguiEvent) => void;
+  /** 每个成功解析的事件都会先触发（调试/打点用；meta.id 为 SSE 事件 id） */
+  onEvent?: (event: AguiEvent, meta?: { id?: string }) => void;
   onRunStarted?: (event: AguiEvent) => void;
   onRunFinished?: (event: AguiEvent) => void;
   onRunError?: (event: AguiEvent) => void;
@@ -79,6 +79,8 @@ export const TERMINAL_AGUI_EVENTS = [
 export interface AguiStreamResult {
   reason: AguiStreamEndReason;
   error?: { message: string; code?: string | number };
+  /** 最后收到的事件 id（用于 Last-Event-ID 续读） */
+  lastEventId?: string;
   eventCount: number;
   /** 实际接收到的全部事件类型（去重，便于测试与排障） */
   eventTypes: string[];
@@ -109,9 +111,12 @@ export async function parseAguiStream(
   let sawRunPaused = false;
   let sawHitlAborted = false;
   let streamError: AguiStreamResult['error'];
+  let lastEventId: string | undefined;
 
-  const dispatch = (event: AguiEvent) => {
-    handlers.onEvent?.(event);
+  const dispatch = (event: AguiEvent, meta?: { id?: string }) => {
+    // 无 id 时保持旧调用形态（单参数），避免影响既有断言/回调
+    if (meta) handlers.onEvent?.(event, meta);
+    else handlers.onEvent?.(event);
     switch (event.type) {
       case 'RUN_STARTED':
         handlers.onRunStarted?.(event);
@@ -198,8 +203,15 @@ export async function parseAguiStream(
     // 最后一段可能是未完成的行，留到下一次 chunk 拼接
     buffer = lines.pop() ?? '';
 
+    let pendingId: string | undefined;
     for (const rawLine of lines) {
       const line = rawLine.trim();
+      if (!line) continue;
+      // P5：SSE 事件 id（`id: 12`），与下一条 data 绑定
+      if (line.startsWith('id:')) {
+        pendingId = line.slice(3).trim();
+        continue;
+      }
       if (!line.startsWith('data:')) continue;
       const payload = line.slice(5).trim();
       if (!payload || payload === '[DONE]') continue;
@@ -212,14 +224,21 @@ export async function parseAguiStream(
         continue;
       }
 
+      const meta = pendingId ? { id: pendingId } : undefined;
+      if (pendingId) {
+        lastEventId = pendingId;
+        pendingId = undefined;
+      }
+
       eventCount++;
       if (typeof event.type === 'string') eventTypes.add(event.type);
-      dispatch(event);
+      dispatch(event, meta);
 
       if (streamError) {
         return {
           reason: 'error-event',
           error: streamError,
+          lastEventId,
           eventCount,
           eventTypes: [...eventTypes],
           terminal: true,
@@ -259,6 +278,7 @@ export async function parseAguiStream(
   if (signal?.aborted) {
     return {
       reason: 'aborted',
+      lastEventId,
       eventCount,
       eventTypes: [...eventTypes],
       terminal,
@@ -267,6 +287,7 @@ export async function parseAguiStream(
 
   return {
     reason: sawRunPaused ? 'paused' : sawRunFinished ? 'finished' : 'closed',
+    lastEventId,
     eventCount,
     eventTypes: [...eventTypes],
     terminal,

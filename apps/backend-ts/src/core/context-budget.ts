@@ -16,6 +16,8 @@ export interface HistoryBudget {
 }
 
 export interface HistoryMessage {
+  /** 消息 id（chat 的编辑重发需要按 id 截断上下文） */
+  id?: string
   role: string
   content: string
 }
@@ -34,8 +36,8 @@ export async function loadSessionHistoryByBudget(
     where: { sessionId },
     orderBy: { createdAt: 'desc' },
     take: candidateLimit,
-    select: { role: true, content: true },
-  })) as Array<{ role: string; content: string | null }>
+    select: { id: true, role: true, content: true },
+  })) as Array<{ id: string; role: string; content: string | null }>
 
   const cost = (content: string | null): number =>
     Math.max(1, Math.ceil((content ?? '').length / 4))
@@ -47,13 +49,13 @@ export async function loadSessionHistoryByBudget(
   // guaranteed 为「新→旧」：顺序 unshift 得到旧→新
   for (let i = 0; i < guaranteed.length; i++) {
     const row = guaranteed[i]!
-    kept.unshift({ role: row.role, content: row.content ?? '' })
+    kept.unshift({ id: row.id, role: row.role, content: row.content ?? '' })
     usedTokens += cost(row.content)
   }
 
   // 2) 更早的消息：从紧邻保留段的位置向旧方向添加，直到预算用尽
   const older = rows.slice(keepLastN)
-  const accepted: Array<{ role: string; content: string | null }> = []
+  const accepted: Array<{ id: string; role: string; content: string | null }> = []
   for (const row of older) {
     const c = cost(row.content)
     if (maxTokens > 0 && usedTokens + c > maxTokens) break
@@ -63,7 +65,7 @@ export async function loadSessionHistoryByBudget(
   // accepted 为「较新→较旧」，顺序 unshift 得到旧→新
   for (let i = 0; i < accepted.length; i++) {
     const row = accepted[i]!
-    kept.unshift({ role: row.role, content: row.content ?? '' })
+    kept.unshift({ id: row.id, role: row.role, content: row.content ?? '' })
   }
 
   return kept

@@ -13,6 +13,8 @@ import {
   reset_metrics_registry,
 } from '@pioneering/modu-agent'
 import { authGuard } from '../plugins/auth.js'
+import { AVAILABLE_MODELS, resolveModelAlias } from '../config/models.js'
+import { renderBackendMetrics } from '../core/metrics.js'
 
 /** 可观测性设置（响应/请求体，PUT 时字段可部分提供）。 */
 export interface ObservabilitySettings {
@@ -169,10 +171,131 @@ export const observabilityRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const text = await registry.collect_text_async()
+        // P4：拼接 chat 直连路径的指标（prom-client 未覆盖的部分）
+        const backendText = renderBackendMetrics()
         reply
           .type('text/plain; version=0.0.4; charset=utf-8')
-          .send(text)
+          .send(backendText ? `${text}\n${backendText}` : text)
+      },
+    )
+
+    // GET /observability/costs —— 成本汇总（P4）
+    // 按 model / user / session 聚合 token_usage，并用模型目录单价估算成本。
+    app.get(
+      '/observability/costs',
+      {
+        schema: {
+          tags: ['observability'],
+          summary: '按模型/用户/会话汇总 token 用量与估算成本',
+          security: [{ BearerAuth: [] }],
+        },
+      },
+      async (req) => {
+        const query = (req.query ?? {}) as { days?: string; groupBy?: string }
+        const days = Math.min(90, Math.max(1, Number(query.days ?? 7) || 7))
+        const groupBy: 'model' | 'user' | 'session' =
+          query.groupBy === 'user'
+            ? 'user'
+            : query.groupBy === 'session'
+              ? 'session'
+              : 'model'
+
+        const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+        // 安全约束：普通用户只能看到自己的用量；平台级成本看板需管理员角色（暂未引入）
+        const rows = await fastify.prisma.tokenUsage.findMany({
+          where: { userId: req.user.id, createdAt: { gte: from } },
+          select: {
+            userId: true,
+            sessionId: true,
+            model: true,
+            promptTokens: true,
+            completionTokens: true,
+            totalTokens: true,
+          },
+        })
+
+        const pricing = new Map<string, (typeof AVAILABLE_MODELS)[number]['pricing']>(
+          AVAILABLE_MODELS.flatMap((m) => [
+            [m.id, m.pricing] as [string, (typeof m)['pricing']],
+            [m.alias, m.pricing] as [string, (typeof m)['pricing']],
+          ]),
+        )
+
+        interface Group {
+          key: string
+          requests: number
+          promptTokens: number
+          completionTokens: number
+          totalTokens: number
+          costUsd: number
+        }
+
+        const groups = new Map<string, Group>()
+        const totals: Group = {
+          key: 'total',
+          requests: 0,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          costUsd: 0,
+        }
+
+        for (const row of rows) {
+          const key =
+            groupBy === 'user'
+              ? row.userId
+              : groupBy === 'session'
+                ? (row.sessionId ?? '(none)')
+                : (row.model ?? '(unknown)')
+          const promptTokens = Number(row.promptTokens ?? 0)
+          const completionTokens = Number(row.completionTokens ?? 0)
+          const totalTokens = Number(row.totalTokens ?? promptTokens + completionTokens)
+
+          // 历史用量可能记录旧模型 ID，先归一到当前 ID 再计价
+          const p = pricing.get(resolveModelAlias(row.model) ?? '')
+          const costUsd = p
+            ? (promptTokens / 1_000_000) * (p.input_price ?? 0) +
+              (completionTokens / 1_000_000) * (p.output_price ?? 0)
+            : 0
+
+          const group =
+            groups.get(key) ??
+            {
+              key,
+              requests: 0,
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
+              costUsd: 0,
+            }
+          group.requests += 1
+          group.promptTokens += promptTokens
+          group.completionTokens += completionTokens
+          group.totalTokens += totalTokens
+          group.costUsd += costUsd
+          groups.set(key, group)
+
+          totals.requests += 1
+          totals.promptTokens += promptTokens
+          totals.completionTokens += completionTokens
+          totals.totalTokens += totalTokens
+          totals.costUsd += costUsd
+        }
+
+        return {
+          range: { from: from.toISOString(), to: new Date().toISOString(), days },
+          groupBy,
+          totals: { ...totals, costUsd: round(totals.costUsd) },
+          groups: [...groups.values()]
+            .map((g) => ({ ...g, costUsd: round(g.costUsd) }))
+            .sort((a, b) => b.costUsd - a.costUsd)
+            .slice(0, 50),
+        }
       },
     )
   })
+}
+
+function round(value: number): number {
+  return Math.round(value * 1e6) / 1e6
 }

@@ -116,7 +116,13 @@ export function aggregate(
   const passCount = results.filter((r) => r.pass).length
   const failures = results
     .filter((r) => !r.pass)
-    .map((r) => ({ caseId: r.caseId, category: r.category, failedMetrics: r.failedBlockMetrics }))
+    .map((r) => ({
+      caseId: r.caseId,
+      category: r.category,
+      failedMetrics: r.failedBlockMetrics,
+      metrics: r.metrics,
+      responseSnippet: r.agentRun.response.slice(0, 300),
+    }))
 
   return {
     runId: `run-${finishedAt.replace(/[:.]/g, '-')}-${Math.random().toString(36).slice(2, 8)}`,

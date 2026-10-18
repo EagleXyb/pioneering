@@ -7,6 +7,7 @@ import { isOriginAllowed } from '../plugins/cors.js'
 import { NotFoundError, ForbiddenError, BadGatewayError, BadRequestError, TooManyRequestsError } from '../plugins/error-handler.js'
 import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
+import { DEFAULT_ALIAS, resolveModelAlias, toModelAlias } from '../config/models.js'
 import { llmService } from '../core/llm.js'
 import {
   webSearch,
@@ -27,6 +28,18 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { buildSchema } from '../utils/zod-schema.js'
 import { checkQuota, recordUsage } from '../core/quota.js'
+import { loadSessionHistoryByBudget } from '../core/context-budget.js'
+import { enforceRateLimit } from '../plugins/rate-limit.js'
+import { recordSseDisconnect } from '../core/metrics.js'
+import { runEventHub } from '../core/run-events.js'
+import { idempotencyStore, getIdempotencyKey } from '../core/idempotency.js'
+import {
+  estimateReservation,
+  markQuotaSettled,
+  releaseQuota,
+  reserveQuota,
+  type QuotaReservation,
+} from '../core/quota-reservation.js'
 import { applyUserMessageEdit } from '../core/message-edit.js'
 
 // P2-8 修复：Message 增加 id 字段，供 doRegenerate 按 ID 定位父消息
@@ -538,8 +551,42 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       }), async (req, reply) => {
         const dto = ChatCompletionRequestSchema.parse(req.body)
 
+        // P4：分层限流（用户 / 模型），超限请求不触达上游
+        enforceRateLimit(req.user.id, dto.model)
+
         // P0-5 修复：调用 LLM 前校验配额
         await checkQuota(fastify.prisma, req.user.id)
+
+        // P2-4：幂等键（仅非流式；SSE 无法可靠重放）
+        const idemKey =
+          dto.stream === false
+            ? getIdempotencyKey(req.headers as Record<string, unknown>)
+            : null
+        const idemScope = `chat:${req.user.id}`
+        if (idemKey) {
+          const existing = idempotencyStore.lookup(idemScope, idemKey)
+          if (existing?.status === 'done') {
+            req.log.info({ idemKey }, '[chat.completions] idempotent replay')
+            return existing.response
+          }
+          if (existing?.status === 'pending') {
+            throw new TooManyRequestsError('相同请求正在处理中，请稍候重试')
+          }
+          idempotencyStore.begin(idemScope, idemKey)
+        }
+
+        // P2-5：预扣配额（先占额度再调用；失败/无产出时释放）
+        let quotaReservation: QuotaReservation | null = null
+        try {
+          quotaReservation = await reserveQuota(
+            fastify.prisma,
+            req.user.id,
+            estimateReservation(dto.message, dto.maxTokens),
+          )
+        } catch (e) {
+          if (idemKey) idempotencyStore.fail(idemScope, idemKey)
+          throw e
+        }
 
         let sessionId = dto.sessionId
         if (!sessionId) {
@@ -549,17 +596,18 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               id: genId('sess_'),
               userId: req.user.id,
               title: dto.message.slice(0, 50) || '新对话',
-              model: dto.model || env.LLM_DEFAULT_MODEL,
+              // P4：会话表存别名（升级模型不迁移历史会话）
+              model: toModelAlias(dto.model) || DEFAULT_ALIAS,
               systemPrompt: dto.systemPrompt ?? null,
             },
           })
           sessionId = session.id
         }
 
-        // 深度思考 → 推理模型
-        let model = dto.model || env.LLM_DEFAULT_MODEL
+        // 深度思考 → 推理模型（P0：不再硬编码模型 ID，改由 env.LLM_REASONING_MODEL 配置）
+        let model = resolveModelAlias(dto.model) || env.LLM_DEFAULT_MODEL
         if (dto.deepThink) {
-          model = 'deepseek-v4-pro'
+          model = env.LLM_REASONING_MODEL
         }
 
         // 写入用户消息
@@ -640,6 +688,9 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             // P0-4 修复：LLM 调用失败时回滚已写入的用户消息，避免孤儿消息
             // 编辑重发时该消息是既有数据（用户编辑后的正文），不能删除
             if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
+            // P2-5：调用失败释放预扣；P2-4：释放幂等占位以便重试
+            await releaseQuota(fastify.prisma, quotaReservation)
+            if (idemKey) idempotencyStore.fail(idemScope, idemKey)
             throw new BadGatewayError(`LLM API 错误: ${(e as Error).message}`)
           }
 
@@ -648,6 +699,8 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           // P0-4 修复：空回复回滚用户消息 + messageCount
           if (!content) {
             if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
+            await releaseQuota(fastify.prisma, quotaReservation)
+            if (idemKey) idempotencyStore.fail(idemScope, idemKey)
             throw new BadGatewayError(
               isEditResend ? 'LLM 返回空内容' : 'LLM 返回空内容，已回滚用户消息',
             )
@@ -686,9 +739,11 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             usage: (resultData as any).usage,
             promptText: dto.message,
             completionText: content,
+            reservedTokens: quotaReservation?.reserved,
           })
+          markQuotaSettled(quotaReservation)
 
-          return {
+          const payload = {
             id: `chatcmpl_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
             sessionId,
             model,
@@ -706,11 +761,18 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             },
             createdAt: new Date().toISOString(),
           }
+
+          // P2-4：缓存本次结果，同 key 重放直接返回
+          if (idemKey) idempotencyStore.complete(idemScope, idemKey, payload)
+          return payload
         }
 
         // ===== 流式 SSE =====
         const assistantMsgId = genId('msg_')
         const runId = `run_${randomUUID().replace(/-/g, '').slice(0, 24)}`
+
+        // P5：事件缓冲（id + 断线回放）
+        runEventHub.start(runId, req.user.id)
 
         // P0-1 修复：注册 run，创建 AbortController 供 /stop 调用
         const abortController = new AbortController()
@@ -740,13 +802,41 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         // P1-6 修复：流式 usage 收集容器，由 streamAgui 末块填充
         const usageRef: { current: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined } = { current: undefined }
 
+        // P0：流式基线计时（改造前后对比 TTFT 之外的端到端耗时与产物规模）
+        const streamStartedAt = Date.now()
+
+        // P5：统一写帧入口——分配 seq、进入回放缓冲、再写连接。
+        // 连接已断开时继续缓冲（客户端可用 Last-Event-ID 回放），不中断生成。
+        const writeFrame = (frame: string) => {
+          const seq = runEventHub.publish(runId, frame)
+          if (seq === null) return
+          try {
+            if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+              reply.raw.write(`id: ${seq}\n${frame}`)
+            }
+          } catch {
+            // 连接已关闭：仅保留缓冲
+          }
+        }
+
         // 1) RUN_STARTED（对齐 Python）
-        reply.raw.write(`data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: sessionId, runId })}\n\n`)
+        writeFrame(`data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: sessionId, runId })}\n\n`)
 
         // 1.5) 联网搜索结果（结构化来源，独立于正文，前端用于"N 篇来源"入口与来源面板）
         if (searchSources.length > 0) {
-          reply.raw.write(`data: ${JSON.stringify({ type: 'WEB_SEARCH_SOURCES', sources: searchSources })}\n\n`)
+          writeFrame(`data: ${JSON.stringify({ type: 'WEB_SEARCH_SOURCES', sources: searchSources })}\n\n`)
         }
+
+        // P2-6：SSE 心跳，与 agent 通道保持一致。
+        // 长回答 / 思考期间可能长时间无 data 帧，中间代理会按 idle timeout 断开；
+        // 每 15s 发一行 SSE 注释（前端解析器忽略非 data: 行）。
+        const heartbeat = setInterval(() => {
+          try {
+            if (!reply.raw.writableEnded) reply.raw.write(': ping\n\n')
+          } catch {
+            // 连接已关闭，忽略
+          }
+        }, 15_000)
 
         // 2) 流式输出 AG-UI 事件（对齐 Python: async for sse_str in llm_service.stream_agui(...)）
         try {
@@ -773,17 +863,21 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
                 // 忽略解析错误
               }
             }
-            reply.raw.write(sseStr)
+            writeFrame(sseStr)
           }
         } catch (e) {
           streamError = true
           // 流异常时发送 RUN_ERROR（abort 时不发，因为 streamAgui 内部已处理）
           if (!abortController.signal.aborted) {
-            reply.raw.write(
+            writeFrame(
               `data: ${JSON.stringify({ type: 'RUN_ERROR', message: String(e), code: 'STREAM_ERROR' })}\n\n`,
             )
           }
         } finally {
+          // P2-6：先停心跳，再做后续收尾（RUN_FINISHED / 落库）
+          clearInterval(heartbeat)
+          // P4：客户端在流结束前断开（关闭页面/断网）计入断线率
+          if (req.raw.aborted) recordSseDisconnect('chat')
           // P0-1 修复：流结束（正常/异常/中止）后从注册表移除
           runningRuns.delete(runId)
         }
@@ -794,11 +888,29 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         if (usageRef.current) {
           runFinishedData.usage = usageRef.current
         }
-        reply.raw.write(`data: ${JSON.stringify(runFinishedData)}\n\n`)
+        writeFrame(`data: ${JSON.stringify(runFinishedData)}\n\n`)
+        // P5：事件写完再标记结束，回放订阅者收到终态后关闭
+        runEventHub.finish(runId)
 
         // 4) 持久化 assistant 消息（对齐 Python 的收尾逻辑）
         const fullContent = collectedContent.join('')
         const fullReasoning = collectedReasoning.join('')
+
+        // P0 基线埋点：不改行为，只补一条可对比的结构化日志
+        req.log.info(
+          {
+            model,
+            sessionId,
+            durationMs: Date.now() - streamStartedAt,
+            contentChars: fullContent.length,
+            reasoningChars: fullReasoning.length,
+            streamError,
+            promptTokens: usageRef.current?.promptTokens ?? null,
+            completionTokens: usageRef.current?.completionTokens ?? null,
+          },
+          '[chat.completions] stream.end',
+        )
+
         if (fullContent || fullReasoning) {
           // contentBlocks：思考块 + 联网搜索结构化来源（历史消息加载时还原来源面板）
           const blocks: unknown[] = []
@@ -843,11 +955,18 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             usage: usageRef.current,
             promptText: dto.message,
             completionText: fullContent,
+            // P2-5：配额已在入口预扣，这里只结算差额
+            reservedTokens: quotaReservation?.reserved,
           })
-        } else if (!streamError) {
-          // P0-4 修复：流式无内容且非异常 → 回滚已写入的 userMsg，避免孤儿用户消息
-          // 编辑重发不删既有消息（保留用户编辑后的正文，仅提示本次生成失败）
-          if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
+          markQuotaSettled(quotaReservation)
+        } else {
+          // P2-5：无产出（异常或空流）→ 释放预扣
+          await releaseQuota(fastify.prisma, quotaReservation)
+          if (!streamError) {
+            // P0-4 修复：流式无内容且非异常 → 回滚已写入的 userMsg，避免孤儿用户消息
+            // 编辑重发不删既有消息（保留用户编辑后的正文，仅提示本次生成失败）
+            if (!isEditResend) await rollbackUserMessage(sessionId, userMsg.id)
+          }
         }
 
         reply.raw.end()
@@ -922,6 +1041,104 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         return await doRegenerate(req.user.id, messageId, originalMsg.sessionId, dto)
       })
 
+      // ========== 运行事件回放（P5） ==========
+
+      // GET /chat/runs/:runId/events
+      // 断线后用 Last-Event-ID 续读已产生的事件；运行仍在进行时继续接收后续事件。
+      app.get('/runs/:runId/events', buildSchema({
+        params: z.object({ runId: z.string() }),
+        tags: ['chat'],
+        summary: '回放运行事件（SSE，支持 Last-Event-ID）',
+        security: [{ BearerAuth: [] }],
+      }), async (req, reply) => {
+        const { runId } = req.params as { runId: string }
+        const owner = runEventHub.ownerOf(runId)
+        if (!owner || owner !== req.user.id) {
+          throw new NotFoundError('运行不存在或已过期')
+        }
+
+        const header = req.headers['last-event-id']
+        const headerValue = Array.isArray(header) ? header[0] : header
+        const afterRaw =
+          headerValue ?? (req.query as { after?: string } | undefined)?.after ?? '0'
+        const afterSeq = Number(afterRaw) || 0
+
+        // CORS：hijack 绕过 onSend，需与流式补全保持一致
+        const reqOrigin = req.headers.origin
+        const corsHeaders: Record<string, string> = {}
+        if (reqOrigin && isOriginAllowed(reqOrigin)) {
+          corsHeaders['Access-Control-Allow-Origin'] = reqOrigin
+          corsHeaders['Access-Control-Allow-Credentials'] = 'true'
+        }
+
+        reply.hijack()
+        reply.raw.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          ...corsHeaders,
+        })
+
+        let closed = false
+        let heartbeat: ReturnType<typeof setInterval> | null = null
+
+        const cleanup = () => {
+          if (closed) return
+          closed = true
+          subscription?.unsubscribe()
+          if (heartbeat) clearInterval(heartbeat)
+          try {
+            reply.raw.end()
+          } catch {
+            // 已关闭
+          }
+        }
+
+        const subscription = runEventHub.subscribe(runId, afterSeq, (event) => {
+          if (closed) return
+          if (event === null) {
+            cleanup()
+            return
+          }
+          try {
+            reply.raw.write(`id: ${event.seq}\n${event.frame}`)
+          } catch {
+            cleanup()
+          }
+        })
+
+        if (!subscription) {
+          cleanup()
+          return
+        }
+
+        for (const event of subscription.backlog) {
+          if (closed) break
+          reply.raw.write(`id: ${event.seq}\n${event.frame}`)
+        }
+
+        if (subscription.finished) {
+          cleanup()
+          return
+        }
+
+        heartbeat = setInterval(() => {
+          try {
+            if (!reply.raw.writableEnded) reply.raw.write(': ping\n\n')
+          } catch {
+            cleanup()
+          }
+        }, 15_000)
+        ;(heartbeat as unknown as { unref?: () => void }).unref?.()
+
+        reply.raw.on('close', () => {
+          closed = true
+          subscription.unsubscribe()
+          if (heartbeat) clearInterval(heartbeat)
+        })
+      })
+
       // ========== 辅助函数 ==========
 
       // 对应 Python: _build_message_context
@@ -941,19 +1158,19 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           messages.push({ role: 'system', content: systemPrompt })
         }
 
-        // 历史消息（最近 20 条，排除 system，对齐 Python: limit(20) + reversed）
-        // P1-5 修复：同样加 id tie-breaker，保证同毫秒消息顺序稳定
-        const history = await fastify.prisma.chatMessage.findMany({
-          where: { sessionId, role: { not: 'system' } },
-          orderBy: [
-            { createdAt: 'desc' },
-            { id: 'desc' },
-          ],
-          take: 20,
+        // 历史消息：按 token 预算裁剪（P5，与 agent 通道一致）
+        // 替代固定「最近 20 条」：长会话不溢出，短会话不浪费上下文。
+        const history = await loadSessionHistoryByBudget(fastify.prisma, sessionId, {
+          maxTokens: 8000,
+          keepLastN: 6,
+          candidateLimit: 100,
         })
-        history.reverse()
         for (const m of history) {
-          messages.push({ role: m.role, content: m.content, id: m.id })
+          messages.push({
+            role: m.role,
+            content: m.content,
+            ...(m.id ? { id: m.id } : {}),
+          })
         }
 
         return messages
@@ -993,12 +1210,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        // 非流式调 LLM
+        // 非流式调 LLM（P0：别名先解析，未知值原样透传，保持既有行为）
+        const regenModel = resolveModelAlias(dto.model)
         let resultData: Record<string, unknown>
         try {
           resultData = await llmService.chatCompletion(
             messages,
-            dto.model || undefined,
+            regenModel,
             dto.temperature ?? undefined,
           )
         } catch (e) {
@@ -1044,7 +1262,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           userId,
           sessionId,
           messageId: newMsg.id,
-          model: dto.model || env.LLM_DEFAULT_MODEL,
+          model: regenModel || env.LLM_DEFAULT_MODEL,
           usage: (resultData as any).usage,
           promptText,
           completionText: content,

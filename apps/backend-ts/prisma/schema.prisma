@@ -83,7 +83,8 @@ model ChatSession {
   id            String    @id @db.VarChar(64)
   userId        String    @map("user_id") @db.VarChar(64)
   title         String    @default("新对话") @db.VarChar(200)
-  model         String    @default("gpt-4o-mini") @db.VarChar(100)
+  // P4：存客户端别名（fast / reasoning），不再存真实模型 ID
+  model         String    @default("fast") @db.VarChar(100)
   modelConfig   Json?     @map("model_config")
   systemPrompt  String?   @map("system_prompt") @db.Text
   messageCount  Int       @default(0) @map("message_count")
@@ -189,23 +190,9 @@ model UserQuota {
   @@map("user_quotas")
 }
 
-// ===== 8. ai_configs =====
-// 对应 Python: class AiConfig(Base)
-
-model AiConfig {
-  id             BigInt    @id @default(autoincrement())
-  provider       String    @default("deepseek") @db.VarChar(50)
-  model          String    @default("deepseek-v4-flash") @db.VarChar(100)
-  apiKey         String    @map("api_key") @db.VarChar(500)
-  prompt         String?   @db.Text
-  lastTestInput  String?   @map("last_test_input") @db.VarChar(500)
-  lastTestResult String?   @map("last_test_result") @db.Text
-  lastTestTime   DateTime? @map("last_test_time") @db.Timestamptz
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-
-  @@map("ai_configs")
-}
+// ===== 8. agent_tool_executions =====
+// 注：原 ai_configs 表（Python AiConfig）在 TS 侧从未读写，P4 已从 Prisma schema 移除。
+// Python 侧的物理表如需保留，由 Python 迁移脚本单独管理（TS 不负责 migrate）。
 
 // ===== 9. agent_tool_executions =====
 // 对应 Python: class AgentToolExecution(Base)

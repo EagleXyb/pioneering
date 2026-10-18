@@ -958,3 +958,106 @@ html[data-density='compact'] .settings-main-head {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* ============================================================
+ * P5：用量与成本
+ * ============================================================ */
+.cost-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cost-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+
+.cost-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.cost-tab:hover {
+  color: var(--text-primary);
+}
+
+.cost-tab[data-active] {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.cost-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cost-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.cost-card-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.cost-card-value {
+  font-size: 18px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.cost-table-wrap {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.cost-table th,
+.cost-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.cost-table th {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  background: var(--bg-input);
+}
+
+.cost-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cost-table-key {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}

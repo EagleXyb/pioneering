@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { parseAguiStream, type AguiStreamHandlers } from '../../../lib/parseAguiStream';
+import {
+  monitorAguiResponse,
+  streamErrorMessage,
+  StreamRequestError,
+} from '../../../lib/sseClient';
 import type { AIMessageContent, ChatMessageStatus, ChatMessagesData } from '../../../types/chat';
 import { streamCompletion, streamResume, stopAgentCompletion } from '../../../api/agent';
 import { fetchSessionMessages } from '../../../lib/load-session-messages';
@@ -60,9 +65,9 @@ export interface UseAgentChatReturn {
   status: AgentChatStatus;
   stateMap: Record<string, AgentStep>;
   currentStateKey: string | null;
-  sendMessage: (params: { prompt: string }) => void;
+  sendMessage: (params: { prompt: string; model?: string }) => void;
   /** 编辑重发（方案 B）：截断到目标用户消息为止并重新执行 */
-  resendEditedMessage: (params: { messageId: string; prompt: string }) => void;
+  resendEditedMessage: (params: { messageId: string; prompt: string; model?: string }) => void;
   abort: () => void;
   /** T3.1：会话切换时恢复历史消息 */
   loadHistory: (sessionId: string) => Promise<void>;
@@ -440,12 +445,16 @@ export function useAgentChat(
   const consumeStream = useCallback(
     async (response: Response, controller: AbortController) => {
       const msgId = assistantMsgIdRef.current;
+      const monitor = monitorAguiResponse(response);
       try {
         const result = await parseAguiStream(
-          response,
+          monitor.response,
           streamHandlers,
           controller.signal,
         );
+        if (monitor.timedOut() && !controller.signal.aborted) {
+          throw new StreamRequestError('timeout', '响应超时，请重试');
+        }
 
         if (result.reason === 'paused') {
           // onRunPaused 已更新引用，等待用户答复
@@ -483,10 +492,12 @@ export function useAgentChat(
           if (msgId)
             finalizeWithText(
               msgId,
-              `请求失败: ${e?.message || '未知错误'}`,
+              `请求失败: ${streamErrorMessage(err, '未知错误')}`,
               'error',
             );
         }
+      } finally {
+        monitor.dispose();
       }
     },
     // streamHandlers 在每次渲染重建（引用 refs，语义稳定）
@@ -502,7 +513,7 @@ export function useAgentChat(
    *   替换正文，请求体携带 messageId 交由后端在同一流程内更新 + 截断。
    */
   const startRun = useCallback(
-    (params: { prompt: string; editMessageId?: string }) => {
+    (params: { prompt: string; editMessageId?: string; model?: string }) => {
       const sessionId = sessionIdRef.current;
       if (!sessionId) return;
       // HITL 暂停时禁止发起新请求（输入框已锁定，此为双保险）
@@ -585,6 +596,8 @@ export function useAgentChat(
               // default('react_agent')，契约见 packages/modu-agent/AGENTS.md:13。
               // 一旦后端默认值变更，缺失该字段会让 pro 静默装配成别的图拓扑。
               agentMode: 'react_agent',
+              // P0：模型透传；未选中/未加载时省略，由后端默认模型兜底
+              ...(params.model ? { model: params.model } : {}),
               ...(params.editMessageId
                 ? { messageId: params.editMessageId, truncateAfter: true }
                 : {}),
@@ -617,14 +630,18 @@ export function useAgentChat(
   );
 
   const sendMessage = useCallback(
-    (params: { prompt: string }) => startRun(params),
+    (params: { prompt: string; model?: string }) => startRun(params),
     [startRun],
   );
 
   /** 编辑重发（方案 B）：截断到目标消息为止并重新执行 */
   const resendEditedMessage = useCallback(
-    (params: { messageId: string; prompt: string }) =>
-      startRun({ prompt: params.prompt, editMessageId: params.messageId }),
+    (params: { messageId: string; prompt: string; model?: string }) =>
+      startRun({
+        prompt: params.prompt,
+        editMessageId: params.messageId,
+        model: params.model,
+      }),
     [startRun],
   );
 

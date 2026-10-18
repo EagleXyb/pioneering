@@ -7,5 +7,10 @@
     "apps/marketing",
     "apps/backend-ts",
     "packages/*"
-  ]
+  ],
+  "scripts": {
+    "build:agent": "npm run build -w @pioneering/modu-agent",
+    "build:llm": "npm run build -w @pioneering/llm-contracts && npm run build -w @pioneering/llm-core && npm run build -w @pioneering/llm-adapters && npm run build -w @pioneering/llm-gateway",
+    "build:packages": "npm run build:agent && npm run build:llm"
+  }
 }

@@ -66,7 +66,7 @@ function freshRegistry(): ComponentRegistry {
 }
 
 describe('P1-T12 · 内置 provider 规格表', () => {
-  it('内置 4 个 provider，且默认值与改造前 _PROVIDER_CONFIG 逐项等价', () => {
+  it('内置 4 个 provider，且默认值与当前规格表逐项一致', () => {
     const byId = new Map(BUILTIN_LLM_PROVIDER_SPECS.map((s) => [s.id, s]))
     expect([...byId.keys()].sort()).toEqual(['deepseek', 'glm', 'gpt', 'qwen'])
 
@@ -79,7 +79,7 @@ describe('P1-T12 · 内置 provider 规格表', () => {
     expect(byId.get('deepseek')).toMatchObject({
       apiKeyEnv: 'MODU_DEEPSEEK_API_KEY',
       defaultBaseUrl: 'https://api.deepseek.com',
-      defaultModel: 'deepseek-v4-flash',
+      defaultModel: 'deepseek-flash',
     })
     expect(byId.get('gpt')).toMatchObject({
       apiKeyEnv: 'OPENAI_API_KEY',
@@ -107,7 +107,7 @@ describe('P1-T12 · 内置 provider 规格表', () => {
   it('listBuiltinLLMProviders 暴露 id / defaultModel / apiKeyEnv', () => {
     const list = listBuiltinLLMProviders()
     expect(list.map((p) => p.id).sort()).toEqual(['deepseek', 'glm', 'gpt', 'qwen'])
-    expect(list.find((p) => p.id === 'deepseek')!.defaultModel).toBe('deepseek-v4-flash')
+    expect(list.find((p) => p.id === 'deepseek')!.defaultModel).toBe('deepseek-flash')
   })
 })
 
@@ -268,7 +268,7 @@ describe('P1-T12 · 默认与降级行为', () => {
     process.env.MODU_DEEPSEEK_API_KEY = 'sk-test'
 
     const m = build_chat_model(null, fakeConfig(), null, null, null, reg) as any
-    expect(m.model).toBe('deepseek-v4-flash')
+    expect(m.model).toBe('deepseek-flash')
   })
 
   it('未知 provider 回退 glm（保持改造前行为）', () => {
@@ -282,6 +282,6 @@ describe('P1-T12 · 默认与降级行为', () => {
   it('build_chat_model 未显式传 registry 时使用全局单例且不抛错', () => {
     process.env.MODU_DEEPSEEK_API_KEY = 'sk-test'
     const m = build_chat_model('deepseek', fakeConfig()) as any
-    expect(m.model).toBe('deepseek-v4-flash')
+    expect(m.model).toBe('deepseek-flash')
   })
 })

@@ -12,6 +12,10 @@ LOGS_DIR="$PROJECT_ROOT/logs"
 # 创建日志目录
 mkdir -p "$LOGS_DIR/backend-ts" "$LOGS_DIR/frontend" "$LOGS_DIR/marketing" "$LOGS_DIR/desktop" "$LOGS_DIR/desktop-browser"
 
+# P1/P2：Agent 内核与 LLM 接入包需先构建（后端直接消费 dist）
+echo "🔧 构建 Agent 内核与 LLM 接入包..."
+(cd "$PROJECT_ROOT" && npm run build:packages >/dev/null 2>&1) || echo "⚠️ 包构建失败，后端可能无法启动"
+
 # 日志文件
 BACKEND_TS_LOG="$LOGS_DIR/backend-ts/ts-backend.log"
 FRONTEND_LOG="$LOGS_DIR/frontend/vite.log"

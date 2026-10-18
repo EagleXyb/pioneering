@@ -15,6 +15,7 @@ import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import { TaskTopBar } from '../../layout/TaskTopBar/TaskTopBar';
 import { useSessionRuns } from '@/hooks/useSessionRuns';
 import { useUserMessageEdit } from '@/hooks/useUserMessageEdit';
+import { getSelectedModelId } from '@/hooks/useModelOptions';
 import { Button } from '@/components/ui/button';
 import { useCallback, useEffect } from 'react';
 import './task.css';
@@ -60,7 +61,11 @@ export default function TaskMode() {
   // 用户消息行内编辑（编辑重发走 agent plan_execute 通道，方案 B）
   const handleResend = useCallback(
     (messageId: string, nextText: string) =>
-      resendEditedMessage({ messageId, prompt: nextText }),
+      resendEditedMessage({
+        messageId,
+        prompt: nextText,
+        model: getSelectedModelId('task'),
+      }),
     [resendEditedMessage],
   );
   const {
@@ -105,7 +110,9 @@ export default function TaskMode() {
         <TaskTopBar />
         {messages.length === 0 ? (
           <TaskWelcome
-            onSuggestion={(text) => sendMessage({ prompt: text })}
+            onSuggestion={(text) =>
+              sendMessage({ prompt: text, model: getSelectedModelId('task') })
+            }
           />
         ) : (
           <TaskMessageList
@@ -128,7 +135,9 @@ export default function TaskMode() {
           hitl={hitl}
           hitlError={hitlError}
           hitlBusy={hitlBusy}
-          onSend={(text) => sendMessage({ prompt: text })}
+          onSend={(text) =>
+            sendMessage({ prompt: text, model: getSelectedModelId('task') })
+          }
           onStop={abort}
         />
       </div>

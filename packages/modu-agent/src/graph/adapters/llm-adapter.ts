@@ -30,6 +30,7 @@ import {
   ensureBuiltinLLMProviders,
   type ChatModelBuilder,
 } from './llm-provider-registry.js'
+import { getLLMConnectionResolver } from './llm-connection.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph.llm_adapter] ${msg}`, ...args),
@@ -162,7 +163,13 @@ const _buildChatModel: ChatModelBuilder = (
   cfg: { model?: string | null; temperature?: number | null; maxTokens?: number | null; apiKey?: string | null; baseUrl?: string | null },
   runtimeConfig: RuntimeConfig,
 ): ChatOpenAI => {
-  const { apiKey, baseUrl, model } = _resolveProviderEnv(spec, cfg)
+  // P2：优先使用宿主注入的连接解析器（目录解析 + 密钥托管由宿主负责）；
+  // 未注入时保持原有 env 解析路径，兼容桌面端等直接使用本包的宿主。
+  const injected = getLLMConnectionResolver()
+  const resolved = injected
+    ? injected({ provider: spec.id, model: cfg.model ?? null })
+    : _resolveProviderEnv(spec, cfg)
+  const { apiKey, baseUrl, model } = resolved
 
   if (!apiKey) {
     logger.warning("API key not set for provider '%s' (env: %s)", spec.id, spec.apiKeyEnv)

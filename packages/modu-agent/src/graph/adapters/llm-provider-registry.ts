@@ -43,7 +43,7 @@ export const BUILTIN_LLM_PROVIDER_SPECS: readonly LLMProviderSpec[] = [
     baseUrlEnv: 'MODU_DEEPSEEK_BASE_URL',
     modelEnv: 'MODU_DEEPSEEK_MODEL',
     defaultBaseUrl: 'https://api.deepseek.com',
-    defaultModel: 'deepseek-v4-flash',
+    defaultModel: 'deepseek-flash',
   },
   {
     id: 'gpt',

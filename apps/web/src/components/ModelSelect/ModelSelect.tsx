@@ -127,14 +127,26 @@ export function ModelSelect({ mode, disabled, selectedId, onSelect }: Props) {
       >
         {models.map((m) => {
           const active = m.id === activeId;
+          // P3：status=sunset 的模型不可选，悬停详情卡给出下线原因
+          const unavailable = m.status === 'sunset';
           return (
             <DropdownMenuItem
               key={m.id}
               className="model-select__item"
               /* 选中态：常驻浅灰底（CSS 用 [data-active] 命中） */
               data-active={active || undefined}
-              onSelect={() => handleSelect(m.id)}
-              aria-label={m.name}
+              data-disabled={unavailable || undefined}
+              disabled={unavailable}
+              title={unavailable ? m.disable_reason : undefined}
+              onSelect={() => {
+                if (unavailable) return;
+                handleSelect(m.id);
+              }}
+              aria-label={
+                unavailable
+                  ? `${m.name}（不可用${m.disable_reason ? `：${m.disable_reason}` : ''}）`
+                  : m.name
+              }
             >
               {/* 行本体：单行（标识 + 名称 + 选中勾）；详情卡绝对定位，不占行高 */}
               <span className="model-select__item-row">

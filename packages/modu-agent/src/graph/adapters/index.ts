@@ -21,6 +21,14 @@ export {
   ensureBuiltinLLMProviders,
   type ChatModelBuilder,
 } from './llm-provider-registry.js'
+export {
+  setLLMConnectionResolver,
+  getLLMConnectionResolver,
+  _resetLLMConnectionResolverForTest,
+  type LLMConnection,
+  type LLMConnectionInput,
+  type LLMConnectionResolver,
+} from './llm-connection.js'
 export { MCPToolAdapter } from './mcp-tool-adapter.js'
 export { ModuLLMAdapter, wrap_chat_model_as_modu, unwrap_modu_llm } from './modu-llm-adapter.js'
 export { ToolRateLimiter, get_tool_rate_limiter, _reset_tool_rate_limiter_for_test } from './rate-limiter.js'

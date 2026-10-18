@@ -4,6 +4,7 @@ import { z } from 'zod'
 import dotenv from 'dotenv'
 import os from 'node:os'
 import path from 'node:path'
+import { DEFAULT_MODEL, REASONING_MODEL } from './models.js'
 
 dotenv.config()
 
@@ -22,7 +23,18 @@ const EnvSchema = z.object({
 
   LLM_API_KEY: z.string().default(''),
   LLM_BASE_URL: z.string().default('https://api.deepseek.com/v1'),
-  LLM_DEFAULT_MODEL: z.string().default('deepseek-chat'),
+  // P5：密钥来源（env 默认；file 用于容器 Secret 挂载）
+  SECRET_PROVIDER: z.enum(['env', 'file']).default('env'),
+  LLM_SECRET_FILE: z.string().default(''),
+  // P0：默认模型与推理模型收敛到 config/models.ts，避免与目录/前端三处漂移
+  LLM_DEFAULT_MODEL: z.string().default(DEFAULT_MODEL),
+  LLM_REASONING_MODEL: z.string().default(REASONING_MODEL),
+  // P0：流式空闲超时（毫秒）。流式不再设总时长上限，只在无数据超过该值时中止。
+  LLM_STREAM_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+
+  // P4：分层限流（每分钟请求数；0 表示不限制）
+  RATE_LIMIT_USER_RPM: z.coerce.number().int().nonnegative().default(60),
+  RATE_LIMIT_MODEL_RPM: z.coerce.number().int().nonnegative().default(120),
 
   HOST: z.string().default('0.0.0.0'),
   // 默认 8088：避开 Chromium 不安全端口黑名单（6000 是 X11 端口，会被 net::ERR_UNSAFE_PORT 拦截）

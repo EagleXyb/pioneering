@@ -86,6 +86,15 @@ import { getRegistry } from '../core/registry.js'
 // P1（T-11）: 记忆策略统一契约（可选注入；null 时 memory 节点走 store 直连，行为不变）
 import type { MemoryStrategy } from '../core/interfaces/memory-strategy.js'
 
+/** 读取布尔配置；config 不可用时返回默认值（节点装配阶段不抛出）。 */
+function readGraphBool(key: string, dflt: boolean): boolean {
+  try {
+    return Boolean(getConfig().get(key, dflt))
+  } catch {
+    return dflt
+  }
+}
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[graph] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[graph] ${msg}`, ...args),
@@ -587,7 +596,12 @@ export function composeDefaultGraph(profile: GraphProfile): GraphSpec {
       name: 'finalize_response',
       factory: (deps) => {
         let node: any = responseNode
-        if (deps.profile.outputGuardEnabled) node = makeOutputGuardNode(node)
+        if (deps.profile.outputGuardEnabled) {
+          node = makeOutputGuardNode(node, {
+            // P4：默认影子模式；显式配置 shadow=false 才真正改写输出
+            shadow: readGraphBool('perception.security.sanitize_output.shadow', true),
+          })
+        }
         if (policyEngineEnabled()) node = makeOutputPolicyNode(node)
         return node
       },

@@ -45,6 +45,10 @@ cases:
     category: core
     input: "用不超过三句话解释什么是 ReAct 模式。"
     ground_truth: "ReAct 是一种让语言模型交替进行推理与行动的智能体范式"
+    ground_truth_aliases:
+      - "推理与行动交替"
+      - "Reasoning and Acting"
+      - "思考—行动—观察"
     expected_tools: []
     max_tool_calls: 1
     tags: [reasoning, knowledge]

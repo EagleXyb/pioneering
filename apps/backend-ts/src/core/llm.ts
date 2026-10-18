@@ -1,43 +1,25 @@
-// LLM 直连服务 —— 对应 Python app/core/llm.py
-// 直连 OpenAI 兼容 /chat/completions，产出 AG-UI SSE 事件
+// LLM 接入适配层：网关调用 + AG-UI 编码（P1）
+//
+// 改造后职责：
+//   - 模型解析 / 超时 / 重试 / 熔断 / 计量 全部由 @pioneering/llm-gateway 承担；
+//   - 本文件只把网关的标准化增量编码为 AG-UI SSE 事件，chat 路由零改动；
+//   - 回滚：设置 LLM_GATEWAY_ENABLED=0 时回落 P0 实现（core/llm-legacy.ts）。
+//
+// 保留的对外契约（勿改）：
+//   - chatCompletion(messages, model?, temperature?, maxTokens?)
+//   - streamAgui(messages, assistantMsgId, model?, temperature?, maxTokens?, signal?, usageRef?)
+import { LLMError } from '@pioneering/llm-contracts'
 import { env } from '../config/env.js'
+import { llmGateway } from './llm-gateway.js'
+import { recordFirstToken, recordLlmOutcome, type LlmStatus } from './metrics.js'
+import * as legacy from './llm-legacy.js'
 
 type Message = { role: string; content: string }
 
-// 对应 Python: LlmService.chat_completion（非流式）
-export async function chatCompletion(
-  messages: Message[],
-  model?: string,
-  temperature?: number,
-  maxTokens?: number,
-): Promise<Record<string, unknown>> {
-  const url = `${env.LLM_BASE_URL}/chat/completions`
-  const payload: Record<string, unknown> = {
-    model: model || env.LLM_DEFAULT_MODEL,
-    messages,
-    stream: false,
-  }
-  if (temperature !== undefined && temperature !== null) payload.temperature = temperature
-  if (maxTokens !== undefined && maxTokens !== null) payload.max_tokens = maxTokens
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.LLM_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(120_000),
-  })
-
-  if (!response.ok) {
-    const errBody = await response.text().catch(() => '')
-    const error = new Error(`LLM API error: ${response.status} - ${errBody.slice(0, 500)}`)
-    ;(error as any).statusCode = 502
-    throw error
-  }
-
-  return (await response.json()) as Record<string, unknown>
+/** 网关开关：默认开启；设为 0/false/off 时回落到 P0 直连实现。 */
+function isGatewayEnabled(): boolean {
+  const v = (process.env.LLM_GATEWAY_ENABLED ?? '').trim().toLowerCase()
+  return v !== '0' && v !== 'false' && v !== 'off'
 }
 
 // AG-UI SSE 事件编码 —— 对应 Python AGUIEncoder.to_sse
@@ -48,9 +30,58 @@ function toSse(data: Record<string, unknown>): string {
   return `data: ${payload}\n\n`
 }
 
+// 对应 Python: LlmService.chat_completion（非流式）
+export async function chatCompletion(
+  messages: Message[],
+  model?: string,
+  temperature?: number,
+  maxTokens?: number,
+): Promise<Record<string, unknown>> {
+  if (!isGatewayEnabled()) {
+    return legacy.chatCompletion(messages, model, temperature, maxTokens)
+  }
+
+  const metricModel = model ?? env.LLM_DEFAULT_MODEL
+  let result: Awaited<ReturnType<typeof llmGateway.complete>>
+  try {
+    result = await llmGateway.complete({
+      messages,
+      model: metricModel,
+      temperature,
+      maxTokens,
+    })
+  } catch (e) {
+    const err = LLMError.is(e) ? e : null
+    recordLlmOutcome(metricModel, {
+      status: err?.code === 'UPSTREAM_TIMEOUT' ? 'timeout' : 'error',
+      authError: err?.code === 'UNAUTHORIZED',
+    })
+    throw e
+  }
+
+  recordLlmOutcome(metricModel, {
+    status: 'success',
+    truncated: result.finishReason === 'length',
+  })
+
+  const usage = result.usage
+    ? {
+        prompt_tokens: result.usage.promptTokens,
+        completion_tokens: result.usage.completionTokens,
+        total_tokens: result.usage.totalTokens,
+      }
+    : undefined
+
+  return {
+    choices: [{ message: { content: result.content } }],
+    ...(usage ? { usage } : {}),
+  }
+}
+
 // 对应 Python: LlmService.stream_agui（流式 AG-UI 事件生成器）
 // P0-1 修复：增加 signal 参数，支持外部中止上游 LLM 请求
-// P1-6 修复：增加 usageRef 参数，捕获上游流式末块的 usage（OpenAI/DeepSeek 末块带 usage）
+// P1-6 修复：增加 usageRef 参数，捕获上游流式末块的 usage
+// P1：实现改为消费网关事件流，AG-UI 编码逻辑保持不变
 export async function* streamAgui(
   messages: Message[],
   assistantMsgId: string,
@@ -60,14 +91,18 @@ export async function* streamAgui(
   signal?: AbortSignal,
   usageRef?: { current: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined },
 ): AsyncGenerator<string, void, unknown> {
-  const url = `${env.LLM_BASE_URL}/chat/completions`
-  const payload: Record<string, unknown> = {
-    model: model || env.LLM_DEFAULT_MODEL,
-    messages,
-    stream: true,
+  if (!isGatewayEnabled()) {
+    yield* legacy.streamAgui(
+      messages,
+      assistantMsgId,
+      model,
+      temperature,
+      maxTokens,
+      signal,
+      usageRef,
+    )
+    return
   }
-  if (temperature !== undefined && temperature !== null) payload.temperature = temperature
-  if (maxTokens !== undefined && maxTokens !== null) payload.max_tokens = maxTokens
 
   let textMsgStarted = false
   let thinkStarted = false
@@ -120,109 +155,86 @@ export async function* streamAgui(
     return parts.join('')
   }
 
+  // P4：链路指标（首 token、截断、失败分类）
+  const metricModel = model ?? env.LLM_DEFAULT_MODEL
+  const startedAt = Date.now()
+  let firstTokenSeen = false
+  let finishReason: string | undefined
+  let outcomeStatus: LlmStatus = 'success'
+  let authError = false
+
+  const markFirstToken = () => {
+    if (firstTokenSeen) return
+    firstTokenSeen = true
+    recordFirstToken((Date.now() - startedAt) / 1000)
+  }
+
   try {
-    // P0-1 修复：合并超时 signal 与外部 signal（停止生成时联动中止上游 LLM）
-    const timeoutSignal = AbortSignal.timeout(120_000)
-    const signals: AbortSignal[] = [timeoutSignal]
-    if (signal) signals.push(signal)
-    const combinedSignal = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.LLM_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: combinedSignal,
-    })
-
-    if (response.status !== 200) {
-      const errorText = await response.text().catch(() => '')
-      yield toSse({
-        type: 'RUN_ERROR',
-        message: `LLM API error: ${response.status} - ${errorText.slice(0, 500)}`,
-        code: 'LLM_ERROR',
-      })
-      return
-    }
-
-    // 流式逐行读取 SSE（对应 Python: async for line in response.aiter_lines()）
-    const reader = response.body?.getReader()
-    if (!reader) {
-      yield toSse({ type: 'RUN_ERROR', message: 'No response body', code: 'LLM_ERROR' })
-      return
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-
-      // 按行处理（SSE 行以 \n 分隔）
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // 保留最后不完整的行
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6)
-        if (data.trim() === '[DONE]') {
-          buffer = '' // 清空，外层 while 会在下次 done 时退出
-          break
+    for await (const ev of llmGateway.stream({
+      messages,
+      model: metricModel,
+      temperature,
+      maxTokens,
+      signal,
+    })) {
+      if (ev.type === 'reasoning') {
+        markFirstToken()
+        yield ensureThinkStart()
+        yield toSse({
+          type: 'THINKING_TEXT_MESSAGE_CONTENT',
+          delta: ev.delta,
+          reasoning_content: ev.delta,
+        })
+      } else if (ev.type === 'content') {
+        markFirstToken()
+        if (thinkStarted) yield closeThinking()
+        yield ensureTextStart()
+        yield toSse({
+          type: 'TEXT_MESSAGE_CONTENT',
+          messageId: assistantMsgId,
+          delta: ev.delta,
+        })
+      } else if (ev.type === 'usage' && usageRef) {
+        usageRef.current = {
+          promptTokens: ev.usage.promptTokens,
+          completionTokens: ev.usage.completionTokens,
+          totalTokens: ev.usage.totalTokens,
         }
-
-        let chunk: any
-        try {
-          chunk = JSON.parse(data)
-        } catch {
-          continue
-        }
-
-        const delta = chunk.choices?.[0]?.delta || {}
-        const reasoningContent = delta.reasoning_content || ''
-        const content = delta.content || ''
-
-        // P1-6 修复：捕获上游流式末块的 usage（OpenAI/DeepSeek 末块带 usage 字段）
-        // 流结束时由调用方读取 usageRef.current 拿到真实用量
-        if (usageRef && chunk.usage) {
-          usageRef.current = {
-            promptTokens: chunk.usage.prompt_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens,
-          }
-        }
-
-        if (reasoningContent) {
-          yield ensureThinkStart()
-          yield toSse({ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: reasoningContent, reasoning_content: reasoningContent })
-        }
-
-        if (content) {
-          if (thinkStarted) {
-            yield closeThinking()
-          }
-          yield ensureTextStart()
-          yield toSse({ type: 'TEXT_MESSAGE_CONTENT', messageId: assistantMsgId, delta: content })
-        }
+      } else if (ev.type === 'done') {
+        finishReason = ev.finishReason
       }
-
-      if (buffer.includes('[DONE]')) break
     }
 
-    // 流结束
     yield flushEnd()
-  } catch (e: any) {
-    // P0-1 修复：外部 abort（停止生成）时不再向已断开的连接写入 RUN_ERROR
-    // 仅刷新已开始的文本事件边界后直接返回
+  } catch (e) {
     yield flushEnd()
-    if (e?.name === 'AbortError' || signal?.aborted) {
+    // 用户停止生成：不向已断开的连接写 RUN_ERROR
+    if (signal?.aborted) {
+      outcomeStatus = 'aborted'
       return
     }
-    yield toSse({ type: 'RUN_ERROR', message: String(e), code: 'STREAM_ERROR' })
+
+    const err = LLMError.is(e) ? e : null
+    if (err?.code === 'ABORTED') {
+      outcomeStatus = 'aborted'
+      return
+    }
+
+    outcomeStatus = err?.code === 'UPSTREAM_TIMEOUT' ? 'timeout' : 'error'
+    authError = err?.code === 'UNAUTHORIZED'
+
+    const code = err?.code === 'UPSTREAM_TIMEOUT' ? 'STREAM_TIMEOUT' : 'STREAM_ERROR'
+    yield toSse({
+      type: 'RUN_ERROR',
+      message: err?.message ?? String(e),
+      code,
+    })
+  } finally {
+    recordLlmOutcome(metricModel, {
+      status: outcomeStatus,
+      truncated: finishReason === 'length',
+      authError,
+    })
   }
 }
 

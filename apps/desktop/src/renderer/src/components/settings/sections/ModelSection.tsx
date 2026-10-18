@@ -405,7 +405,7 @@ export function ModelSection() {
             <input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="例如：DeepSeek-V4-Flash"
+              placeholder="例如：DeepSeek-V4.1-Flash"
               className="input-field"
             />
 

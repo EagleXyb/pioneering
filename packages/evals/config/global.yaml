@@ -13,7 +13,14 @@ version: 1
 
 # ---------- 被测 Agent 运行时配置覆盖（注入 RuntimeConfig） ----------
 agent_overrides:
-  llm.temperature: 0.3
+  # 评测以可复现为先：温度为 0，避免同一用例时而调用工具、时而直接作答
+  llm.temperature: 0.0
+  # 评测通过 overrideConfig 绕过包内 config.yaml，若不显式覆盖会落到框架默认 512；
+  # DeepSeek 思考模式会先消耗 reasoning tokens，512 常导致正文为空（评测表现为
+  # "工具调用成功但最终答复是过程摘要"）。与生产 config.yaml 保持一致。
+  llm.max_tokens: 8192
+  # Judge 输出含 reasoning，256/1024 都可能被截断（P6 已同时加解析兜底）
+  feedback.quality_monitor_llm_max_tokens: 4096
   # 评测运行时关闭运行中进化，避免评测过程被 ParameterTune 干扰
   # （评测驱动的进化统一走 gate 之后的 evolution_bridge，见下）
   feedback.enable_evolution: false
@@ -44,8 +51,10 @@ judge:
   mode: hybrid
   provider: ${EVAL_JUDGE_PROVIDER:deepseek}
   temperature: 0.0
-  max_tokens: 256
-  timeout_seconds: 15
+  # P6：Judge 模型同为推理模型，256 会被 reasoning 吃光导致 JSON 截断；
+  # 4096 给 reasoning + JSON 留足预算，超时同步放宽。
+  max_tokens: 4096
+  timeout_seconds: 60
   hybrid_rule_weight: 0.4
   hybrid_llm_weight: 0.6
 

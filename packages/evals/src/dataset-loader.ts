@@ -99,6 +99,9 @@ function normalizeCase(raw: Record<string, any>): EvalCase {
     category: category as EvalCaseCategory,
     input: raw.input,
     groundTruth: raw.ground_truth ?? null,
+    groundTruthAliases: Array.isArray(raw.ground_truth_aliases)
+      ? raw.ground_truth_aliases
+      : [],
     expectedTools: Array.isArray(raw.expected_tools) ? raw.expected_tools : [],
     maxToolCalls: typeof raw.max_tool_calls === 'number' ? raw.max_tool_calls : undefined,
     tags: Array.isArray(raw.tags) ? raw.tags : [],

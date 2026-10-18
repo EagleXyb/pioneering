@@ -5,12 +5,11 @@
  * - JSON 端点（state / abort / stop）复用 api/client 的 get/post（自动解包、401 刷新）
  */
 import { get, post, getAuthHeader } from './client'
+import { apiUrl } from './base-url'
 import type {
   HitlAbortReason,
   HitlStateResponse,
 } from '@pioneering/agent-protocol';
-
-const SSE_BASE = '/api/agent';
 
 function sseHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', ...getAuthHeader() };
@@ -49,6 +48,11 @@ export interface AgentCompletionBody {
   stream?: boolean;
   agentMode?: 'react_agent' | 'plan_execute';
   /**
+   * P0：模型透传（真实模型 ID 或别名 fast / reasoning）。
+   * 省略时由后端使用默认模型；不再依赖会话表里的历史 model 字段。
+   */
+  model?: string;
+  /**
    * 编辑重发（方案 B）：指定目标用户消息 id 时，后端更新该消息正文并在其后
    * 重新执行 Agent（pro / task 共用），不再新建用户消息。
    */
@@ -62,7 +66,7 @@ export async function streamCompletion(
   body: AgentCompletionBody,
   signal?: AbortSignal,
 ): Promise<Response> {
-  const response = await fetch(`${SSE_BASE}/completions`, {
+  const response = await fetch(apiUrl('/agent/completions'), {
     method: 'POST',
     headers: sseHeaders(),
     body: JSON.stringify(body),
@@ -91,7 +95,7 @@ export async function streamResume(
   body: AgentResumeBody,
   signal?: AbortSignal,
 ): Promise<Response> {
-  const response = await fetch(`${SSE_BASE}/resume`, {
+  const response = await fetch(apiUrl('/agent/resume'), {
     method: 'POST',
     headers: sseHeaders(),
     body: JSON.stringify(body),

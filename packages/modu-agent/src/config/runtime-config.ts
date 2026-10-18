@@ -53,7 +53,7 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       default_route: 'default', // 无规则命中时的兜底路由名
       routes: {
         // 路由名 → { provider, model, temperature?, max_tokens? }
-        default: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+        default: { provider: 'deepseek', model: 'deepseek-flash' },
       },
       rules: [
         // 示例规则：按 task_type 路由
@@ -261,6 +261,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       // 默认关闭：不包装节点，response 文本逐字节不变（等价现状）。
       sanitize_output: {
         enabled: false,
+        // P4：影子模式。enabled=true 且 shadow=true 时只记录命中与审计事件，
+        // 不改写 response（用于上线前观察误拦/漏拦率）；确认后再置 false 进入拦截态。
+        shadow: true,
       },
       // LLM-based Prompt 注入二次校验（对应文档 §2.5 建议1）
       // 默认关闭：启用后会对关键词检测未命中（risk_level=0）的输入
@@ -336,7 +339,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     quality_monitor_llm_timeout: 10.0,
     quality_monitor_llm_provider: null,
     quality_monitor_llm_temperature: 0.0,
-    quality_monitor_llm_max_tokens: 256,
+    // P6：Judge 输出含 reasoning 字段，256/1024 都可能被思考耗尽 → JSON 截断，
+    // 评测回退 rule 后 accuracy 缺失被记 0。4096 给 reasoning + JSON 留足预算。
+    quality_monitor_llm_max_tokens: 4096,
   },
   observability: {
     tracing: {

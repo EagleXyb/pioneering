@@ -1,6 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { ChatMessagesData, ChatStatus } from '../../../types/chat';
 import { parseAguiStream, type AguiStreamHandlers } from '../../../lib/parseAguiStream';
+import {
+  monitorAguiResponse,
+  streamErrorMessage,
+  StreamRequestError,
+} from '../../../lib/sseClient';
 import { usePlanExecuteStore, type Phase } from '../../../store/planExecuteStore';
 import { getMessages } from '../../../api/message';
 import { fetchSessionMessages } from '../../../lib/load-session-messages';
@@ -30,6 +35,8 @@ import { bindAgentModeRuntime } from '../../../lib/agent-host';
 
 interface SendMessageParams {
   prompt: string;
+  /** P0：模型透传（真实模型 ID 或别名），省略时由后端默认模型兜底 */
+  model?: string;
 }
 
 /** AG-UI 中断载荷（snake_case）→ hitlStore 项（camelCase） */
@@ -249,12 +256,16 @@ export function usePlanExecuteChat(activeId: string | null) {
   const consumeStream = useCallback(
     async (response: Response, controller: AbortController) => {
       const msgId = assistantMsgIdRef.current;
+      const monitor = monitorAguiResponse(response);
       try {
         const result = await parseAguiStream(
-          response,
+          monitor.response,
           streamHandlers,
           controller.signal,
         );
+        if (monitor.timedOut() && !controller.signal.aborted) {
+          throw new StreamRequestError('timeout', '响应超时，请重试');
+        }
 
         if (result.reason === 'paused') {
           // P1-5：暂停时也要落盘当前正文（用户刷新后可见）
@@ -289,11 +300,16 @@ export function usePlanExecuteChat(activeId: string | null) {
         } else {
           flowStatusRef.current = 'error';
           setStatus('error');
-          setPhase('error', String(e));
+          setPhase('error', streamErrorMessage(e));
           if (msgId && !assistantTextRef.current) {
-            updateAssistantContent(msgId, `请求失败: ${String(e)}`);
+            updateAssistantContent(
+              msgId,
+              `请求失败: ${streamErrorMessage(e)}`,
+            );
           }
         }
+      } finally {
+        monitor.dispose();
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,7 +331,7 @@ export function usePlanExecuteChat(activeId: string | null) {
    * 正文，请求体携带 messageId 交由后端更新 + 截断（方案 B）。
    */
   const startRun = useCallback(
-    async (params: { prompt: string; editMessageId?: string }) => {
+    async (params: { prompt: string; editMessageId?: string; model?: string }) => {
       if (!activeId || status === 'streaming' || status === 'pending') return;
       // HITL 暂停守卫：paused 时不能发起新请求
       if (flowStatusRef.current === 'paused') return;
@@ -376,6 +392,8 @@ export function usePlanExecuteChat(activeId: string | null) {
             message: params.prompt,
             stream: true,
             agentMode: 'plan_execute',
+            // P0：模型透传；未选中/未加载时省略
+            ...(params.model ? { model: params.model } : {}),
             ...(params.editMessageId
               ? { messageId: params.editMessageId, truncateAfter: true }
               : {}),
@@ -400,8 +418,12 @@ export function usePlanExecuteChat(activeId: string | null) {
 
   /** 编辑重发（方案 B）：截断到目标用户消息为止并重新规划执行 */
   const resendEditedMessage = useCallback(
-    async (params: { messageId: string; prompt: string }) =>
-      startRun({ prompt: params.prompt, editMessageId: params.messageId }),
+    async (params: { messageId: string; prompt: string; model?: string }) =>
+      startRun({
+        prompt: params.prompt,
+        editMessageId: params.messageId,
+        model: params.model,
+      }),
     [startRun],
   );
 

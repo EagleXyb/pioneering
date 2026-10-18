@@ -4,8 +4,8 @@
  * 只使用 GET /system/models 已返回的字段，不做推测性字段：
  * - 消耗速度：由 pricing.input_price 换算成相对列表内最高价的倍率。后端只提供
  *   绝对单价，倍率是相对口径，因此在这里换算（最高价模型记为 1.00x）。
- * - 上下文窗口：max_tokens 的人类可读格式（128000 → 128K）。注意后端请求体里
- *   同名的 max_tokens 是「补全上限」，此处按模型元数据理解为上下文窗口长度。
+ * - 上下文窗口：context_window 的人类可读格式（128000 → 128K）。
+ *   P4 起后端元数据字段由 max_tokens 更名为 context_window，旧字段仅作回退。
  *
  * 缺字段的模型对应行直接省略，不显示占位符。
  */
@@ -49,10 +49,20 @@ export function buildModelFacts(
 ): ModelFact[] {
   const facts: ModelFact[] = [];
 
+  // P3：状态行优先展示（不可用模型需要给出原因）
+  if (model.status && model.status !== 'active') {
+    const label = model.status === 'sunset' ? '已下线' : '服务受限';
+    facts.push({
+      label: '状态',
+      value: model.disable_reason ? `${label}（${model.disable_reason}）` : label,
+    });
+  }
+
   const multiplier = formatPriceMultiplier(model, maxInputPrice(models));
   if (multiplier) facts.push({ label: '消耗速度', value: `${multiplier} 倍率` });
 
-  const context = formatContextWindow(model.max_tokens);
+  // P4：优先新字段 context_window；旧接口仍返回 max_tokens 时兼容回退
+  const context = formatContextWindow(model.context_window ?? model.max_tokens);
   if (context) facts.push({ label: '上下文窗口', value: context });
 
   return facts;

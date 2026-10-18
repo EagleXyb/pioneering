@@ -1,0 +1,73 @@
+# LLM 接入层 CI（P5）
+#
+# 目标：
+#   1. 每次 PR：构建共享包、跑后端/前端单测与类型检查
+#   2. 配置了 LLM_API_KEY 时：跑评测冒烟门禁（eval:gate），未配置则跳过并提示
+#
+# 注意：评测会真实调用模型，产生少量费用；fork PR 默认拿不到 secret，自动跳过。
+name: LLM CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  unit:
+    name: Unit & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build shared packages
+        run: npm run build:packages
+
+      - name: Backend tests
+        run: npm test -w @pioneering/backend
+
+      - name: Web typecheck
+        run: npm run typecheck -w @pioneering/web
+
+      - name: Web tests
+        run: npm test -w @pioneering/web
+
+  eval:
+    name: Eval Smoke Gate
+    runs-on: ubuntu-latest
+    needs: unit
+    env:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      MODU_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      MODU_LLM_PROVIDER: deepseek
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build packages
+        run: |
+          npm run build:packages
+          npm run build -w @pioneering/evals
+
+      # P6：AIMessageChunk 最终答复丢失已修复，smoke 门禁恢复为阻断模式。
+      - name: Run eval gate
+        if: ${{ env.LLM_API_KEY != '' }}
+        run: npm run eval:gate -w @pioneering/evals
+
+      - name: Skip notice
+        if: ${{ env.LLM_API_KEY == '' }}
+        run: echo "LLM_API_KEY 未配置，跳过评测门禁（fork PR 或未设置 secret）"

@@ -1,38 +1,22 @@
 /**
- * useModelOptions —— 输入框模型选择
+ * useModelOptions —— 输入框模型选择（P3：切换为能力清单驱动）
  *
- * - 模型列表来自 GET /system/models，模块级缓存（三个模式共用一次请求）
- * - 当前选择按模式持久化到 localStorage（key: model-select:<mode>），
- *   默认值取 config/models.ts 的 DEFAULT_MODEL_BY_MODE
- * - 后端不可达时退化为仅包含默认模型的单元素列表，选择器仍可渲染
+ * 数据来源优先级：
+ *   1. GET /capabilities（含 alias / provider / capabilities / status）
+ *   2. 旧接口 GET /system/models（后端未升级或能力清单失败时的兜底）
+ *   3. 本地默认模型（离线兜底）
+ *
+ * 选择状态仍按模式持久化到 localStorage（key: model-select:<mode>），
+ * 旧版本存的是真实 model_id（如 deepseek-v4-flash），这里会自动映射回别名。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getModels, type ModelInfo } from '../api/system';
+import { toModelInfo } from '../api/capabilities';
+import { useCapabilities } from './useCapabilities';
 import { getDefaultModel } from '../config/models';
 import type { AppMode } from '../types';
 
 const STORAGE_KEY_PREFIX = 'model-select:';
-
-// ---- 模块级列表缓存（全应用只请求一次） ----
-let modelsCache: ModelInfo[] | null = null;
-let inflight: Promise<ModelInfo[]> | null = null;
-
-function fetchModels(): Promise<ModelInfo[]> {
-  if (modelsCache) return Promise.resolve(modelsCache);
-  if (!inflight) {
-    inflight = getModels()
-      .then((list) => {
-        modelsCache = Array.isArray(list) ? list : [];
-        return modelsCache;
-      })
-      .catch(() => {
-        // 失败不缓存：下次挂载可重试
-        inflight = null;
-        return [];
-      });
-  }
-  return inflight;
-}
 
 function storageKey(mode: AppMode): string {
   return `${STORAGE_KEY_PREFIX}${mode}`;
@@ -48,9 +32,19 @@ function readStored(mode: AppMode): string {
   return getDefaultModel(mode);
 }
 
+/**
+ * 读取指定模式当前选中的模型 id（非 hook 版本）。
+ *
+ * 供发送动作在提交时取值：与 `ModelSelect` 共用同一个 localStorage key，
+ * 因此无需把选择状态层层透传到发送回调，也不会出现"UI 选了但请求没带"的偏差。
+ */
+export function getSelectedModelId(mode: AppMode): string {
+  return readStored(mode);
+}
+
 export interface UseModelOptionsReturn {
   models: ModelInfo[];
-  /** 当前选中的模型 id */
+  /** 当前选中的模型 id（能力清单下为别名，如 fast / reasoning） */
   selectedId: string;
   /** 当前选中的模型信息（列表未就绪时用 id 合成） */
   selectedModel: ModelInfo;
@@ -58,34 +52,46 @@ export interface UseModelOptionsReturn {
 }
 
 export function useModelOptions(mode: AppMode): UseModelOptionsReturn {
-  const fallbackModel: ModelInfo = {
-    id: getDefaultModel(mode),
-    name: getDefaultModel(mode),
-  };
-  const [models, setModels] = useState<ModelInfo[]>(
-    modelsCache ?? [fallbackModel],
-  );
-  const [selectedId, setSelectedId] = useState<string>(() => readStored(mode));
+  const { models: capabilityModels, loading } = useCapabilities();
+  const [legacyModels, setLegacyModels] = useState<ModelInfo[]>([]);
+  const [storedId, setStoredId] = useState<string>(() => readStored(mode));
 
+  // 能力清单不可用（旧后端 / 网络失败）时回退到 /system/models
   useEffect(() => {
+    if (loading || capabilityModels.length > 0) return;
     let alive = true;
-    fetchModels().then((list) => {
-      if (alive && list.length > 0) setModels(list);
-    });
+    getModels()
+      .then((list) => {
+        if (alive && Array.isArray(list)) setLegacyModels(list);
+      })
+      .catch(() => {
+        // 回退失败时保留本地默认模型
+      });
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [loading, capabilityModels.length]);
 
-  // 切换模式时同步该模式的持久化选择
+  const models = useMemo<ModelInfo[]>(() => {
+    if (capabilityModels.length > 0) return capabilityModels.map(toModelInfo);
+    if (legacyModels.length > 0) return legacyModels;
+    return [{ id: getDefaultModel(mode), name: getDefaultModel(mode) }];
+  }, [capabilityModels, legacyModels, mode]);
+
+  // 兼容旧存储：历史值可能是真实 model_id，映射回别名用于选中态
+  const selectedId = useMemo(() => {
+    if (models.some((m) => m.id === storedId)) return storedId;
+    const byModelId = models.find((m) => m.model_id === storedId);
+    return byModelId?.id ?? storedId;
+  }, [models, storedId]);
+
   useEffect(() => {
-    setSelectedId(readStored(mode));
+    setStoredId(readStored(mode));
   }, [mode]);
 
   const selectModel = useCallback(
     (id: string) => {
-      setSelectedId(id);
+      setStoredId(id);
       try {
         localStorage.setItem(storageKey(mode), id);
       } catch {

@@ -29,6 +29,7 @@ import {
   X,
   Zap,
   Cable,
+  Coins,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -47,6 +48,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { McpSection } from './more-menu/McpSection';
+import { CostSection } from './CostSection';
 import './SettingsDialog.css';
 
 type Density = 'compact' | 'comfortable';
@@ -105,6 +107,7 @@ const SECTIONS: ReadonlyArray<{
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'notification', label: '通知', icon: Bell },
   { id: 'chat', label: '对话', icon: MessageSquare },
+  { id: 'usage', label: '用量与成本', icon: Coins },
   { id: 'mcp', label: 'MCP', icon: Cable },
   { id: 'account', label: '账户', icon: UserRound },
   { id: 'help', label: '帮助与反馈', icon: CircleHelp },
@@ -477,6 +480,8 @@ export default function SettingsDialog({
                 </div>
               </>
             )}
+
+            {active === 'usage' && <CostSection />}
 
             {active === 'mcp' && <McpSection />}
 

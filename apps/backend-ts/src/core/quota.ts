@@ -52,6 +52,12 @@ export interface RecordUsageParams {
   usage?: TokenUsageData
   promptText: string
   completionText: string
+  /**
+   * P2：调用前已预扣的 token 数。
+   * 传入时按 (实际 - 预扣) 调整配额，避免重复记账；
+   * 省略时保持旧行为（按实际用量直接 increment）。
+   */
+  reservedTokens?: number
 }
 
 export async function recordUsage(
@@ -63,6 +69,20 @@ export async function recordUsage(
     p.usage?.completionTokens ?? Math.floor(p.completionText.length / 4)
   const totalTokens =
     p.usage?.totalTokens ?? promptTokens + completionTokens
+
+  // P2：预扣模式下只调整差额；负差额（预扣高于实际）走 decrement 归还
+  const quotaAdjustment =
+    p.reservedTokens === undefined ? totalTokens : totalTokens - p.reservedTokens
+  const quotaUpdate =
+    quotaAdjustment >= 0
+      ? {
+          usedTokens: { increment: BigInt(quotaAdjustment) },
+          dailyUsed: { increment: BigInt(quotaAdjustment) },
+        }
+      : {
+          usedTokens: { decrement: BigInt(-quotaAdjustment) },
+          dailyUsed: { decrement: BigInt(-quotaAdjustment) },
+        }
 
   await Promise.all([
     prisma.tokenUsage.create({
@@ -87,10 +107,7 @@ export async function recordUsage(
           usedTokens: BigInt(totalTokens),
           dailyUsed: BigInt(totalTokens),
         },
-        update: {
-          usedTokens: { increment: BigInt(totalTokens) },
-          dailyUsed: { increment: BigInt(totalTokens) },
-        },
+        update: quotaUpdate,
       })
       .catch(() => {
         // 并发建行冲突等：记账失败不阻断对话主流程

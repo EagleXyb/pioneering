@@ -13,8 +13,7 @@
  * [reasoning?, search?, markdown]，reasoning 块结构与历史转换器 converter.ts 对齐。
  */
 import { useCallback, useRef, useState } from 'react';
-import { getAuthHeader } from '../../../api/client';
-import { parseAguiStream } from '../../../lib/parseAguiStream';
+import { requestAguiStream, streamErrorMessage } from '../../../lib/sseClient';
 import type {
   AIMessage,
   AIMessageContent,
@@ -29,7 +28,7 @@ export interface SendUserMessageOptions {
   deepThink?: boolean;
   /** 联网搜索开关（对应请求体 netSearch） */
   netSearch?: boolean;
-  /** 指定模型 id（对应请求体 model；后端默认 deepseek-v4-flash） */
+  /** 指定模型 id（对应请求体 model；后端默认 deepseek-flash） */
   model?: string;
 }
 
@@ -192,39 +191,25 @@ export function useAguiChat(
 
       (async () => {
         try {
-          const response = await fetch('/api/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...getAuthHeader(),
+          const result = await requestAguiStream(
+            {
+              path: '/chat/completions',
+              // 与改造前一致：拿到 200 后才从 pending 切到 streaming
+              onOpen: () => setStatus('streaming'),
+              body: {
+                sessionId: sid,
+                message: prompt,
+                stream: true,
+                deepThink,
+                netSearch,
+                model,
+                // 方案 B：编辑重发（后端更新既有消息 + 截断其后消息）
+                ...(editMessageId
+                  ? { messageId: editMessageId, truncateAfter: true }
+                  : {}),
+              },
+              signal: controller.signal,
             },
-            body: JSON.stringify({
-              sessionId: sid,
-              message: prompt,
-              stream: true,
-              deepThink,
-              netSearch,
-              model,
-              // 方案 B：编辑重发（后端更新既有消息 + 截断其后消息）
-              ...(editMessageId
-                ? { messageId: editMessageId, truncateAfter: true }
-                : {}),
-            }),
-            signal: controller.signal,
-          });
-
-          if (!response.ok) {
-            const errData = await response.json().catch(() => null);
-            throw new Error(
-              (errData as { message?: string })?.message ||
-                `请求失败: ${response.status}`,
-            );
-          }
-
-          setStatus('streaming');
-
-          const result = await parseAguiStream(
-            response,
             {
               onRunStarted: () => {
                 // RUN_STARTED：预留（会话/运行元数据可在此扩展）
@@ -273,7 +258,6 @@ export function useAguiChat(
                 }));
               },
             },
-            controller.signal,
           );
 
           if (result.reason === 'error-event') {
@@ -312,11 +296,12 @@ export function useAguiChat(
           }
           failed = true;
           setStatus('error');
+          const msg = streamErrorMessage(err, '未知错误');
           patchAssistant(assistantId, (m) => ({
             ...m,
             content: answer
               ? m.content
-              : [{ type: 'text', data: `请求失败: ${e?.message || '未知错误'}` }],
+              : [{ type: 'text', data: `请求失败: ${msg}` }],
             status: 'error',
           }));
         } finally {

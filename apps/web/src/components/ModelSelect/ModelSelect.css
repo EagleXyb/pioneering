@@ -228,6 +228,12 @@
   white-space: nowrap;
 }
 
+/* P3：不可用模型（status=sunset）置灰，悬停详情卡给出下线原因 */
+.model-select__item[data-disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* 尊重系统"减少动态效果"设置 */
 @media (prefers-reduced-motion: reduce) {
   .model-select__detail {

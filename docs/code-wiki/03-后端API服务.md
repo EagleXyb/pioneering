@@ -78,7 +78,7 @@ app/
 | `refresh_token_expiration_days` | REFRESH_TOKEN_EXPIRATION_DAYS | `30` | Refresh Token过期时间（天） |
 | `llm_api_key` | LLM_API_KEY | `""` | LLM API Key |
 | `llm_base_url` | LLM_BASE_URL | `https://api.deepseek.com/v1` | LLM API地址 |
-| `llm_default_model` | LLM_DEFAULT_MODEL | `deepseek-v4-flash` | 默认模型 |
+| `llm_default_model` | LLM_DEFAULT_MODEL | `deepseek-flash` | 默认模型 |
 | `host` | HOST | `0.0.0.0` | 监听地址 |
 | `port` | PORT | `9000` | 监听端口 |
 | `cors_origins` | CORS_ORIGINS | `http://localhost:5173,http://localhost:3000` | CORS允许来源 |

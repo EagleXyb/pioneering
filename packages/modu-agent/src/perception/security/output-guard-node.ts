@@ -33,8 +33,18 @@ type NodeFn = (state: any) => any
  * @param inner 原节点函数（如 responseNode）
  * @returns 包装后的节点函数（签名与返回值结构保持兼容）
  */
-export function makeOutputGuardNode(inner: NodeFn): NodeFn {
+export interface OutputGuardOptions {
+  /** P4：影子模式——只记录命中与审计，不改写 response */
+  shadow?: boolean
+}
+
+export function makeOutputGuardNode(
+  inner: NodeFn,
+  options: OutputGuardOptions = {},
+): NodeFn {
   const guard = new SecurityGuard()
+  // 未显式传参时保持既有行为（直接脱敏），影子模式只由图装配按配置开启
+  const shadow = options.shadow === true
 
   return function _outputGuardNode(state: any): any {
     const result = inner(state)
@@ -54,7 +64,8 @@ export function makeOutputGuardNode(inner: NodeFn): NodeFn {
       const internalIps: string[] = detection.internal_ips ?? []
 
       logger.warning(
-        '[output-guard] Sensitive content redacted: secrets=%s pii=%s internal_ips=%d session=%s',
+        '[output-guard] %s: secrets=%s pii=%s internal_ips=%d session=%s',
+        shadow ? 'Sensitive content detected (shadow, not redacted)' : 'Sensitive content redacted',
         secretTypes.join(',') || '(none)',
         piiTypes.join(',') || '(none)',
         internalIps.length,
@@ -74,6 +85,9 @@ export function makeOutputGuardNode(inner: NodeFn): NodeFn {
           internal_ips_count: internalIps.length,
         },
       })
+
+      // P4：影子模式只产出审计与日志，不改变模型输出
+      if (shadow) return result
 
       return { ...result, response: sanitized }
     } catch (e: any) {

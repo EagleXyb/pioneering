@@ -8,6 +8,9 @@ import { isOriginAllowed } from '../plugins/cors.js'
 import { NotFoundError, BadRequestError } from '../plugins/error-handler.js'
 import { genId } from '../utils/id.js'
 import { env } from '../config/env.js'
+import { DEFAULT_ALIAS, resolveModelAlias, toModelAlias } from '../config/models.js'
+import { enforceRateLimit } from '../plugins/rate-limit.js'
+import { recordSseDisconnect } from '../core/metrics.js'
 import { buildSchema } from '../utils/zod-schema.js'
 import {
   CreateAgentSessionRequestSchema,
@@ -386,7 +389,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             id: genId('sess_'),
             userId: req.user.id,
             title: dto.title || '新对话',
-            model: dto.model || env.LLM_DEFAULT_MODEL,
+            // P4：会话表存别名，真实模型 ID 由网关在调用时解析
+            model: toModelAlias(dto.model) || DEFAULT_ALIAS,
             systemPrompt: dto.systemPrompt ?? null,
             agentMode: dto.agentMode ?? null,
             // 空数组在 Python 中为 falsy，这里用 length 判断保持等价
@@ -502,6 +506,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         // 使用后端配置的默认模型（对齐 Python: model=None 忽略会话 model）
         const systemPrompt = session?.systemPrompt ?? null
 
+        // P4：分层限流（用户 / 模型），超限请求不触达上游
+        enforceRateLimit(userId, dto.model)
+
         // T2.5：Agent 通道入口配额校验（超限抛 429）
         await checkQuota(fastify.prisma, userId)
 
@@ -556,8 +563,12 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             }
           }, 15_000)
 
+          let finishedNormally = false
+
           reply.raw.on('close', () => {
             clearInterval(heartbeat)
+            // P4：流未走完就被关闭 → 计入断线率
+            if (!finishedNormally) recordSseDisconnect('agent')
             agentRunningRuns.delete(stopRunId)
             // P2-2：客户端断开时中止上游（此前只删除注册表，Agent 仍在空跑、
             // 持续消耗模型配额并向已关闭的 socket 写入）。
@@ -579,7 +590,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               sessionId,
               userId,
               ctx,
-              model: null,
+              // P0：模型透传。别名先解析；省略时由 agent-bridge 回退到默认模型。
+              model: resolveModelAlias(dto.model) ?? null,
               systemPrompt,
               history,
               // P4: 透传 agentMode 以启用 Plan-Execute 图
@@ -598,6 +610,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               sseCount++
               reply.raw.write(`data: ${eventDict.data}\n\n`)
             }
+            finishedNormally = true
           } catch (e: any) {
             // 防御 create_agent() 等流前异常（流中异常已在 streamAgentCompletion 内 catch）
             streamError = true
@@ -690,7 +703,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           sessionId,
           userId,
           ctx,
-          model: null,
+          // P0：与流式路径一致，支持 per-request 模型覆盖
+          model: resolveModelAlias(dto.model) ?? null,
           systemPrompt,
           history,
           // P4: 透传 agentMode 以启用 Plan-Execute 图

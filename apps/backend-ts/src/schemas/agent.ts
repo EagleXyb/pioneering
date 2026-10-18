@@ -35,6 +35,13 @@ export const AgentChatRequestSchema = z.object({
   // P4: 支持 per-request 指定 Agent 模式，前端任务模式传 'plan_execute' 启用 Plan-Execute 图
   agentMode: z.enum(['react_agent', 'plan_execute']).default('react_agent'),
   /**
+   * P0：Agent 通道模型透传。
+   * 支持真实模型 ID 或别名（fast / reasoning）；省略时沿用后端默认模型。
+   * 注意：不读取 session.model —— 历史会话可能残留旧的模型名（如 gpt-4o-mini），
+   * 直接透传会让这些会话在升级后突然失败，故仅接受请求显式指定。
+   */
+  model: z.string().nullable().optional(),
+  /**
    * 编辑重发（方案 B）：指定目标用户消息 id 时，本次请求不新建用户消息，
    * 而是更新该消息正文并在其后重新执行 Agent（pro / task 模式共用）。
    */

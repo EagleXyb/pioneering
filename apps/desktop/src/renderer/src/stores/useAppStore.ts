@@ -146,12 +146,12 @@ const DEFAULT_MODEL_CONFIGS: ModelConfigItem[] = [
     value: 'glm-5.2'
   },
   {
-    id: 'deepseek-v4-flash',
-    name: 'DeepSeek-V4-Flash',
+    id: 'deepseek-flash',
+    name: 'DeepSeek-V4.1-Flash',
     provider: 'DeepSeek',
     iconKey: 'deepseek',
     enabled: true,
-    value: 'deepseek-v4-flash'
+    value: 'deepseek-flash'
   },
   {
     id: 'glm-5-turbo',

@@ -16,12 +16,98 @@ import {
   AGUIStreamAdapter,
   AGUIEncoder,
   AGUIEventType,
+  setLLMConnectionResolver,
+  getLLMConnectionResolver,
 } from '@pioneering/modu-agent'
 import { env } from '../config/env.js'
+import { llmGateway } from './llm-gateway.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[agent-bridge] ${msg}`, ...args),
   error: (msg: string, ...args: any[]) => console.error(`[agent-bridge] ${msg}`, ...args),
+}
+
+const GRAPH_CACHE_LIMIT = 8
+const _graphCache = new Map<string, any>()
+
+/**
+ * P5：按「构建期覆盖项」缓存已编译图。
+ *
+ * 背景：只要请求带 model / system_prompt / plan_execute 覆盖，原实现每次都走
+ * `create_agent()`，重复执行工具注册、MCP 发现与 checkpointer 装配；同一会话
+ * 连问 5 次就重建 5 次。这里按覆盖项做 LRU（上限 8），无覆盖时仍走进程级
+ * `get_runner()` 缓存。
+ */
+function graphCacheKey(configurable: Record<string, any>): string {
+  return JSON.stringify({
+    model: configurable.model ?? null,
+    system_prompt: configurable.system_prompt ?? null,
+    plan_execute: configurable.plan_execute_enabled ?? false,
+    domain: configurable.domain ?? null,
+  })
+}
+
+async function getCachedGraph(configurable: Record<string, any>): Promise<any> {
+  const key = graphCacheKey(configurable)
+  const hit = _graphCache.get(key)
+  if (hit) {
+    // LRU：命中后移到队尾
+    _graphCache.delete(key)
+    _graphCache.set(key, hit)
+    return hit
+  }
+
+  const graph = await create_agent({ configurable })
+  _graphCache.set(key, graph)
+  if (_graphCache.size > GRAPH_CACHE_LIMIT) {
+    const oldest = _graphCache.keys().next().value
+    if (oldest !== undefined) _graphCache.delete(oldest)
+  }
+  return graph
+}
+
+/** 测试辅助：清空图缓存。 */
+export function _resetAgentGraphCacheForTest(): void {
+  _graphCache.clear()
+}
+
+let _llmResolverRegistered = false
+
+/**
+ * P2：把网关的目录解析与连接参数注入 modu-agent。
+ *
+ * - 注册后内核不再读取 `MODU_*` / `LLM_*`，密钥与模型 ID 全部由宿主提供；
+ * - 测试里 mock 掉 `@pioneering/modu-agent` 时该函数不存在，此处跳过，
+ *   不影响既有用例；
+ * - 未知模型保留调用方原值，交给上游返回明确错误（不在此处吞掉）。
+ */
+function ensureLLMConnectionResolver(): void {
+  if (_llmResolverRegistered) return
+  const register = setLLMConnectionResolver as unknown
+  if (typeof register !== 'function') return
+
+  // 宿主已注册时优先保留（多宿主/测试注入场景）
+  const read = getLLMConnectionResolver as unknown
+  if (typeof read === 'function' && (read as typeof getLLMConnectionResolver)()) {
+    _llmResolverRegistered = true
+    return
+  }
+
+  ;(register as typeof setLLMConnectionResolver)(({ model }) => {
+    let modelId = env.LLM_DEFAULT_MODEL
+    try {
+      modelId = llmGateway.catalog.resolve(model ?? 'fast').model_id
+    } catch {
+      modelId = model || env.LLM_DEFAULT_MODEL
+    }
+    return {
+      apiKey: env.LLM_API_KEY,
+      baseUrl: env.LLM_BASE_URL,
+      model: modelId,
+    }
+  })
+  _llmResolverRegistered = true
+  logger.info('llm.connection.resolver registered (gateway-backed)')
 }
 
 // T5.3：模式 → 默认领域域名（宿主侧约定）。
@@ -121,6 +207,9 @@ export async function* streamAgentCompletion(
 ): AsyncGenerator<Record<string, string>> {
   const { message, sessionId, userId, ctx, model, systemPrompt, history, agentMode } = opts
 
+  // P2：确保内核使用宿主注入的连接解析器（不再自行读 env）
+  ensureLLMConnectionResolver()
+
   // 构建 configurable（支持 model / system_prompt / plan_execute_enabled 覆盖）
   const configurable: Record<string, any> = {}
   if (model && model !== env.LLM_DEFAULT_MODEL) {
@@ -145,7 +234,7 @@ export async function* streamAgentCompletion(
   // 这两项在 build 时读取，无法经运行时 config 注入。
   const hasBuildOverrides = Object.keys(configurable).length > 0
   const graph = hasBuildOverrides
-    ? await create_agent({ configurable })
+    ? await getCachedGraph(configurable)
     : await get_runner()
 
   // 注入会话历史到 input_data
@@ -312,6 +401,9 @@ export async function* streamAgentResume(
   const { sessionId, userId, approved, feedback, modifiedArgs, answer, answerId, traceId, signal, ctx } =
     opts
   const trace = traceId ?? randomUUID()
+
+  // P2：resume 同样走宿主注入的连接解析器，保证中断前后密钥/模型一致
+  ensureLLMConnectionResolver()
 
   // 修复（2026-10-14）：resume 必须使用与中断时相同 profile 的图。
   // 缺陷背景：plan_execute 的中断发生在 plan_execute 图（含 planner/step_dispatch/

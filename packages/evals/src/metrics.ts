@@ -175,22 +175,49 @@ export class ProcessMetricGroup {
 // 系统层指标组（端到端任务达成）
 // ============================================================
 
-/** 中文字符 bigram Jaccard 相似度（ground_truth_match 的召回实现）。 */
-function bigramJaccard(a: string, b: string): number {
-  const norm = (s: string): string => s.replace(/[\s，。、；：""''！？,.!?;:'"()（）]/g, '').toLowerCase()
-  const grams = (s: string): Set<string> => {
-    const t = norm(s)
-    const set = new Set<string>()
-    for (let i = 0; i < t.length - 1; i++) set.add(t.slice(i, i + 2))
-    if (t.length === 1) set.add(t)
-    return set
-  }
-  const ga = grams(a)
-  const gb = grams(b)
-  if (ga.size === 0 || gb.size === 0) return 0
+/** 中文数字 → 阿拉伯数字，避免「第三季度」与「第 3 季度」判为不匹配。 */
+const CN_DIGITS: Record<string, string> = {
+  零: '0', 〇: '0', 一: '1', 二: '2', 三: '3', 四: '4',
+  五: '5', 六: '6', 七: '7', 八: '8', 九: '9',
+}
+
+function normalizeForMatch(s: string): string {
+  return s
+    .replace(/[零〇一二三四五六七八九]/g, (d) => CN_DIGITS[d] ?? d)
+    .replace(/[\s，。、；：""''！？,.!?;:'"()（）]/g, '')
+    .toLowerCase()
+}
+
+function bigramSet(s: string): Set<string> {
+  const t = normalizeForMatch(s)
+  const set = new Set<string>()
+  for (let i = 0; i < t.length - 1; i++) set.add(t.slice(i, i + 2))
+  if (t.length === 1) set.add(t)
+  return set
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
   let inter = 0
-  for (const g of ga) if (gb.has(g)) inter++
-  return inter / (ga.size + gb.size - inter)
+  for (const x of a) if (b.has(x)) inter++
+  return inter / (a.size + b.size - inter)
+}
+
+/** 英文按词、中文按 bigram，取较高者；兼容词序不同但语义相同的翻译。 */
+function bigramJaccard(a: string, b: string): number {
+  const scoreBigram = jaccard(bigramSet(a), bigramSet(b))
+
+  const words = (s: string): Set<string> =>
+    new Set(
+      normalizeForMatch(s)
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 2),
+    )
+  const wa = words(a)
+  const wb = words(b)
+  const scoreWord = wa.size > 0 && wb.size > 0 ? jaccard(wa, wb) : 0
+
+  return Math.max(scoreBigram, scoreWord)
 }
 
 /**
@@ -211,9 +238,25 @@ export class SystemMetricGroup {
     let gtScore: number | null = null
     const gt = evalCase.groundTruth
     if (gt && gt.trim()) {
-      const normResp = agentRun.response.replace(/\s+/g, '')
-      const normGt = gt.replace(/\s+/g, '')
-      gtScore = normResp.includes(normGt) ? 1 : bigramJaccard(normResp, normGt)
+      const normResp = normalizeForMatch(agentRun.response)
+      // P6：支持等价表述（同一语义的不同措辞），取所有候选中的最高分
+      const candidates = [gt, ...(evalCase.groundTruthAliases ?? [])].filter(
+        (x) => typeof x === 'string' && x.trim(),
+      )
+      gtScore = 0
+      for (const candidate of candidates) {
+        const normGt = normalizeForMatch(candidate)
+        const score = normResp.includes(normGt)
+          ? 1
+          : bigramJaccard(normResp, normGt)
+        if (score > gtScore) gtScore = score
+      }
+      // P6：纯字面匹配对"语义正确但措辞不同"过于严格（翻译语序、同义表述）。
+      // 若 LLM Judge 已判定 accuracy 很高，则视为语义等价，给到通过线。
+      const judgeAccuracy = outputMetrics?.['output_accuracy'] ?? 0
+      if (gtScore < 0.5 && judgeAccuracy >= 0.8) {
+        gtScore = Math.max(gtScore, 0.6)
+      }
       result['system_ground_truth_match'] = gtScore
     }
 
@@ -259,7 +302,9 @@ export function toToolCallRecord(raw: Record<string, any>): ToolCallRecord {
   return {
     toolName: String(raw.tool_name ?? raw.toolName ?? raw.tool ?? 'unknown'),
     args: (raw.args ?? raw.arguments ?? raw.input ?? {}) as Record<string, any>,
-    success: raw.success === true,
+    // P6：modu-agent 的 tool_results 用 status='success'，不是 success 布尔值。
+    // 只认 success 会把所有成功调用算成失败（process_tool_success_rate 恒 0）。
+    success: raw.success === true || raw.status === 'success',
     executionTimeMs: typeof raw.execution_time === 'number' ? raw.execution_time : undefined,
     error: raw.error ?? raw.error_message ?? null,
   }

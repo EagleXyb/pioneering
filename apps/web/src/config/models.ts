@@ -4,9 +4,9 @@
 import type { AppMode } from '../types';
 
 export const DEFAULT_MODEL_BY_MODE: Record<AppMode, string> = {
-  chat: 'deepseek-v4-flash',
-  pro: 'deepseek-v4-flash',
-  task: 'deepseek-v4-flash',
+  chat: 'deepseek-flash',
+  pro: 'deepseek-flash',
+  task: 'deepseek-flash',
 };
 
 /** 获取指定模式的默认模型名 */

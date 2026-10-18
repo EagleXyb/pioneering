@@ -13,6 +13,7 @@ import { TaskResizer } from '../task/components/TaskResizer';
 import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
 import { useHitlStore } from '@pioneering/agent-protocol';
 import { useSessionRuns } from '../../hooks/useSessionRuns';
+import { getSelectedModelId } from '@/hooks/useModelOptions';
 import './pro.css';
 
 export default function ProMode() {
@@ -42,7 +43,11 @@ export default function ProMode() {
   // 用户消息行内编辑（编辑重发走 agent 通道，方案 B）
   const handleResend = useCallback(
     (messageId: string, nextText: string) =>
-      resendEditedMessage({ messageId, prompt: nextText }),
+      resendEditedMessage({
+        messageId,
+        prompt: nextText,
+        model: getSelectedModelId('pro'),
+      }),
     [resendEditedMessage],
   );
   const {
@@ -95,7 +100,9 @@ export default function ProMode() {
           hitl={hitl}
           hitlError={hitlError}
           hitlBusy={hitlBusy}
-          onSend={(text) => sendMessage({ prompt: text })}
+          onSend={(text) =>
+            sendMessage({ prompt: text, model: getSelectedModelId('pro') })
+          }
           onStop={() => abort()}
         />
       </AnalysisLayout.Main>

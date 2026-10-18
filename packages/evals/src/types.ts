@@ -20,6 +20,8 @@ export interface EvalCase {
   /** 预处理（占位符替换/截断/trim）之后的最终输入。 */
   input: string
   groundTruth?: string | null
+  /** 可接受的等价表述（语义相同但措辞不同，P6） */
+  groundTruthAliases?: string[]
   expectedTools?: string[]
   maxToolCalls?: number
   tags: string[]
@@ -147,7 +149,15 @@ export interface EvalReport {
   metrics: Record<string, MetricSummary>
   /** 按 category 分组的通过率。 */
   perCategory: Record<string, { count: number; passCount: number; passRate: number }>
-  failures: Array<{ caseId: string; category: string; failedMetrics: string[] }>
+  failures: Array<{
+    caseId: string
+    category: string
+    failedMetrics: string[]
+    /** 该用例的全部指标值（便于定位是阈值问题还是回答本身） */
+    metrics: Record<string, number>
+    /** 回答片段（CI 日志定位问题用） */
+    responseSnippet?: string
+  }>
   /** 与 baseline（最近一次同数据集 run）的差值：metricKey -> current - baseline。 */
   delta: Record<string, number> | null
   baselineRunId: string | null
