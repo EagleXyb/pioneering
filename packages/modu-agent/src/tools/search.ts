@@ -2,11 +2,15 @@
 // SearchTool：搜索引擎工具。
 // 优先级(按可达性 + 数据完整性):Tavily(需 key, 境外) -> Bing HTML(免费, 国内可达, 无需 key) -> DuckDuckGo(免费, 境外, 仅索引少量源)
 import { BaseTool } from '../core/interfaces/action.js'
+import { getLLMConnectionResolver } from '../graph/adapters/llm-connection.js'
 
 // 部分搜索接口对缺失 User-Agent 的请求会拒绝或返回异常，统一带上浏览器 UA
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+/** DeepSeek Search 的 query 上限（Unicode 字符） */
+const DEEPSEEK_QUERY_MAX = 128
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[search] ${msg}`, ...args),
@@ -88,6 +92,25 @@ export class SearchTool extends BaseTool {
       maxResults = 5
     }
 
+    // 0) DeepSeek 官方 Search（自研搜索引擎）：Agent 场景直接用模型生成的检索词，
+    //    不做关键词提炼；失败/空结果再走原有 Tavily -> Bing -> DuckDuckGo 兜底。
+    const deepseek = this._resolveDeepSeekConnection()
+    if (deepseek.apiKey) {
+      try {
+        const results = await this._searchDeepSeek(query, maxResults, deepseek)
+        if (results.length > 0) {
+          return {
+            status: 'success',
+            error_code: '',
+            data: { results, source: 'deepseek' },
+          }
+        }
+        logger.info('DeepSeek search returned no results, falling back: %s', query)
+      } catch (e) {
+        logger.warning('DeepSeek search failed, falling back: %s', String(e))
+      }
+    }
+
     // 优先级(按可达性 + 数据完整性排序):
     //   1) Tavily(有 key 时,境外,需代理) —— 数据质量最高
     //   2) Bing HTML(无 key,国内可达,真正的搜索引擎) —— 默认兜底
@@ -149,6 +172,111 @@ export class SearchTool extends BaseTool {
         data: { message: `搜索服务异常: ${e}` },
       }
     }
+  }
+
+  /**
+   * 解析 DeepSeek Search 连接参数。
+   *
+   * 优先宿主注入的 LLMConnectionResolver（与 llm-adapter 一致，支持密钥托管）；
+   * 未注入时回退 env：MODU_DEEPSEEK_* -> LLM_* -> 默认端点。
+   */
+  private _resolveDeepSeekConnection(): { apiKey: string; baseUrl: string } {
+    const resolver = getLLMConnectionResolver()
+    if (resolver) {
+      try {
+        const conn = resolver({ provider: 'deepseek', model: null })
+        if (conn.apiKey) {
+          return { apiKey: conn.apiKey, baseUrl: conn.baseUrl }
+        }
+      } catch (e) {
+        logger.warning('LLM connection resolver failed for deepseek: %s', String(e))
+      }
+    }
+    return {
+      apiKey: process.env.MODU_DEEPSEEK_API_KEY || process.env.LLM_API_KEY || '',
+      baseUrl:
+        process.env.MODU_DEEPSEEK_BASE_URL ||
+        process.env.LLM_BASE_URL ||
+        'https://api.deepseek.com',
+    }
+  }
+
+  /**
+   * DeepSeek 官方 Search API（POST {baseUrl}/tools/search）。
+   *
+   * - query 按 Unicode 截断到 128 字；
+   * - 408 / 429 / 5xx 与网络错误退避重试（500ms、1000ms，最多 3 次尝试）；
+   * - 摘要优先 snippet，缺失时用 summary，避免 content 撑大 observation。
+   */
+  private async _searchDeepSeek(
+    query: string,
+    maxResults: number,
+    conn: { apiKey: string; baseUrl: string },
+  ): Promise<Array<Record<string, string>>> {
+    const base = (conn.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')
+    const payload = JSON.stringify({
+      query: this._clampQuery(query),
+      count: Math.min(50, Math.max(1, maxResults)),
+      need_content: false,
+    })
+    const dispatcher = await this._proxyDispatcher()
+
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      let response: Response
+      try {
+        response = await fetch(`${base}/tools/search`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${conn.apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': USER_AGENT,
+          },
+          body: payload,
+          signal: AbortSignal.timeout(10_000),
+          ...(dispatcher ? { dispatcher } : {}),
+        })
+      } catch (e) {
+        lastErr = e
+        if (attempt === 3) throw e
+        logger.warning('DeepSeek Search request failed, retry %d/2: %s', attempt, String(e))
+        await this._sleep(500 * 2 ** (attempt - 1))
+        continue
+      }
+
+      if (response.ok) {
+        const data: any = await response.json()
+        return (data.results ?? [])
+          .filter((r: any) => r && (r.title || r.snippet || r.summary))
+          .slice(0, maxResults)
+          .map((r: any) => ({
+            title: r.title ?? '',
+            url: r.url ?? '',
+            snippet: r.snippet || r.summary || '',
+            source: 'DeepSeek',
+          }))
+      }
+
+      const retryable =
+        response.status === 408 || response.status === 429 || response.status >= 500
+      if (!retryable || attempt === 3) {
+        throw new Error(`DeepSeek Search HTTP ${response.status}`)
+      }
+      logger.warning('DeepSeek Search HTTP %d, retry %d/2', response.status, attempt)
+      await this._sleep(500 * 2 ** (attempt - 1))
+    }
+
+    throw lastErr instanceof Error ? lastErr : new Error('DeepSeek Search failed')
+  }
+
+  /** 按 Unicode 字符截断，满足 DeepSeek Search 的 128 字上限。 */
+  private _clampQuery(input: string, max = DEEPSEEK_QUERY_MAX): string {
+    const chars = Array.from(input.trim())
+    return chars.length > max ? chars.slice(0, max).join('') : chars.join('')
+  }
+
+  private _sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**

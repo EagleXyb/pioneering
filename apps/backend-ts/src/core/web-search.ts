@@ -1,14 +1,18 @@
 // 联网搜索服务 —— 对应 Python ModuAgent/components/action/tools/search.py
-// 流程：LLM 提炼搜索关键词 -> Tavily(需 key, 境外) -> DuckDuckGo(免费, 境外)
-//       -> Bing HTML(免费, 国内可达, 无需 key)
-// 任意一级失败自动降级；全部失败返回 null，由调用方决定是否回退为普通对话
+// 流程：DeepSeek 官方 Search（自研搜索引擎）-> 失败/空结果时懒提炼关键词 -> Bing HTML
+//       任意一级失败自动降级；全部失败返回 null，由调用方决定是否回退为普通对话
 import { env } from '../config/env.js'
+import { resolveLlmSecrets } from './secrets.js'
 
 export interface SearchResult {
   title: string
   url: string
   snippet: string
   source: string
+  /** 长摘要（DeepSeek 提供 600~800 字），优先用于喂模型；其它来源可能缺省 */
+  summary?: string
+  /** 站点名（DeepSeek 返回 site_name），用于前端来源卡片展示 */
+  siteName?: string
 }
 
 export interface SearchOutcome {
@@ -41,7 +45,8 @@ export function toSourceItems(outcome: SearchOutcome): WebSourceItem[] {
       title: r.title,
       url: r.url,
       content: r.snippet,
-      site: safeHostname(r.url) || r.source,
+      // DeepSeek 自带 site_name，优先于从 URL 反解域名
+      site: r.siteName || safeHostname(r.url) || r.source,
     }))
 }
 
@@ -59,6 +64,132 @@ async function fetchWithTimeout(
     ...init,
     signal: AbortSignal.timeout(timeoutMs),
   })
+}
+
+/** LLM 密钥/端点：与网关同源（file Secret 优先，失败回退 env），进程内解析一次 */
+let _llmSecrets: ReturnType<typeof resolveLlmSecrets> | null = null
+function getLlmSecrets(): ReturnType<typeof resolveLlmSecrets> {
+  if (!_llmSecrets) {
+    _llmSecrets = resolveLlmSecrets({
+      provider: env.SECRET_PROVIDER,
+      filePath: env.LLM_SECRET_FILE,
+      envFallback: { apiKey: env.LLM_API_KEY, baseUrl: env.LLM_BASE_URL },
+    })
+  }
+  return _llmSecrets
+}
+
+/** DeepSeek Search 重试策略：官方建议 408 / 429 / 5xx 退避重试 */
+const SEARCH_MAX_ATTEMPTS = 3
+const SEARCH_RETRY_BASE_MS = 500
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Search 专用：可重试状态/网络错误按 500ms、1000ms 退避重试，其余直接返回 */
+async function fetchSearchWithRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= SEARCH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, init, timeoutMs)
+      if (!isRetryableStatus(response.status) || attempt === SEARCH_MAX_ATTEMPTS) {
+        return response
+      }
+      console.warn(
+        `[web-search] DeepSeek Search HTTP ${response.status}, `
+          + `retry ${attempt}/${SEARCH_MAX_ATTEMPTS - 1}`,
+      )
+    } catch (e) {
+      lastError = e
+      if (attempt === SEARCH_MAX_ATTEMPTS) throw e
+      console.warn(
+        `[web-search] DeepSeek Search request failed, `
+          + `retry ${attempt}/${SEARCH_MAX_ATTEMPTS - 1}: ${String(e)}`,
+      )
+    }
+    await sleep(SEARCH_RETRY_BASE_MS * 2 ** (attempt - 1))
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
+
+/** DeepSeek Search 的 query / ori_question 上限（Unicode 字符） */
+const DEEPSEEK_QUERY_MAX = 128
+
+/** 按 Unicode 字符截断（避免超长问题被 API 判 400） */
+function clampQuery(input: string, max = DEEPSEEK_QUERY_MAX): string {
+  const chars = Array.from(input.trim())
+  return chars.length > max ? chars.slice(0, max).join('') : chars.join('')
+}
+
+/**
+ * DeepSeek 官方 Search API（自研搜索引擎，按成功请求次数计费）。
+ *
+ * 端点：POST {LLM_BASE_URL}/tools/search，Bearer 复用 DeepSeek API Key。
+ * 响应 results[] 含 title/url/snippet/summary/site_name 等字段，直接映射到 SearchResult。
+ * 仅 HTTP 200 且 results 非空时计费；调用方据此决定是否降级。
+ */
+export async function searchDeepSeek(
+  query: string,
+  maxResults: number,
+  oriQuestion: string,
+): Promise<SearchResult[]> {
+  const { apiKey, baseUrl } = getLlmSecrets()
+  const base = baseUrl.replace(/\/+$/, '')
+  const response = await fetchSearchWithRetry(
+    `${base}/tools/search`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'User-Agent': USER_AGENT,
+      },
+      body: JSON.stringify({
+        query: clampQuery(query),
+        // 文档取值范围 1~50
+        count: Math.min(50, Math.max(1, maxResults)),
+        ori_question: clampQuery(oriQuestion),
+        // 只要标题/摘要：正文（content）体积大且本次用不到
+        need_content: false,
+      }),
+    },
+    10_000,
+  )
+  if (!response.ok) throw new Error(`DeepSeek Search HTTP ${response.status}`)
+
+  const data = (await response.json()) as {
+    results?: Array<{
+      title?: string
+      url?: string
+      snippet?: string
+      summary?: string
+      site_name?: string | null
+    }>
+  }
+
+  return (data.results ?? [])
+    .filter((r) => r.title || r.snippet || r.summary)
+    .slice(0, maxResults)
+    .map((r) => ({
+      title: r.title ?? '',
+      url: r.url ?? '',
+      // snippet 面向 UI；缺失时用 summary 兜底
+      snippet: r.snippet || r.summary || '',
+      summary: r.summary || undefined,
+      siteName: r.site_name ?? undefined,
+      source: 'DeepSeek',
+    }))
 }
 
 /** Tavily API 搜索（需要 TAVILY_API_KEY，境外服务） */
@@ -253,12 +384,14 @@ export async function refineSearchQuery(rawQuery: string): Promise<string | null
   if (!trimmed) return null
 
   try {
+    const { apiKey, baseUrl } = getLlmSecrets()
+    const base = baseUrl.replace(/\/+$/, '')
     const response = await fetchWithTimeout(
-      `${env.LLM_BASE_URL}/chat/completions`,
+      `${base}/chat/completions`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${env.LLM_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -314,8 +447,10 @@ export async function refineSearchQuery(rawQuery: string): Promise<string | null
 }
 
 /**
- * 联网搜索入口：先提炼关键词，再 Tavily -> DuckDuckGo -> Bing 依次降级。
- * 全部失败返回 null（不抛错，避免阻断对话主流程）。
+ * 联网搜索入口：DeepSeek 官方搜索优先，失败/空结果降级 Bing。
+ * 仅在降级 Bing 前才做关键词提炼（懒提炼）；全部失败返回 null（不抛错，避免阻断对话主流程）。
+ *
+ * 注：Tavily / DuckDuckGo 实现保留但已不在降级链上，便于将来按需启用。
  */
 export async function webSearch(
   query: string,
@@ -323,27 +458,22 @@ export async function webSearch(
 ): Promise<SearchOutcome | null> {
   if (!query || query.trim().length < 2) return null
 
+  // 首选 DeepSeek 官方搜索：直接用原问题（配合 ori_question）检索，
+  // 省去关键词提炼的额外 LLM 调用。AI 原生搜索对自然语言问句容忍度高。
+  try {
+    const results = await searchDeepSeek(query, maxResults, query)
+    if (results.length > 0) return { source: 'deepseek', results }
+    console.info('[web-search] DeepSeek returned no results, falling back to Bing')
+  } catch (e) {
+    console.warn(`[web-search] DeepSeek failed, falling back to Bing: ${String(e)}`)
+  }
+
+  // 降级 Bing：传统关键词引擎对长问句/口语命中率差，
+  // 此时才做关键词提炼（懒提炼），失败则回退原问题。
   const refined = await refineSearchQuery(query)
   const searchQuery = refined ?? query
   if (refined && refined !== query.trim()) {
     console.info(`[web-search] query refined: "${query.trim()}" -> "${searchQuery}"`)
-  }
-
-  const tavilyKey = process.env.TAVILY_API_KEY ?? ''
-  if (tavilyKey) {
-    try {
-      const results = await searchTavily(searchQuery, maxResults, tavilyKey)
-      if (results.length > 0) return { source: 'tavily', results }
-    } catch (e) {
-      console.warn(`[web-search] Tavily failed, falling back: ${String(e)}`)
-    }
-  }
-
-  try {
-    const results = await searchDuckDuckGo(searchQuery, maxResults)
-    if (results.length > 0) return { source: 'duckduckgo', results }
-  } catch (e) {
-    console.warn(`[web-search] DuckDuckGo failed, falling back to Bing: ${String(e)}`)
   }
 
   try {
@@ -361,7 +491,9 @@ export function formatSearchContext(query: string, outcome: SearchOutcome): stri
   const lines = outcome.results.map((r, i) => {
     const parts = [`【${i + 1}】${r.title}`]
     if (r.url) parts.push(`链接：${r.url}`)
-    if (r.snippet) parts.push(`摘要：${r.snippet}`)
+    // DeepSeek 的 summary（600~800 字）信息量大于 snippet，优先喂给模型
+    const digest = r.summary?.trim() || r.snippet
+    if (digest) parts.push(`摘要：${digest}`)
     return parts.join('\n')
   })
 

@@ -119,8 +119,6 @@ export interface SendMessageRequest {
   maxTokens?: number
   stream?: boolean
   parentMessageId?: string
-  deepThink?: boolean
-  netSearch?: boolean
   messageId?: string
   /**
    * 本次 run 的外层图模式（对齐云端 AgentChatRequestSchema）：
