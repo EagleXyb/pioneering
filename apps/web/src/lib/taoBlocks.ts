@@ -443,7 +443,7 @@ function toSearchItem(item: {
 }
 
 /**
- * sources 块 → 标准搜索观测 JSON（与后端 search_engine 工具返回同构），
+ * sources 块 → 标准搜索观测 JSON（与后端 web_search 工具返回同构），
  * 使既有 parseSearchToolResult / SearchResultsCard 渲染链路无需改动。
  */
 function sourcesBlockToObservation(block: PersistedAgentBlock): string | null {
@@ -452,7 +452,7 @@ function sourcesBlockToObservation(block: PersistedAgentBlock): string | null {
     .filter((i) => i.title);
   if (items.length === 0) return null;
   return JSON.stringify({
-    tool: block.toolName ?? 'search_engine',
+    tool: block.toolName ?? 'web_search',
     status: 'success',
     data: {
       results: items,
@@ -512,7 +512,7 @@ function mergeSourcesBlocks(blocks: unknown[]): PersistedAgentBlock[] {
     out.push({
       type: 'tool_result',
       status: 'success',
-      toolName: block.toolName ?? 'search_engine',
+      toolName: block.toolName ?? 'web_search',
       executionId: block.executionId,
       summary: observation,
     });

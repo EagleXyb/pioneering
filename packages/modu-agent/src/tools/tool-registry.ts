@@ -63,7 +63,7 @@ export interface ToolCapability {
  * 工具能力矩阵注册表。
  *
  * 预置内置工具的能力描述（与 src/tools/index.ts 导出的工具对齐）：
- *   - search_engine: research 类，处理"外部信息检索/新闻/天气"意图
+ *   - web_search: research 类，处理"外部信息检索/新闻/天气"意图
  *   - http_request: research 类，处理"外部 API 数据"意图
  *   - calculator: coding 类，处理"数值计算"意图
  *   - code_executor: coding 类，处理"代码执行/脚本"意图
@@ -74,8 +74,8 @@ export interface ToolCapability {
  * 宿主可通过 registerToolCapability 追加或覆盖条目（如 MCP 工具）。
  */
 export const TOOL_CAPABILITY_MATRIX: Record<string, ToolCapability> = {
-  search_engine: {
-    name: 'search_engine',
+  web_search: {
+    name: 'web_search',
     task_types: ['research'],
     intents: {
       '外部信息检索': true,
@@ -95,7 +95,7 @@ export const TOOL_CAPABILITY_MATRIX: Record<string, ToolCapability> = {
       'URL抓取': true,
     },
     requires_confirmation: true,
-    fallback_chain: ['search_engine'],
+    fallback_chain: ['web_search'],
   },
   calculator: {
     name: 'calculator',

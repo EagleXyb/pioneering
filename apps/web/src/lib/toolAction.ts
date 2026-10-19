@@ -33,7 +33,7 @@ export interface ToolActionDescriptor {
 
 /** 工具名 → 动词/图标（顺序敏感：具体规则在前，泛化规则在后） */
 const VERB_RULES: ReadonlyArray<{ test: RegExp; verb: string; icon: ToolIconKind }> = [
-  // 联网搜索族（含 agent 通道的 search_engine）：动词“联网搜索”+ 地球图标，
+  // 联网搜索族（web_search，及历史数据里的旧名 search_engine）：动词“联网搜索”+ 地球图标，
   // 与 WorkBuddy 风格动作行一致（magnifier 留给本地/代码检索）
   { test: /web_?search|search_?web|search_?engine|bing_?search|google_?search|baidu_?search|tavily|serper/i, verb: '联网搜索', icon: 'web' },
   { test: /search_?code|grep|ripgrep|code_?search/i, verb: '搜索代码', icon: 'code' },

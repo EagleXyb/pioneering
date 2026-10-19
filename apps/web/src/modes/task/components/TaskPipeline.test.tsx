@@ -101,7 +101,7 @@ describe('TaskPipeline 右栏 tab', () => {
           status: 'retrying',
           retry_count: 2,
           max_attempts: 3,
-          error: 'search_engine 超时',
+          error: 'web_search 超时',
         },
       },
       rootIds: ['s1'],

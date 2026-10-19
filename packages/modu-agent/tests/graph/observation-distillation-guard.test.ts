@@ -27,9 +27,9 @@ function makeCountingDistiller(): ObservationDistiller & { calls: number } {
 
 function toolMessage(id: string): ToolMessage {
   return new ToolMessage({
-    content: JSON.stringify({ id, status: 'success', tool: 'search_engine', data: { rows: 1 } }),
+    content: JSON.stringify({ id, status: 'success', tool: 'web_search', data: { rows: 1 } }),
     tool_call_id: id,
-    name: 'search_engine',
+    name: 'web_search',
   })
 }
 

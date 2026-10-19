@@ -86,7 +86,7 @@ describe('P0-4 · doc-gen 防重写守卫在 plan_execute 下生效', () => {
         new AIMessage({
           content: '我去检索一下',
           tool_calls: [
-            { id: 'call_1', name: 'search_engine', args: { q: 'x' } } as any,
+            { id: 'call_1', name: 'web_search', args: { q: 'x' } } as any,
           ],
         }),
       ],

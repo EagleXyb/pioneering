@@ -1,7 +1,7 @@
 // 对应文档 §4.3 建议2：工具结果缓存
 //
 // LRU + TTL 实现：按 tool_name + hash(args) 缓存工具返回结果，
-// 避免相同参数的 search_engine / http_request 重复调用。
+// 避免相同参数的 web_search / http_request 重复调用。
 //
 // 设计要点：
 //   - 全局单例（getToolResultCache），所有工具共享一个缓存实例

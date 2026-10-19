@@ -6,6 +6,7 @@
  *   - 128 字 Unicode 截断
  *   - 429 退避重试
  *   - 不可重试错误 / 空结果 / 无 key 时降级 Bing
+ *   - 结果条数封顶 5（模型传更大值也被压回 5；非法值回退默认）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { SearchTool } from '../../src/tools/search.js'
@@ -167,5 +168,40 @@ describe('SearchTool DeepSeek 优先', () => {
 
     expect((out as any).data.source).toBe('bing')
     expect(String(fetchSpy.mock.calls[0][0])).not.toContain('/tools/search')
+  })
+
+  it('结果条数封顶 5：模型传更大值也只请求并返回 5 条', async () => {
+    const results = Array.from({ length: 10 }, (_, i) => ({
+      title: `T${i + 1}`,
+      url: `https://a.com/${i + 1}`,
+      snippet: 'S',
+    }))
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({ results }))
+
+    const out = await new SearchTool().invoke({ query: '测试', max_results: 20 }, {})
+
+    expect(
+      JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string),
+    ).toMatchObject({ count: 5 })
+    expect((out as any).data.results).toHaveLength(5)
+  })
+
+  it('max_results 非法（0 / 负数 / 非数字 / 缺省）时回退默认 5', async () => {
+    // 每次调用返回全新 Response（Response  body 只能读一次）
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      jsonResponse({ results: [{ title: 'T', url: 'https://a.com' }] }),
+    )
+
+    await new SearchTool().invoke({ query: '测试', max_results: 0 }, {})
+    await new SearchTool().invoke({ query: '测试', max_results: -3 }, {})
+    await new SearchTool().invoke({ query: '测试', max_results: 'abc' as any }, {})
+    await new SearchTool().invoke({ query: '测试' }, {})
+
+    const counts = fetchSpy.mock.calls.map(
+      ([, init]) => JSON.parse((init as RequestInit).body as string).count,
+    )
+    expect(counts).toEqual([5, 5, 5, 5])
   })
 })

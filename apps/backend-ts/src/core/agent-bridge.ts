@@ -607,7 +607,7 @@ const SOURCE_SNIPPET_MAX_LEN = 120
 // 回放时逐条展示，不做静默截断。
 const SOURCE_ITEMS_MAX = 50
 
-/** 搜索类工具名判定（search_engine / web_search …） */
+/** 搜索类工具名判定（web_search，及历史数据里的旧名 search_engine …） */
 function isSearchTool(toolName: string): boolean {
   return toolName.toLowerCase().includes('search')
 }

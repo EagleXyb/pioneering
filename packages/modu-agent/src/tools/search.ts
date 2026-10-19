@@ -12,6 +12,14 @@ const USER_AGENT =
 /** DeepSeek Search 的 query 上限（Unicode 字符） */
 const DEEPSEEK_QUERY_MAX = 128
 
+/**
+ * 单次检索返回的结果条数上限（硬封顶）。
+ *
+ * 模型可能在工具参数里传更大的 max_results，这里统一压到 5：
+ * 控制观测体量（ReAct 上下文）与前端来源列表长度，避免一次检索灌入过多内容。
+ */
+const SEARCH_MAX_RESULTS = 5
+
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[search] ${msg}`, ...args),
   warning: (msg: string, ...args: any[]) => console.warn(`[search] ${msg}`, ...args),
@@ -24,20 +32,21 @@ let _proxyMissingLogged = false
 let _undiciMissingLogged = false
 
 /**
- * 搜索引擎工具。
+ * 联网搜索工具（对外名 `web_search`，与主流产品一致）。
  * 对应 Python SearchTool。
  *
  * 优先级(按可达性 + 数据完整性):
- *   1. Tavily(需 API key,境外,数据质量最高)
- *   2. Bing HTML(免费,国内可达,真正的搜索引擎结果页,默认兜底)
- *   3. DuckDuckGo Instant Answer(免费,境外,仅索引 Wikipedia 等少量源,最后回退)
+ *   1. DeepSeek 官方 Search(自研搜索引擎,与 LLM 同源密钥)
+ *   2. Tavily(需 API key,境外,数据质量最高)
+ *   3. Bing HTML(免费,国内可达,真正的搜索引擎结果页,默认兜底)
+ *   4. DuckDuckGo Instant Answer(免费,境外,仅索引 Wikipedia 等少量源,最后回退)
  *
  * P0-2 修复:原顺序将 DuckDuckGo 置于 Bing 之前,导致中国大陆环境下
  * DuckDuckGo 不可达或仅返回即时答案伪成功时,Bing 兜底永远执行不到。
  */
 export class SearchTool extends BaseTool {
   name(): string {
-    return 'search_engine'
+    return 'web_search'
   }
 
   description(): string {
@@ -54,8 +63,8 @@ export class SearchTool extends BaseTool {
         },
         max_results: {
           type: 'integer',
-          description: '最大返回结果数',
-          default: 5,
+          description: `最大返回结果数（1~${SEARCH_MAX_RESULTS}，默认 ${SEARCH_MAX_RESULTS}）`,
+          default: SEARCH_MAX_RESULTS,
         },
       },
       required: ['query'],
@@ -78,7 +87,7 @@ export class SearchTool extends BaseTool {
     _context: Record<string, any>,
   ): Promise<Record<string, any>> {
     const query = params.query ?? ''
-    let maxResults = params.max_results ?? 5
+    let maxResults = params.max_results ?? SEARCH_MAX_RESULTS
 
     if (typeof query !== 'string' || query.length < 2) {
       return {
@@ -88,9 +97,11 @@ export class SearchTool extends BaseTool {
       }
     }
 
-    if (typeof maxResults !== 'number' || maxResults < 1) {
-      maxResults = 5
+    // 非法值回退默认；无论模型传多大，都封顶到 SEARCH_MAX_RESULTS
+    if (typeof maxResults !== 'number' || Number.isNaN(maxResults) || maxResults < 1) {
+      maxResults = SEARCH_MAX_RESULTS
     }
+    maxResults = Math.min(Math.floor(maxResults), SEARCH_MAX_RESULTS)
 
     // 0) DeepSeek 官方 Search（自研搜索引擎）：Agent 场景直接用模型生成的检索词，
     //    不做关键词提炼；失败/空结果再走原有 Tavily -> Bing -> DuckDuckGo 兜底。

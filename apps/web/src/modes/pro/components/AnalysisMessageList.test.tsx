@@ -185,7 +185,7 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
         },
         ...queries.map((q, i) => ({
           type: 'toolcall' as const,
-          data: { toolCallId: `t${i}`, toolCallName: 'search_engine', args: `{"query":"${q}"}` },
+          data: { toolCallId: `t${i}`, toolCallName: 'web_search', args: `{"query":"${q}"}` },
           status: 'complete' as const,
         })),
         { type: 'markdown' as const, data: '最终回答' },
@@ -242,7 +242,7 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
         },
         {
           type: 'toolcall' as const,
-          data: { toolCallId: 't1', toolCallName: 'search_engine', args: '{"query":"a"}' },
+          data: { toolCallId: 't1', toolCallName: 'web_search', args: '{"query":"a"}' },
           status: 'complete' as const,
         },
         {
@@ -372,10 +372,10 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
           type: 'toolcall' as const,
           data: {
             toolCallId: 't2',
-            toolCallName: 'search_engine',
+            toolCallName: 'web_search',
             args: '{"query":"Harness Engineering"}',
             result: JSON.stringify({
-              tool: 'search_engine',
+              tool: 'web_search',
               status: 'success',
               data: {
                 results: [
@@ -627,7 +627,7 @@ describe('AnalysisMessageList — 未产出完整回答与未执行动作行', (
                 type: 'toolcall',
                 data: {
                   toolCallId: 't1',
-                  toolCallName: 'search_engine',
+                  toolCallName: 'web_search',
                   args: '{"query":"HITL 澄清"}',
                 },
                 status: 'stop',

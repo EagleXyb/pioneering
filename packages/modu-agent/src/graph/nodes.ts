@@ -1154,7 +1154,7 @@ export function docFinalAnswerNode(state: ModuAgentState): Partial<ModuAgentStat
   const reminderContent =
     `【重要提醒】文档已通过 doc_writer 成功生成${docTitle ? `《${docTitle}》` : ''}` +
     `${fileName ? `（文件名：${fileName}）` : ''}。` +
-    `【禁止】再调用任何工具（包括 doc_writer / search_engine 等）。` +
+    `【禁止】再调用任何工具（包括 doc_writer / web_search 等）。` +
     `请【直接输出最终回复文本】结束本次任务，格式严格遵循：\n` +
     `1. 开头一句简短的中文确认语（例如："已为你梳理好今天的新闻，整理成一份结构化中文日报文档。"）\n` +
     `2. 换行后输出「文档位置：📄 ${fileName || '[实际文件名]'}」\n` +
@@ -2905,7 +2905,7 @@ function _matchRouteRule(
  *
  * v1.4 §4.4 改造：
  *   - 建议2：启用工具能力——优先使用 build_subagent_subgraph 构建 ReAct 循环子图，
- *     按 task_type 过滤工具（research→search_engine/http_request，coding→calculator/code_executor，
+ *     按 task_type 过滤工具（research→web_search/http_request，coding→calculator/code_executor，
  *     review→无工具）。tools 为空时回退到原始单次 LLM 调用路径（向后兼容）
  *   - 建议6：子 Agent 超时——Promise.race 与 subgraph_timeout_ms 配置（默认 30s）
  *   - 建议14：子 Agent 重试——失败时按 max_retries（默认 1）重试，指数退避
@@ -3098,7 +3098,7 @@ export function makeSubagentNode(
  * v1.4 §4.4 建议2：按 task_type 过滤工具。
  *
  * 工具按 BaseTool.category() 或工具名前缀映射到 task_type：
- *   - research: search_engine, http_request, sql_query, datetime
+ *   - research: web_search, http_request, sql_query, datetime
  *   - coding: calculator, code_executor, sql_query
  *   - review: 无工具（纯 LLM 评审）
  *   - default: 全部工具（保守策略）
@@ -3124,7 +3124,7 @@ function _filterToolsByTaskType(tools: any[], taskType: string, intent?: string 
 
   // 原逻辑（向后兼容）
   const _TOOL_TASK_TYPE_MAP: Record<string, string[]> = {
-    research: ['search_engine', 'http_request'],
+    research: ['web_search', 'http_request'],
     coding: ['calculator', 'code_executor'],
     review: [],
   }

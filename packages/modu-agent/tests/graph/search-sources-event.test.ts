@@ -45,11 +45,11 @@ async function collect(toolNodeEvents: Array<Record<string, unknown>>) {
 }
 
 describe('T4.2 搜索收敛', () => {
-  it('search_engine 工具结果产出 WEB_SEARCH_SOURCES，字段映射正确', async () => {
+  it('web_search 工具结果产出 WEB_SEARCH_SOURCES，字段映射正确', async () => {
     const events = await collect([
       {
         type: 'tool',
-        name: 'search_engine',
+        name: 'web_search',
         tool_call_id: 'call_1',
         content: searchToolContent(),
       },
@@ -84,7 +84,7 @@ describe('T4.2 搜索收敛', () => {
     const events = await collect([
       {
         type: 'tool',
-        name: 'search_engine',
+        name: 'web_search',
         tool_call_id: 'call_3',
         content: JSON.stringify({
           status: 'success',

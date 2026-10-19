@@ -31,7 +31,7 @@ const aiWithToolCalls = () =>
   new AIMessage({
     content: '我先确认当前时间，并检索业界实践作为依据。',
     tool_calls: [
-      { id: 't1', name: 'search_engine', args: { query: 'HITL 澄清' } },
+      { id: 't1', name: 'web_search', args: { query: 'HITL 澄清' } },
       { id: 't2', name: 'datetime', args: {} },
     ],
   })

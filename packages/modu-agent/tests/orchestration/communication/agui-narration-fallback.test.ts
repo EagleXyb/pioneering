@@ -29,7 +29,7 @@ describe('AGUIStateMachine — 叙述标记兜底', () => {
   it('本轮下发过工具调用时，收尾 flush 的文本判为叙述（带 narration 标记）', () => {
     const sm = new AGUIStateMachine('t1', 'm1')
     // 工具调用先经 updates 通道下发（chunk 里看不到 tool_calls）
-    sm.emit_tool_call_start('c1', 'search_engine', '{"query":"x"}')
+    sm.emit_tool_call_start('c1', 'web_search', '{"query":"x"}')
     // 随后该轮的过渡话术到达缓冲
     sm.process_message_chunk({ id: 'm-round' }, '我先确认当前时间，并检索业界实践。')
 
@@ -46,7 +46,7 @@ describe('AGUIStateMachine — 叙述标记兜底', () => {
 
   it('工具执行完成后复位：下一轮文本仍按最终回答处理（不带标记）', () => {
     const sm = new AGUIStateMachine('t2', 'm2')
-    sm.emit_tool_call_start('c1', 'search_engine', '{}')
+    sm.emit_tool_call_start('c1', 'web_search', '{}')
     // tools 节点执行完毕 = 轮次边界
     sm.note_tools_executed()
     sm.process_message_chunk({ id: 'm-final' }, '这是最终回答。')
@@ -59,7 +59,7 @@ describe('AGUIStateMachine — 叙述标记兜底', () => {
 
   it('只下发过过程叙述时不生成正文累积（终态据此补发兜底正文）', () => {
     const sm = new AGUIStateMachine('t3', 'm3')
-    sm.emit_tool_call_start('c1', 'search_engine', '{}')
+    sm.emit_tool_call_start('c1', 'web_search', '{}')
     sm.process_message_chunk({ id: 'm-narr' }, '我先检索一轮。')
     sm.flush_message_buffer()
 
@@ -70,7 +70,7 @@ describe('AGUIStateMachine — 叙述标记兜底', () => {
 
   it('最终回答进入正文累积（collected_text 只含回答）', () => {
     const sm = new AGUIStateMachine('t4', 'm4')
-    sm.emit_tool_call_start('c1', 'search_engine', '{}')
+    sm.emit_tool_call_start('c1', 'web_search', '{}')
     sm.process_message_chunk({ id: 'm-narr' }, '我先检索一轮。')
     sm.flush_message_buffer()
     sm.note_tools_executed()

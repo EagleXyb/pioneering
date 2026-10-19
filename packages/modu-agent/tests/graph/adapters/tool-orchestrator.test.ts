@@ -21,13 +21,13 @@ describe('P2-3 动态工具编排', () => {
   describe('parseToolCalls', () => {
     it('解析标准 tool_calls 数组', () => {
       const raw = [
-        { id: 'call_1', name: 'search_engine', args: { query: 'test' } },
+        { id: 'call_1', name: 'web_search', args: { query: 'test' } },
         { id: 'call_2', name: 'calculator', args: { expression: '1+1' } },
       ]
       const items = parseToolCalls(raw)
       expect(items.length).toBe(2)
       expect(items[0].id).toBe('call_1')
-      expect(items[0].name).toBe('search_engine')
+      expect(items[0].name).toBe('web_search')
       expect(items[1].args).toEqual({ expression: '1+1' })
     })
 
@@ -66,34 +66,34 @@ describe('P2-3 动态工具编排', () => {
     })
 
     it('两个读操作工具无依赖', () => {
-      const a = makeToolCall('1', 'search_engine', { query: 'a' })
+      const a = makeToolCall('1', 'web_search', { query: 'a' })
       const b = makeToolCall('2', 'calculator', { expression: '1+1' })
-      // search_engine 和 calculator 都 requires_confirmation=false
+      // web_search 和 calculator 都 requires_confirmation=false
       expect(hasDependency(a, b)).toBe(false)
     })
 
     it('args 含占位符引用时有依赖', () => {
-      const a = makeToolCall('1', 'search_engine', { query: 'test' })
+      const a = makeToolCall('1', 'web_search', { query: 'test' })
       const b = makeToolCall('2', 'http_request', { url: '${1.output}' })
       expect(hasDependency(a, b)).toBe(true)
     })
 
     it('args 引用另一个工具 id 时有依赖', () => {
-      const a = makeToolCall('call_1', 'search_engine', { query: 'test' })
+      const a = makeToolCall('call_1', 'web_search', { query: 'test' })
       const b = makeToolCall('call_2', 'http_request', { data: 'call_1' })
       // b.args.data 包含 a.id='call_1'
       expect(hasDependency(a, b)).toBe(true)
     })
 
     it('短 id（非 call_ 前缀）不触发 id 引用检测', () => {
-      const a = makeToolCall('1', 'search_engine', { query: 'test' })
+      const a = makeToolCall('1', 'web_search', { query: 'test' })
       const b = makeToolCall('2', 'calculator', { expression: '1+1' })
       // id='1' 不是 call_ 前缀，不检测 id 引用
       expect(hasDependency(a, b)).toBe(false)
     })
 
     it('不同名且无引用的读操作工具无依赖', () => {
-      const a = makeToolCall('1', 'search_engine', { query: 'a' })
+      const a = makeToolCall('1', 'web_search', { query: 'a' })
       const b = makeToolCall('2', 'datetime', {})
       expect(hasDependency(a, b)).toBe(false)
     })
@@ -111,7 +111,7 @@ describe('P2-3 动态工具编排', () => {
     })
 
     it('单个 tool_call 返回串行计划', () => {
-      const plan = planExecution([makeToolCall('1', 'search_engine', {})])
+      const plan = planExecution([makeToolCall('1', 'web_search', {})])
       expect(plan.groups.length).toBe(1)
       expect(plan.groups[0].type).toBe('serial')
       expect(plan.has_parallel).toBe(false)
@@ -120,7 +120,7 @@ describe('P2-3 动态工具编排', () => {
 
     it('保守模式下有依赖时全部串行', () => {
       const calls = [
-        makeToolCall('1', 'search_engine', {}),
+        makeToolCall('1', 'web_search', {}),
         makeToolCall('2', 'sql_query', {}), // requires_confirmation=true
         makeToolCall('3', 'file_ops', {}),   // requires_confirmation=true
       ]
@@ -133,7 +133,7 @@ describe('P2-3 动态工具编排', () => {
 
     it('保守模式下无依赖时可并行', () => {
       const calls = [
-        makeToolCall('1', 'search_engine', {}),  // requires_confirmation=false
+        makeToolCall('1', 'web_search', {}),  // requires_confirmation=false
         makeToolCall('2', 'calculator', {}),      // requires_confirmation=false
         makeToolCall('3', 'datetime', {}),        // requires_confirmation=false
       ]
@@ -146,13 +146,13 @@ describe('P2-3 动态工具编排', () => {
 
     it('非保守模式下混合依赖分组', () => {
       const calls = [
-        makeToolCall('1', 'search_engine', {}),  // 无依赖
+        makeToolCall('1', 'web_search', {}),  // 无依赖
         makeToolCall('2', 'calculator', {}),      // 无依赖
         makeToolCall('3', 'sql_query', {}),       // 与 file_ops 有依赖
         makeToolCall('4', 'file_ops', {}),        // 与 sql_query 有依赖
       ]
       const plan = planExecution(calls, false)
-      // 第一组：search_engine + calculator（并行）
+      // 第一组：web_search + calculator（并行）
       // 第二组：sql_query（串行，因为 file_ops 依赖它）
       // 第三组：file_ops（串行）
       expect(plan.total_calls).toBe(4)
@@ -177,19 +177,19 @@ describe('P2-3 动态工具编排', () => {
   describe('shouldOrchestrate', () => {
     it('feature flag 关闭时返回 false', () => {
       const calls = [
-        makeToolCall('1', 'search_engine', {}),
+        makeToolCall('1', 'web_search', {}),
         makeToolCall('2', 'calculator', {}),
       ]
       expect(shouldOrchestrate(calls, false)).toBe(false)
     })
 
     it('单个 tool_call 返回 false', () => {
-      expect(shouldOrchestrate([makeToolCall('1', 'search_engine', {})], true)).toBe(false)
+      expect(shouldOrchestrate([makeToolCall('1', 'web_search', {})], true)).toBe(false)
     })
 
     it('两个无依赖工具 + 启用时返回 true', () => {
       const calls = [
-        makeToolCall('1', 'search_engine', {}),
+        makeToolCall('1', 'web_search', {}),
         makeToolCall('2', 'calculator', {}),
       ]
       expect(shouldOrchestrate(calls, true)).toBe(true)
@@ -206,7 +206,7 @@ describe('P2-3 动态工具编排', () => {
 
     it('两个有依赖工具 + 启用 + 非保守模式可能返回 true', () => {
       const calls = [
-        makeToolCall('1', 'search_engine', {}),
+        makeToolCall('1', 'web_search', {}),
         makeToolCall('2', 'calculator', {}),
       ]
       expect(shouldOrchestrate(calls, true, false)).toBe(true)
@@ -223,14 +223,14 @@ describe('P2-3 动态工具编排', () => {
   describe('formatExecutionPlan', () => {
     it('格式化执行计划为日志字符串', () => {
       const plan = planExecution([
-        makeToolCall('1', 'search_engine', {}),
+        makeToolCall('1', 'web_search', {}),
         makeToolCall('2', 'calculator', {}),
       ], true)
       const str = formatExecutionPlan(plan)
       expect(str).toContain('ExecutionPlan')
       expect(str).toContain('2 calls')
       expect(str).toContain('parallel=true')
-      expect(str).toContain('search_engine')
+      expect(str).toContain('web_search')
       expect(str).toContain('calculator')
     })
 
@@ -249,14 +249,14 @@ describe('P2-3 动态工具编排', () => {
       // shouldOrchestrate 在 enabled=false 时返回 false
       // routeAfterAgent 仍返回 'tools'，ToolNode 正常执行
       const calls = [
-        makeToolCall('1', 'search_engine', {}),
+        makeToolCall('1', 'web_search', {}),
         makeToolCall('2', 'calculator', {}),
       ]
       expect(shouldOrchestrate(calls, false)).toBe(false)
     })
 
     it('单 tool_call 时等价现状（串行执行）', () => {
-      const plan = planExecution([makeToolCall('1', 'search_engine', {})])
+      const plan = planExecution([makeToolCall('1', 'web_search', {})])
       expect(plan.has_parallel).toBe(false)
       expect(plan.groups.length).toBe(1)
       expect(plan.groups[0].type).toBe('serial')

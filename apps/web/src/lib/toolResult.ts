@@ -1,8 +1,8 @@
 /**
  * 工具观测结果（TAO 的 Observation）结构化识别
  *
- * agent 通道联网搜索工具（search_engine）的观测是 JSON 字符串：
- *   {"tool":"search_engine","status":"success","data":{"results":[{title,url,snippet,source}],"source":"bing"}}
+ * agent 通道联网搜索工具（web_search）的观测是 JSON 字符串：
+ *   {"tool":"web_search","status":"success","data":{"results":[{title,url,snippet,source}],"source":"bing"}}
  * 前端把它解析为「来源列表」交给 WorkBuddy 风格的搜索结果卡片渲染；
  * 其它工具（read_file / run 等）返回 null，由调用方回退原始 JSON 展示。
  *

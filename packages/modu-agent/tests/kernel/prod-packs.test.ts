@@ -148,12 +148,12 @@ describe('T5.3 两包并存：工具按 task_type 过滤 + 全部卸载回滚', 
 
     // 工具过滤：research 类型只保留矩阵中声明 research 的工具
     const tools = [
-      { name: 'search_engine' },
+      { name: 'web_search' },
       { name: 'calculator' },
       { name: 'code_executor' },
     ]
     const researchTools = filterToolsByTaskTypeAndIntent(tools, 'research')
-    expect(researchTools.map((t) => t.name)).toEqual(['search_engine'])
+    expect(researchTools.map((t) => t.name)).toEqual(['web_search'])
 
     // 全部卸载：领域与开关复原
     await loader.deactivate('planning-pack')

@@ -45,19 +45,19 @@ describe('工具调用动作行去重（toolCallId 幂等）', () => {
     const sm = new AGUIStateMachine('trace-1', 'msg-1')
 
     // a. 侧路：EventBridge 的 tool_call_start（无参数）→ 适配器侧不下发任何事件
-    expect(sseToolCallStart(sm, 'tc1', 'search_engine')).toEqual([])
+    expect(sseToolCallStart(sm, 'tc1', 'web_search')).toEqual([])
 
     // b. 权威：agent 节点 updates 带来的完整参数 → 由它开行
-    const first = sm.emit_tool_call_start('tc1', 'search_engine', '{"query":"harness engineering"}')
+    const first = sm.emit_tool_call_start('tc1', 'web_search', '{"query":"harness engineering"}')
     expect(typesOf(first)).toEqual(['TOOL_CALL_START', 'TOOL_CALL_ARGS'])
     expect(parse(first[1]!).delta).toBe('{"query":"harness engineering"}')
 
     // 观测结果仍按 id 关联，且记录里复用的是权威参数（可追溯）
-    const result = sm.emit_tool_result('tc1', 'search_engine', '{"status":"success"}')
+    const result = sm.emit_tool_result('tc1', 'web_search', '{"status":"success"}')
     expect(typesOf(result)).toEqual(['TOOL_CALL_RESULT'])
     expect(parse(result[0]!).toolCallId).toBe('tc1')
     expect(sm.tool_call_records).toHaveLength(1)
-    expect(sm.tool_call_records[0]!.tool_name).toBe('search_engine')
+    expect(sm.tool_call_records[0]!.tool_name).toBe('web_search')
     expect(sm.tool_call_records[0]!.params).toEqual({ query: 'harness engineering' })
   })
 
@@ -75,18 +75,18 @@ describe('工具调用动作行去重（toolCallId 幂等）', () => {
   it('参数只补发一次（重复的带参数调用不会串接坏前端 args）', () => {
     const sm = new AGUIStateMachine('trace-3', 'msg-3')
 
-    sm.emit_tool_call_start('tc3', 'search_engine', '{}')
-    expect(typesOf(sm.emit_tool_call_start('tc3', 'search_engine', '{"query":"a"}'))).toEqual([
+    sm.emit_tool_call_start('tc3', 'web_search', '{}')
+    expect(typesOf(sm.emit_tool_call_start('tc3', 'web_search', '{"query":"a"}'))).toEqual([
       'TOOL_CALL_ARGS',
     ])
-    expect(sm.emit_tool_call_start('tc3', 'search_engine', '{"query":"a"}')).toEqual([])
+    expect(sm.emit_tool_call_start('tc3', 'web_search', '{"query":"a"}')).toEqual([])
   })
 
   it('不同 toolCallId 各自独立开行（不互相吞并）', () => {
     const sm = new AGUIStateMachine('trace-4', 'msg-4')
 
     const a = sm.emit_tool_call_start('tc_a', 'datetime', '{"op":"now"}')
-    const b = sm.emit_tool_call_start('tc_b', 'search_engine', '{"query":"b"}')
+    const b = sm.emit_tool_call_start('tc_b', 'web_search', '{"query":"b"}')
     expect(typesOf(a)).toEqual(['TOOL_CALL_START', 'TOOL_CALL_ARGS'])
     expect(typesOf(b)).toEqual(['TOOL_CALL_START', 'TOOL_CALL_ARGS'])
     expect(parse(b[0]!).toolCallId).toBe('tc_b')

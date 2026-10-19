@@ -375,7 +375,7 @@ describe('P2/T-15: 等价矩阵（迁移前内联算法 ⇄ ContextBuilder）', 
   const KNOWLEDGE = [{ content: 'k1' }, { content: 'k2' }]
   const OBSERVATIONS = [
     { tool: 'datetime', status: 'success', summary: 'now', records_count: 1 },
-    { tool: 'search_engine', status: 'error', summary: 'fail', enhancement: 'retry with new query' },
+    { tool: 'web_search', status: 'error', summary: 'fail', enhancement: 'retry with new query' },
   ]
 
   const BASE_VARIANTS: Array<{ name: string; base: BaseMessage[] }> = [

@@ -103,8 +103,8 @@ describe('taoBlocks — 实时流块操作', () => {
 
   it('收尾：未等到观测的工具调用标为 stop（触顶/中止），已执行的仍为 complete', () => {
     let blocks: AIMessageContent[] = [
-      createToolBlock({ toolCallName: 'search_engine', toolCallId: 't1' }),
-      createToolBlock({ toolCallName: 'search_engine', toolCallId: 't2' }),
+      createToolBlock({ toolCallName: 'web_search', toolCallId: 't1' }),
+      createToolBlock({ toolCallName: 'web_search', toolCallId: 't2' }),
     ];
     blocks = setToolObservation(blocks, { toolCallId: 't1', result: '观测结果' });
     blocks = finalizeBlocks(blocks);
@@ -151,7 +151,7 @@ describe('taoBlocks — 历史 contentBlocks 还原', () => {
 
   it('落库 status=failed 的工具调用还原为未执行（stop），不显示为已完成', () => {
     const blocks = contentBlocksToTaoBlocks([
-      { type: 'tool_call', status: 'failed', toolName: 'search_engine', executionId: 't9' },
+      { type: 'tool_call', status: 'failed', toolName: 'web_search', executionId: 't9' },
     ]);
     expect((blocks[0] as TaoToolBlock).status).toBe('stop');
   });
@@ -207,7 +207,7 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
   /** 后端搜索工具观测的标准口径 */
   const searchObservation = (count: number) =>
     JSON.stringify({
-      tool: 'search_engine',
+      tool: 'web_search',
       status: 'success',
       data: {
         source: 'deepseek',
@@ -223,7 +223,7 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
   const sourcesBlock = (count: number, executionId = 't1') => ({
     type: 'sources',
     status: 'success',
-    toolName: 'search_engine',
+    toolName: 'web_search',
     executionId,
     source: 'deepseek',
     items: Array.from({ length: count }, (_, i) => ({
@@ -235,9 +235,9 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
 
   it('sources 块把完整观测写回 tool_result（替代 800 字截断的 summary）', () => {
     const blocks = contentBlocksToTaoBlocks([
-      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1', args: '{"query":"AI"}' },
+      { type: 'tool_call', status: 'success', toolName: 'web_search', executionId: 't1', args: '{"query":"AI"}' },
       // 落库时被截到 800 字：只剩第一条结果
-      { type: 'tool_result', status: 'success', toolName: 'search_engine', executionId: 't1', summary: searchObservation(5).slice(0, 300) },
+      { type: 'tool_result', status: 'success', toolName: 'web_search', executionId: 't1', summary: searchObservation(5).slice(0, 300) },
       sourcesBlock(5),
       { type: 'text_stream', status: 'success', text: '最终回答' },
     ]);
@@ -259,8 +259,8 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
 
   it('缺 executionId 时回填最近一个 tool_result', () => {
     const blocks = contentBlocksToTaoBlocks([
-      { type: 'tool_call', status: 'success', toolName: 'search_engine' },
-      { type: 'tool_result', status: 'success', toolName: 'search_engine', summary: '截断' },
+      { type: 'tool_call', status: 'success', toolName: 'web_search' },
+      { type: 'tool_result', status: 'success', toolName: 'web_search', summary: '截断' },
       sourcesBlock(3, undefined),
     ]);
     const result = (blocks[0] as TaoToolBlock).data.result as string;
@@ -269,11 +269,11 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
 
   it('多个搜索调用按 executionId 各自归位，不串块', () => {
     const blocks = contentBlocksToTaoBlocks([
-      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1' },
-      { type: 'tool_result', status: 'success', toolName: 'search_engine', executionId: 't1', summary: '截断1' },
+      { type: 'tool_call', status: 'success', toolName: 'web_search', executionId: 't1' },
+      { type: 'tool_result', status: 'success', toolName: 'web_search', executionId: 't1', summary: '截断1' },
       sourcesBlock(2, 't1'),
-      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't2' },
-      { type: 'tool_result', status: 'success', toolName: 'search_engine', executionId: 't2', summary: '截断2' },
+      { type: 'tool_call', status: 'success', toolName: 'web_search', executionId: 't2' },
+      { type: 'tool_result', status: 'success', toolName: 'web_search', executionId: 't2', summary: '截断2' },
       sourcesBlock(3, 't2'),
     ]);
 
@@ -290,9 +290,9 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
 
   it('sources 块无有效条目时被忽略，不影响其它块还原', () => {
     const blocks = contentBlocksToTaoBlocks([
-      { type: 'tool_result', status: 'success', toolName: 'search_engine', summary: '截断' },
-      { type: 'sources', status: 'success', toolName: 'search_engine', items: [] },
-      { type: 'sources', status: 'success', toolName: 'search_engine', items: [{ url: 'https://x.com' }] },
+      { type: 'tool_result', status: 'success', toolName: 'web_search', summary: '截断' },
+      { type: 'sources', status: 'success', toolName: 'web_search', items: [] },
+      { type: 'sources', status: 'success', toolName: 'web_search', items: [{ url: 'https://x.com' }] },
     ]);
     expect(typesOf(blocks)).toEqual(['toolcall']);
     expect((blocks[0] as TaoToolBlock).data.result).toBe('截断');
@@ -301,7 +301,7 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
   it('无 sources 块的老数据行为不变（仍用截断的 tool_result.summary）', () => {
     // 每条摘要 100 字：300 字符只够容纳第一条完整结果（模拟后端 800 字截断）
     const longObservation = JSON.stringify({
-      tool: 'search_engine',
+      tool: 'web_search',
       status: 'success',
       data: {
         source: 'deepseek',
@@ -313,11 +313,11 @@ describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => 
       },
     });
     const blocks = contentBlocksToTaoBlocks([
-      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1' },
+      { type: 'tool_call', status: 'success', toolName: 'web_search', executionId: 't1' },
       {
         type: 'tool_result',
         status: 'success',
-        toolName: 'search_engine',
+        toolName: 'web_search',
         executionId: 't1',
         summary: longObservation.slice(0, 300),
       },

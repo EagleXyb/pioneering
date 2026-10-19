@@ -59,7 +59,7 @@ describe('_isStepContentReasonable (P-修复: 内容合理性后检)', () => {
   it('正常的自然语言 description 通过校验', () => {
     expect(_isStepContentReasonable({
       title: '搜索 AI Agent 发展趋势',
-      description: '使用 search_engine 搜索 "AI Agent 2025 发展趋势"，获取近期相关新闻与报告。',
+      description: '使用 web_search 搜索 "AI Agent 2025 发展趋势"，获取近期相关新闻与报告。',
     })).toBe(true)
   })
 
@@ -136,9 +136,9 @@ describe('_parsePlan (P-修复: 嵌套 plan 塌陷拦截)', () => {
       goal: '帮我写一篇调研报告，有关于AI Agent的，研究最近的发展趋势',
       steps: [
         { step_id: 'step_1', title: '获取当前日期', description: '使用datetime工具获取当前日期和时间。', requires_tool: true },
-        { step_id: 'step_2', title: '搜索趋势', description: '使用 search_engine 搜索 AI Agent 发展趋势。', requires_tool: true },
-        { step_id: 'step_3', title: '搜索技术进展', description: '使用 search_engine 搜索 AI Agent 技术突破。', requires_tool: true },
-        { step_id: 'step_4', title: '搜索应用案例', description: '使用 search_engine 搜索 AI Agent 应用案例。', requires_tool: true },
+        { step_id: 'step_2', title: '搜索趋势', description: '使用 web_search 搜索 AI Agent 发展趋势。', requires_tool: true },
+        { step_id: 'step_3', title: '搜索技术进展', description: '使用 web_search 搜索 AI Agent 技术突破。', requires_tool: true },
+        { step_id: 'step_4', title: '搜索应用案例', description: '使用 web_search 搜索 AI Agent 应用案例。', requires_tool: true },
         { step_id: 'step_5', title: '整理信息', description: '将以上步骤获取的搜索结果进行整理、分类和归纳。', requires_tool: false },
         // step_6 description 被填入嵌套 plan（实际故障场景）
         { step_id: 'step_6', title: '撰写引言', description: nestedPlan, requires_tool: false },
@@ -156,7 +156,7 @@ describe('_parsePlan (P-修复: 嵌套 plan 塌陷拦截)', () => {
     const raw = JSON.stringify({
       goal: '查询北京天气',
       steps: [
-        { step_id: 'step_1', title: '获取天气', description: '使用 search_engine 搜索北京今日天气。', requires_tool: true },
+        { step_id: 'step_1', title: '获取天气', description: '使用 web_search 搜索北京今日天气。', requires_tool: true },
         { step_id: 'step_2', title: '给出建议', description: '根据天气状况给出穿衣建议。', requires_tool: false },
       ],
     })
@@ -282,7 +282,7 @@ describe('_parsePlan (P-修复: JSON 语法错误塌陷拦截)', () => {
     {
       "step_id": "step_2",
       "title": "搜索AI Agent最新发展资讯",
-      "description": "调用search_engine搜索AI Agent最新进展。",
+      "description": "调用web_search搜索AI Agent最新进展。",
       "depends_on": ["step_1"],
       "status": "pending",
       "requires_tool": true
@@ -290,21 +290,21 @@ describe('_parsePlan (P-修复: JSON 语法错误塌陷拦截)', () => {
     {
       "step_id": "step_3",
       "title": "搜索AI Agent关键技术方向",
-      "description": "调用search_engine搜索AI Agent多智能体系统等关键词。",
+      "description": "调用web_search搜索AI Agent多智能体系统等关键词。",
       "status": "pending",
       "requires_tool": true
     },
     {
       "step_id": "step_4",
       "title": "搜索AI Agent应用案例",
-      "description": "调用search_engine搜索AI Agent应用案例。",
+      "description": "调用web_search搜索AI Agent应用案例。",
       "status": "pending",
       "requires_tool": true
     },
     {
       "step_id": "step_5",
       "title": "搜索AI Agent市场与投资动态",
-      "description": "调用search_engine搜索AI Agent市场规模与融资信息。",
+      "description": "调用web_search搜索AI Agent市场规模与融资信息。",
       "status": "pending",
       "requires_tool": true
     },
@@ -326,7 +326,7 @@ describe('_parsePlan (P-修复: JSON 语法错误塌陷拦截)', () => {
     {
       "step_id": "step_2",
       "title": "搜索AI Agent最新发展动态",
-      "description": "使用search_engine搜索关键词AI Agent最新发展趋势。",
+      "description": "使用web_search搜索关键词AI Agent最新发展趋势。",
       "depends_on": ["step_1"],
       "status": "pending",
       "requires_tool": true
@@ -334,7 +334,7 @@ describe('_parsePlan (P-修复: JSON 语法错误塌陷拦截)', () => {
     {
       "step_id": "step_3",
       "title": "搜索技术突破",
-      "description": "使用search_engine搜索AI Agent技术突破。",
+      "description": "使用web_search搜索AI Agent技术突破。",
       "depends_on": ["step_1"],
       "status": "pending",
       "requires_tool": true
@@ -342,7 +342,7 @@ describe('_parsePlan (P-修复: JSON 语法错误塌陷拦截)', () => {
     {
       "step_id": "step_4",
       "title": "搜索市场动态",
-      "description": "使用search_engine搜索AI Agent市场规模。",
+      "description": "使用web_search搜索AI Agent市场规模。",
       "depends_on": ["step_1"],
       "status": "pending",
       "requires_tool": true
@@ -350,7 +350,7 @@ describe('_parsePlan (P-修复: JSON 语法错误塌陷拦截)', () => {
     {
       "step_id": "step_5",
       "title": "搜索挑战与风险",
-      "description": "使用search_engine搜索AI Agent挑战风险。",
+      "description": "使用web_search搜索AI Agent挑战风险。",
       "depends_on": ["step_1"],
       "status": "pending",
       "requires_tool": true
@@ -532,7 +532,7 @@ describe('makePlannerNode (P-修复: 渐进式降级重试)', () => {
     const validPlan = JSON.stringify({
       goal: '调研报告',
       steps: [
-        { step_id: 'step_1', title: '搜索资料', description: '使用 search_engine 搜索 AI Agent 相关信息。', requires_tool: true },
+        { step_id: 'step_1', title: '搜索资料', description: '使用 web_search 搜索 AI Agent 相关信息。', requires_tool: true },
       ],
     })
     const llm = makeMockLlm([{ content: validPlan }])
@@ -549,7 +549,7 @@ describe('makePlannerNode (P-修复: 渐进式降级重试)', () => {
     const collapsedOutput = JSON.stringify({
       goal: '调研报告',
       steps: [
-        { step_id: 'step_1', title: '搜索', description: '使用 search_engine 搜索。', requires_tool: true },
+        { step_id: 'step_1', title: '搜索', description: '使用 web_search 搜索。', requires_tool: true },
         // 嵌套 plan 塌陷
         { step_id: 'step_2', title: '整理', description: '{"goal":"x","steps":[]}', requires_tool: false },
       ],
@@ -558,7 +558,7 @@ describe('makePlannerNode (P-修复: 渐进式降级重试)', () => {
     const validRetryPlan = JSON.stringify({
       goal: '调研报告',
       steps: [
-        { step_id: 'step_1', title: '搜索资料', description: '使用 search_engine 搜索 AI Agent 信息。', requires_tool: true },
+        { step_id: 'step_1', title: '搜索资料', description: '使用 web_search 搜索 AI Agent 信息。', requires_tool: true },
         { step_id: 'step_2', title: '撰写报告', description: '基于搜索结果撰写报告。' },
       ],
     })
@@ -610,7 +610,7 @@ describe('makePlannerNode (P-修复: 渐进式降级重试)', () => {
     const validRetryPlan = JSON.stringify({
       goal: '调研报告',
       steps: [
-        { step_id: 'step_1', title: '搜索', description: '使用 search_engine 搜索。', requires_tool: true },
+        { step_id: 'step_1', title: '搜索', description: '使用 web_search 搜索。', requires_tool: true },
       ],
     })
     const llm = makeMockLlm([

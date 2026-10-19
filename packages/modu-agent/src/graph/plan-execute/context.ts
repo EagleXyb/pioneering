@@ -114,7 +114,7 @@ export function makePlanContextInjector(): (
     if (requiresTool) {
       lines.push(
         '',
-        'CRITICAL: This step requires external/real-time data. You MUST call an available tool to obtain the data — do NOT fabricate data from your parametric memory. Available tools include search_engine (for weather/news/prices), datetime (for current date/time), http_request (for API calls), and calculator. Calling a tool IS your way to access real-time data. Do NOT claim "I cannot access the internet" — use search_engine instead.',
+        'CRITICAL: This step requires external/real-time data. You MUST call an available tool to obtain the data — do NOT fabricate data from your parametric memory. Available tools include web_search (for weather/news/prices), datetime (for current date/time), http_request (for API calls), and calculator. Calling a tool IS your way to access real-time data. Do NOT claim "I cannot access the internet" — use web_search instead.',
       )
     }
 

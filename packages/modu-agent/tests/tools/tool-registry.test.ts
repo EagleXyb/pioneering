@@ -33,7 +33,7 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
   // ============================================================
   describe('TOOL_CAPABILITY_MATRIX 注册表', () => {
     it('预置内置工具能力描述', () => {
-      expect(TOOL_CAPABILITY_MATRIX['search_engine']).toBeDefined()
+      expect(TOOL_CAPABILITY_MATRIX['web_search']).toBeDefined()
       expect(TOOL_CAPABILITY_MATRIX['http_request']).toBeDefined()
       expect(TOOL_CAPABILITY_MATRIX['calculator']).toBeDefined()
       expect(TOOL_CAPABILITY_MATRIX['code_executor']).toBeDefined()
@@ -42,8 +42,8 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
       expect(TOOL_CAPABILITY_MATRIX['file_ops']).toBeDefined()
     })
 
-    it('search_engine 属于 research 任务类型', () => {
-      expect(TOOL_CAPABILITY_MATRIX['search_engine'].task_types).toContain('research')
+    it('web_search 属于 research 任务类型', () => {
+      expect(TOOL_CAPABILITY_MATRIX['web_search'].task_types).toContain('research')
     })
 
     it('sql_query 同时属于 research 和 coding', () => {
@@ -55,8 +55,8 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
       expect(TOOL_CAPABILITY_MATRIX['http_request'].requires_confirmation).toBe(true)
     })
 
-    it('search_engine 有 fallback_chain', () => {
-      expect(TOOL_CAPABILITY_MATRIX['search_engine'].fallback_chain).toContain('http_request')
+    it('web_search 有 fallback_chain', () => {
+      expect(TOOL_CAPABILITY_MATRIX['web_search'].fallback_chain).toContain('http_request')
     })
   })
 
@@ -93,7 +93,7 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
   // ============================================================
   describe('filterToolsByTaskType（task_type 粗筛）', () => {
     const allTools = [
-      makeTool('search_engine'),
+      makeTool('web_search'),
       makeTool('http_request'),
       makeTool('calculator'),
       makeTool('code_executor'),
@@ -102,10 +102,10 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
       makeTool('file_ops'),
     ]
 
-    it('research 返回 search_engine/http_request/sql_query/datetime', () => {
+    it('research 返回 web_search/http_request/sql_query/datetime', () => {
       const r = filterToolsByTaskType(allTools, 'research')
       const names = r.map((t) => t.name)
-      expect(names).toContain('search_engine')
+      expect(names).toContain('web_search')
       expect(names).toContain('http_request')
       expect(names).toContain('sql_query')
       expect(names).toContain('datetime')
@@ -120,7 +120,7 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
       expect(names).toContain('calculator')
       expect(names).toContain('code_executor')
       expect(names).toContain('sql_query')
-      expect(names).not.toContain('search_engine')
+      expect(names).not.toContain('web_search')
     })
 
     it('review 返回空数组（纯 LLM 评审）', () => {
@@ -143,15 +143,15 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
   // ============================================================
   describe('filterToolsByIntent（intent 细筛）', () => {
     const researchTools = [
-      makeTool('search_engine'),
+      makeTool('web_search'),
       makeTool('http_request'),
       makeTool('datetime'),
     ]
 
-    it('intent="外部信息检索" 返回 search_engine（首选）', () => {
+    it('intent="外部信息检索" 返回 web_search（首选）', () => {
       const r = filterToolsByIntent(researchTools, '外部信息检索')
       expect(r).not.toBeNull()
-      expect(r!.map((t) => t.name)).toContain('search_engine')
+      expect(r!.map((t) => t.name)).toContain('web_search')
     })
 
     it('intent="日期" 返回 datetime', () => {
@@ -169,10 +169,10 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
     })
 
     it('工具不在矩阵中时跳过（不报错）', () => {
-      const toolsWithUnknown = [makeTool('unknown_tool'), makeTool('search_engine')]
+      const toolsWithUnknown = [makeTool('unknown_tool'), makeTool('web_search')]
       const r = filterToolsByIntent(toolsWithUnknown, '外部信息检索')
       expect(r).not.toBeNull()
-      expect(r!.map((t) => t.name)).toContain('search_engine')
+      expect(r!.map((t) => t.name)).toContain('web_search')
       expect(r!.map((t) => t.name)).not.toContain('unknown_tool')
     })
   })
@@ -182,7 +182,7 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
   // ============================================================
   describe('filterToolsByTaskTypeAndIntent（两级管道 + 回退）', () => {
     const allTools = [
-      makeTool('search_engine'),
+      makeTool('web_search'),
       makeTool('http_request'),
       makeTool('calculator'),
       makeTool('code_executor'),
@@ -191,10 +191,10 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
       makeTool('file_ops'),
     ]
 
-    it('task_type=research + intent="外部信息检索"：返回 search_engine', () => {
+    it('task_type=research + intent="外部信息检索"：返回 web_search', () => {
       const r = filterToolsByTaskTypeAndIntent(allTools, 'research', '外部信息检索')
       const names = r.map((t) => t.name)
-      expect(names).toContain('search_engine')
+      expect(names).toContain('web_search')
       expect(names).not.toContain('calculator')
     })
 
@@ -207,7 +207,7 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
       const r = filterToolsByTaskTypeAndIntent(allTools, 'research', '完全不匹配的意图')
       // 应该回退到 research 粗筛结果
       const names = r.map((t) => t.name)
-      expect(names).toContain('search_engine')
+      expect(names).toContain('web_search')
       expect(names).toContain('http_request')
       expect(names).toContain('datetime')
     })
@@ -227,16 +227,16 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
     it('task_type 未知时返回全部工具（intent 被忽略）', () => {
       const r = filterToolsByTaskTypeAndIntent(allTools, 'unknown_type', '外部信息检索')
       // 未知 task_type 保守返回全部，intent 细筛在全部工具中找
-      // search_engine 在矩阵中且匹配 intent，应被选中
-      expect(r.map((t) => t.name)).toContain('search_engine')
+      // web_search 在矩阵中且匹配 intent，应被选中
+      expect(r.map((t) => t.name)).toContain('web_search')
     })
 
     it('intent 匹配但工具不在 task_type 粗筛结果中时不会被选中', () => {
-      // coding 粗筛不含 search_engine，即使 intent="外部信息检索" 匹配 search_engine
+      // coding 粗筛不含 web_search，即使 intent="外部信息检索" 匹配 web_search
       const r = filterToolsByTaskTypeAndIntent(allTools, 'coding', '外部信息检索')
       // intent 细筛在 coding 子集中无匹配 → 回退到 coding 粗筛结果
       const names = r.map((t) => t.name)
-      expect(names).not.toContain('search_engine')
+      expect(names).not.toContain('web_search')
       expect(names).toContain('calculator')
     })
   })
@@ -246,16 +246,16 @@ describe('P1-5 工具能力矩阵 + 意图路由', () => {
   // ============================================================
   describe('向后兼容', () => {
     it('矩阵预置条目覆盖原 _TOOL_TASK_TYPE_MAP 的所有映射', () => {
-      // 原 research: ['search_engine', 'http_request']
+      // 原 research: ['web_search', 'http_request']
       const researchTools = filterToolsByTaskType(
-        [makeTool('search_engine'), makeTool('http_request'), makeTool('calculator')],
+        [makeTool('web_search'), makeTool('http_request'), makeTool('calculator')],
         'research',
       )
-      expect(researchTools.map((t) => t.name).sort()).toEqual(['http_request', 'search_engine'])
+      expect(researchTools.map((t) => t.name).sort()).toEqual(['http_request', 'web_search'])
 
       // 原 coding: ['calculator', 'code_executor']
       const codingTools = filterToolsByTaskType(
-        [makeTool('calculator'), makeTool('code_executor'), makeTool('search_engine')],
+        [makeTool('calculator'), makeTool('code_executor'), makeTool('web_search')],
         'coding',
       )
       expect(codingTools.map((t) => t.name).sort()).toEqual(['calculator', 'code_executor'])

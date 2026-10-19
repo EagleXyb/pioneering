@@ -80,7 +80,7 @@ export abstract class BaseTool {
    * Plan-Execute 模式的 Planner 节点优先读取此元方法推断 step.requires_tool，
    * 替代旧版基于关键词硬编码的 _REALTIME_DATA_KEYWORDS 兜底逻辑：
    *   - 默认 false：纯计算/格式化工具（如 calculator）不强制 step 调用工具
-   *   - 覆写为 true：search_engine / datetime / http_request 等返回实时/外部数据
+   *   - 覆写为 true：web_search / datetime / http_request 等返回实时/外部数据
    *                 的工具，Planner 据此将相关步骤标记为 requires_tool=true，
    *                 step_finalize 会校验是否实际调用了工具
    *
@@ -119,7 +119,7 @@ export abstract class BaseTool {
    *
    * 用于工具组合 API：当本工具执行完成后，可推荐一组"自然的下一步工具"，
    * 供 LLM 或编排层在 ReAct 决策时参考。例如：
-   *   - search_engine → 返回 [http_request]（搜索结果中的 URL 可继续抓取）
+   *   - web_search → 返回 [http_request]（搜索结果中的 URL 可继续抓取）
    *   - http_request → 返回 [code_executor]（抓取的 HTML 可由代码执行器解析）
    *
    * 默认实现返回空数组，表示无推荐后续工具。

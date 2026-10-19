@@ -307,7 +307,7 @@ function emitAguiDict(
 
 /**
  * 宿主侧敏感工具注册（幂等）。
- * factory 只默认注册无风险工具（datetime/search_engine/calculator/doc_writer），
+ * factory 只默认注册无风险工具（datetime/web_search/calculator/doc_writer），
  * code_executor 等需审批工具由宿主按需注册（见 factory.ts 注释）。
  * 仅当 HITL 启用时注册——否则敏感工具会绕过审批直接执行，违背安全默认。
  */

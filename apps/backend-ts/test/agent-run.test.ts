@@ -64,7 +64,7 @@ describe('collectRunTimeline', () => {
     collectRunTimeline(
       eventDict('TOOL_CALL_START', {
         toolCallId: 'c1',
-        toolCallName: 'search_engine',
+        toolCallName: 'web_search',
         toolCallArgs: { q: 'x' },
       }),
       ctx,
@@ -80,7 +80,7 @@ describe('collectRunTimeline', () => {
     expect(ctx.runEvents[0]).toMatchObject({
       seq: 1,
       type: 'TOOL_CALL_START',
-      toolCallName: 'search_engine',
+      toolCallName: 'web_search',
       toolCallArgs: '{"q":"x"}',
     })
     expect(ctx.runEvents[1].type).toBe('TOOL_CALL_RESULT')

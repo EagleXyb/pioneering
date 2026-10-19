@@ -53,7 +53,7 @@ const _NUMERIC_LOCK = {
   VERIFICATION_HINT: 300,
 }
 
-const CATALOG = '- datetime: 获取当前日期时间\n- [realtime] search_engine: 搜索新闻'
+const CATALOG = '- datetime: 获取当前日期时间\n- [realtime] web_search: 搜索新闻'
 const REPLAN_RAW = '- step_1: boom'
 const REPLAN_SECTION = `\n\nPrevious attempt failed. Adjust the plan to avoid the failure:\n${REPLAN_RAW}\n`
 
@@ -64,7 +64,7 @@ function goldenPlannerFull(catalog: string, maxSteps: number, replanSection: str
 Available tools (you may reference them in step descriptions, but you MUST NOT call them yourself):
 ${catalog}
 
-Tools tagged [realtime] provide external/real-time data (search_engine, datetime, http_request, etc.). For steps needing such data, set requires_tool=true and reference the tool in the description.
+Tools tagged [realtime] provide external/real-time data (web_search, datetime, http_request, etc.). For steps needing such data, set requires_tool=true and reference the tool in the description.
 
 Rules:
 1. Produce at most ${maxSteps} steps, ordered by execution sequence.
@@ -88,7 +88,7 @@ Rules:
 }
 4. step_id must follow the pattern step_<N> starting from step_1. depends_on is optional.
 5. Do NOT include any reasoning, commentary, or explanation outside the JSON object.
-6. requires_tool (boolean, default false): Set to true if this step requires external/real-time data (e.g. weather, news, stock prices, current date/time, API data, database queries). For such steps, name the specific tool to use in the description (e.g. "Call search_engine to fetch ..."). The executor MUST call a tool for requires_tool=true steps and is forbidden from fabricating data. Set to false for pure reasoning/summarization/formatting steps.
+6. requires_tool (boolean, default false): Set to true if this step requires external/real-time data (e.g. weather, news, stock prices, current date/time, API data, database queries). For such steps, name the specific tool to use in the description (e.g. "Call web_search to fetch ..."). The executor MUST call a tool for requires_tool=true steps and is forbidden from fabricating data. Set to false for pure reasoning/summarization/formatting steps.
 7. expected_output (string, optional but recommended, <= ${_NUMERIC_LOCK.EXPECTED_OUTPUT} chars): Describe what a successful step should produce. This helps the executor verify its output.
 8. verification_hint (string, optional, <= ${_NUMERIC_LOCK.VERIFICATION_HINT} chars): A concrete check the executor can apply to validate the output (e.g. "must contain a numeric temperature", "must list at least 3 items").
 9. task_type (enum, optional, default "tool_use"): One of "reasoning" (pure reasoning/summarization/formatting, no tools), "tool_use" (default, requires tool calls for external data), "delegation" (delegate to a sub-agent for complex subtasks — only use when multi-agent mode is enabled).
@@ -96,7 +96,7 @@ Rules:
    - title MUST be a short natural-language phrase (<= ${_NUMERIC_LOCK.TITLE} characters), NOT a JSON object or a nested plan.
    - description MUST be a concrete natural-language sentence (1-3 sentences, <= ${_NUMERIC_LOCK.DESCRIPTION} characters, <= 10 lines), NOT a JSON object, NOT a nested plan, and MUST NOT contain plan-schema field names like "goal", "steps", "step_id", "depends_on".
    - NEVER embed a plan object, a step object, or any JSON structure inside title or description. If you feel the urge to write a plan inside a description, STOP — that is wrong; write a single sentence instruction instead.
-   - Example of CORRECT description: "Call search_engine to fetch the latest AI Agent development news from the past 30 days, then summarize the top 5 trends."
+   - Example of CORRECT description: "Call web_search to fetch the latest AI Agent development news from the past 30 days, then summarize the top 5 trends."
    - Example of WRONG description: '{"goal": "...", "steps": [...]}' (this is a nested plan, not an instruction).${replanSection}`
 }
 
@@ -123,7 +123,7 @@ CRITICAL RULES (previous attempt FAILED — follow strictly):
 7. expected_output: short description of what success looks like (optional but recommended).
 8. task_type: "reasoning" | "tool_use" | "delegation" (default "tool_use").
 
-GOOD example description: "Call search_engine to fetch AI Agent trends from the last 30 days."
+GOOD example description: "Call web_search to fetch AI Agent trends from the last 30 days."
 BAD example description (FORBIDDEN): {"goal": "...", "steps": [...]}${replanSection}`
 }
 
@@ -146,7 +146,7 @@ const GOLDEN_SUBAGENT_PROMPTS: Record<string, string> = {
 const GOLDEN_DOC_GEN_TASK =
   `TASK TYPE: document_generation\n\n` +
   `This is a DOCUMENT GENERATION task. You MUST:\n` +
-  `1. First gather necessary information (e.g., call search_engine, datetime as needed)\n` +
+  `1. First gather necessary information (e.g., call web_search, datetime as needed)\n` +
   `2. Then organize the information into a well-structured Markdown document\n` +
   `3. Call the doc_writer tool with auto_name=true, a descriptive title, and the full Markdown content\n` +
   `4. After doc_writer succeeds, produce a final response following the document delivery format\n` +

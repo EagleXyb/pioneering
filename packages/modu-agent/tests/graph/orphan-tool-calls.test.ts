@@ -63,7 +63,7 @@ describe('_sanitizeOrphanToolCalls', () => {
     const msg = new AIMessage({
       content: '并行调用',
       tool_calls: [
-        { id: 'call_1', name: 'search_engine', args: {} } as any,
+        { id: 'call_1', name: 'web_search', args: {} } as any,
         { id: 'call_2', name: 'doc_writer', args: {} } as any,
       ],
     })
@@ -124,9 +124,9 @@ describe('_sanitizeOrphanToolCalls', () => {
   it('有响应的 additional_kwargs.tool_calls 保留（行为不回归）', () => {
     const msg = new AIMessage({
       content: '调用工具',
-      tool_calls: [{ id: 'call_ok', name: 'search_engine', args: {} }] as any,
+      tool_calls: [{ id: 'call_ok', name: 'web_search', args: {} }] as any,
       additional_kwargs: {
-        tool_calls: [{ id: 'call_ok', type: 'function', function: { name: 'search_engine', arguments: '{}' } }],
+        tool_calls: [{ id: 'call_ok', type: 'function', function: { name: 'web_search', arguments: '{}' } }],
       } as any,
     })
     const msgs = [msg, new ToolMessage({ content: 'ok', tool_call_id: 'call_ok' })]

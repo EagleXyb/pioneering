@@ -18,7 +18,7 @@ function makeRun(over: Partial<AgentRunData> = {}): AgentRunData {
         seq: 2,
         type: 'TOOL_CALL_START',
         ts: 2,
-        toolCallName: 'search_engine',
+        toolCallName: 'web_search',
         toolCallArgs: '{}',
       },
     ],

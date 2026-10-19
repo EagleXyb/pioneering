@@ -1039,7 +1039,7 @@ function _buildFailureError(
   if (missingToolCall) {
     return (
       `Step "${title}" requires tool invocation (requires_tool=true) but no tool was called. ` +
-      `The executor MUST call an appropriate tool (e.g. search_engine, datetime, http_request) ` +
+      `The executor MUST call an appropriate tool (e.g. web_search, datetime, http_request) ` +
       `to obtain real-time/external data. Do not fabricate data.`
     )
   }

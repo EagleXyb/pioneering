@@ -68,7 +68,7 @@ describe('ProcessMetricGroup', () => {
 
   it('工具成功率与覆盖率', () => {
     const m = group.compute({
-      evalCase: makeCase({ expectedTools: ['calculator', 'search_engine'] }),
+      evalCase: makeCase({ expectedTools: ['calculator', 'web_search'] }),
       agentRun: makeRun({
         toolCalls: [call('calculator', {}), call('calculator', {}, false)],
       }),

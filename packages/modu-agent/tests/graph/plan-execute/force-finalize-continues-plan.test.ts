@@ -34,7 +34,7 @@ function planState(over: Record<string, any> = {}): ModuAgentState {
     current_step_index: 0,
     current_step: { ...plan[0] },
     step_msg_baseline: 0,
-    tool_results: [{ status: 'success', tool: 'search_engine' }],
+    tool_results: [{ status: 'success', tool: 'web_search' }],
     ...over,
   } as unknown as ModuAgentState
 }
@@ -44,7 +44,7 @@ function msgsWithToolCalls(): AIMessage[] {
   return [
     new AIMessage({
       content: '我去检索一下',
-      tool_calls: [{ id: 'call_1', name: 'search_engine', args: { q: 'x' } } as any],
+      tool_calls: [{ id: 'call_1', name: 'web_search', args: { q: 'x' } } as any],
     }),
   ]
 }

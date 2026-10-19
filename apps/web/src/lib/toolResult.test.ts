@@ -2,7 +2,7 @@
  * toolResult 单元测试 —— 工具观测 → 结构化搜索结果（WorkBuddy 风格来源卡片的数据层）
  *
  * 重点锁定两件事：
- * 1. agent 通道 search_engine 的 {tool,status,data:{results,source}} 口径能正确解析；
+ * 1. agent 通道 web_search 的 {tool,status,data:{results,source}} 口径能正确解析；
  * 2. 持久化/下发链路会把观测截断（800 字符 slice 或 "...[truncated]"），
  *    截断后仍要尽量保住已完整到达的结果条目，而不是整块退化为原始 JSON。
  */
@@ -14,7 +14,7 @@ const B = { title: 'B', url: 'https://b.com', snippet: 'y'.repeat(50) };
 
 function fullResultJson(): string {
   return JSON.stringify({
-    tool: 'search_engine',
+    tool: 'web_search',
     status: 'success',
     data: { results: [A, B], source: 'bing' },
   });

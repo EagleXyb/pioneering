@@ -26,8 +26,8 @@ describe('finalizePendingBlocks', () => {
     const ctx = new StreamContext()
     ctx.contentBlocks = [
       { type: 'thinking', status: 'success', summary: '思考' },
-      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1' },
-      { type: 'tool_call', status: 'running', toolName: 'search_engine', executionId: 't2' },
+      { type: 'tool_call', status: 'success', toolName: 'web_search', executionId: 't1' },
+      { type: 'tool_call', status: 'running', toolName: 'web_search', executionId: 't2' },
     ]
 
     finalizePendingBlocks(ctx)
@@ -53,11 +53,11 @@ describe('finalizePendingBlocks', () => {
     const ctx = new StreamContext()
     collectMetadataFromEvent(agentEvent('RUN_STARTED'), ctx)
     collectMetadataFromEvent(
-      agentEvent('TOOL_CALL_START', { toolCallId: 't1', toolCallName: 'search_engine' }),
+      agentEvent('TOOL_CALL_START', { toolCallId: 't1', toolCallName: 'web_search' }),
       ctx,
     )
     collectMetadataFromEvent(
-      agentEvent('TOOL_CALL_START', { toolCallId: 't2', toolCallName: 'search_engine' }),
+      agentEvent('TOOL_CALL_START', { toolCallId: 't2', toolCallName: 'web_search' }),
       ctx,
     )
     // 触顶：两个工具调用没有结果，直接 RUN_FINISHED
@@ -89,10 +89,10 @@ describe('finalizePendingBlocks', () => {
  * 供前端回放渲染「全部条数 + 简要概述」。
  */
 describe('搜索来源块（sources）', () => {
-  /** 后端 search_engine 工具观测的标准口径 */
+  /** 后端 web_search 工具观测的标准口径 */
   const searchObservation = (count: number, snippetLen = 20) =>
     JSON.stringify({
-      tool: 'search_engine',
+      tool: 'web_search',
       status: 'success',
       data: {
         source: 'deepseek',
@@ -118,7 +118,7 @@ describe('搜索来源块（sources）', () => {
 
   it('搜索工具额外落 sources 块：完整条数 + 120 字短摘要', () => {
     const ctx = new StreamContext()
-    runToolResult(ctx, 'search_engine', searchObservation(5, 200))
+    runToolResult(ctx, 'web_search', searchObservation(5, 200))
 
     const sources = ctx.contentBlocks.find((b) => b.type === 'sources')
     expect(sources).toBeDefined()
@@ -134,7 +134,7 @@ describe('搜索来源块（sources）', () => {
 
   it('检索条数全部落库（上限 50 = DeepSeek count 上限，不静默截断）', () => {
     const ctx = new StreamContext()
-    runToolResult(ctx, 'search_engine', searchObservation(30))
+    runToolResult(ctx, 'web_search', searchObservation(30))
 
     const sources = ctx.contentBlocks.find((b) => b.type === 'sources')
     expect(sources!.items).toHaveLength(30)
@@ -146,7 +146,7 @@ describe('搜索来源块（sources）', () => {
     // 在第二条结果中间截断 → 只剩第一条完整
     const secondStart = json.indexOf('{"title"', json.indexOf('{"title"') + 1)
     const ctx = new StreamContext()
-    runToolResult(ctx, 'search_engine', `${json.slice(0, secondStart)}...[truncated]`)
+    runToolResult(ctx, 'web_search', `${json.slice(0, secondStart)}...[truncated]`)
 
     const sources = ctx.contentBlocks.find((b) => b.type === 'sources')
     expect(sources).toBeDefined()
@@ -158,9 +158,9 @@ describe('搜索来源块（sources）', () => {
     expect(extractSearchSources('read_file', searchObservation(3))).toBeNull()
     expect(extractSearchSources('web_search', 'plain text')).toBeNull()
     expect(
-      extractSearchSources('search_engine', JSON.stringify({ data: { results: [] } })),
+      extractSearchSources('web_search', JSON.stringify({ data: { results: [] } })),
     ).toBeNull()
-    expect(extractSearchSources('search_engine', undefined)).toBeNull()
+    expect(extractSearchSources('web_search', undefined)).toBeNull()
   })
 
   it('非搜索工具不落 sources 块（原有行为不变）', () => {
@@ -171,7 +171,7 @@ describe('搜索来源块（sources）', () => {
 
   it('裸 {results,[...]} 口径（无 data 包裹）同样可提取', () => {
     const parsed = extractSearchSources(
-      'search_engine',
+      'web_search',
       JSON.stringify({ results: [{ title: 'A', url: 'https://a.com' }], source: 'bing' }),
     )
     expect(parsed?.source).toBe('bing')
@@ -183,10 +183,10 @@ describe('搜索来源块（sources）', () => {
   it('sources 块紧随对应 tool_result，executionId 一致（前端按 id 回填）', () => {
     const ctx = new StreamContext()
     collectMetadataFromEvent(
-      agentEvent('TOOL_CALL_START', { toolCallId: 't1', toolCallName: 'search_engine' }),
+      agentEvent('TOOL_CALL_START', { toolCallId: 't1', toolCallName: 'web_search' }),
       ctx,
     )
-    runToolResult(ctx, 'search_engine', searchObservation(4))
+    runToolResult(ctx, 'web_search', searchObservation(4))
 
     const types = ctx.contentBlocks.map((b) => b.type)
     expect(types).toEqual(['tool_call', 'tool_result', 'sources'])

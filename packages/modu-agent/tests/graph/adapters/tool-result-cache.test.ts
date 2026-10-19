@@ -72,26 +72,26 @@ describe('ToolResultCache', () => {
 
 describe('computeCacheKey', () => {
   it('同工具同参数生成相同键', () => {
-    const k1 = computeCacheKey('search_engine', { query: 'weather', max: 5 })
-    const k2 = computeCacheKey('search_engine', { query: 'weather', max: 5 })
+    const k1 = computeCacheKey('web_search', { query: 'weather', max: 5 })
+    const k2 = computeCacheKey('web_search', { query: 'weather', max: 5 })
     expect(k1).toBe(k2)
   })
 
   it('不同工具生成不同键', () => {
-    const k1 = computeCacheKey('search_engine', { query: 'weather' })
+    const k1 = computeCacheKey('web_search', { query: 'weather' })
     const k2 = computeCacheKey('http_request', { query: 'weather' })
     expect(k1).not.toBe(k2)
   })
 
   it('不同参数生成不同键', () => {
-    const k1 = computeCacheKey('search_engine', { query: 'weather' })
-    const k2 = computeCacheKey('search_engine', { query: 'news' })
+    const k1 = computeCacheKey('web_search', { query: 'weather' })
+    const k2 = computeCacheKey('web_search', { query: 'news' })
     expect(k1).not.toBe(k2)
   })
 
   it('对象 key 顺序不同但内容相同时生成相同键（稳定序列化）', () => {
-    const k1 = computeCacheKey('search_engine', { a: 1, b: 2 })
-    const k2 = computeCacheKey('search_engine', { b: 2, a: 1 })
+    const k1 = computeCacheKey('web_search', { a: 1, b: 2 })
+    const k2 = computeCacheKey('web_search', { b: 2, a: 1 })
     expect(k1).toBe(k2)
   })
 })
@@ -103,7 +103,7 @@ describe('isToolCacheEnabled', () => {
 
   it('全局禁用时返回 false', () => {
     // 默认配置 tools.result_cache.enabled=false
-    const r = isToolCacheEnabled('search_engine')
+    const r = isToolCacheEnabled('web_search')
     expect(r.enabled).toBe(false)
   })
 })

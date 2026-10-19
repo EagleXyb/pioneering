@@ -164,7 +164,7 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       default: 0,  // 默认不截断；启用时建议设置为 8000~20000
       limits: {
         // 示例：
-        // search_engine: 4000,
+        // web_search: 4000,
         // http_request: 8000,
       },
     },
@@ -182,7 +182,7 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       max_entries: 100,
       tools: {
         // 示例：
-        // search_engine: { ttl_ms: 120000 },
+        // web_search: { ttl_ms: 120000 },
         // http_request: { ttl_ms: 60000 },
       },
     },

@@ -2,12 +2,12 @@
 //
 // 验证目标（对应文档 §5.3 P2 优化后的 ReAct 流程）：
 //   1. Agent 能正确进入 ReAct 循环（Thought → Action → Observation → ... → Final Answer）
-//   2. 工具调用顺序符合防幻觉 system prompt 约束（datetime → search_engine → 终答）
+//   2. 工具调用顺序符合防幻觉 system prompt 约束（datetime → web_search → 终答）
 //   3. P2 优化（guardrails / few-shot / orchestrator）在默认关闭时不破坏现有流程
 //   4. P2 优化在显式启用时也能正常工作（不破坏 ReAct 循环）
 //
 // 测试策略：
-//   - Mock LLM：脚本化 3 轮 ReAct 推理（datetime 调用 → search_engine 调用 → 终答）
+//   - Mock LLM：脚本化 3 轮 ReAct 推理（datetime 调用 → web_search 调用 → 终答）
 //   - 真实 DateTimeTool：纯 JS 计算，无网络依赖
 //   - Stub SearchTool：覆写 invoke 返回模拟 AI 新闻，避免外部网络
 //   - 直接调用 buildModuGraph 构建图，绕过 factory 的 LLM 构建与 MCP 发现
@@ -34,7 +34,7 @@ import type { ModuAgentState } from '@/graph/state.js'
  *
  * 按预设脚本依次返回 AIMessage：
  *   - 第 1 轮：返回 datetime 工具调用（获取今天日期）
- *   - 第 2 轮：返回 search_engine 工具调用（搜索 AI 新闻）
+ *   - 第 2 轮：返回 web_search 工具调用（搜索 AI 新闻）
  *   - 第 3 轮：返回最终自然语言摘要（无 tool_calls，结束 ReAct 循环）
  *
  * 记录每次调用的 messages 快照，供测试断言推理过程。
@@ -54,11 +54,11 @@ class ScriptedMockLlm {
         { id: 'call_dt_1', name: 'datetime', args: { op: 'now', timezone: 'CST' } },
       ],
     },
-    // 第 2 轮：Thought + Action(search_engine)
+    // 第 2 轮：Thought + Action(web_search)
     {
       content: '已获取今天日期，现在搜索今天有关 AI 的新闻。',
       tool_calls: [
-        { id: 'call_se_1', name: 'search_engine', args: { query: 'AI 新闻 今天 2026', max_results: 5 } },
+        { id: 'call_se_1', name: 'web_search', args: { query: 'AI 新闻 今天 2026', max_results: 5 } },
       ],
     },
     // 第 3 轮：Final Answer（无 tool_calls，结束 ReAct 循环）
@@ -245,7 +245,7 @@ describe('ReAct 端到端推理：总结今天有关AI的新闻', () => {
     resetConfig()
   })
 
-  it('ReAct 循环正确执行：datetime → search_engine → 终答（P2 默认关闭）', async () => {
+  it('ReAct 循环正确执行：datetime → web_search → 终答（P2 默认关闭）', async () => {
     const { finalState, mockLlm, stubSearch } = await runReactNewsTask({})
 
     // 验证 1：LLM 被调用 3 次（3 轮 ReAct 推理）
@@ -265,14 +265,14 @@ describe('ReAct 端到端推理：总结今天有关AI的新闻', () => {
     )
     expect(hasDateTimeToolMsg).toBe(true)
 
-    // 验证 4：第 3 轮 LLM 收到 ToolMessage（search_engine 结果）
+    // 验证 4：第 3 轮 LLM 收到 ToolMessage（web_search 结果）
     const thirdCallMessages = mockLlm.callSnapshots[2].messages
     const hasSearchToolMsg = thirdCallMessages.some(
       (m) => m._getType?.() === 'tool' && /OpenAI|GPT-5|DeepSeek|AI 新闻/i.test(String(m.content ?? '')),
     )
     expect(hasSearchToolMsg).toBe(true)
 
-    // 验证 5：search_engine 工具被调用 1 次
+    // 验证 5：web_search 工具被调用 1 次
     expect(stubSearch.invokeCount).toBe(1)
     // 验证 query 包含 AI 关键词
     expect(stubSearch.lastQuery).toMatch(/AI/i)
@@ -285,14 +285,14 @@ describe('ReAct 端到端推理：总结今天有关AI的新闻', () => {
     const matchedCount = newsKeywords.filter((kw) => response.includes(kw)).length
     expect(matchedCount).toBeGreaterThanOrEqual(2)
 
-    // 验证 7：tool_results 收集了 datetime 和 search_engine 的工具结果
+    // 验证 7：tool_results 收集了 datetime 和 web_search 的工具结果
     // 注：tool_results reducer 为 append 语义，多次 tool_processor 调用会累积条目，
     //     此处验证去重后的工具名集合，而非精确条数（reducer 行为属已知设计）
     const toolResults = finalState.tool_results ?? []
     expect(Array.isArray(toolResults)).toBe(true)
     expect(toolResults.length).toBeGreaterThanOrEqual(2)
     const uniqueToolNames = Array.from(new Set(toolResults.map((r: any) => r.tool))).sort()
-    expect(uniqueToolNames).toEqual(['datetime', 'search_engine'])
+    expect(uniqueToolNames).toEqual(['datetime', 'web_search'])
 
     // 验证 8：无错误码
     expect(finalState.error_code ?? '').toBe('')
@@ -394,16 +394,16 @@ describe('ReAct 端到端推理：总结今天有关AI的新闻', () => {
     restoreHandle?.restore()
     restoreHandle = overrideConfig(cfg)
 
-    // 改造 mockLlm：第 1 轮返回 2 个独立 tool_calls（datetime + search_engine）
+    // 改造 mockLlm：第 1 轮返回 2 个独立 tool_calls（datetime + web_search）
     // 验证 parallel_tools 不会破坏 ReAct 流程
     class MultiToolCallMockLlm extends ScriptedMockLlm {
       scripts: Array<{ content: string; tool_calls?: any[] }> = [
-        // 第 1 轮：同时发 datetime + search_engine（理论上可并行）
+        // 第 1 轮：同时发 datetime + web_search（理论上可并行）
         {
           content: '我需要今天的日期和 AI 新闻，同时发起两个工具调用。',
           tool_calls: [
             { id: 'call_dt_1', name: 'datetime', args: { op: 'now', timezone: 'CST' } },
-            { id: 'call_se_1', name: 'search_engine', args: { query: 'AI 新闻 今天', max_results: 5 } },
+            { id: 'call_se_1', name: 'web_search', args: { query: 'AI 新闻 今天', max_results: 5 } },
           ],
         },
         // 第 2 轮：Final Answer
@@ -448,7 +448,7 @@ describe('ReAct 端到端推理：总结今天有关AI的新闻', () => {
 
     // 验证：2 轮 LLM 调用（第 1 轮双工具 + 第 2 轮终答）
     expect(mockLlm.callCount).toBe(2)
-    // 验证：search_engine 被调用 1 次
+    // 验证：web_search 被调用 1 次
     expect(stubSearch.invokeCount).toBe(1)
     // 验证：终答包含新闻关键词
     const response = String(finalState.response ?? '')

@@ -177,8 +177,8 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
       expect(r.rule?.rule_id).toBe('matrix_code_executor')
     })
 
-    it('search_engine 不命中任何 guardrail', () => {
-      const r = checkGuardrail('search_engine', { query: 'test' })
+    it('web_search 不命中任何 guardrail', () => {
+      const r = checkGuardrail('web_search', { query: 'test' })
       expect(r.hit).toBe(false)
     })
 
@@ -236,7 +236,7 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
   describe('checkGuardrailsForToolCalls', () => {
     it('批量检查返回命中的 tool_calls', () => {
       const toolCalls = [
-        { id: 'call_1', name: 'search_engine', args: { query: 'test' } },
+        { id: 'call_1', name: 'web_search', args: { query: 'test' } },
         { id: 'call_2', name: 'file_ops', args: { op: 'write' } },
         { id: 'call_3', name: 'calculator', args: { expression: '1+1' } },
         { id: 'call_4', name: 'sql_query', args: { query: 'DELETE FROM users' } },
@@ -250,7 +250,7 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
 
     it('全部不命中时返回空数组', () => {
       const toolCalls = [
-        { id: 'call_1', name: 'search_engine', args: { query: 'test' } },
+        { id: 'call_1', name: 'web_search', args: { query: 'test' } },
         { id: 'call_2', name: 'calculator', args: { expression: '1+1' } },
       ]
       const hits = checkGuardrailsForToolCalls(toolCalls)
@@ -304,9 +304,9 @@ describe('P2-1 写操作 + 敏感数据安全防护', () => {
   // ============================================================
   describe('向后兼容', () => {
     it('guardrail 关闭时（无命中）行为等价现状', () => {
-      // search_engine / calculator / datetime 无 guardrail 命中
+      // web_search / calculator / datetime 无 guardrail 命中
       // 也不在 requires_confirmation=true 矩阵中
-      expect(checkGuardrail('search_engine', {}).hit).toBe(false)
+      expect(checkGuardrail('web_search', {}).hit).toBe(false)
       expect(checkGuardrail('calculator', {}).hit).toBe(false)
       expect(checkGuardrail('datetime', {}).hit).toBe(false)
     })
