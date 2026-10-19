@@ -2,7 +2,8 @@
  * 搜索结果卡片（WorkBuddy 风格：浅灰圆角卡片 + 来源列表）
  *
  * 联网搜索类工具（search_engine 等）的观测结果不再铺原始 JSON，而是渲染为
- * 「站点图标 + 标题（可点开原文）」的来源列表；底部保留来源/复制/原始数据入口，
+ * 「站点图标 + 标题（可点开原文）」的来源列表；**全部检索条数逐条展示**，
+ * 页脚展示「引擎 · 共 N 篇来源」；底部保留复制/原始数据入口，
  * 兼顾可读性与可追溯性（原始数据默认收起）。
  *
  * 识别与解析见 lib/toolResult.ts；非搜索类结果由 ToolCallRow 回退为 JSON 展示。
@@ -100,7 +101,7 @@ export function SearchResultsCard({ results, source, raw }: Props) {
 
       <div className="tao-tool-result-foot">
         <span className="tao-tool-result-meta">
-          {source ? `来源：${source}` : `共 ${results.length} 条结果`}
+          {source ? `${source} · ` : ''}共 {results.length} 篇来源
         </span>
         <div className="tao-tool-result-actions">
           <button type="button" className="tao-tool-result-action" onClick={handleCopy}>

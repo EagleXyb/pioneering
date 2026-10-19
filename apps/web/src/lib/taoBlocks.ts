@@ -402,10 +402,20 @@ export interface PersistedAgentBlock {
   reasoningContent?: string;
   /** text_stream 是否为 ReAct 中间轮叙述（过程话术，复制/分享时排除） */
   narration?: boolean;
+  /** sources 块：搜索引擎名（deepseek / bing …） */
+  source?: string;
+  /** sources 块：完整来源条目（标题 + URL + 短摘要） */
+  items?: Array<{ title?: unknown; url?: unknown; snippet?: unknown }>;
 }
 
 /** 后端持久化块中属于 agent 通道（TAO 可还原）的类型集合 */
-const AGENT_BLOCK_TYPES = new Set(['thinking', 'tool_call', 'tool_result', 'text_stream']);
+const AGENT_BLOCK_TYPES = new Set([
+  'thinking',
+  'tool_call',
+  'tool_result',
+  'text_stream',
+  'sources',
+]);
 
 /**
  * 判断 contentBlocks 是否来自 agent 通道（pro/task）。
@@ -419,12 +429,107 @@ export function isAgentContentBlocks(blocks: unknown): boolean {
   );
 }
 
+/** sources 块条目 → 搜索结果条目（title 必填，其余字段按需读取） */
+function toSearchItem(item: {
+  title?: unknown;
+  url?: unknown;
+  snippet?: unknown;
+}): { title: string; url: string; snippet: string } {
+  return {
+    title: typeof item.title === 'string' ? item.title : '',
+    url: typeof item.url === 'string' ? item.url : '',
+    snippet: typeof item.snippet === 'string' ? item.snippet : '',
+  };
+}
+
+/**
+ * sources 块 → 标准搜索观测 JSON（与后端 search_engine 工具返回同构），
+ * 使既有 parseSearchToolResult / SearchResultsCard 渲染链路无需改动。
+ */
+function sourcesBlockToObservation(block: PersistedAgentBlock): string | null {
+  const items = (Array.isArray(block.items) ? block.items : [])
+    .map(toSearchItem)
+    .filter((i) => i.title);
+  if (items.length === 0) return null;
+  return JSON.stringify({
+    tool: block.toolName ?? 'search_engine',
+    status: 'success',
+    data: {
+      results: items,
+      ...(block.source ? { source: block.source } : {}),
+    },
+  });
+}
+
+/**
+ * 合并 sources 块：把完整来源写回对应 tool_result 的 summary。
+ *
+ * 背景：tool_result.summary 被后端截到 800 字符，多条搜索结果的回放只剩第一条；
+ * sources 块携带完整标题 + URL + 短摘要，按 executionId 回填到同一观测上，
+ * 回放渲染遂与实时流一致（全部条数 + 简要概述）。
+ */
+function mergeSourcesBlocks(blocks: unknown[]): PersistedAgentBlock[] {
+  const out: PersistedAgentBlock[] = [];
+
+  for (const raw of blocks) {
+    if (!raw || typeof raw !== 'object') continue;
+    const block = raw as PersistedAgentBlock;
+
+    if (block.type !== 'sources') {
+      out.push(block);
+      continue;
+    }
+
+    const observation = sourcesBlockToObservation(block);
+    if (!observation) continue;
+
+    // 优先按 executionId 精确匹配，缺失时回退最近一个 tool_result
+    let idx = -1;
+    if (block.executionId) {
+      for (let i = out.length - 1; i >= 0; i--) {
+        const b = out[i]!;
+        if (b.type === 'tool_result' && b.executionId === block.executionId) {
+          idx = i;
+          break;
+        }
+      }
+    }
+    if (idx < 0) {
+      for (let i = out.length - 1; i >= 0; i--) {
+        if (out[i]!.type === 'tool_result') {
+          idx = i;
+          break;
+        }
+      }
+    }
+
+    if (idx >= 0) {
+      out[idx] = { ...out[idx]!, summary: observation };
+      continue;
+    }
+
+    // 无对应 tool_result（数据缺块）：补一个只含观测的动作行，顺序不丢结果
+    out.push({
+      type: 'tool_result',
+      status: 'success',
+      toolName: block.toolName ?? 'search_engine',
+      executionId: block.executionId,
+      summary: observation,
+    });
+  }
+
+  return out;
+}
+
 /**
  * 持久化 contentBlocks → TAO 块序列（历史回放）
  *
  * 后端按事件顺序 push 块（thinking / tool_call / tool_result / text_stream），
  * 本函数保持同样顺序还原为可渲染的交错序列，使历史消息与实时流产出同构：
  *   [思考段] [动作行(含观测)] [思考段] [动作行] ... [正文]
+ *
+ * sources 块（搜索类工具的完整来源）先合并回对应 tool_result 的观测，
+ * 避免 tool_result.summary 的 800 字截断把多条搜索结果砍成一条。
  *
  * 兼容性：老数据的 thinking 可能合并为单块且排在工具之前（无法精确交错），
  * 此时降级为“整体思考段 + 工具序列 + 正文”，仍保持可追溯。
@@ -433,7 +538,7 @@ export function contentBlocksToTaoBlocks(blocks: unknown): AIMessageContent[] {
   if (!Array.isArray(blocks)) return [];
   let out: AIMessageContent[] = [];
 
-  for (const raw of blocks as PersistedAgentBlock[]) {
+  for (const raw of mergeSourcesBlocks(blocks)) {
     if (!raw || typeof raw !== 'object') continue;
 
     if (raw.type === 'thinking') {

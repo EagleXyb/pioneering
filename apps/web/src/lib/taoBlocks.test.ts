@@ -30,6 +30,7 @@ import {
   type TaoReasoningBlock,
   type TaoToolBlock,
 } from './taoBlocks';
+import { parseSearchToolResult } from './toolResult';
 import type { AIMessageContent } from '../types/chat';
 
 const typesOf = (blocks: AIMessageContent[]) => blocks.map((b) => b.type);
@@ -199,6 +200,131 @@ describe('taoBlocks — 历史 contentBlocks 还原', () => {
   it('createTextBlock 生成的块可被复制文本提取', () => {
     const blocks = [createTextBlock('A'), createTextBlock('B')];
     expect(blocksToPlainText(blocks)).toBe('A\nB');
+  });
+});
+
+describe('taoBlocks — sources 块合并（搜索来源完整回放）', () => {
+  /** 后端搜索工具观测的标准口径 */
+  const searchObservation = (count: number) =>
+    JSON.stringify({
+      tool: 'search_engine',
+      status: 'success',
+      data: {
+        source: 'deepseek',
+        results: Array.from({ length: count }, (_, i) => ({
+          title: `标题${i + 1}`,
+          url: `https://example.com/${i + 1}`,
+          snippet: `摘要${i + 1}`,
+        })),
+      },
+    });
+
+  /** 后端 sources 块：完整标题 + URL + 短摘要（不受 800 字截断影响） */
+  const sourcesBlock = (count: number, executionId = 't1') => ({
+    type: 'sources',
+    status: 'success',
+    toolName: 'search_engine',
+    executionId,
+    source: 'deepseek',
+    items: Array.from({ length: count }, (_, i) => ({
+      title: `标题${i + 1}`,
+      url: `https://example.com/${i + 1}`,
+      snippet: `摘要${i + 1}`,
+    })),
+  });
+
+  it('sources 块把完整观测写回 tool_result（替代 800 字截断的 summary）', () => {
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1', args: '{"query":"AI"}' },
+      // 落库时被截到 800 字：只剩第一条结果
+      { type: 'tool_result', status: 'success', toolName: 'search_engine', executionId: 't1', summary: searchObservation(5).slice(0, 300) },
+      sourcesBlock(5),
+      { type: 'text_stream', status: 'success', text: '最终回答' },
+    ]);
+
+    // 序列结构不变：sources 不产生独立步骤
+    expect(typesOf(blocks)).toEqual(['toolcall', 'markdown']);
+    const result = (blocks[0] as TaoToolBlock).data.result as string;
+    const parsed = parseSearchToolResult(result);
+    expect(parsed?.salvaged).toBeUndefined();
+    expect(parsed?.results.map((r) => r.title)).toEqual([
+      '标题1',
+      '标题2',
+      '标题3',
+      '标题4',
+      '标题5',
+    ]);
+    expect(parsed?.source).toBe('deepseek');
+  });
+
+  it('缺 executionId 时回填最近一个 tool_result', () => {
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'tool_call', status: 'success', toolName: 'search_engine' },
+      { type: 'tool_result', status: 'success', toolName: 'search_engine', summary: '截断' },
+      sourcesBlock(3, undefined),
+    ]);
+    const result = (blocks[0] as TaoToolBlock).data.result as string;
+    expect(parseSearchToolResult(result)?.results).toHaveLength(3);
+  });
+
+  it('多个搜索调用按 executionId 各自归位，不串块', () => {
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1' },
+      { type: 'tool_result', status: 'success', toolName: 'search_engine', executionId: 't1', summary: '截断1' },
+      sourcesBlock(2, 't1'),
+      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't2' },
+      { type: 'tool_result', status: 'success', toolName: 'search_engine', executionId: 't2', summary: '截断2' },
+      sourcesBlock(3, 't2'),
+    ]);
+
+    expect(typesOf(blocks)).toEqual(['toolcall', 'toolcall']);
+    expect(parseSearchToolResult((blocks[0] as TaoToolBlock).data.result)?.results).toHaveLength(2);
+    expect(parseSearchToolResult((blocks[1] as TaoToolBlock).data.result)?.results).toHaveLength(3);
+  });
+
+  it('孤立 sources（无 tool_result）补一个只含观测的动作行', () => {
+    const blocks = contentBlocksToTaoBlocks([sourcesBlock(2)]);
+    expect(typesOf(blocks)).toEqual(['toolcall']);
+    expect(parseSearchToolResult((blocks[0] as TaoToolBlock).data.result)?.results).toHaveLength(2);
+  });
+
+  it('sources 块无有效条目时被忽略，不影响其它块还原', () => {
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'tool_result', status: 'success', toolName: 'search_engine', summary: '截断' },
+      { type: 'sources', status: 'success', toolName: 'search_engine', items: [] },
+      { type: 'sources', status: 'success', toolName: 'search_engine', items: [{ url: 'https://x.com' }] },
+    ]);
+    expect(typesOf(blocks)).toEqual(['toolcall']);
+    expect((blocks[0] as TaoToolBlock).data.result).toBe('截断');
+  });
+
+  it('无 sources 块的老数据行为不变（仍用截断的 tool_result.summary）', () => {
+    // 每条摘要 100 字：300 字符只够容纳第一条完整结果（模拟后端 800 字截断）
+    const longObservation = JSON.stringify({
+      tool: 'search_engine',
+      status: 'success',
+      data: {
+        source: 'deepseek',
+        results: Array.from({ length: 5 }, (_, i) => ({
+          title: `标题${i + 1}`,
+          url: `https://example.com/${i + 1}`,
+          snippet: '摘'.repeat(100),
+        })),
+      },
+    });
+    const blocks = contentBlocksToTaoBlocks([
+      { type: 'tool_call', status: 'success', toolName: 'search_engine', executionId: 't1' },
+      {
+        type: 'tool_result',
+        status: 'success',
+        toolName: 'search_engine',
+        executionId: 't1',
+        summary: longObservation.slice(0, 300),
+      },
+    ]);
+    const parsed = parseSearchToolResult((blocks[0] as TaoToolBlock).data.result);
+    expect(parsed?.salvaged).toBe(true);
+    expect(parsed?.results).toHaveLength(1);
   });
 });
 

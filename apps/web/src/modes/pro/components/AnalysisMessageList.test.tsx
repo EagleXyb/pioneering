@@ -401,11 +401,11 @@ describe('AnalysisMessageList TAO 闭环（推理-行动-观察）', () => {
     });
     fireEvent.click(row);
 
-    // 来源列表：标题可点开原文 + 引擎来源信息
+    // 来源列表：标题可点开原文 + 全部条数概要
     const link = screen.getByRole('link', { name: /Harness Engineering 定义/ });
     expect(link).toHaveAttribute('href', 'https://example.com/a');
     expect(screen.getByText('上下文工程实践')).toBeInTheDocument();
-    expect(screen.getByText('来源：bing')).toBeInTheDocument();
+    expect(screen.getByText('bing · 共 2 篇来源')).toBeInTheDocument();
 
     // 原始数据默认收起，点击后可展开追溯
     const rawToggle = screen.getByRole('button', { name: /原始数据/ });

@@ -594,6 +594,138 @@ export function collectRunTimeline(
 const TOOL_ARGS_MAX_LEN = 500
 const TOOL_RESULT_MAX_LEN = 800
 
+/**
+ * 搜索来源块（方案 A）持久化上限。
+ *
+ * 背景：tool_result.summary 被截到 800 字符，搜索类观测（多条结果）回放时
+ * 只剩第一条。这里额外落一个结构化 sources 块（标题 + URL + 短摘要），
+ * 前端回放据此渲染「全部条数 + 简要概述」，完整结果仍在
+ * agent_tool_executions.output_result 中可追溯。
+ */
+const SOURCE_SNIPPET_MAX_LEN = 120
+// 与 DeepSeek Search 的 count 上限（1~50）对齐：检索到的条数全部落库，
+// 回放时逐条展示，不做静默截断。
+const SOURCE_ITEMS_MAX = 50
+
+/** 搜索类工具名判定（search_engine / web_search …） */
+function isSearchTool(toolName: string): boolean {
+  return toolName.toLowerCase().includes('search')
+}
+
+/** 工具结果 JSON 的数据负载：兼容 {data:{results,source}} 与裸 {results,source} */
+function searchPayload(obj: Record<string, any>): Record<string, any> | null {
+  const data = obj.data
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    return data as Record<string, any>
+  }
+  return obj
+}
+
+/**
+ * 截断 JSON 兜底：按括号配对提取已完整闭合的结果对象
+ *（modu-agent 启用 tools.max_result_chars 时结果带 "...[truncated]" 标记）。
+ */
+function salvageResultObjects(text: string): Array<Record<string, any>> {
+  const at = text.indexOf('"results"')
+  if (at < 0) return []
+  const start = text.indexOf('[', at)
+  if (start < 0) return []
+
+  const out: Array<Record<string, any>> = []
+  let depth = 0
+  let objStart = -1
+  let inString = false
+  let escaped = false
+
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i]!
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (ch === '\\') {
+      escaped = true
+      continue
+    }
+    if (inString) {
+      if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+    if (ch === '{') {
+      if (depth === 0) objStart = i
+      depth += 1
+      continue
+    }
+    if (ch === '}') {
+      depth -= 1
+      if (depth === 0 && objStart >= 0) {
+        try {
+          out.push(JSON.parse(text.slice(objStart, i + 1)))
+        } catch {
+          /* 丢弃解析失败的残片 */
+        }
+        objStart = -1
+      }
+      continue
+    }
+    if (ch === ']' && depth === 0) break
+  }
+  return out
+}
+
+/**
+ * 从搜索工具观测中提取来源条目；非搜索工具 / 不可解析时返回 null
+ *（无 sources 块，回放沿用原 tool_result.summary 路径）。
+ */
+export function extractSearchSources(
+  toolName: string,
+  content: unknown,
+): { source?: string; items: Array<{ title: string; url: string; snippet: string }> } | null {
+  if (!isSearchTool(toolName)) return null
+  if (typeof content !== 'string' || !content.trim().startsWith('{')) return null
+
+  const text = content.trim().replace(/\.\.\.\[truncated\]\s*$/, '').trim()
+
+  let payload: Record<string, any> | null = null
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      payload = searchPayload(parsed as Record<string, any>)
+    }
+  } catch {
+    payload = null
+  }
+
+  const rawItems: unknown[] = Array.isArray(payload?.results)
+    ? (payload!.results as unknown[])
+    : salvageResultObjects(text)
+  if (rawItems.length === 0) return null
+
+  const items = rawItems
+    .filter(
+      (r): r is Record<string, any> =>
+        !!r && typeof r === 'object' && !Array.isArray(r) && typeof (r as any).title === 'string',
+    )
+    .slice(0, SOURCE_ITEMS_MAX)
+    .map((r) => ({
+      title: String(r.title ?? ''),
+      url: typeof r.url === 'string' ? r.url : '',
+      // 仅保留展示用短摘要：完整摘要在 output_result / 原始数据中
+      snippet: String(r.snippet ?? r.summary ?? '').slice(0, SOURCE_SNIPPET_MAX_LEN),
+    }))
+    .filter((r) => r.title)
+
+  if (items.length === 0) return null
+
+  const source =
+    payload && typeof payload.source === 'string' && payload.source ? payload.source : undefined
+  return { source, items }
+}
+
 /** 从后向前找最后一个指定类型且 running 的块（多段并存时最新段在尾部） */
 function findLastRunningBlock(
   blocks: Record<string, any>[],
@@ -630,6 +762,10 @@ function findToolCallBlock(
  * contentBlocks 是前端历史回放的唯一数据源（TAO 闭环：思考段 ↔ 工具调用交错），
  * 因此这里必须**严格保序**：THINKING 按段开块（round 锚点）、文本按段开块、
  * 工具参数与观测按 executionId 归属。
+ *
+ * 搜索类工具的 TOOL_CALL_RESULT 会额外产出一个 sources 块（完整标题 + URL +
+ * 短摘要）：tool_result.summary 有 800 字截断，多条搜索结果回放时只剩第一条，
+ * sources 块让前端能按全部条数渲染来源列表（见 extractSearchSources）。
  */
 export function collectMetadataFromEvent(
   eventDict: Record<string, string>,
@@ -688,6 +824,18 @@ export function collectMetadataFromEvent(
       executionId: data.toolCallId ?? '',
       summary: (data.content ?? '').slice(0, TOOL_RESULT_MAX_LEN),
     })
+    // 搜索类工具：额外落完整来源块，避免回放受 tool_result 800 字截断影响
+    const sources = extractSearchSources(data.toolCallName ?? '', data.content)
+    if (sources) {
+      ctx.contentBlocks.push({
+        type: 'sources',
+        status: 'success',
+        toolName: data.toolCallName ?? '',
+        executionId: data.toolCallId ?? '',
+        ...(sources.source ? { source: sources.source } : {}),
+        items: sources.items,
+      })
+    }
   } else if (eventType === 'TEXT_MESSAGE_START') {
     // 每段文本独立成块：与思考段/工具调用保持可还原的交错顺序。
     // narration=true 表示这是 ReAct 中间轮叙述（WorkBuddy 风格：正文展示的过程话术），
