@@ -8,6 +8,62 @@
 export { SkillAdapter, SkillToolWrapper } from './adapter.js'
 export { SkillLoader } from './loader.js'
 export { SkillPromptAggregator } from './prompt-aggregator.js'
+export type { SkillAggregateOptions } from './prompt-aggregator.js'
+// P0（选择→执行）：请求侧技能选择 → 提示范围 / 工具白名单 / 目录条目
+export {
+  EMPTY_SKILL_SELECTION,
+  collectSkillToolNames,
+  pruneSkillTools,
+  resolveSkillSelection,
+  summarizeSkillDescription,
+  type SkillCatalogEntry,
+  type SkillSelectionOptions,
+  type SkillSelectionResult,
+} from './selection.js'
+// P0（0.6）：示例技能对外导出，供宿主 / 目录技能（skills/math/skill.js）引用
+export { MathSkill } from './math-skill.js'
+// P1-c（L2）：按需加载技能正文的内置工具
+export {
+  LoadSkillTool,
+  DEFAULT_SKILL_LOAD_MAX_CHARS,
+  type LoadSkillToolOptions,
+} from './load-skill-tool.js'
+// L3-1.2：技能集合版本号（宿主纳入图缓存键，实现「启停即时生效」）
+export {
+  bumpSkillsRevision,
+  getSkillsRevision,
+  resetSkillsRevision,
+} from './revision.js'
+// L3-2：声明式技能（纯提示型，无代码）
+export {
+  DeclarativeSkill,
+  readPromptFile,
+  resolvePromptFile,
+  type DeclarativeSkillInput,
+} from './declarative-skill.js'
+// L3-2：内容寻址 / 快照 / 版本指针
+export {
+  computeSkillContentHash,
+  ensureSnapshot,
+  findSnapshot,
+  getSkillMeta,
+  listSkillFiles,
+  listSkillMeta,
+  readVersionState,
+  recordVersion,
+  resetSkillMetaForTest,
+  cleanupSnapshots,
+  setDefaultVersion,
+  setSkillMeta,
+  snapshotDirFor,
+  versionStatePath,
+  writeVersionState,
+  type CleanupSnapshotsOptions,
+  type SkillMeta,
+  type SkillVersionEntry,
+  type SkillVersionRecord,
+  type SkillVersionState,
+} from './versioning.js'
 // P2-2: Few-shot 动态示例选择
 export {
   DynamicFewShotSelector,

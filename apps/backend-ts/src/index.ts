@@ -3,9 +3,21 @@ import { buildApp } from './app.js'
 import { env } from './config/env.js'
 import { startInterruptScheduler, stopInterruptScheduler } from './core/agent-scheduler.js'
 import { activateConfiguredPacks } from './core/scenario-boot.js'
+import { applyPersistedSkillState } from './core/skill-state.js'
 
 async function start() {
   try {
+    // L3：先应用管理面持久化的技能白名单（文件优先于 config.yaml），
+    // 再构建 Fastify 应用——后续 create_agent 即按最终白名单注册技能。
+    try {
+      const { applied, active } = applyPersistedSkillState()
+      if (applied) {
+        console.info(`[skills] persisted state applied: ${active.join(',') || '(none)'}`)
+      }
+    } catch (e) {
+      console.warn('[skills] apply persisted state failed (fallback to config.yaml):', e)
+    }
+
     const app = await buildApp()
     await app.listen({ host: env.HOST, port: env.PORT })
     // T2.2：启动 HITL 待答复项 TTL 清理（60s 扫频）

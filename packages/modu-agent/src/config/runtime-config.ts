@@ -202,6 +202,18 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     enabled: false,
     auto_discover_dirs: [],
     active: [],
+    // P1-c：渐进式披露（只注入技能目录，正文由 load_skill 按需加载）。
+    // 默认关闭 → 与改造前逐字符等价；catalog_max_chars 为目录注入预算。
+    progressive_disclosure: {
+      enabled: false,
+      catalog_max_chars: 2000,
+      // load_skill 单次返回正文的字符预算（超限截断并标记 [truncated]）
+      load_max_chars: 6000,
+    },
+    // L3-2：内容寻址与版本快照（有 manifest 的技能才会真正落盘）
+    versioning: {
+      enabled: true,
+    },
   },
   streaming: {
     // 注：原 `chunk_size: 4` 为声明冗余，streaming 切片粒度由

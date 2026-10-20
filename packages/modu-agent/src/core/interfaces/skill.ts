@@ -62,6 +62,17 @@ export abstract class BaseSkill {
     return true
   }
 
+  /**
+   * 运行期健康检查（L4-5.1，可选）。
+   *
+   * 与 `isAvailable()` 的区别：后者在**注册时**判断一次；本方法在每次
+   * `syncFromConfig()` 前重新判断，用于「依赖的服务中途不可用」等场景。
+   * 返回 false 时该技能不会被注册（已注册的会在下次 sync 时被移除）。
+   */
+  healthCheck(): boolean {
+    return true
+  }
+
   /** 注册时一次性初始化（加载资源、建连接等）。异常被 Loader 隔离 */
   setup(): void {
     /* 默认无操作 */

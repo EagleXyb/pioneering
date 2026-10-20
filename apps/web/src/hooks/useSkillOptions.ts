@@ -3,25 +3,37 @@
  *
  * - 技能列表来自 GET /skills，模块级缓存（两个模式共用一次请求），
  *   加载失败不缓存，可经 reload() 重试
- * - 已选技能（多选）按模式持久化到 localStorage（key: skill-select:<mode>，
- *   JSON 字符串数组），与 useModelOptions 的持久化策略一致
+ * - 已选技能（多选）由 skillSelectionStore 统一持有（按模式隔离并持久化到
+ *   localStorage，key: skill-select:<mode>）；发送路径经 getSelectedSkills 读取
  */
 import { useCallback, useEffect, useState } from 'react';
 import { getSkills, type SkillBrief } from '../api/skills';
 import type { AppMode } from '../types';
-
-const STORAGE_KEY_PREFIX = 'skill-select:';
+import { useSkillSelectionStore } from '../store/skillSelectionStore';
 
 // ---- 模块级列表缓存（全应用只请求一次） ----
-let skillsCache: SkillBrief[] | null = null;
-let inflight: Promise<SkillBrief[]> | null = null;
+interface SkillListSnapshot {
+  skills: SkillBrief[];
+  /** 技能子系统是否启用（false 时菜单给出管理员提示） */
+  enabled: boolean;
+}
 
-function fetchSkills(): Promise<SkillBrief[]> {
+let skillsCache: SkillListSnapshot | null = null;
+let inflight: Promise<SkillListSnapshot> | null = null;
+
+/** 稳定的空数组：避免 selector 每次返回新引用导致重渲染 */
+const EMPTY_SELECTION: string[] = [];
+
+function fetchSkills(): Promise<SkillListSnapshot> {
   if (skillsCache) return Promise.resolve(skillsCache);
   if (!inflight) {
     inflight = getSkills()
       .then((resp) => {
-        skillsCache = Array.isArray(resp.skills) ? resp.skills : [];
+        skillsCache = {
+          skills: Array.isArray(resp.skills) ? resp.skills : [],
+          // 字段缺失时按「启用」处理：兼容旧后端（无 enabled 字段）
+          enabled: resp.enabled !== false,
+        };
         return skillsCache;
       })
       .catch((e: unknown) => {
@@ -42,26 +54,10 @@ function errorMessage(e: unknown, fallback: string): string {
   return fallback;
 }
 
-function storageKey(mode: AppMode): string {
-  return `${STORAGE_KEY_PREFIX}${mode}`;
-}
-
-function readStored(mode: AppMode): string[] {
-  try {
-    const raw = localStorage.getItem(storageKey(mode));
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((v): v is string => typeof v === 'string');
-    }
-  } catch {
-    // localStorage 不可用 / 内容损坏时按未选择处理
-  }
-  return [];
-}
-
 export interface UseSkillOptionsReturn {
   skills: SkillBrief[];
+  /** 技能子系统总开关（false = 需要管理员在设置中开启） */
+  enabled: boolean;
   loading: boolean;
   error: string | null;
   /** 已勾选的技能名（按模式持久化） */
@@ -74,25 +70,30 @@ export interface UseSkillOptionsReturn {
 }
 
 export function useSkillOptions(mode: AppMode): UseSkillOptionsReturn {
-  const [skills, setSkills] = useState<SkillBrief[]>(skillsCache ?? []);
+  const [skills, setSkills] = useState<SkillBrief[]>(skillsCache?.skills ?? []);
+  const [enabled, setEnabled] = useState<boolean>(skillsCache?.enabled ?? true);
   const [loading, setLoading] = useState(skillsCache === null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string[]>(() => readStored(mode));
   const [reloadTick, setReloadTick] = useState(0);
 
-  // 切换模式时同步该模式的持久化选择
+  // 选中态：全局 store（按模式），首帧从 localStorage 载入
+  const selected = useSkillSelectionStore((s) => s.byMode[mode]) ?? EMPTY_SELECTION;
+  const hydrate = useSkillSelectionStore((s) => s.hydrate);
+  const toggle = useSkillSelectionStore((s) => s.toggle);
+
   useEffect(() => {
-    setSelected(readStored(mode));
-  }, [mode]);
+    hydrate(mode);
+  }, [mode, hydrate]);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError(null);
     fetchSkills()
-      .then((list) => {
+      .then((snapshot) => {
         if (!alive) return;
-        setSkills(list);
+        setSkills(snapshot.skills);
+        setEnabled(snapshot.enabled);
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -113,19 +114,9 @@ export function useSkillOptions(mode: AppMode): UseSkillOptionsReturn {
 
   const toggleSkill = useCallback(
     (name: string) => {
-      setSelected((prev) => {
-        const next = prev.includes(name)
-          ? prev.filter((n) => n !== name)
-          : [...prev, name];
-        try {
-          localStorage.setItem(storageKey(mode), JSON.stringify(next));
-        } catch {
-          // 持久化失败不影响本次选择
-        }
-        return next;
-      });
+      toggle(mode, name);
     },
-    [mode],
+    [mode, toggle],
   );
 
   const isSelected = useCallback(
@@ -135,6 +126,7 @@ export function useSkillOptions(mode: AppMode): UseSkillOptionsReturn {
 
   return {
     skills,
+    enabled,
     loading,
     error,
     selected,

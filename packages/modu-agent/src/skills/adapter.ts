@@ -10,6 +10,7 @@
 import { BaseTool } from '../core/interfaces/action.js'
 import type { BaseSkill } from '../core/interfaces/skill.js'
 import { setSkillToolWrapperFactory } from '../core/registry.js'
+import { get_metrics_registry } from '../observability/metrics.js'
 
 const logger = {
   info: (msg: string, ...args: any[]) => console.info(`[skills.adapter] ${msg}`, ...args),
@@ -99,19 +100,38 @@ export class SkillToolWrapper extends BaseTool {
     params: Record<string, any>,
     context: Record<string, any>,
   ): Promise<Record<string, any>> {
+    const started = Date.now()
     try {
-      return await this._inner.invoke(params, context)
+      const result = await this._inner.invoke(params, context)
+      const status = result && (result as any).status === 'error' ? 'error' : 'success'
+      this._record(status, started)
+      return result
     } catch (e: any) {
       // 执行隔离：绝不让 Skill 异常外泄
       logger.error(
         "Skill tool '%s' (skill=%s) failed: %s",
         this._inner.name(), this._skillName, e,
       )
+      this._record('exception', started)
       return {
         status: 'error',
         error_code: 'SKILL_EXECUTION_FAILED',
         data: { message: String(e), skill: this._skillName },
       }
+    }
+  }
+
+  /** 上报技能级指标（L4-4.2）；metrics 未启用时为无操作。 */
+  private _record(status: string, startedAt: number): void {
+    try {
+      get_metrics_registry().record_skill_invocation(
+        this._skillName,
+        this._inner.name(),
+        status,
+        (Date.now() - startedAt) / 1000,
+      )
+    } catch {
+      // 观测失败不得影响执行
     }
   }
 }

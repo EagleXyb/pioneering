@@ -74,6 +74,10 @@ export class ComponentRegistry {
   private _evolutionSignals: Map<string, BaseEvolutionSignal> = new Map()
   // P1: Skills 扩展（可插拔单元，内部工具注册进 _tools）
   private _skills: Map<string, BaseSkill> = new Map()
+  // L3（1.1）：记录每个 Skill 实际注册进 _tools 的工具实例（toolName → instance），
+  // 供 unregisterSkill 精确回收——避免「只删技能条目、工具残留」导致停用后仍可调用，
+  // 也避免误删后续被同名的其他组件覆盖的工具。
+  private _skillOwnedTools: Map<string, Map<string, BaseTool>> = new Map()
   // P1（T-12）：LLM provider 工厂（provider 标识 → 工厂）。
   // 独立于既有 11 类组件，不计入 listAll()/swapComponent() 的既有契约（避免破坏既有断言）。
   private _llmProviders: Map<string, LLMProviderFactory> = new Map()
@@ -734,6 +738,7 @@ export class ComponentRegistry {
       return
     }
     this._skills.set(skill.name(), skill)
+    const owned = new Map<string, BaseTool>()
     // 自动注册 Skill 内含工具（可插拔关键：Skill 注册即工具就位）
     // 工具经 SkillToolWrapper 包装，落实执行隔离（P5 降级机制）
     for (const tool of skill.tools()) {
@@ -744,19 +749,24 @@ export class ComponentRegistry {
         )
         continue
       }
+      let registered: BaseTool = tool
       try {
         // 对应 Python: from skills.adapter import SkillToolWrapper
         // 使用注入的工厂避免 ESM 循环依赖；工厂未注册时退回原始工具
         if (_skillToolWrapperFactory) {
-          this.registerTool(_skillToolWrapperFactory(tool, skill.name()))
-        } else {
-          this.registerTool(tool)
+          registered = _skillToolWrapperFactory(tool, skill.name())
         }
       } catch {
         // 包装失败则退回原始工具
-        this.registerTool(tool)
+        registered = tool
+      }
+      this.registerTool(registered)
+      // 只记录真正由本 Skill 注册的实例（用于精确回收）
+      if (this._tools.get(registered.name()) === registered) {
+        owned.set(registered.name(), registered)
       }
     }
+    this._skillOwnedTools.set(skill.name(), owned)
     logger.info('Registered skill: %s (tools=%d)', skill.name(), skill.tools().length)
   }
 
@@ -778,13 +788,40 @@ export class ComponentRegistry {
     return result
   }
 
+  /**
+   * 反注册 Skill，**并回收它注册的工具**（L3-1.1 修复）。
+   *
+   * 修复前：只删 `_skills` 条目，工具残留在 `_tools` → 「停用」后工具仍可被 LLM 调用。
+   * 修复后：按注册时记录的实例精确回收（只删仍指向该实例的条目），
+   * 避免误删后来被同名组件覆盖的工具。
+   *
+   * 注意：本方法不调用 `teardown()`（生命周期归 SkillLoader 负责），保持注册表职责单一。
+   *
+   * @returns 是否命中并移除
+   */
   unregisterSkill(name: string): boolean {
-    if (this._skills.has(name)) {
-      this._skills.delete(name)
-      logger.info('Unregistered skill: %s', name)
-      return true
+    if (!this._skills.has(name)) return false
+    this._skills.delete(name)
+
+    const owned = this._skillOwnedTools.get(name)
+    this._skillOwnedTools.delete(name)
+    let removedTools = 0
+    if (owned) {
+      for (const [toolName, instance] of owned) {
+        if (this._tools.get(toolName) === instance) {
+          this._tools.delete(toolName)
+          removedTools += 1
+        }
+      }
     }
-    return false
+    logger.info('Unregistered skill: %s (tools removed=%d)', name, removedTools)
+    return true
+  }
+
+  /** 某 Skill 当前占用的工具名（只读视图；用于管理面展示 / 测试断言）。 */
+  skillToolNames(name: string): string[] {
+    const owned = this._skillOwnedTools.get(name)
+    return owned ? [...owned.keys()] : []
   }
 
   /**

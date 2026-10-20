@@ -48,6 +48,13 @@ export const AgentChatRequestSchema = z.object({
   messageId: z.string().nullable().optional(),
   /** 编辑重发时是否截断目标消息之后的全部消息；省略时默认截断 */
   truncateAfter: z.boolean().optional(),
+  /**
+   * 本轮启用的技能名（P0 选择→执行）。
+   * - 省略 / null：服务端默认策略（与改造前一致，不裁剪）
+   * - 空数组：本轮明确不使用任何技能（仅保留内置工具）
+   * 上限 20 项，防止恶意长列表撑爆图缓存。
+   */
+  skills: z.array(z.string().min(1).max(64)).max(20).nullable().optional(),
 })
 export type AgentChatRequest = z.infer<typeof AgentChatRequestSchema>
 
@@ -145,6 +152,11 @@ export const AgentResumeRequestSchema = z.object({
   answerId: z.string().nullable().optional(),
   // T5.5：首次 /completions 创建的 runId；提供则 resume 完成后把该 run 收尾
   runId: z.string().nullable().optional(),
+  /**
+   * 恢复时使用的技能选择（与首次 /completions 保持一致）。
+   * 省略时按服务端默认策略重建图；提供则按该选择裁剪工具与提示。
+   */
+  skills: z.array(z.string().min(1).max(64)).max(20).nullable().optional(),
 })
 export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>
 

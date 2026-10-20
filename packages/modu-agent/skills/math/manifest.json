@@ -1,0 +1,8 @@
+{
+  "name": "math",
+  "version": "1.0.0",
+  "description": "数学计算与表达式求值能力，支持加减乘除和括号运算",
+  "tags": ["math", "calculation"],
+  "capabilities": ["calculator"],
+  "entry": "skill.js"
+}

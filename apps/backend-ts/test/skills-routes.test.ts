@@ -27,11 +27,21 @@ vi.mock('@pioneering/modu-agent', () => ({
       if (key === 'skills.auto_discover_dirs') return mocks.state.dirs
       return fallback
     },
+    set: () => {},
   }),
   getRegistry: () => ({
     listSkills: () => mocks.state.registered,
+    // L3：GET 返回 toolNames（已注册技能）
+    skillToolNames: () => [],
   }),
   SkillLoader: mocks.FakeSkillLoader,
+  // L3-1.2：管理面写路径经 agent-bridge 使图缓存失效，模块加载期需要这两个导出存在
+  getSkillsRevision: () => 0,
+  reset_runner_cache: () => {},
+  // L3-2：版本元信息与回滚（本用例只覆盖 GET，返回空即可）
+  getSkillMeta: () => undefined,
+  setDefaultVersion: () => ({ ok: false, message: '', snapshot: null }),
+  cleanupSnapshots: () => ({ removed: [], kept: 0 }),
 }))
 
 // handler 逻辑测试：mock 认证守卫，直接注入已认证用户
@@ -74,7 +84,7 @@ describe('GET /skills', () => {
     const reply = await app.inject({ method: 'GET', url: '/skills' })
 
     expect(reply.statusCode).toBe(200)
-    expect(reply.json()).toEqual({ skills: [], total: 0 })
+    expect(reply.json()).toMatchObject({ skills: [], total: 0 })
     expect(mocks.discover).not.toHaveBeenCalled()
   })
 
@@ -92,7 +102,8 @@ describe('GET /skills', () => {
     const app = await buildServer()
     const reply = await app.inject({ method: 'GET', url: '/skills' })
 
-    expect(reply.json()).toEqual({
+    // L3：响应新增 enabled / active / toolNames（附加字段，不破坏既有消费者）
+    expect(reply.json()).toMatchObject({
       total: 1,
       skills: [
         {

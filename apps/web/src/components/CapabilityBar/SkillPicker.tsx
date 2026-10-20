@@ -6,7 +6,15 @@
  * 列表数据与勾选状态见 useSkillOptions（列表 GET /skills，按模式持久化）。
  */
 import { useMemo, useState } from 'react';
-import { Check, ChevronRight, Pickaxe, Search, Sparkles } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Check,
+  ChevronRight,
+  Pickaxe,
+  Search,
+  Settings2,
+  Sparkles,
+} from 'lucide-react';
 import {
   Popover,
   PopoverAnchor,
@@ -15,6 +23,7 @@ import {
 } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
 import { useSkillOptions } from '@/hooks/useSkillOptions';
+import { useSettingsDialogStore } from '@/store/settingsDialogStore';
 import type { AppMode } from '@/types';
 
 interface Props {
@@ -25,6 +34,7 @@ interface Props {
 export function SkillPicker({ mode, disabled }: Props) {
   const {
     skills,
+    enabled,
     loading,
     error,
     selected,
@@ -34,6 +44,13 @@ export function SkillPicker({ mode, disabled }: Props) {
   } = useSkillOptions(mode);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const openSettings = useSettingsDialogStore((s) => s.openSettings);
+
+  /** 「管理技能」：跳设置 → 技能分区（启用 / 停用 / 重新扫描） */
+  const handleOpenManage = () => {
+    setOpen(false);
+    openSettings('skills');
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -90,6 +107,31 @@ export function SkillPicker({ mode, disabled }: Props) {
         sideOffset={8}
         className="capability-menu"
       >
+        {/* 功能入口（对齐插件菜单）：管理技能 → 设置 → 技能分区 */}
+        <div className="capability-menu__actions">
+          <button
+            type="button"
+            className="capability-action"
+            onClick={handleOpenManage}
+            aria-label="管理技能"
+          >
+            <Settings2 size={16} className="capability-action__icon" aria-hidden="true" />
+            <span className="capability-action__label">管理技能</span>
+            <ArrowUpRight
+              size={14}
+              className="capability-action__arrow"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+
+        {/* 总开关关闭：管理动作会 409，先给出明确指引 */}
+        {enabled === false && (
+          <div className="capability-menu__notice" role="status">
+            技能子系统未启用：请管理员在「设置 → 技能」中开启（或配置 skills.enabled=true）。
+          </div>
+        )}
+
         <div className="capability-menu__list">
           {loading && (
             <div className="capability-menu__state">
@@ -115,7 +157,7 @@ export function SkillPicker({ mode, disabled }: Props) {
             <div className="capability-menu__state">
               {query.trim()
                 ? '未找到匹配的技能'
-                : '暂无可用技能。在 modu-agent 配置 skills.auto_discover_dirs 后重启服务即可接入。'}
+                : '暂无可用技能。管理员可在「设置 → 技能」中启用，或配置 skills.auto_discover_dirs。'}
             </div>
           )}
 
@@ -123,14 +165,30 @@ export function SkillPicker({ mode, disabled }: Props) {
             !error &&
             filtered.map((s) => {
               const checked = isSelected(s.name);
+              // 未激活（未加入 skills.active 白名单）的技能无法在会话中生效：
+              // 禁用勾选并给出「未启用」标签，避免「勾了却没生效」的错觉（U4）。
+              const selectable = s.active !== false;
               return (
                 <button
                   key={s.name}
                   type="button"
-                  className={`capability-item${checked ? ' is-selected' : ''}`}
-                  onClick={() => toggleSkill(s.name)}
+                  className={`capability-item${checked ? ' is-selected' : ''}${
+                    selectable ? '' : ' is-disabled'
+                  }`}
+                  onClick={() => {
+                    if (!selectable) return;
+                    toggleSkill(s.name);
+                  }}
+                  disabled={!selectable}
                   aria-pressed={checked}
-                  aria-label={s.name}
+                  aria-disabled={!selectable}
+                  aria-label={
+                    selectable ? s.name : `${s.name}（未启用，需管理员在设置中启用）`
+                  }
+                  title={
+                    `${s.name} v${s.version} · ${s.toolCount} 个工具` +
+                    (selectable ? '' : ' · 未启用')
+                  }
                 >
                   <span className="capability-item__icon">
                     <Sparkles size={16} />
@@ -138,15 +196,18 @@ export function SkillPicker({ mode, disabled }: Props) {
                   <span className="capability-item__main">
                     <span className="capability-item__name">
                       {s.name}
-                      {s.active && (
-                        <span className="capability-item__tag">已加载</span>
-                      )}
+                      <span className="capability-item__tag">
+                        {s.active ? '已加载' : '未启用'}
+                      </span>
                     </span>
                     {s.description && (
                       <span className="capability-item__desc">
                         {s.description}
                       </span>
                     )}
+                  </span>
+                  <span className="capability-item__meta" aria-hidden="true">
+                    {`v${s.version} · ${s.toolCount} 工具`}
                   </span>
                   <Check
                     size={15}
@@ -165,6 +226,11 @@ export function SkillPicker({ mode, disabled }: Props) {
             placeholder="搜索技能…"
             aria-label="搜索技能"
           />
+        </div>
+
+        {/* 语义说明：未勾选 = 服务端默认（全部已启用技能）；勾选 = 本轮仅用所选 */}
+        <div className="capability-menu__hint">
+          未勾选时使用全部已启用技能；勾选后仅使用所选技能。
         </div>
       </PopoverContent>
     </Popover>

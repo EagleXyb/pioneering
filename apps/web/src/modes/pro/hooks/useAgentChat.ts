@@ -34,6 +34,7 @@ import {
   type UserQuestionRequestPayload,
 } from '@pioneering/agent-protocol';
 import { bindAgentModeRuntime } from '../../../lib/agent-host';
+import { getSelectedSkills } from '../../../store/skillSelectionStore';
 
 // ========== 类型定义 ==========
 
@@ -584,6 +585,10 @@ export function useAgentChat(
       // 新一轮任务：清除用户折叠意图并先保持折叠，待步骤输出时再自动展开
       resetPipelineForSession(false);
 
+      // P0（选择→执行）：读取本轮勾选的技能。未选择时不发字段，
+      // 服务端按默认策略处理（与改造前行为一致）。
+      const skills = getSelectedSkills('pro');
+
       (async () => {
         try {
           setStatus('streaming');
@@ -596,6 +601,8 @@ export function useAgentChat(
               // default('react_agent')，契约见 packages/modu-agent/AGENTS.md:13。
               // 一旦后端默认值变更，缺失该字段会让 pro 静默装配成别的图拓扑。
               agentMode: 'react_agent',
+              // P0（选择→执行）：技能选择随请求透传
+              ...(skills.length > 0 ? { skills } : {}),
               // P0：模型透传；未选中/未加载时省略，由后端默认模型兜底
               ...(params.model ? { model: params.model } : {}),
               ...(params.editMessageId
@@ -666,6 +673,9 @@ export function useAgentChat(
       isResumeRunRef.current = true;
       setStatus('streaming');
 
+      // P0（选择→执行）：恢复时沿用同一技能选择，避免暂停/恢复之间工具集漂移
+      const skills = getSelectedSkills('pro');
+
       try {
         const response = await streamResume(
           {
@@ -675,6 +685,7 @@ export function useAgentChat(
             modifiedArgs: input.modifiedArgs ?? null,
             answer: input.answer ?? null,
             answerId: input.answerId ?? null,
+            ...(skills.length > 0 ? { skills } : {}),
           },
           controller.signal,
         );

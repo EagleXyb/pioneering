@@ -196,6 +196,37 @@ export function resolvePersistPlanPhase(
   return 'done'
 }
 
+/**
+ * 解析 resume 请求的技能选择（P0 选择→执行）。
+ *
+ * 优先级：
+ *   1. 请求体显式给出（含空数组 = 明确不使用）→ 原样采用；
+ *   2. 未给出（旧客户端 / 跨端恢复）→ 回读触发本轮的用户消息 `metadata.skills`；
+ *   3. 回读失败 / 无记录 → undefined（服务端默认）。
+ *
+ * 导出供单测覆盖（路由层难以轻量构造）。
+ */
+export async function resolveResumeSkills(
+  prisma: { chatMessage: { findFirst: (args: any) => Promise<any> } },
+  args: { sessionId: string; userId: string; requested?: string[] | null },
+): Promise<string[] | undefined> {
+  if (Array.isArray(args.requested)) {
+    return args.requested.map(String)
+  }
+  try {
+    const lastUser = await prisma.chatMessage.findFirst({
+      where: { sessionId: args.sessionId, userId: args.userId, role: 'user' },
+      orderBy: { createdAt: 'desc' },
+      select: { extraMetadata: true },
+    })
+    const meta = (lastUser?.extraMetadata as any) ?? {}
+    if (Array.isArray(meta.skills)) return meta.skills.map(String)
+  } catch {
+    // 回读失败不阻断恢复：回退服务端默认
+  }
+  return undefined
+}
+
 // 对应 Python: agent_completion 中的持久化逻辑
 // 流结束后持久化 assistant 消息 + 工具执行记录 + plan 步骤终态，并更新会话计数
 // P4: 新增 plan_steps 持久化（仅当本次产生过 plan 数据时），
@@ -482,6 +513,32 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             truncateAfter: dto.truncateAfter ?? true,
           })
           userMsg = { id: applied.id }
+
+          // P0（选择→执行）：编辑重发也要同步本轮技能选择，
+          // 否则 resume / 二次编辑会沿用旧值。保留其他 metadata 键。
+          try {
+            const cur = await fastify.prisma.chatMessage.findUnique({
+              where: { id: applied.id },
+              select: { extraMetadata: true },
+            })
+            const meta: Record<string, any> = { ...((cur?.extraMetadata as any) ?? {}) }
+            if (Array.isArray(dto.skills) && dto.skills.length > 0) {
+              meta.skills = dto.skills
+            } else {
+              delete meta.skills
+            }
+            await fastify.prisma.chatMessage.update({
+              where: { id: applied.id },
+              data: {
+                extraMetadata: Object.keys(meta).length > 0 ? meta : Prisma.JsonNull,
+              },
+            })
+          } catch (e: any) {
+            fastify.log.warn(
+              { err: e, messageId: applied.id },
+              '[agent.completions] 技能选择写入用户消息失败（不影响主流程）',
+            )
+          }
         } else {
           userMsg = await fastify.prisma.chatMessage.create({
             data: {
@@ -490,6 +547,11 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               userId,
               role: 'user',
               content: dto.message,
+              // P0（选择→执行）：把本轮技能选择随用户消息落库（免迁移），
+              // 供 resume 在客户端未携带 skills 时回读（跨端 / 旧客户端兜底）。
+              ...(Array.isArray(dto.skills) && dto.skills.length > 0
+                ? { extraMetadata: { skills: dto.skills } }
+                : {}),
             },
           })
 
@@ -596,6 +658,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               history,
               // P4: 透传 agentMode 以启用 Plan-Execute 图
               agentMode: dto.agentMode,
+              // P0（选择→执行）：本轮技能选择（省略 = 服务端默认）
+              skills: dto.skills,
               // T2.3：stopController 信号透传到上游
               signal: stopController.signal,
               // T5.5：复用 handler 层 runId（= traceId）
@@ -709,6 +773,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           history,
           // P4: 透传 agentMode 以启用 Plan-Execute 图
           agentMode: dto.agentMode,
+          // P0（选择→执行）：非流式路径同样透传技能选择
+          skills: dto.skills,
           // T5.5：复用 handler 层 runId
           runId,
         })) {
@@ -804,6 +870,12 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         // completions 暂停时已落库半截消息（metadata.paused=true）；resume 段正文
         // 追加到同一条，避免刷新前（内存一条）后（DB 两条）展示不一致。
         let continueMessageId: string | null = null
+        // P0（选择→执行）：恢复时的技能选择——请求体优先，缺失时回读用户消息（跨端兜底）
+        const resumeSkills = await resolveResumeSkills(fastify.prisma, {
+          sessionId: dto.sessionId,
+          userId,
+          requested: dto.skills,
+        })
         try {
           const pausedRun = await fastify.prisma.agentRun.findFirst({
             where: { sessionId: dto.sessionId, userId, status: 'paused' },
@@ -880,6 +952,8 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             // 澄清回答透传给 clarify 节点（kind='clarifying' | 'choice'）
             answer: dto.answer ?? undefined,
             answerId: dto.answerId ?? undefined,
+            // P0（选择→执行）：恢复时沿用同一技能选择，避免工具集漂移
+            skills: resumeSkills ?? undefined,
             signal: resumeStopController.signal,
             // 与 streamAgentCompletion 同构：resume 段正文经 ctx 回填后落库
             ctx,

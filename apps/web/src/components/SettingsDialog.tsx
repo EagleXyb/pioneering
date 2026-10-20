@@ -37,6 +37,7 @@ import {
   Phone,
   RefreshCw,
   Settings2,
+  Sparkles,
   Sun,
   UserRound,
   X,
@@ -66,6 +67,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { McpSection } from './more-menu/McpSection';
+import { SettingsSkillsSection } from './SettingsSkillsSection';
 import { CostSection } from './CostSection';
 import './SettingsDialog.css';
 
@@ -140,6 +142,12 @@ const SECTIONS: ReadonlyArray<{
   },
   { id: 'chat', label: '对话', subtitle: '对话交互的默认行为', icon: MessageSquare },
   { id: 'usage', label: '用量与成本', subtitle: '近 7 天模型调用统计（按目录单价估算）', icon: Coins },
+  {
+    id: 'skills',
+    label: '技能',
+    subtitle: '平台技能的启用状态（管理员）',
+    icon: Sparkles,
+  },
   {
     id: 'mcp',
     label: 'MCP',
@@ -565,6 +573,8 @@ export default function SettingsDialog({
               )}
 
               {active === 'usage' && <CostSection />}
+
+              {active === 'skills' && <SettingsSkillsSection />}
 
               {active === 'mcp' && <McpSection />}
 

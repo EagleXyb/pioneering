@@ -42,6 +42,8 @@ export class MetricsRegistry {
   private _tool_calls: any = null
   private _llm_token_usage: any = null
   private _tool_latency: any = null
+  // L4-4.2：技能调用计数（skill / tool / status 维度）
+  private _skill_invocations: any = null
 
   constructor(enabled?: boolean | null) {
     if (enabled === undefined || enabled === null) {
@@ -130,6 +132,13 @@ export class MetricsRegistry {
         name: 'modu_agent_token_usage_total',
         help: 'Total LLM token usage with provider/model/type dimensions',
         labelNames: ['provider', 'model', 'type'],
+        registers: [this._registry],
+      })
+      // L4-4.2：技能调用（技能归属可见，避免只能看到工具名）
+      this._skill_invocations = new Counter({
+        name: 'modu_agent_skill_invocations_total',
+        help: 'Total number of skill tool invocations with skill/tool/status dimensions',
+        labelNames: ['skill', 'tool', 'status'],
         registers: [this._registry],
       })
       logger.info('MetricsRegistry: metrics enabled')
@@ -261,6 +270,29 @@ export class MetricsRegistry {
       }
     } catch (e) {
       logger.debug('record_tool_call failed: %s', String(e))
+    }
+  }
+
+  /**
+   * 记录一次**技能**工具调用（L4-4.2）。
+   *
+   * 与 `record_tool_call` 并存：后者只有工具名，无法回答「哪个技能在烧钱 / 失败」。
+   * 未启用 metrics 时为无操作。
+   */
+  record_skill_invocation(
+    skill: string,
+    tool: string,
+    status: string = 'success',
+    duration?: number | null,
+  ): void {
+    if (!this.enabled) return
+    try {
+      this._skill_invocations?.labels({ skill, tool, status }).inc()
+      if (duration !== undefined && duration !== null) {
+        this._tool_latency?.labels({ tool_name: tool }).observe(duration)
+      }
+    } catch (e) {
+      logger.debug('record_skill_invocation failed: %s', String(e))
     }
   }
 

@@ -59,6 +59,11 @@ export interface AgentCompletionBody {
   messageId?: string;
   /** 编辑重发时是否截断目标消息之后的全部消息（省略时后端默认截断） */
   truncateAfter?: boolean;
+  /**
+   * 本轮启用的技能名（P0 选择→执行）。
+   * 省略 = 服务端默认策略；空数组 = 明确不使用技能。
+   */
+  skills?: string[];
 }
 
 /** 发起 Agent 生成（SSE）。响应已通过 ok 校验，调用方交给 parseAguiStream */
@@ -88,6 +93,8 @@ export interface AgentResumeBody {
   modifiedArgs?: Record<string, Record<string, unknown>> | null;
   answer?: string | null;
   answerId?: string | null;
+  /** 恢复时沿用首次请求的技能选择（省略 = 服务端默认） */
+  skills?: string[];
 }
 
 /** 恢复 HITL 暂停的 run（SSE），续写同一条 assistant 消息 */

@@ -28,6 +28,14 @@ import { EvolutionOrchestrator } from '../evolution/evolution-orchestrator.js'
 import { getMcpClient } from '../mcp/client.js'
 import { SkillLoader } from '../skills/loader.js'
 import { SkillPromptAggregator } from '../skills/prompt-aggregator.js'
+import {
+  EMPTY_SKILL_SELECTION,
+  collectSkillToolNames,
+  pruneSkillTools,
+  resolveSkillSelection,
+  shouldEnableProgressiveDisclosure,
+} from '../skills/selection.js'
+import { LoadSkillTool } from '../skills/load-skill-tool.js'
 // P1: Markdown 文档提示注入
 import { loadMarkdownDocs } from '../config/markdown-loader.js'
 import { MarkdownPromptAggregator, type MarkdownBudget } from '../config/markdown-prompt-aggregator.js'
@@ -39,7 +47,7 @@ import { MCPToolAdapter } from './adapters/mcp-tool-adapter.js'
 import { wrap_chat_model_as_modu } from './adapters/modu-llm-adapter.js'
 import { apply_llm_retry } from './adapters/retry.js'
 import { ChromaStore, InMemoryStoreAdapter } from './adapters/store-adapter.js'
-import { build_langchain_tools } from './adapters/tool-adapter.js'
+import { build_langchain_tools, wrap_modu_tool } from './adapters/tool-adapter.js'
 import { ModuGraph, buildModuGraph } from './graph.js'
 import { PassthroughLLMRouter, RuleBasedLLMRouter, type RouteTable } from '../reasoning/llm/router.js'
 // P0-1: 复杂度评估器
@@ -618,13 +626,32 @@ export async function create_agent(
 
   // P1: Skills 动态加载（默认关闭，gated by skills.enabled，零风险）
   // 单一集成点：在构建工具/图之前按配置发现并注册 Skill 及其内含工具。
-  if (runtimeConfig.get('skills.enabled', false)) {
+  const skillsEnabled = Boolean(runtimeConfig.get('skills.enabled', false))
+  if (skillsEnabled) {
     try {
       const loader = new SkillLoader(getRegistry(), runtimeConfig)
       await loader.loadFromConfig()
     } catch (e: any) {
       logger.warning('Skill loading failed, continuing without skills: %s', String(e))
     }
+  }
+
+  // P0（选择→执行）：把请求侧 skills 解析为「提示范围 + 工具白名单」。
+  // 未开启 skills / 未传 skills 时返回全 undefined —— 与改造前逐字符等价。
+  const skillSelection = skillsEnabled
+    ? resolveSkillSelection(getRegistry(), configurable['skills'], {
+        // L4-4.1：宿主可通过 configurable.scopes 注入调用方权限；
+        // 未提供（undefined）时不做 scope 校验，保持既有行为
+        scopes: Array.isArray(configurable['scopes'])
+          ? (configurable['scopes'] as unknown[]).map(String)
+          : undefined,
+      })
+    : EMPTY_SKILL_SELECTION
+  if (skillsEnabled && skillSelection.ignored.length > 0) {
+    logger.warning(
+      '[skills] ignored selection (not registered/unavailable): %s',
+      skillSelection.ignored.join(', '),
+    )
   }
 
   // LLM provider（支持运行时覆盖）
@@ -678,6 +705,59 @@ export async function create_agent(
 
   const toolNames = configurable['tools'] ?? null
   let tools = build_langchain_tools(null, toolNames, runtimeConfig)
+
+  // P0（选择→执行）：按技能选择裁剪工具集。
+  //   - 宿主显式给了 tools 白名单：取「白名单 ∪ 被选技能工具」后重建（保持白名单语义）；
+  //   - 宿主未给白名单（= 注册表全量）：从全量里剔除「未被选中的技能工具」，默认内置工具不受影响；
+  //   - skills 未传（toolNames === undefined）：完全不动（改造前行为）。
+  if (skillSelection.toolNames !== undefined) {
+    const hostAllow = Array.isArray(toolNames) && toolNames.length > 0 ? toolNames : null
+    if (hostAllow) {
+      const union = [...new Set([...hostAllow, ...skillSelection.toolNames])]
+      tools = build_langchain_tools(null, union, runtimeConfig)
+    } else {
+      const allSkillTools = collectSkillToolNames(getRegistry())
+      const allowed = new Set(skillSelection.toolNames)
+      const before = tools.length
+      tools = pruneSkillTools(tools as any, allSkillTools, allowed) as typeof tools
+      if (before !== tools.length) {
+        logger.info(
+          '[skills] tool set pruned by selection: %d → %d (selected=%s)',
+          before, tools.length, skillSelection.promptSkills?.join(',') || '(none)',
+        )
+      }
+    }
+  }
+
+  // P1-c（L2）：渐进式披露 —— 目录常驻 + `load_skill` 按需加载正文。
+  // 双重门控（skills.enabled + progressive_disclosure.enabled），默认关闭 → 行为等价改造前。
+  // 工具实例按图构建期创建、直接进工具列表（不入全局注册表），
+  // 避免不同选择共用同一实例导致白名单互相覆盖。
+  const progressiveSkills = skillSelection.promptSkills ?? []
+  if (
+    shouldEnableProgressiveDisclosure(
+      skillsEnabled,
+      Boolean(runtimeConfig.get('skills.progressive_disclosure.enabled', false)),
+      progressiveSkills,
+    )
+  ) {
+    try {
+      const loadSkill = new LoadSkillTool({
+        registry: getRegistry(),
+        allowed: progressiveSkills,
+        maxChars: Number(
+          runtimeConfig.get('skills.progressive_disclosure.load_max_chars', 6000),
+        ),
+      })
+      tools = [...tools, wrap_modu_tool(loadSkill, runtimeConfig)]
+      logger.info(
+        '[skills] load_skill registered (allowed=%s)',
+        progressiveSkills.join(','),
+      )
+    } catch (e: any) {
+      logger.warning('[skills] load_skill registration failed: %s', String(e))
+    }
+  }
 
   // T2-2（fail-closed）：高风险工具的审批保护此前**依赖运行时 HITL 开关**。
   // `human_review` 节点仅在 `tools.human_in_loop.enabled=true` 时挂载
@@ -793,10 +873,21 @@ export async function create_agent(
     renderPromptWithFallback('agent.default_system', {}, _DEFAULT_SYSTEM_PROMPT_TEMPLATE)
 
   // P1: 聚合已注册 Skill 的提示片段（gated by skills.enabled；无 Skill 时返回原提示）
-  if (runtimeConfig.get('skills.enabled', false)) {
+  // P0：only = 本轮被选中的技能；P1-c：catalogOnly = 只注入目录（默认关闭）。
+  if (skillsEnabled) {
     try {
       effectiveSystemPrompt = SkillPromptAggregator.aggregate(
-        effectiveSystemPrompt, getRegistry(),
+        effectiveSystemPrompt,
+        getRegistry(),
+        {
+          only: skillSelection.promptSkills,
+          catalogOnly: Boolean(
+            runtimeConfig.get('skills.progressive_disclosure.enabled', false),
+          ),
+          catalogMaxChars: Number(
+            runtimeConfig.get('skills.progressive_disclosure.catalog_max_chars', 2000),
+          ),
+        },
       )
     } catch (e: any) {
       logger.warning('Skill prompt aggregation failed, using base prompt: %s', String(e))

@@ -400,6 +400,24 @@ export const ModuAgentStateAnnotation = Annotation.Root({
    */
   output_truncated: Annotation<boolean>(_lw<boolean>(() => false)),
 
+  // === Skills（P1-c 渐进式披露）===
+  /**
+   * 保留字段：本会话已加载正文的技能名。
+   *
+   * 现状（2026-10-20 决策）：**未接线**。`load_skill` 的正文作为工具结果进入
+   * 消息历史，模型在后续轮次可直接看到；即使上下文压缩丢掉正文，也可再次调用
+   * `load_skill`（幂等）自愈。写入 state 需要工具返回 LangGraph `Command`，
+   * 而 `wrap_modu_tool` 统一把返回值序列化为字符串，属结构性改动，暂不做。
+   *
+   * 触发升级条件：出现「压缩后技能正文丢失导致重复加载 / 质量下降」的实测证据。
+   * 升级路径：旁路 wrap_modu_tool，让 load_skill 返回 Command；预算约 1.5 人日。
+   * 在此之前该字段应恒为空数组，不得据此做任何逻辑判断。
+   */
+  loaded_skills: Annotation<string[]>({
+    reducer: (prev, next) => [...new Set([...(prev ?? []), ...(next ?? [])])],
+    default: () => [],
+  }),
+
   // === Artifact 产物追踪（append reducer，toolResultProcessor 写入）===
   artifacts: Annotation<Array<Record<string, any>>>({
     reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
@@ -497,6 +515,8 @@ export function makeInitialState(
     pii_detected: false,
     knowledge: [],
     tool_results: [],
+    // 保留字段（未接线）：正文由消息历史承载，恒为空，勿据此判断
+    loaded_skills: [],
     iteration: 0,
     response: '',
     error_code: '',

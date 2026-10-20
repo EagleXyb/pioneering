@@ -18,6 +18,8 @@ import {
   AGUIEventType,
   setLLMConnectionResolver,
   getLLMConnectionResolver,
+  getSkillsRevision,
+  reset_runner_cache,
 } from '@pioneering/modu-agent'
 import { env } from '../config/env.js'
 import { llmGateway } from './llm-gateway.js'
@@ -27,16 +29,32 @@ const logger = {
   error: (msg: string, ...args: any[]) => console.error(`[agent-bridge] ${msg}`, ...args),
 }
 
-const GRAPH_CACHE_LIMIT = 8
+const GRAPH_CACHE_LIMIT = 16
 const _graphCache = new Map<string, any>()
+
+/**
+ * 归一化技能选择（P0 选择→执行）。
+ *
+ * - `undefined` / `null` → `undefined`：不声明选择，保持服务端默认（行为等价改造前）
+ * - 数组 → 去重 + 去空 + 排序后的新数组：空数组表示「明确不使用技能」
+ *
+ * 排序是为了让「同一组技能的任意顺序」命中同一张缓存图。
+ */
+export function normalizeSkills(input?: string[] | null): string[] | undefined {
+  if (input === undefined || input === null) return undefined
+  if (!Array.isArray(input)) return undefined
+  return [...new Set(input.map((s) => String(s ?? '').trim()).filter(Boolean))].sort()
+}
 
 /**
  * P5：按「构建期覆盖项」缓存已编译图。
  *
  * 背景：只要请求带 model / system_prompt / plan_execute 覆盖，原实现每次都走
  * `create_agent()`，重复执行工具注册、MCP 发现与 checkpointer 装配；同一会话
- * 连问 5 次就重建 5 次。这里按覆盖项做 LRU（上限 8），无覆盖时仍走进程级
+ * 连问 5 次就重建 5 次。这里按覆盖项做 LRU（上限 16），无覆盖时仍走进程级
  * `get_runner()` 缓存。
+ *
+ * P0：`skills` 必须参与 key —— 不同技能选择对应不同的工具集与 system prompt。
  */
 function graphCacheKey(configurable: Record<string, any>): string {
   return JSON.stringify({
@@ -44,7 +62,15 @@ function graphCacheKey(configurable: Record<string, any>): string {
     system_prompt: configurable.system_prompt ?? null,
     plan_execute: configurable.plan_execute_enabled ?? false,
     domain: configurable.domain ?? null,
+    skills: configurable.skills ?? null,
+    // L3-1.2：技能集合（增删技能 / 启停）变化时使旧图失效，实现「无需重启」
+    skills_revision: getSkillsRevision(),
   })
+}
+
+/** 测试辅助：导出缓存 key 计算（断言 skills 参与分片）。 */
+export function _graphCacheKeyForTest(configurable: Record<string, any>): string {
+  return graphCacheKey(configurable)
 }
 
 async function getCachedGraph(configurable: Record<string, any>): Promise<any> {
@@ -69,6 +95,22 @@ async function getCachedGraph(configurable: Record<string, any>): Promise<any> {
 /** 测试辅助：清空图缓存。 */
 export function _resetAgentGraphCacheForTest(): void {
   _graphCache.clear()
+}
+
+/**
+ * 管理面调用：技能集合变化（启用 / 停用 / 重扫）后使已编译图全部失效（L3-1.2）。
+ *
+ * 双保险：
+ *   1. `graphCacheKey` 已纳入 `skillsRevision` → 新的构建自然不复用旧键；
+ *   2. 清空 LRU 与 `get_runner()` 的进程级缓存 → 无覆盖请求（走 get_runner）也立即生效。
+ */
+export function invalidateAgentGraphCache(): void {
+  _graphCache.clear()
+  try {
+    reset_runner_cache()
+  } catch (e: any) {
+    logger.error('reset_runner_cache failed: %s', String(e?.message ?? e))
+  }
 }
 
 let _llmResolverRegistered = false
@@ -184,6 +226,11 @@ export interface StreamAgentCompletionOptions {
   history?: { role: string; content: string }[]
   // P4: 支持 per-request 切换 Plan-Execute 图
   agentMode?: 'react_agent' | 'plan_execute'
+  /**
+   * P0（选择→执行）：本轮启用的技能名。
+   * 省略 = 服务端默认策略；空数组 = 明确不使用技能。
+   */
+  skills?: string[] | null
   // T2.3：取消信号（透传至 LangGraph）
   signal?: AbortSignal | null
   // T5.5：显式 runId（= agent_runs.id / traceId）；省略时内部生成
@@ -210,7 +257,7 @@ export async function* streamAgentCompletion(
   // P2：确保内核使用宿主注入的连接解析器（不再自行读 env）
   ensureLLMConnectionResolver()
 
-  // 构建 configurable（支持 model / system_prompt / plan_execute_enabled 覆盖）
+  // 构建 configurable（支持 model / system_prompt / plan_execute_enabled / skills 覆盖）
   const configurable: Record<string, any> = {}
   if (model && model !== env.LLM_DEFAULT_MODEL) {
     configurable.model = model
@@ -220,6 +267,12 @@ export async function* streamAgentCompletion(
   }
   if (agentMode === 'plan_execute') {
     configurable.plan_execute_enabled = true
+  }
+  // P0（选择→执行）：只有显式传入时才进入 configurable，
+  // 保证「未传」与改造前完全一致（不触发图重建、不裁剪工具）。
+  const skills = normalizeSkills(opts.skills)
+  if (skills !== undefined) {
+    configurable.skills = skills
   }
 
   // T5.3：场景包已激活时按模式注入领域（供 PromptComposer 的 domain 层）。
@@ -349,6 +402,11 @@ export interface ResumeAgentOptions {
   answer?: string
   /** 需求澄清回答：多选选项 id（kind='choice'） */
   answerId?: string
+  /**
+   * P0（选择→执行）：恢复时沿用首次请求的技能选择。
+   * 省略 = 不裁剪（服务端默认）；提供则重建对应工具集的图。
+   */
+  skills?: string[] | null
   traceId?: string
   // T2.3：取消信号
   signal?: AbortSignal | null
@@ -415,18 +473,26 @@ export async function* streamAgentResume(
   // 修复：先经共享 checkpointer 探测中断状态判定模式，再选择对应 profile 的图。
   const probeGraph = await get_runner()
   const isPlanExecute = await _probePlanExecutePaused(probeGraph, sessionId)
+  // P0：恢复时沿用同一技能选择，否则暂停时可见的工具在恢复后可能缺失。
+  const resumeSkills = normalizeSkills(opts.skills)
   let graph = probeGraph
-  if (isPlanExecute) {
-    const configurable: Record<string, any> = { plan_execute_enabled: true }
-    // 与 streamAgentCompletion 一致：场景包已激活时注入领域 prompt（保持中断前后一致）
-    const domainName = MODE_DOMAIN['plan_execute']
-    if (domainName && getDomainAdapter(domainName) !== null) {
-      configurable.domain = domainName
+  if (isPlanExecute || resumeSkills !== undefined) {
+    const configurable: Record<string, any> = {}
+    if (isPlanExecute) {
+      configurable.plan_execute_enabled = true
+      // 与 streamAgentCompletion 一致：场景包已激活时注入领域 prompt（保持中断前后一致）
+      const domainName = MODE_DOMAIN['plan_execute']
+      if (domainName && getDomainAdapter(domainName) !== null) {
+        configurable.domain = domainName
+      }
     }
-    graph = await create_agent({ configurable })
+    if (resumeSkills !== undefined) {
+      configurable.skills = resumeSkills
+    }
+    graph = await getCachedGraph(configurable)
     logger.info(
-      'resume.plan_execute_graph session=%s (checkpoint plan_phase=executing)',
-      sessionId,
+      'resume.custom_graph session=%s plan_execute=%s skills=%s',
+      sessionId, isPlanExecute ? 'yes' : 'no', resumeSkills?.join(',') ?? '(default)',
     )
   }
 

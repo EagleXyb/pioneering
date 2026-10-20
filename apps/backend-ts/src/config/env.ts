@@ -46,6 +46,13 @@ const EnvSchema = z.object({
 
   LOG_DIR: z.string().default('./logs'),
 
+  // L3：技能管理面
+  // 管理员用户 id（逗号分隔）。为空时管理写接口一律 403（fail-closed），
+  // 避免「默认谁都能改技能白名单」。
+  ADMIN_USER_IDS: z.string().default(''),
+  // 技能启用状态持久化文件（文件系统实现，免 DB 迁移）
+  SKILLS_STATE_PATH: z.string().default('./data/skills.state.json'),
+
   DOC_WRITER_ROOT: z
     .string()
     .default(_defaultDocRoot)

@@ -276,6 +276,23 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 版本 / 工具数元信息（技能行专用）：常驻浅灰、不抢主信息 */
+.capability-item__meta {
+  flex: none;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* 未启用技能：禁用勾选并整体降级（对应「未启用」标签） */
+.capability-item.is-disabled {
+  opacity: 0.55;
+}
+.capability-item.is-disabled .capability-item__icon {
+  color: var(--text-tertiary);
+}
+
 .capability-item__check {
   flex: none;
   color: var(--accent-green);
@@ -331,4 +348,23 @@
 }
 .capability-menu__search input::placeholder {
   color: var(--text-tertiary);
+}
+
+/* 菜单提示条：技能子系统未启用时的指引（技能菜单专用） */
+.capability-menu__notice {
+  margin: 0 4px 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* 菜单脚注：解释「未勾选 = 全部」的默认语义（技能菜单专用） */
+.capability-menu__hint {
+  padding: 4px 10px 2px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.5;
 }

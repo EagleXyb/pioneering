@@ -19,6 +19,8 @@ build/
 # Logs
 logs/
 *.log
+# 本地构建/测试的 stderr 重定向临时文件（tsc-*.err / vitest-*.err / build-*.err）
+*.err
 
 # OS files
 .DS_Store

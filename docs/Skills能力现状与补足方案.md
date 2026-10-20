@@ -741,7 +741,16 @@ interface SkillSelectionState {
 ```
 
 - `useSkillOptions` 保留列表职责（fetch / cache / reload），**选中态改为读写 store**（`localStorage` 持久化逻辑迁移到 store，保持 key `skill-select:<mode>` 不变 → 用户既有选择不丢）；
-- `useAgentChat.startRun` / `usePlanExecuteChat.startRun` 在构造 body 时读取 `useSkillSelectionStore.getState().byMode[mode].selected`，写入 `skills`（**空数组也要发**，语义 = 明确不用技能；若产品希望"空 = 服务端默认"，则空时不发字段，需在 UI 空态文案上说明）。
+- 发送路径（`useAgentChat` / `usePlanExecuteChat`）构造 body 时经 `getSelectedSkills(mode)` 读取；**仅当选择非空时携带 `skills`**。
+
+**空选择的最终语义（2026-10-20 决策）**：
+
+| 状态 | 是否发 `skills` | 服务端行为 |
+|---|---|---|
+| 从未选择 / 已清空 | 不发 | 默认：全部已启用技能（`skills.active`） |
+| 勾选 ≥ 1 个 | 发数组 | 仅该子集 |
+
+职责分层：`skills.active` 是管理员决定的「可用集合」，会话勾选是用户决定的「本轮子集」——**默认全可用、勾选即收窄**。协议层仍保留 `[]` = 明确不使用（供未来「不使用技能」开关），当前 UI 不产生该值。菜单底部已加说明文案：「未勾选时使用全部已启用技能；勾选后仅使用所选技能。」
 
 **UI 同步修正（同批做，成本低）**：
 
@@ -753,11 +762,16 @@ interface SkillSelectionState {
 
 HITL 暂停后 `POST /agent/resume` 会用 `create_agent` 重建图（plan_execute 分支已如此）。若 resume 时没带同样的 `skills`，可能出现「暂停时有 `math` 工具、恢复后图里没有该工具」→ 中断点工具不可用 / unknown tool。
 
-处理：
+**已落地方案（2026-10-20）**：
 
-1. 在 `agent_runs` 的 metadata 或 `chat_messages.metadata` 中记录本轮 `skills`（现成字段，免迁移）；
-2. `streamAgentResume` 读取该记录并注入 `configurable.skills`（与既有 `_probePlanExecutePaused` 同一层处理）；
-3. 单测固化：暂停时 `skills:['math']` → resume 构建的图 `toolNames` 相同。
+1. 用户消息落库时把本轮选择写入 `chat_messages.metadata.skills`（`extraMetadata` → DB 列 `metadata`，**免迁移**）；编辑重发路径同样同步（保留其他 metadata 键，清空时删除 `skills` 键）。
+2. resume 端点新增 `resolveResumeSkills(prisma, { sessionId, userId, requested })`：
+   - 请求体显式给出（含 `[]`）→ 原样采用；
+   - 未给出（旧客户端 / 跨端恢复）→ 回读最近一条用户消息的 `metadata.skills`；
+   - 回读失败 / 无记录 → `undefined`（服务端默认）。
+3. 单测固化（`test/agent-skills-selection.test.ts`）：请求体优先、空数组不查库、回读命中、无记录降级、DB 异常不阻断。
+
+> 边界：`agent_runs.messageId` 指向的是 **assistant** 消息（续写定位用），不能作为技能选择载体，故选择存于用户消息。
 
 ### 7.6 兼容与降级清单
 
@@ -824,7 +838,9 @@ static aggregate(
 | `POST` | `/skills/:name/deactivate` | 移出白名单并 `unregisterSkill`；返回最新 `SkillBrief` |
 | `POST` | `/skills/reload` | 重新扫描目录（开发态用），返回 diff |
 
-鉴权：新增 `adminGuard`（`users.role` 若不存在则先补字段，或在 env 里配置 `ADMIN_USER_IDS` 白名单——**推荐后者，零迁移**）。
+鉴权（已落地）：新增 `adminGuard`（`apps/backend-ts/src/plugins/admin.ts`），读环境变量 `ADMIN_USER_IDS`（逗号分隔）；**未配置时一律 403（fail-closed）**，不为加角色字段而迁移 `users` 表。
+
+> 已实现（L3-1）：三个写接口按上表落地；持久化用 `SKILLS_STATE_PATH`（默认 `./data/skills.state.json`），启动时 `applyPersistedSkillState()` 用文件覆盖 `skills.active`；启用/停用后调用 `syncFromConfig()` + `invalidateAgentGraphCache()`，实现「无需重启」。
 
 **持久化策略（按风险从低到高）**：
 
@@ -886,6 +902,8 @@ skills/<name>/
 4. 纯提示型技能：若 `entry` 缺省但存在 `prompts/system.md`，由 loader 合成一个只实现 `systemPromptFragment()` 的 `DeclarativeSkill`（约 40 行），使非研发同学也能投放技能；
 5. 安全：目录必须在 `auto_discover_dirs` 白名单下（现状已隐式满足），追加 `path.resolve` 前缀校验与 `..` 过滤，防路径穿越。
 
+> 已实现（L3-2）：`SkillLoader` 读取并校验 `manifest.json`（非法即跳过，`GET /skills` 可见 `error`）；无 `skill.{js,ts}` 但有 `prompts/system.md` 时合成 `DeclarativeSkill`；`dependencies` 做存在性过滤；`isInsideDir()` 拦截 `..` 与解析到扫描根之外的目录；隐藏目录（`.snapshots`）不参与发现。
+
 ### 9.2 把 `MathSkill` 变成可达示例
 
 - 新增 `packages/modu-agent/skills/math/{manifest.json, skill.js}`（编译后投放）或直接在 `skills/index.ts` 导出 `MathSkill` 并提供「内置技能快照」入口；
@@ -937,6 +955,8 @@ skills/.state.json             # { "<name>": { "default_version": "1.2.0", "hash
 |---|---|---|
 | P1-b | 文件系统（`.snapshots` + `.state.json`） | 零迁移，单机即可验证完整版本/回滚语义 |
 | V2（多实例） | DB 表 `skill_versions(name, version, content_hash, manifest, created_at)` + 对象存储放内容 | 按仓库惯例「单独补表 + schema.prisma 追加」，不跑 `db push` |
+
+> 已实现（L3-2）的指针语义：`record.defaultVersion` 在 `pinned=false` 时随工作副本版本自动前移（正常升级）；`POST /skills/:name/rollback` 置 `pinned=true` 并指向目标版本，此后工作副本再改也不会自动覆盖，直到管理员再次显式切换。开关 `skills.versioning.enabled` 默认 true；关闭后只跳过指纹/快照，发现逻辑不变。
 
 ---
 
@@ -1195,6 +1215,62 @@ LangGraph 的工具集在**建图时固定**，无法在运行中动态加入。
 | P0 实测图重建耗时 > 300ms | 切方案 B（全量绑定 + 运行时守卫，见 6.3） | 组合枚举导致缓存命中率过低 |
 
 **排序变更规则**：任何重排必须同步更新 12.2.2 的"累计"列与 12.2.3 的切片人日；新增任务先判定级别（L1–L4）再插入，不允许"插队但不分级"。
+
+### 12.4 实施进度与偏差记录
+
+> 每个级别完成后均执行：目标单测 → 三端全量回归（web / modu-agent / backend-ts）→ 无新增失败方可进入下一级。
+
+**已完成**
+
+| 级别 | 范围 | 关键交付 | 回归结果 |
+|---|---|---|---|
+| **L1** | 0.1–0.7 | `selection.ts`（选择/裁剪/目录摘要）、`aggregate(only)`、factory 裁剪、请求 DTO + 图缓存键 + resume、前端 `skillSelectionStore`、可达 `math` 技能、`loaded_skills`/`catalogOnly` 插槽 | modu 1287 passed（7 既定 sqlite 失败）；backend 214 passed；web 580 passed |
+| **L2** | 3.1–3.4 | 目录注入（L1，预算 2000 字符）、`load_skill`（L2，预算 6000 字符，白名单 + fail-soft）、`shouldEnableProgressiveDisclosure` 门控、装配冒烟 | modu 1305 passed（7 既定）；backend 214 passed |
+| **L3-1** | 1.1–1.4 | `unregisterSkill` 连带工具回收（精确实例）、`syncFromConfig` + `skillsRevision` + 图缓存失效、`activate/deactivate/reload` API + 文件持久化 + `ADMIN_USER_IDS` 守卫、设置页技能分区（启停/重扫/提示） | 见本节末「L3-1 回归」 |
+| **L3-2** | 2.1–2.4 | manifest 校验 + 纯提示型技能（`DeclarativeSkill`）、路径逃逸防护、依赖存在性过滤、内容 sha256 + 快照 + 默认指针（`pinned` 回滚语义）、`GET /skills` 增 `contentHash/fromSnapshot/error/conflicts`、`POST /skills/:name/rollback` | 见本节末「L3-2 回归」 |
+| **L4** | 4.1–4.3 / 5.1–5.2 | `resolveSkillSelection` 支持 `scopes`（fail-closed，未提供则不校验）、`record_skill_invocation{skill,tool,status}` 指标、重启前后一致的审计日志（activate/deactivate/rollback/prune）、`BaseSkill.healthCheck()` 与 sync 前后置判定、`cleanupSnapshots()` + `POST /skills/prune` | 见本节末「L4 回归」 |
+
+**三项语义决策（2026-10-20，已落地）**
+
+| # | 决策 | 结论 |
+|---|---|---|
+| ① | 空选择语义 | 不发 `skills` = 服务端默认（全部已启用）；`[]` 保留为"明确不用"。菜单底部文案已说明 |
+| ② | `loaded_skills` | 不做状态接线（工具无法写图状态）；正文由消息历史承载，`load_skill` 可重放自愈。字段标注为保留、恒为空 |
+| ③ | resume 选择 | 落 `chat_messages.metadata.skills`（免迁移），resume 请求体优先、缺失回读；编辑重发同步更新 |
+
+**L3-1 回归**：`apps/backend-ts` 32 文件 / 235 passed；`apps/web` 587 passed；`packages/modu-agent` 1313 passed（7 项既有 sqlite 环境失败）。
+
+**L3-2 回归**：modu 新增 `versioning-declarative.test.ts` 13 例；backend 新增 rollback/conflicts 4 例；三端全量见本轮记录（web 未改动，沿用 587）。
+
+**L3-2 实现要点（回滚语义）**
+
+- 内容指纹：`sha256(排序后的相对路径 + 文件内容)`，同内容必同指纹；
+- 快照：`<base>/.snapshots/<name>/<version>+<hash8>/`，首次发现自动生成（`skills.versioning.enabled` 默认 true）；
+- 版本状态：`<base>/.state.json`，`{ name: { defaultVersion, versions, pinned } }`；
+- **正常升级**：工作副本版本变化且 `pinned=false` → 默认指针自动前移；
+- **显式回滚**：`POST /skills/:name/rollback` 置 `pinned=true` 并指向目标版本，`discover` 从快照加载（`fromSnapshot=true`），工作副本再怎么改都不会自动覆盖；
+- **同版本改内容**：记 `conflict`，默认指针不动，`GET /skills` 返回 `error="同版本内容变更（版本未递增）"`；
+- 工具名冲突：`GET /skills` 返回 `conflicts: [{skill, tool, existing}]`，让「静默跳过的工具」可见。
+
+**L4 回归**：modu `tests/skills` 8 文件 / 104 例（新增 scopes 5、healthCheck 2、快照回收 4）；backend 技能相关 3 文件 / 26 例（新增 prune 2）。三端全量见本节末。
+
+**L4 实现要点**
+
+- **权限 scope**：`resolveSkillSelection(registry, selected, { scopes })`。**未提供 `scopes` = 不校验**（向后兼容）；提供数组时技能 `requiredScopes()` 必须全部命中，否则忽略（fail-closed）。宿主经 `configurable.scopes` 注入，backend 暂未接入身份 scope。
+- **技能级指标**：`modu_agent_skill_invocations_total{skill,tool,status}`；`SkillToolWrapper` 记录耗时并复用工具延迟直方图。
+- **审计**：`[skills.audit] activate|deactivate|rollback|prune` 结构化日志（含操作者 id），随 `observability.logging.structured` 输出。
+- **健康检查**：`BaseSkill.healthCheck()`（默认 true，抛错按健康处理）；`syncFromConfig` 注册前判定，已注册但在白名单中的技能若健康检查失败会被移除。
+- **快照回收**：`cleanupSnapshots(baseDir, {keepLast=5, maxAgeDays=90, dryRun})`；**默认版本快照永不删除**；`POST /skills/prune`（管理员）按 `auto_discover_dirs` 逐个执行。
+
+**已知限制**
+
+1. 管理面持久化为**单机文件**（`data/skills.state.json`）——多实例部署下各实例状态不一致，需改为共享存储（DB 表）后再开放多副本。
+2. `ADMIN_USER_IDS` 为**环境变量白名单**，无角色概念；管理员变更需重启（配置在进程启动时解析）。
+3. `requiredScopes` 的 scope 来源尚未接入身份体系：backend 未传 `configurable.scopes`，因此**当前实际不生效**（内核能力已就绪，接入时无需改内核）。
+4. 启用技能后若 `setup()` 抛错，白名单已写入但注册失败 → 接口返回 500 并保留白名单，需「重新扫描」重试（fail-soft，但白名单与注册状态可能短暂不一致）。
+5. 回滚只影响**新装载**；已在内存中的旧图通过 `skillsRevision` 失效重建，但已运行中的会话不受影响。
+6. 快照回收需**管理员手动触发**（或外部定时任务调 `/skills/prune`），进程内未内置定时器。
+7. 技能仍在进程内 `import()` 执行，**无沙箱**；`requiredScopes` 只限制"能否加载"，不限制加载后代码的行为。
 
 ---
 
