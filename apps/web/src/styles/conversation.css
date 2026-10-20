@@ -494,6 +494,15 @@
   gap: 2px;
 }
 
+/* 助手消息 token 用量文本（本轮 run 的 prompt + completion 汇总，见 AgentRunData.usage） */
+.chat-action-tokens {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  user-select: text;
+}
+
 /* "N 篇来源"聚合入口（对齐主流 AI 搜索产品：favicon 叠放 + 文案） */
 .chat-sources-chip {
   margin-left: auto;

@@ -542,6 +542,79 @@ describe('AnalysisMessageList 用户消息气泡（与 chat / task 对齐）', (
     expect(container.querySelectorAll('[title]')).toHaveLength(0);
   });
 
+  it('助手操作栏包含重新生成按钮（警示 tooltip），点击回调携带消息 id', () => {
+    const onRegenerate = vi.fn();
+    render(
+      <AnalysisMessageList
+        status="complete"
+        messages={[
+          { id: 'u1', role: 'user' as const, content: [{ type: 'text' as const, data: '你好' }] },
+          {
+            id: 'a1',
+            role: 'assistant' as const,
+            status: 'complete',
+            content: [{ type: 'markdown' as const, data: '回复正文' }],
+          },
+        ]}
+        onRegenerate={onRegenerate}
+      />,
+    );
+
+    const btn = screen.getByRole('button', { name: '重新生成' });
+    expect(btn).toHaveAttribute(
+      'data-tooltip',
+      '点击将重新生成会话和产物，请谨慎操作',
+    );
+    fireEvent.click(btn);
+    expect(onRegenerate).toHaveBeenCalledWith('a1');
+  });
+
+  it('run 带 usage 时操作栏展示 token 用量，无 usage 时不展示', () => {
+    const run = {
+      id: 'run-1',
+      sessionId: 's1',
+      messageId: 'a1',
+      agentMode: 'react_agent',
+      status: 'completed',
+      traceId: 'run-1',
+      events: [],
+      usage: { promptTokens: 1200, completionTokens: 234 },
+      errorCode: null,
+      errorMessage: null,
+      startedAt: new Date(0).toISOString(),
+      endedAt: null,
+      durationMs: 100,
+    } as AgentRunData;
+    const messages = [
+      {
+        id: 'a1',
+        role: 'assistant' as const,
+        status: 'complete' as const,
+        content: [{ type: 'markdown' as const, data: '回复正文' }],
+      },
+    ];
+
+    const { container, rerender } = render(
+      <AnalysisMessageList
+        status="complete"
+        messages={messages}
+        runByMessage={new Map([['a1', run]])}
+      />,
+    );
+    expect(container.querySelector('.chat-action-tokens')).toHaveTextContent(
+      '1,434 tokens',
+    );
+
+    rerender(
+      <AnalysisMessageList
+        status="complete"
+        messages={messages}
+        runByMessage={new Map([['a1', { ...run, usage: null } as never]])}
+      />,
+    );
+    expect(container.querySelector('.chat-action-tokens')).toBeNull();
+  });
+
   it('editingMessageId 命中时进入编辑态并提交新文本', () => {
     const onSubmitEdit = vi.fn();
     render(

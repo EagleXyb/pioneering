@@ -14,6 +14,7 @@ import { UserMessageBubble } from '@/components/message/UserMessageBubble';
 import { ScrollToBottomButton } from '@/components/message/ScrollToBottomButton';
 import {
   ShareForwardIcon,
+  ReplayRotateIcon,
   type ActionIconProps,
 } from '@/components/icons/customIcons';
 import { EmptyStateGlyph } from '@/components/icons/emptyStateGlyph';
@@ -39,6 +40,8 @@ interface Props {
   onStartEdit?: (messageId: string) => void;
   onCancelEdit?: () => void;
   onSubmitEdit?: (messageId: string, nextText: string) => void | Promise<void>;
+  /** 重新生成：以指定助手消息为锚点重跑 agent（截断其后内容并重新产出） */
+  onRegenerate?: (messageId: string) => void;
 }
 
 /** 用户消息编辑相关的透传属性（TaskMessageList → TaskMessageItem） */
@@ -163,13 +166,14 @@ function TaskMessageItem({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
+  onRegenerate,
 }: {
   msg: ChatMessagesData;
   index: number;
   total: number;
   isLive: boolean;
   runByMessage?: ReadonlyMap<string, AgentRunData>;
-} & EditProps) {
+} & EditProps & Pick<Props, 'onRegenerate'>) {
   const text = getMessageText(msg);
 
   if (msg.role === 'user') {
@@ -212,6 +216,7 @@ function TaskMessageItem({
             msg={msg}
             text={text}
             runByMessage={runByMessage}
+            onRegenerate={onRegenerate}
           />
         )}
       </div>
@@ -219,15 +224,17 @@ function TaskMessageItem({
   );
 }
 
-/** 助手消息操作栏（copy/good/bad/share）+ 执行轨迹 */
+/** 助手消息操作栏（copy/good/bad/share/replay）+ token 用量 + 执行轨迹 */
 function TaskActions({
   msg,
   text,
   runByMessage,
+  onRegenerate,
 }: {
   msg: ChatMessagesData;
   text: string;
   runByMessage?: ReadonlyMap<string, AgentRunData>;
+  onRegenerate?: (messageId: string) => void;
 }) {
   // converter 下发的历史反馈（like/dislike）→ 评论状态
   const feedback = (msg as { feedback?: string }).feedback;
@@ -275,6 +282,8 @@ function TaskActions({
   const actions: ReadonlyArray<{
     key: string;
     label: string;
+    /** 悬停提示文案；缺省时与 label 相同 */
+    tooltip?: string;
     icon: ComponentType<ActionIconProps>;
     active?: boolean;
     onClick: () => void;
@@ -295,6 +304,13 @@ function TaskActions({
       onClick: () => toggleFeedback('bad'),
     },
     { key: 'share', label: '分享', icon: ShareForwardIcon, onClick: handleShare },
+    {
+      key: 'replay',
+      label: '重新生成',
+      tooltip: '点击将重新生成会话和产物，请谨慎操作',
+      icon: ReplayRotateIcon,
+      onClick: () => onRegenerate?.(msg.id),
+    },
   ];
 
   return (
@@ -312,7 +328,7 @@ function TaskActions({
               type="button"
               className={`chat-action-btn chat-tooltip${a.active ? ' is-active' : ''}`}
               aria-label={a.label}
-              data-tooltip={a.label}
+              data-tooltip={a.tooltip ?? a.label}
               aria-pressed={a.active ?? false}
               onClick={a.onClick}
             >
@@ -321,6 +337,12 @@ function TaskActions({
           );
         })}
       </span>
+      {/* 会话 token 用量（本轮 run 的 prompt + completion 汇总） */}
+      {run?.usage && (
+        <span className="chat-action-tokens">
+          {(run.usage.promptTokens + run.usage.completionTokens).toLocaleString('en-US')} tokens
+        </span>
+      )}
       {run && <RunTrace runId={run.id} initialRun={run} />}
     </div>
   );
@@ -337,6 +359,7 @@ export function TaskMessageList({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
+  onRegenerate,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -407,6 +430,7 @@ export function TaskMessageList({
             onStartEdit={onStartEdit}
             onCancelEdit={onCancelEdit}
             onSubmitEdit={onSubmitEdit}
+            onRegenerate={onRegenerate}
           />
         ))}
         {showTrailingTyping && (

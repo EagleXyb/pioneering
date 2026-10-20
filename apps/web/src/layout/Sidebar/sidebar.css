@@ -144,6 +144,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* 整体下移：与上方"对话/分析/任务"模式切换器拉开更大距离 */
+  margin-top: 24px;
 }
 
 .sidebar-action {
@@ -193,6 +195,11 @@
  * 标题行：「分组 ›」文字与箭头相邻（设计稿样式），+ 固定在最右侧。 */
 .sidebar-section {
   margin-bottom: 6px;
+}
+
+/* 分区之间留出更明显的呼吸间距（分组 ↔ 最近） */
+.sidebar-section + .sidebar-section {
+  margin-top: 12px;
 }
 
 .sidebar-section__head {

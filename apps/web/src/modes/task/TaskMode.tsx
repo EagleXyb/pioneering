@@ -18,6 +18,7 @@ import { useUserMessageEdit } from '@/hooks/useUserMessageEdit';
 import { getSelectedModelId } from '@/hooks/useModelOptions';
 import { Button } from '@/components/ui/button';
 import { useCallback, useEffect } from 'react';
+import { toast } from 'sonner';
 import './task.css';
 
 /**
@@ -77,6 +78,37 @@ export default function TaskMode() {
     submitEdit,
   } = useUserMessageEdit({ activeId, messages, status, onResend: handleResend });
 
+  /**
+   * 重新生成：定位触发该助手消息的用户消息，走"编辑重发"通道
+   * （messageId + truncateAfter 截断该消息之后的会话与产物并重跑 plan_execute agent）。
+   * 运行中/HITL 暂停/无对应用户消息时拒绝执行。
+   */
+  const handleRegenerate = useCallback(
+    (assistantMessageId: string) => {
+      if (status === 'streaming' || status === 'pending' || hitl) return;
+      const idx = messages.findIndex((m) => m.id === assistantMessageId);
+      if (idx < 0) return;
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        const m = messages[i]!;
+        if (m.role !== 'user') continue;
+        const prompt = m.content
+          .filter((c): c is { type: 'text'; data: string } => c.type === 'text')
+          .map((c) => c.data)
+          .join('\n')
+          .trim();
+        if (!prompt) break;
+        resendEditedMessage({
+          messageId: m.id,
+          prompt,
+          model: getSelectedModelId('task'),
+        });
+        return;
+      }
+      toast.info('未找到触发本轮回复的用户消息，无法重新生成');
+    },
+    [messages, status, hitl, resendEditedMessage],
+  );
+
   // 切换会话时清理 artifact 状态；并从后端恢复历史消息与 plan 时间轴快照
   // - temp_ 前缀的临时会话：仅 reset（后端尚未创建，无可恢复数据）
   // - 真实会话：调 loadHistory 拉取消息并装配 plan 终态（source='history'）
@@ -127,6 +159,7 @@ export default function TaskMode() {
             onStartEdit={startEdit}
             onCancelEdit={cancelEdit}
             onSubmitEdit={submitEdit}
+            onRegenerate={handleRegenerate}
           />
         )}
         <TaskInput

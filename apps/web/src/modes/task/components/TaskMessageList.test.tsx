@@ -334,4 +334,75 @@ describe('TaskMessageList', () => {
     fireEvent.click(screen.getByRole('button', { name: '回到底部' }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' });
   });
+
+  it('助手消息操作栏包含重新生成按钮（警示 tooltip），点击回调携带消息 id', () => {
+    const onRegenerate = vi.fn();
+    const messages = [
+      makeUserMessage('u1', 'hi'),
+      makeMessage({
+        id: 'a1',
+        role: 'assistant',
+        status: 'complete',
+        content: [{ type: 'markdown', data: '回复正文' }],
+      }),
+    ];
+    render(
+      <TaskMessageList
+        messages={messages}
+        status="idle"
+        onRegenerate={onRegenerate}
+      />,
+    );
+
+    const btn = screen.getByRole('button', { name: '重新生成' });
+    expect(btn).toHaveAttribute('data-tooltip', '点击将重新生成会话和产物，请谨慎操作');
+    fireEvent.click(btn);
+    expect(onRegenerate).toHaveBeenCalledWith('a1');
+  });
+
+  it('run 带 usage 时操作栏展示 token 用量，无 usage 时不展示', () => {
+    const run: AgentRunData = {
+      id: 'run-1',
+      sessionId: 's1',
+      messageId: 'a1',
+      agentMode: 'plan_execute',
+      status: 'completed',
+      traceId: 'run-1',
+      events: [],
+      usage: { promptTokens: 1200, completionTokens: 234 },
+      errorCode: null,
+      errorMessage: null,
+      startedAt: new Date(0).toISOString(),
+      endedAt: null,
+      durationMs: 100,
+    };
+    const messages = [
+      makeMessage({
+        id: 'a1',
+        role: 'assistant',
+        status: 'complete',
+        content: [{ type: 'markdown', data: '回复正文' }],
+      }),
+    ];
+
+    const { container, rerender } = render(
+      <TaskMessageList
+        messages={messages}
+        status="idle"
+        runByMessage={new Map([['a1', { ...run }]])}
+      />,
+    );
+    expect(container.querySelector('.chat-action-tokens')).toHaveTextContent(
+      '1,434 tokens',
+    );
+
+    rerender(
+      <TaskMessageList
+        messages={messages}
+        status="idle"
+        runByMessage={new Map([['a1', { ...run, usage: null }]])}
+      />,
+    );
+    expect(container.querySelector('.chat-action-tokens')).toBeNull();
+  });
 });

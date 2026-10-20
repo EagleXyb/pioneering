@@ -23,7 +23,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpRight,
-  Bell,
   Cable,
   CircleHelp,
   Coins,
@@ -35,7 +34,6 @@ import {
   MessageSquare,
   Monitor,
   Moon,
-  Palette,
   Phone,
   RefreshCw,
   Settings2,
@@ -127,34 +125,26 @@ const SECTIONS: ReadonlyArray<{
   dividerAfter?: boolean;
 }> = [
   {
+    id: 'account',
+    label: '账户',
+    subtitle: '个人资料、账号权益与隐私设置',
+    icon: UserRound,
+    dividerAfter: true,
+  },
+  {
     id: 'general',
     label: '通用',
     subtitle: '主题、语言与基础偏好',
     icon: Settings2,
     dividerAfter: true,
   },
-  { id: 'appearance', label: '外观', subtitle: '界面主题、密度与正文字号', icon: Palette },
-  { id: 'notification', label: '通知', subtitle: '新消息提醒方式', icon: Bell },
-  {
-    id: 'chat',
-    label: '对话',
-    subtitle: '对话交互的默认行为',
-    icon: MessageSquare,
-    dividerAfter: true,
-  },
+  { id: 'chat', label: '对话', subtitle: '对话交互的默认行为', icon: MessageSquare },
   { id: 'usage', label: '用量与成本', subtitle: '近 7 天模型调用统计（按目录单价估算）', icon: Coins },
   {
     id: 'mcp',
     label: 'MCP',
     subtitle: 'Model Context Protocol 服务连接状态',
     icon: Cable,
-    dividerAfter: true,
-  },
-  {
-    id: 'account',
-    label: '账户',
-    subtitle: '个人资料、账号权益与隐私设置',
-    icon: UserRound,
     dividerAfter: true,
   },
   {
@@ -300,10 +290,11 @@ export default function SettingsDialog({
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  // 弹框打开时定位到指定分区
+  // 弹框打开时定位到指定分区（未知分区如已合并的 appearance/notification 回退到通用）
   useEffect(() => {
     if (visible && initialSection) {
-      setActive(initialSection as SectionId);
+      const known = SECTIONS.some((s) => s.id === initialSection);
+      setActive((known ? initialSection : 'general') as SectionId);
     }
   }, [visible, initialSection]);
 
@@ -412,152 +403,130 @@ export default function SettingsDialog({
           <div className="settings-scroll-area">
             <div className="settings-scroll-inner">
               {active === 'general' && (
-                <section className="settings-group">
-                  <GroupHeader label="基础设置" />
-                  <SectionCard>
-                    <SettingRow
-                      title="主题"
-                      desc="选择界面主题（浅色 / 深色 / 跟随系统）"
-                      control={
-                        <Select
-                          value={theme}
-                          onValueChange={(v) => setTheme(v as ThemeMode)}
-                        >
-                          <SelectTrigger
-                            className="settings-select-trigger"
-                            aria-label="主题"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="light">亮色</SelectItem>
-                            <SelectItem value="dark">深色</SelectItem>
-                            <SelectItem value="system">跟随系统</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      }
-                    />
-                    <SettingRow
-                      title="语言"
-                      desc="多语言即将支持，当前仅提供简体中文界面"
-                      dev
-                      disabled
-                      control={
-                        <Select
-                          value={prefs.language}
-                          onValueChange={(v) =>
-                            update('language', v as Prefs['language'])
-                          }
-                          disabled
-                        >
-                          <SelectTrigger
-                            className="settings-select-trigger"
-                            aria-label="语言"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="zh-CN">简体中文</SelectItem>
-                            <SelectItem value="en-US">English</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      }
-                    />
-                  </SectionCard>
-                </section>
-              )}
-
-              {active === 'appearance' && (
-                <section className="settings-group">
-                  <GroupHeader label="外观" />
-                  <SectionCard>
-                    <SettingRow
-                      title="主题"
-                      desc="切换浅色或深色外观"
-                      control={
-                        <Segmented<ThemeMode>
-                          label="主题"
-                          value={theme}
-                          onChange={(v) => setTheme(v)}
-                          options={[
-                            { value: 'light', label: '浅色', icon: Sun },
-                            { value: 'dark', label: '深色', icon: Moon },
-                            { value: 'system', label: '跟随系统', icon: Monitor },
-                          ]}
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="界面密度"
-                      desc="紧凑模式可让信息更密集"
-                      control={
-                        <Segmented<Density>
-                          label="界面密度"
-                          value={prefs.density}
-                          onChange={(v) => update('density', v)}
-                          options={[
-                            { value: 'comfortable', label: '舒适' },
-                            { value: 'compact', label: '紧凑' },
-                          ]}
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="正文字号"
-                      desc={`当前 ${prefs.fontSize}px，界面与对话区随档位同比例缩放`}
-                      control={
-                        <div className="w-[200px]">
-                          <Slider
-                            value={[prefs.fontSize]}
-                            min={12}
-                            max={18}
-                            step={1}
-                            onValueChange={([v]) => update('fontSize', v)}
-                            aria-label="正文字号"
+                <>
+                  {/* 原独立「外观」分区并入通用（侧栏不再单列） */}
+                  <section className="settings-group">
+                    <GroupHeader label="外观" />
+                    <SectionCard>
+                      <SettingRow
+                        title="主题"
+                        desc="切换浅色或深色外观"
+                        control={
+                          <Segmented<ThemeMode>
+                            label="主题"
+                            value={theme}
+                            onChange={(v) => setTheme(v)}
+                            options={[
+                              { value: 'light', label: '浅色', icon: Sun },
+                              { value: 'dark', label: '深色', icon: Moon },
+                              { value: 'system', label: '跟随系统', icon: Monitor },
+                            ]}
                           />
-                        </div>
-                      }
-                    />
-                  </SectionCard>
-                </section>
-              )}
+                        }
+                      />
+                      <SettingRow
+                        title="界面密度"
+                        desc="紧凑模式可让信息更密集"
+                        control={
+                          <Segmented<Density>
+                            label="界面密度"
+                            value={prefs.density}
+                            onChange={(v) => update('density', v)}
+                            options={[
+                              { value: 'comfortable', label: '舒适' },
+                              { value: 'compact', label: '紧凑' },
+                            ]}
+                          />
+                        }
+                      />
+                      <SettingRow
+                        title="正文字号"
+                        desc={`当前 ${prefs.fontSize}px，界面与对话区随档位同比例缩放`}
+                        control={
+                          <div className="w-[200px]">
+                            <Slider
+                              value={[prefs.fontSize]}
+                              min={12}
+                              max={18}
+                              step={1}
+                              onValueChange={([v]) => update('fontSize', v)}
+                              aria-label="正文字号"
+                            />
+                          </div>
+                        }
+                      />
+                    </SectionCard>
+                  </section>
 
-              {active === 'notification' && (
-                <section className="settings-group">
-                  <GroupHeader label="通知" />
-                  <SectionCard>
-                    <SettingRow
-                      title="桌面通知"
-                      desc="收到新消息时在系统通知中心弹出"
-                      dev
-                      disabled
-                      control={
-                        <Switch
-                          className="settings-switch"
-                          checked={prefs.notifDesktop}
-                          onCheckedChange={(v) => update('notifDesktop', v)}
-                          disabled
-                          aria-label="桌面通知"
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="提示音"
-                      desc="新消息到达时播放提示音"
-                      dev
-                      disabled
-                      control={
-                        <Switch
-                          className="settings-switch"
-                          checked={prefs.notifSound}
-                          onCheckedChange={(v) => update('notifSound', v)}
-                          disabled
-                          aria-label="提示音"
-                        />
-                      }
-                    />
-                  </SectionCard>
-                </section>
+                  <section className="settings-group">
+                    <GroupHeader label="基础设置" />
+                    <SectionCard>
+                      <SettingRow
+                        title="语言"
+                        desc="多语言即将支持，当前仅提供简体中文界面"
+                        dev
+                        disabled
+                        control={
+                          <Select
+                            value={prefs.language}
+                            onValueChange={(v) =>
+                              update('language', v as Prefs['language'])
+                            }
+                            disabled
+                          >
+                            <SelectTrigger
+                              className="settings-select-trigger"
+                              aria-label="语言"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="zh-CN">简体中文</SelectItem>
+                              <SelectItem value="en-US">English</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        }
+                      />
+                    </SectionCard>
+                  </section>
+
+                  {/* 原独立「通知」分区并入通用（侧栏不再单列） */}
+                  <section className="settings-group">
+                    <GroupHeader label="通知" />
+                    <SectionCard>
+                      <SettingRow
+                        title="桌面通知"
+                        desc="收到新消息时在系统通知中心弹出"
+                        dev
+                        disabled
+                        control={
+                          <Switch
+                            className="settings-switch"
+                            checked={prefs.notifDesktop}
+                            onCheckedChange={(v) => update('notifDesktop', v)}
+                            disabled
+                            aria-label="桌面通知"
+                          />
+                        }
+                      />
+                      <SettingRow
+                        title="提示音"
+                        desc="新消息到达时播放提示音"
+                        dev
+                        disabled
+                        control={
+                          <Switch
+                            className="settings-switch"
+                            checked={prefs.notifSound}
+                            onCheckedChange={(v) => update('notifSound', v)}
+                            disabled
+                            aria-label="提示音"
+                          />
+                        }
+                      />
+                    </SectionCard>
+                  </section>
+                </>
               )}
 
               {active === 'chat' && (

@@ -39,6 +39,8 @@ vi.mock('@/store/themeContext', () => ({
 
 import { Sidebar } from './Sidebar';
 import { useSidebarGroupsStore } from '@/store/sidebarGroupsStore';
+import { useConversationStore } from '@/store/conversationStore';
+import * as sessionApi from '@/api/session';
 
 const sessionFixtures = [
   {
@@ -99,6 +101,18 @@ beforeEach(() => {
     groupsCollapsed: false,
     groupCollapsed: {},
   });
+  // 会话 store 也需重置，避免上一个用例留下的 activeId 影响选中态断言
+  useConversationStore.setState({
+    conversations: [],
+    activeId: null,
+    sessionModes: {},
+    loading: false,
+    error: null,
+    total: 0,
+    nextCursor: null,
+    hasMore: false,
+    archivedView: false,
+  });
 });
 
 describe('Sidebar 顶部入口', () => {
@@ -121,16 +135,51 @@ describe('Sidebar 顶部入口', () => {
     expect(screen.queryByText('AI 创作')).toBeNull();
   });
 
-  it('对话模式下「新建会话」带选中底色，「插件 · 技能」没有', async () => {
+  it('未选中会话时高亮「新建会话」，选中会话后高亮只落在列表行', async () => {
     await renderSidebar('/chat');
 
     const newChat = screen.getByRole('button', { name: '新建会话' });
     const plugins = screen.getByRole('button', { name: '插件 · 技能' });
 
+    // 尚未选中任何会话 → 入口高亮
     expect(newChat.className).toContain('is-active');
     expect(newChat).toHaveAttribute('aria-current', 'page');
+
+    // 选中一条历史会话：入口取消高亮，只有列表行高亮
+    const row = screen.getByTitle('会话一');
+    fireEvent.click(row);
+    expect(row.className).toContain('active');
+    expect(newChat.className).not.toContain('is-active');
+    expect(newChat).not.toHaveAttribute('aria-current');
     expect(plugins.className).not.toContain('is-active');
-    expect(plugins).not.toHaveAttribute('aria-current');
+  });
+
+  it('新建会话后不会与入口形成双高亮，并自动展开被折叠的「最近」分区', async () => {
+    vi.mocked(sessionApi.createSession).mockResolvedValue({
+      id: 'new1',
+      title: '新会话',
+      model: 'fast',
+      messageCount: 0,
+      agentMode: null,
+      createdAt: '2026-10-20T09:00:00.000Z',
+      updatedAt: '2026-10-20T09:00:00.000Z',
+      isArchived: false,
+    });
+    useSidebarGroupsStore.setState({ recentCollapsed: true });
+
+    await renderSidebar('/chat');
+    const newChat = screen.getByRole('button', { name: '新建会话' });
+
+    await act(async () => {
+      fireEvent.click(newChat);
+      await Promise.resolve();
+    });
+
+    // 高亮只落在新建出来的会话行上，入口不再高亮（避免双选中）
+    const row = screen.getByTitle('新会话');
+    expect(row.className).toContain('active');
+    expect(newChat.className).not.toContain('is-active');
+    expect(useSidebarGroupsStore.getState().recentCollapsed).toBe(false);
   });
 
   it('插件页下「插件 · 技能」带选中底色，「新建会话」没有', async () => {
@@ -227,17 +276,25 @@ describe('Sidebar 分组区', () => {
     ).toBeInTheDocument();
   });
 
-  it('分组超过 3 个时收起为「更多分组」，点击后全部展示', async () => {
+  it('分组超过 3 个时收起为「更多分组」，展开后可「收起分组」复原', async () => {
     const g = useSidebarGroupsStore.getState();
     ['一', '二', '三', '四', '五'].forEach((n) => g.createGroup(n));
     await renderSidebar();
 
     expect(document.querySelectorAll('.sidebar-group')).toHaveLength(3);
-    const more = screen.getByRole('button', { name: '更多分组' });
+    expect(screen.queryByRole('button', { name: '收起分组' })).toBeNull();
 
-    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('button', { name: '更多分组' }));
     expect(document.querySelectorAll('.sidebar-group')).toHaveLength(5);
     expect(screen.queryByRole('button', { name: '更多分组' })).toBeNull();
+
+    // 展开后出现「收起分组」，点击后回到只显示前 3 个
+    fireEvent.click(screen.getByRole('button', { name: '收起分组' }));
+    expect(document.querySelectorAll('.sidebar-group')).toHaveLength(3);
+    expect(
+      screen.getByRole('button', { name: '更多分组' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '收起分组' })).toBeNull();
   });
 
   it('折叠箭头紧邻标题文字，点击标题可收起/展开', async () => {

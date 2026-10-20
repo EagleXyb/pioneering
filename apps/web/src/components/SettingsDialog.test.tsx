@@ -83,24 +83,27 @@ beforeEach(() => {
 });
 
 describe('SettingsDialog', () => {
-  it('默认渲染「通用」分区与基础设置卡片', async () => {
+  it('默认渲染「通用」分区（外观并入通用）', async () => {
     await renderDialog();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     // 标题与侧栏同名，取全部匹配
     expect(screen.getAllByText('通用').length).toBeGreaterThan(0);
+    // 外观组（原独立分区并入）与基础设置组同页渲染
+    expect(screen.getByText('外观')).toBeInTheDocument();
     expect(screen.getByText('基础设置')).toBeInTheDocument();
-    // 未接通项打「开发中」徽标
-    expect(screen.getByText('开发中')).toBeInTheDocument();
-    // 主题下拉展示当前值
-    expect(screen.getByRole('combobox', { name: '主题' })).toHaveTextContent('亮色');
+    // 主题分段器展示当前值，密度与字号行存在
+    expect(screen.getByRole('radiogroup', { name: '主题' })).toBeInTheDocument();
+    expect(screen.getByText('界面密度')).toBeInTheDocument();
+    expect(screen.getByText(/当前 16px/)).toBeInTheDocument();
+    // 通知组（原独立分区并入）同页渲染
+    expect(screen.getByText('桌面通知')).toBeInTheDocument();
+    expect(screen.getByText('提示音')).toBeInTheDocument();
+    // 未接通项打「开发中」徽标（语言 / 桌面通知 / 提示音等多处）
+    expect(screen.getAllByText('开发中').length).toBeGreaterThan(0);
   });
 
   it('侧栏点击切换分区并渲染对应内容', async () => {
     await renderDialog();
-    fireEvent.click(screen.getByRole('button', { name: '外观' }));
-    expect(screen.getByText('界面密度')).toBeInTheDocument();
-    expect(screen.getByText(/当前 16px/)).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole('button', { name: '关于' }));
     // 版本号来自异步 getHealth，用 findBy 等待Promise 落定
     expect(await screen.findByText(/v9\.9\.9/)).toBeInTheDocument();

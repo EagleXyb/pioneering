@@ -10,7 +10,7 @@ import { create } from 'zustand';
 interface SettingsDialogState {
   /** 对话框是否可见 */
   open: boolean;
-  /** 打开时定位的分区 id（general / appearance / notification / chat / usage / mcp / account / data / help / about） */
+  /** 打开时定位的分区 id（general / chat / usage / mcp / account / data / help / about；外观、通知已并入 general） */
   section: string;
   /** 打开设置并定位分区（缺省 general） */
   openSettings: (section?: string) => void;

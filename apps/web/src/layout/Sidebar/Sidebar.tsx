@@ -18,18 +18,17 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bookmark,
   ChevronRight,
-  CirclePlus,
+  ChevronUp,
   Ellipsis,
   Folder,
   FolderPlus,
   PanelLeft,
   PanelRight,
-  Pencil,
+  PencilLine,
+  Pickaxe,
   Pin,
   Plus,
-  Puzzle,
   SquarePen,
   Trash2,
 } from 'lucide-react';
@@ -174,12 +173,21 @@ export function Sidebar() {
     }
     try {
       await create(mode);
+      // 新会话落在「最近」分区，若该分区被折叠则自动展开，保证用户能看到新建结果
+      if (recentCollapsed) setRecentCollapsed(false);
       navigate(`/${mode}`);
       toast.info('已创建新会话');
     } catch {
       toast.info('创建会话失败');
     }
-  }, [create, mode, navigate, isActiveConversationNew]);
+  }, [
+    create,
+    mode,
+    navigate,
+    isActiveConversationNew,
+    recentCollapsed,
+    setRecentCollapsed,
+  ]);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
@@ -248,13 +256,25 @@ export function Sidebar() {
         await create(mode);
         const state = useConversationStore.getState();
         if (state.activeId) assign(state.activeId, group.id);
+        // 保证新会话在侧边栏可见：展开分组区与该分组本身
+        if (groupsCollapsed) setGroupsCollapsed(false);
+        if (groupCollapsed[group.id]) toggleGroupCollapsed(group.id);
         navigate(`/${mode}`);
         toast.success(`已在「${group.name}」中新建会话`);
       } catch {
         toast.error('创建会话失败');
       }
     },
-    [assign, create, mode, navigate],
+    [
+      assign,
+      create,
+      mode,
+      navigate,
+      groupsCollapsed,
+      setGroupsCollapsed,
+      groupCollapsed,
+      toggleGroupCollapsed,
+    ],
   );
 
   /** 把会话移动到分组（groupId=null 表示移出分组，回到「最近」） */
@@ -300,6 +320,15 @@ export function Sidebar() {
     ? sortedGroups
     : sortedGroups.slice(0, GROUP_PREVIEW_LIMIT);
   const hasMoreGroups = sortedGroups.length > visibleGroups.length;
+  /** 已展开全部分组且确实存在被折叠的分组时，显示「收起分组」 */
+  const canCollapseGroups =
+    showAllGroups && sortedGroups.length > GROUP_PREVIEW_LIMIT;
+
+  /**
+   * 「新建会话」入口的选中态：仅在「尚未选中任何会话」时高亮。
+   * 选中会话后高亮只落在列表行上，避免入口与会话行同时高亮（双选中）。
+   */
+  const isNewConversationView = !activeId;
 
   /** 恢复归档会话（将 isArchived 置 false） */
   const handleRestore = useCallback(
@@ -427,9 +456,13 @@ export function Sidebar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className={`sidebar-action${isChatRoute ? ' is-active' : ''}`}
+                  className={`sidebar-action${
+                    isChatRoute && isNewConversationView ? ' is-active' : ''
+                  }`}
                   onClick={handleNewConversation}
-                  aria-current={isChatRoute ? 'page' : undefined}
+                  aria-current={
+                    isChatRoute && isNewConversationView ? 'page' : undefined
+                  }
                 >
                   <SquarePen size={14} />
                   <span>新建会话</span>
@@ -445,7 +478,7 @@ export function Sidebar() {
                   onClick={() => navigate('/plugins')}
                   aria-current={isPluginsRoute ? 'page' : undefined}
                 >
-                  <Puzzle size={14} />
+                  <Pickaxe size={14} />
                   <span>插件 · 技能</span>
                 </button>
               </TooltipTrigger>
@@ -562,7 +595,7 @@ export function Sidebar() {
                                   setGroupDialog({ mode: 'rename', group })
                                 }
                               >
-                                <Pencil />
+                                <PencilLine />
                                 重命名
                               </DropdownMenuItem>
                               <DropdownMenuItem
@@ -597,7 +630,7 @@ export function Sidebar() {
                             aria-label={`在「${group.name}」中新建会话`}
                             title="在此分组中新建会话"
                           >
-                            <CirclePlus size={14} />
+                            <SquarePen size={14} />
                           </button>
 
                           {/* 置顶书签常驻，位置固定在最右侧 */}
@@ -607,7 +640,7 @@ export function Sidebar() {
                               aria-label="已置顶"
                               title="已置顶"
                             >
-                              <Bookmark size={13} />
+                              <Pin size={13} />
                             </span>
                           )}
                         </div>
@@ -617,7 +650,7 @@ export function Sidebar() {
                   );
                 })}
 
-                {/* 分组过多时收起，点击展开全部 */}
+                {/* 分组过多时收起，点击展开全部；展开后同一位置变为「收起分组」 */}
                 {hasMoreGroups && (
                   <button
                     className="sidebar-group__more"
@@ -625,6 +658,15 @@ export function Sidebar() {
                   >
                     <Ellipsis size={14} />
                     更多分组
+                  </button>
+                )}
+                {canCollapseGroups && (
+                  <button
+                    className="sidebar-group__more"
+                    onClick={() => setShowAllGroups(false)}
+                  >
+                    <ChevronUp size={14} />
+                    收起分组
                   </button>
                 )}
               </>
