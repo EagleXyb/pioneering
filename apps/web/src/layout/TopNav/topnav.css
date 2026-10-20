@@ -38,69 +38,9 @@
   border-color: var(--border-light);
 }
 
-.btn-sidebar-toggle {
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .btn-sidebar-toggle {
-    display: flex;
-  }
-}
-
-/* Desktop: expand button visible when sidebar is collapsed */
-.btn-sidebar-expand {
-  display: none;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-  animation: expand-btn-enter 0.25s ease;
-}
-
-@media (min-width: 769px) {
-  .btn-sidebar-expand {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
-.btn-sidebar-expand:hover {
-  background: var(--bg-sidebar-hover);
-  color: var(--text-primary);
-}
-
-.btn-sidebar-expand svg {
-  width: 18px;
-  height: 18px;
-  color: #9AA0AB;
-}
-
-@keyframes expand-btn-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.btn-sidebar-toggle:hover {
-  background: var(--bg-sidebar-hover);
-  color: var(--text-primary);
-}
-
-.btn-sidebar-toggle svg {
-  width: 20px;
-  height: 20px;
-}
+/* 侧边栏折叠/展开按钮（.btn-sidebar-toggle / .btn-sidebar-expand）已迁至
+   layout/Sidebar/navButtons.css，由 Sidebar/NavButtons 组件统一承载，
+   顶栏与插件页头共用。 */
 
 .nav-spacer {
   flex: 1;

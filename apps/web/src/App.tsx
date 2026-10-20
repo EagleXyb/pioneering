@@ -18,6 +18,8 @@ const RegisterPage = lazy(() => import('./pages/auth/Register'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPassword'));
 const HelpPage = lazy(() => import('./pages/Help/HelpPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFound'));
+// 插件 · 技能市场页（侧边栏「插件 · 技能」入口）
+const PluginsPage = lazy(() => import('./pages/Plugins/PluginsPage'));
 // 全局设置对话框：由 store 控制显隐（账号弹层 / 插件菜单「管理插件」共用同一实例）
 const SettingsDialog = lazy(() => import('./components/SettingsDialog'));
 
@@ -30,8 +32,11 @@ function AppLayout() {
   const location = useLocation();
   // 仅 /task 路由使用 shadcn/ui 实现的 TaskTopBar；
   // /pro 路由不使用全局 TopNav——其顶部栏由中间栏自身头部承载，与右侧面板同级
+  // /plugins 路由同理：页面自带顶栏（页签 + 搜索 + 管理/添加），
+  //   再叠加全局 TopNav 会形成一条 56px 的空白带，故不渲染
   const isTaskRoute = location.pathname.startsWith('/task');
   const isProRoute = location.pathname.startsWith('/pro');
+  const isPluginsRoute = location.pathname.startsWith('/plugins');
   // 参考来源右侧栏仅在 /chat 下作为应用级第三列出现（结构对齐任务模式：
   // 与主列等高，标题栏置顶，TopNav 只横跨中间对话列，不压在面板上方）
   const isChatRoute = location.pathname.startsWith('/chat');
@@ -53,7 +58,7 @@ function AppLayout() {
           <Sidebar />
           <div className="main-area">
             <div className="main-col">
-              {!isTaskRoute && !isProRoute && <TopNav />}
+              {!isTaskRoute && !isProRoute && !isPluginsRoute && <TopNav />}
               <div className="main-content">
                 <Suspense fallback={<ModeFallback />}>
                   <Outlet />
@@ -110,6 +115,7 @@ export default function App() {
             <Route path="/chat" element={<ChatMode />} />
             <Route path="/pro" element={<ProMode />} />
             <Route path="/task" element={<TaskMode />} />
+            <Route path="/plugins" element={<PluginsPage />} />
           </Route>
 
           {/* 404 — 未匹配路径展示 NotFound 页面 */}

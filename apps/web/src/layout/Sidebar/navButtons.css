@@ -1,0 +1,67 @@
+/* ===== 侧边栏折叠/展开按钮 =====
+ * 原位于 topnav.css，抽到 Sidebar/NavButtons.css 后由顶栏与插件页头共用。 */
+
+/* 窄屏：顶栏左侧的汉堡按钮（默认隐藏，≤768px 显示） */
+.btn-sidebar-toggle {
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .btn-sidebar-toggle {
+    display: flex;
+  }
+}
+
+.btn-sidebar-toggle:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+.btn-sidebar-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* 桌面端：侧边栏折叠后的展开入口（仅在折叠态渲染） */
+.btn-sidebar-expand {
+  display: none;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  animation: expand-btn-enter 0.25s ease;
+}
+
+@media (min-width: 769px) {
+  .btn-sidebar-expand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.btn-sidebar-expand:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+.btn-sidebar-expand svg {
+  width: 18px;
+  height: 18px;
+  color: #9aa0ab;
+}
+
+@keyframes expand-btn-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

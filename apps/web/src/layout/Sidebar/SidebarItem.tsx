@@ -9,7 +9,11 @@ import { useState, useRef, useEffect } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   Archive,
+  Check,
+  CornerUpLeft,
   Ellipsis,
+  Folder,
+  FolderInput,
   MessageSquare,
   Pencil,
   Pin,
@@ -23,10 +27,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MODE_ICONS } from '@/components/icons/modeIcons';
 import type { Conversation } from '../../store/conversationStore';
+import type { SidebarGroup } from '../../store/sidebarGroupsStore';
 
 interface SidebarItemProps {
   conv: Conversation;
@@ -36,6 +44,12 @@ interface SidebarItemProps {
   onArchive: () => void;
   onRename: (title: string) => void;
   onRestore?: () => void;
+  /** 可选的分组列表（用于「移动到分组」子菜单） */
+  groups?: SidebarGroup[];
+  /** 该会话当前所属分组 id */
+  currentGroupId?: string;
+  /** 移动到分组（null = 移出分组） */
+  onMoveToGroup?: (groupId: string | null) => void;
 }
 
 export function SidebarItem({
@@ -46,6 +60,9 @@ export function SidebarItem({
   onArchive,
   onRename,
   onRestore,
+  groups = [],
+  currentGroupId,
+  onMoveToGroup,
 }: SidebarItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(conv.title);
@@ -155,6 +172,43 @@ export function SidebarItem({
               <Share />
               分享
             </DropdownMenuItem>
+            {/* 移动到分组：子菜单列出全部分组，末项为「移出分组」 */}
+            {onMoveToGroup && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FolderInput />
+                  移动到分组
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="sidebar-menu">
+                  {groups.length === 0 && (
+                    <DropdownMenuItem disabled>
+                      暂无分组，请在侧边栏新建
+                    </DropdownMenuItem>
+                  )}
+                  {groups.map((g) => (
+                    <DropdownMenuItem
+                      key={g.id}
+                      onSelect={() => onMoveToGroup(g.id)}
+                    >
+                      <Folder />
+                      {g.name}
+                      {currentGroupId === g.id && (
+                        <Check className="ml-auto" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                  {currentGroupId && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => onMoveToGroup(null)}>
+                        <CornerUpLeft />
+                        移出分组
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {

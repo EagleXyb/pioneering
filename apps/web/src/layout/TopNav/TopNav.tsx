@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { Menu, PanelRight } from 'lucide-react';
+import { PanelRight } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import {
   Tooltip,
@@ -7,13 +7,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { NavButtons } from '../Sidebar/NavButtons';
 import './topnav.css';
 
 const RESIZER_WIDTH = 5;
 
 export function TopNav() {
-  const sidebarOpen = useAppStore((s) => s.sidebarOpen);
-  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const pipelineOpen = useAppStore((s) => s.pipelineOpen);
   const pipelineWidth = useAppStore((s) => s.pipelineWidth);
   const togglePipeline = useAppStore((s) => s.togglePipeline);
@@ -33,24 +32,8 @@ export function TopNav() {
         className={`top-nav${isProRoute ? ' top-nav--pro' : ''}`}
         style={navStyle}
       >
-        <button className="btn-sidebar-toggle" onClick={toggleSidebar} aria-label="切换侧边栏">
-          <Menu size={18} strokeWidth={1.75} />
-        </button>
-
-        {!sidebarOpen && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className="btn-sidebar-expand"
-                onClick={toggleSidebar}
-                aria-label="展开侧边栏"
-              >
-                <PanelRight size={18} strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">展开侧边栏</TooltipContent>
-          </Tooltip>
-        )}
+        {/* 侧边栏折叠/展开按钮（与插件页头共用同一组件，见 Sidebar/NavButtons） */}
+        <NavButtons />
 
         <div className="nav-spacer" />
 

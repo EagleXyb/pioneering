@@ -1,0 +1,71 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: 创
+          - generic [ref=e8]: 创路Agent
+          - button "折叠侧边栏" [ref=e9] [cursor=pointer]
+        - tablist "模式切换" [ref=e12]:
+          - tab "对话" [selected] [ref=e13] [cursor=pointer]
+          - tab "分析" [ref=e16] [cursor=pointer]
+          - tab "任务" [ref=e22] [cursor=pointer]
+        - button "新建会话" [ref=e26] [cursor=pointer]
+        - button "归档会话" [ref=e30] [cursor=pointer]
+      - generic [ref=e35]:
+        - paragraph [ref=e36]: 未认证或 Token 已过期，请重新登录
+        - button "去登录" [ref=e37] [cursor=pointer]
+      - button "账号菜单" [ref=e39] [cursor=pointer]:
+        - generic [ref=e40]: 视
+        - generic [ref=e42]:
+          - generic [ref=e43]: 视觉验证
+          - generic [ref=e44]: "@tester"
+    - generic [ref=e46]:
+      - navigation [ref=e47]
+      - generic [ref=e49]:
+        - generic [ref=e52]:
+          - generic [ref=e53]: 多模态智能工作台
+          - heading "你好，今天想做点什么？" [level=1] [ref=e55]
+          - paragraph [ref=e56]: 对话、分析、任务，一个工作台全搞定。创路 Agent 帮你把创意高效落地，安全可靠。
+          - generic [ref=e57]:
+            - button "对话写作 · 直接开始" [ref=e58] [cursor=pointer]:
+              - generic [ref=e62]: 对话写作
+              - generic [ref=e63]: 即时问答、长文创作，多模态理解图文内容
+              - generic [ref=e64]:
+                - text: 直接开始
+                - generic [aria-hidden] [ref=e65]: →
+            - button "智能分析 · 开始分析" [ref=e66] [cursor=pointer]:
+              - generic [ref=e73]: 智能分析
+              - generic [ref=e74]: 自动拆解复杂问题，实时展示推理链路
+              - generic [ref=e75]:
+                - text: 开始分析
+                - generic [aria-hidden] [ref=e76]: →
+            - button "任务执行 · 创建任务" [ref=e77] [cursor=pointer]:
+              - generic [ref=e82]: 任务执行
+              - generic [ref=e83]: Plan-and-Execute，自动规划多步操作
+              - generic [ref=e84]:
+                - text: 创建任务
+                - generic [aria-hidden] [ref=e85]: →
+          - generic [ref=e86]:
+            - generic [ref=e87]: 不知道从哪开始？试试这些
+            - generic [ref=e88]:
+              - button "帮我分析上季度销售流失的原因" [ref=e89] [cursor=pointer]
+              - button "写一份新产品发布会的演讲稿" [ref=e90] [cursor=pointer]
+              - button "把这段会议纪要整理成待办清单" [ref=e91] [cursor=pointer]
+              - button "本季度各渠道投入产出比如何" [ref=e92] [cursor=pointer]
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - textbox "消息输入框" [active] [ref=e95]:
+              - /placeholder: 输入你要撰写的主题，Enter 发送，Shift+Enter 换行
+            - generic [ref=e96]:
+              - generic [ref=e97]:
+                - button "上传图片、文件" [ref=e98] [cursor=pointer]
+                - button "深度思考" [ref=e101] [cursor=pointer]
+                - button "联网搜索" [ref=e112] [cursor=pointer]
+              - generic [ref=e116]:
+                - button "选择模型，当前：DeepSeek-V4.1-Flash" [ref=e117] [cursor=pointer]:
+                  - generic [ref=e124]: DeepSeek-V4.1-Flash
+                - button "语音输入" [ref=e127] [cursor=pointer]
+                - button "发送消息" [disabled] [ref=e131]: 发送
+          - generic [ref=e134]: 内容由AI生成，仅供参考
+  - region "Notifications alt+T"

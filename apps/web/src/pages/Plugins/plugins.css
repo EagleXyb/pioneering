@@ -1,0 +1,377 @@
+/* ===== 插件 · 技能 市场页 =====
+ * 版式参照设计稿：顶部页签行 + 分类筛选条 + 卡片网格。
+ * 颜色全部取自 styles/tokens.css 的主题变量，亮/暗主题自动适配。 */
+
+.plugins-page {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* ===== 顶部：页签 + 搜索 / 管理 / 添加 =====
+ * 该路由不渲染全局 TopNav（否则会多出一条 56px 的空白顶栏），
+ * 本页顶栏即全局顶栏：左端为侧边栏折叠/展开按钮 + 页签，右端为搜索与操作。 */
+.plugins-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 52px;
+  padding: 0 24px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.plugins-header__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.plugins-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  height: 100%;
+}
+
+.plugins-tab {
+  position: relative;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.plugins-tab:hover {
+  color: var(--text-primary);
+}
+
+.plugins-tab.is-active {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.plugins-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--text-primary);
+}
+
+.plugins-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugins-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 200px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-tertiary);
+}
+
+.plugins-search:focus-within {
+  border-color: var(--accent-blue);
+}
+
+.plugins-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.plugins-search input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.plugins-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.plugins-action:hover {
+  background: var(--bg-hover);
+}
+
+.plugins-action--primary {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.plugins-action--primary:hover {
+  opacity: 0.9;
+  background: var(--accent-blue);
+}
+
+/* ===== 主体：分类筛选条 + 卡片网格 ===== */
+.plugins-body {
+  padding: 0 24px 32px;
+}
+
+/* 分类筛选条：单行横向滚动（与参考图一致，不换行） */
+.plugins-categories {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 12px 0 10px;
+  border-bottom: 1px solid var(--border-light);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.plugins-categories::-webkit-scrollbar {
+  display: none;
+}
+
+.plugins-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.plugins-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.plugins-chip.is-active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.plugins-section {
+  padding-top: 16px;
+}
+
+.plugins-section__title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.plugins-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+/* ===== 卡片 =====
+ * 版式对齐参考图：图标在左，右侧为「名称 / 简介 / 使用量 + 操作」文本块；
+ * 卡片本身无边框（扁平的列表项），hover 时以浅底提示可点击。 */
+.plugins-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  transition: background var(--transition-fast);
+}
+
+.plugins-card:hover {
+  background: var(--bg-primary);
+}
+
+.plugins-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* 图标前景/底色取自品牌色（--icon-color 由卡片内联注入）：
+     浅色主题用原色；深色主题把品牌色向白色混合 55%，
+     避免 GitHub(#24292f) 一类深色品牌图标在暗底上不可见。 */
+  color: var(--icon-color, var(--accent-blue));
+  background: color-mix(in srgb, var(--icon-color, var(--accent-blue)) 12%, transparent);
+}
+
+[data-theme='dark'] .plugins-card__icon {
+  color: color-mix(in srgb, var(--icon-color, var(--accent-blue)) 55%, #ffffff);
+  background: color-mix(in srgb, var(--icon-color, var(--accent-blue)) 20%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .plugins-card__icon {
+    color: color-mix(in srgb, var(--icon-color, var(--accent-blue)) 55%, #ffffff);
+    background: color-mix(in srgb, var(--icon-color, var(--accent-blue)) 20%, transparent);
+  }
+}
+
+.plugins-card__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugins-card__name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plugins-card__desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.plugins-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.plugins-card__usage {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plugins-card__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-medium);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.plugins-card__btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.plugins-card__btn.is-on {
+  border-color: transparent;
+  background: var(--accent-green-light);
+  color: var(--accent-green);
+}
+
+.plugins-card__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== 状态区（加载 / 错误 / 空） ===== */
+.plugins-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.plugins-state--empty {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plugins-state--empty p {
+  margin: 0;
+}
+
+.plugins-state--error {
+  color: var(--accent-red);
+}
+
+.plugins-state__retry {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-blue-light);
+  color: var(--accent-blue);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ===== 窄屏收敛 ===== */
+@media (max-width: 900px) {
+  .plugins-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  .plugins-header__actions {
+    width: 100%;
+  }
+
+  .plugins-search {
+    flex: 1;
+    width: auto;
+  }
+
+  .plugins-body {
+    padding: 0 16px 24px;
+  }
+
+  .plugins-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}

@@ -6,7 +6,7 @@
  * 提交动作由调用方以 onSubmit 注入（PluginPicker 持有 useMcpPlugins 实例，
  * 保证与插件列表数据同源）。
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -72,34 +72,71 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** 提交添加（来自 useMcpPlugins.addPlugin）；ok=false 时对话框保持打开并展示错误 */
   onSubmit: (input: AddMcpServerInput) => Promise<AddPluginResult>;
+  /** 预填值（插件目录的安装模板）；打开时重置为该值，缺省为空白表单 */
+  initialValues?: InitialValues;
+  /** 需要用户补充的凭据（环境变量名），仅作提示，不写入表单 */
+  envHints?: ReadonlyArray<string>;
 }
 
-export function AddPluginDialog({ open, onOpenChange, onSubmit }: Props) {
-  const [name, setName] = useState('');
-  const [transport, setTransport] = useState<McpTransport>('stdio');
-  const [command, setCommand] = useState('');
-  const [argsText, setArgsText] = useState('');
-  const [cwd, setCwd] = useState('');
-  const [envText, setEnvText] = useState('');
-  const [url, setUrl] = useState('');
+/** 可预填的字段集合 */
+export type InitialValues = Partial<
+  Pick<
+    AddMcpServerInput,
+    'name' | 'transport' | 'command' | 'args' | 'cwd' | 'env' | 'url'
+  >
+>;
+
+export function AddPluginDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  initialValues,
+  envHints,
+}: Props) {
+  const [name, setName] = useState(initialValues?.name ?? '');
+  const [transport, setTransport] = useState<McpTransport>(
+    initialValues?.transport ?? 'stdio',
+  );
+  const [command, setCommand] = useState(initialValues?.command ?? '');
+  const [argsText, setArgsText] = useState(
+    (initialValues?.args ?? []).join('\n'),
+  );
+  const [cwd, setCwd] = useState(initialValues?.cwd ?? '');
+  const [envText, setEnvText] = useState(
+    Object.entries(initialValues?.env ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n'),
+  );
+  const [url, setUrl] = useState(initialValues?.url ?? '');
   const [autoStart, setAutoStart] = useState(true);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const isStdio = transport === 'stdio';
 
+  /** 恢复到预填值（缺省为空白表单） */
   const reset = () => {
-    setName('');
-    setTransport('stdio');
-    setCommand('');
-    setArgsText('');
-    setCwd('');
-    setEnvText('');
-    setUrl('');
+    setName(initialValues?.name ?? '');
+    setTransport(initialValues?.transport ?? 'stdio');
+    setCommand(initialValues?.command ?? '');
+    setArgsText((initialValues?.args ?? []).join('\n'));
+    setCwd(initialValues?.cwd ?? '');
+    setEnvText(
+      Object.entries(initialValues?.env ?? {})
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n'),
+    );
+    setUrl(initialValues?.url ?? '');
     setAutoStart(true);
     setBusy(false);
     setFormError(null);
   };
+
+  // 打开时套用最新的预填值（初始值对象由调用方用 state 持有，引用稳定）
+  useEffect(() => {
+    if (open) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialValues]);
 
   const handleOpenChange = (next: boolean) => {
     if (busy) return; // 提交中不允许关闭，避免请求态悬空
@@ -287,6 +324,13 @@ export function AddPluginDialog({ open, onOpenChange, onSubmit }: Props) {
           {formError && (
             <p className="add-plugin-form__error" role="alert">
               {formError}
+            </p>
+          )}
+
+          {envHints && envHints.length > 0 && (
+            <p className="add-plugin-form__note">
+              该插件需要以下凭据，请在上方「环境变量」中补充：
+              {envHints.map((h) => ` ${h}`).join('、')}
             </p>
           )}
 
