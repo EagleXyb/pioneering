@@ -675,3 +675,232 @@ planner 失败静默降级直答（`planner.ts:744-756`），用户只看到"没
 风险边界同样需要事先说清楚。不能用提示词去补驾驭工程的洞，例如用"不要重复调用工具"这样的规则去替代幂等与去重，短期看似有效，长期一定漂移；不能把摘要当作无损压缩，关键决策、失败原因与待办必须显式保留；不能用自动评估完全替代人工抽检，尤其在涉及事实正确性与业务口径的场景；不能在内存态的检查点上向用户承诺暂停可恢复；不要一次性重写全部提示词，应当先拆分、再逐块替换，并用快照与灰度控制影响面；中文的 token 估算、不同模型供应商的工具调用格式差异、以及长上下文精度的衰减，都需要在预算与提示设计里留出余量；评估集必须私有化，公共基准只能说明模型的一般能力，不能代表本产品的真实任务分布。
 
 把三条主线合起来看，它们服务的是同一个判据：让下一次请求比这一次更可能成功，并且更便宜。提示工程让意图变得可执行，上下文工程让信息刚好够用，驾驭工程让过程可控可恢复，而人类反馈与评估让这三件事的改进能够被累积而不是被遗忘。对本产品而言，这意味着不需要再引入一套新框架，而是把已经存在的注册表、片段、预算、检查点、指标与评测包逐一接线，给默认值加上安全边界，给关键路径加上门禁。当"契约、预算、闭环"三件事同时成立时，Agent 的表现才会从"演示可用"走向"日常可依赖"。
+
+---
+
+## 10. Prompt 工程五大基础的实现核查（2026-10-22 补充）
+
+> 核查范围：`packages/modu-agent/src`（Prompt 装配、planner、上下文片段、安全护栏）、`packages/modu-agent/packs`（场景包）、`packages/modu-agent/config.yaml`、`apps/backend-ts/src/core/agent-bridge.ts`
+> 核查方法：源码逐点走读 + 配置默认值交叉验证 + "是否有消费方"检索
+> 定位：本节是 §2 的技术细化，按业界 Prompt 工程五项基础（角色设定 / Few-shot / Chain-of-Thought / 结构化输出 / 负向约束）逐条核对**是否真的在运行**，结论与 P-1~P-9 互为印证，不重复 §2.3 的方案表。
+
+### 10.0 结论速览
+
+| 五大基础 | 成熟度 | 一句话结论 |
+|---|---|---|
+| 角色设定 | ★★☆☆☆ | 有四类来源（默认 prompt / 场景包领域 md / SOUL+AGENTS.md / 子 Agent 角色），但**主角色只有一句 "You are a helpful AI assistant"**，随后被 28 条规则淹没；pro 与 task 共用同一主 prompt；用户侧零入口 |
+| Few-shot | ★☆☆☆☆ | 选择器（MMR + 预算 + 质量门槛）是 Prompt 层实现最完整的一份代码，但**端到端恒空**：开关默认关 + 内存空库 + 全仓无写入调用方 + 设计给它的 `taskSpec` 槽无生产方 |
+| CoT | ★★☆☆☆ | 锚点/反思模板与 tier 映射写得不错，但默认关；且 tier 数据源也默认关 → 实际永远落到 `tier_2` 固定锚点，退化为一段静态后缀；真正的思维链来自模型原生 thinking |
+| 结构化输出 | ★★★☆☆ | **只有 planner 一处真结构化**（`withStructuredOutput` + zod + 两级降级）；其余全是"提示词要 JSON + 正则/`JSON.parse` 兜底"；全仓无 `response_format`，最终回答无 schema |
+| 负向约束 | ★★★☆☆ | 提示词层极密（十余条 NEVER/DO NOT），代码层有 doc-gen guard / HITL / action guardrails 兜底；但约束**不可验证、与代码重复、中英混杂**，且多数护栏默认关闭 |
+
+### 10.1 装配链路：五项的共同底座
+
+五项基础都挂在这一条装配链上，先看清链路才能判断"哪一层真的生效"：
+
+```
+configurable.system_prompt（宿主/会话） ─┐
+systemPrompt 参数 ─────────────────────┼→ ① agent.default_system 模板（7068 字符）
+未传则注册表渲染 + 字面量回退 ─────────┘
+        ↓ ② SkillPromptAggregator（skills.enabled=false → 跳过）
+        ↓ ③ MarkdownPromptAggregator（AGENTS.md/SOUL.md → system；USER.md → runtime）
+        ↓ ④ PromptComposer：systemCore → domain → taskSpec → runtimeContext（纯 join）
+        ↓ messages[0] = SystemMessage
+        ↓ agentNode 尾部：+ CoT 锚点（flag 关）+ 6 段上下文片段（含 ctx.few_shot，恒空）
+```
+
+```867:873:packages/modu-agent/src/graph/factory.ts
+  let effectiveSystemPrompt =
+    configurable['system_prompt'] ??
+    systemPrompt ??
+    renderPromptWithFallback('agent.default_system', {}, _DEFAULT_SYSTEM_PROMPT_TEMPLATE)
+```
+
+四层组装只是字符串拼接，无预算、无去重、无"后层不得覆盖安全约束"的校验：
+
+```53:71:packages/modu-agent/src/reasoning/prompt-composer.ts
+  static compose(input: PromptComposerInput): string {
+    const parts: string[] = []
+    if (input.systemCore) parts.push(input.systemCore)
+    ...
+    return parts.join('\n\n')
+  }
+```
+
+### 10.2 角色设定：有"角色"，没有"角色体系"
+
+**已实现（四类来源）**
+
+| 来源 | 位置 | 是否生效 | 内容强度 |
+|---|---|---|---|
+| 主 Agent 角色 | `graph/factory.ts:121` | ✅ 每次生效 | 仅 1 句 `You are a helpful AI assistant`，后接 28 条规则 |
+| 场景包领域角色 | `packs/*/domains/*.md` → `domain_context` | ✅ research-pack/planning-pack 已激活（`pack.yaml` 打开 `prompt_composer`） | "你是研究分析领域的专业 Agent…"，1 句 + 术语表 + 输出要求 |
+| 人格/语气 | `SOUL.md`（`inject_to: system_prompt`） | ✅ `config.yaml:13` 开 markdown_prompt | 语气/边界/风格 3 行 |
+| 子 Agent 角色 | `graph/prompt-templates.ts:125-161` | ✅ 仅多 Agent 模式 | research/coding/review/default，各 1-2 句英文 |
+
+主 prompt 被包装成可注册模板，宿主可用同 id 覆盖（设计上正确）：
+
+```169:173:packages/modu-agent/src/graph/factory.ts
+const _DEFAULT_SYSTEM_PROMPT_TEMPLATE: PromptTemplate = {
+  id: 'agent.default_system',
+  version: '1.0.0',
+  messages: [{ role: 'system', content: _DEFAULT_ANTI_HALLUCINATION_PROMPT }],
+}
+```
+
+**问题**
+
+1. **角色声明被规则稀释**：`system[0]` 的真实结构是"1 句角色 + 7KB 规则"，模型对"我是谁"的感知弱于"我不能做什么"；`SOUL.md` 与领域 md 都被拼在 7KB 之后，位置最不利。
+2. **角色相互冲突**：默认 prompt 说"helpful AI assistant"，`AGENTS.md:9` 说"你是 pioneering 的**编码助手** Agent"，领域 md 说"研究分析/任务规划专业 Agent"，三条并存且无优先级声明。
+3. **模式不区分**：`pro`（react_agent）与 `task`（plan_execute）共用同一主 prompt，差异只靠 planner prompt + 步骤上下文补丁；无按模型（GLM/DeepSeek/Qwen）、按 locale、按输出渠道的变体。
+4. **用户侧无入口**：会话表 `systemPrompt` 后端确实在用（`routes/agent.ts:569,657`），但 Web 无设置项（`apps/web` 仅 `api/types.ts` 有类型声明），桌面端主进程白名单静默丢弃 → "自定义角色"能力事实上不存在（与 P-8 一致）。
+5. **修改成本高**：system prompt 在**建图期**固化（`configurable.system_prompt` 进图缓存 key，`agent-bridge.ts:59-66`），改一句话就换一张图。
+
+### 10.3 Few-shot：机制最完整，链路全断（0 生效）
+
+`skills/few-shot-selector.ts` 本身质量合格：MMR λ=0.7、token 预算 1500、`quality_score ≥ 0.7` 入库门槛、检索→过滤→MMR→预算截断→格式化全流程均有单测。
+
+**但四个断点让它恒为空**
+
+| 断点 | 证据 |
+|---|---|
+| ① 开关默认关 | `react_optimization.few_shot.enabled: false`（`config/runtime-config.ts:475-481`），`config.yaml` 未开 |
+| ② 示例库是**空的内存库** | `createFewShotSelector()` 里 `new InMemoryExampleStore()` 不传初始数据（`graph/graph.ts:874-882`） |
+| ③ 全仓**没有写入调用方** | `addExample()` 的调用点只在 `tests/skills/few-shot-selector.test.ts`，`src/` 零调用 |
+| ④ 设计承载它的槽永远空 | `PromptComposer` 的 `taskSpec` 注释写着"Few-shot 示例、输出格式"，但 `configurable['task_spec']` **全仓无生产方**（仅 `factory.ts:954` 消费） |
+
+```104:115:packages/modu-agent/src/graph/context-strategies.ts
+const _fewShotFragment: ContextFragment = {
+  id: 'ctx.few_shot',
+  priority: 45,
+  placement: 'append',
+  async build(state: ModuAgentState, ctx): Promise<string | null> {
+    const selector = ctx.fewShotSelector
+    if (!selector) return null
+    ...
+```
+
+**其他"准 few-shot"来源同样很弱**
+
+- planner 的 `GOOD example / BAD example` 是**硬编码 2 条**，只教格式不教任务（`graph/plan-execute/prompts.ts` 模板末段）；
+- Skill `examples()` 有注入路径（`skills/adapter.ts:45-57`），但 `skills.enabled=false`（`config/runtime-config.ts:201-202`），且仓库只有 `skills/math` 一个技能、无 examples；
+- 场景包 `example-pack/prompts/writing_style.json` 被注册进 PromptRegistry，但 `list(taskType)` 无任何调用方 → 注册即死（见 §10.7）。
+
+> 结论：Few-shot 是"写了但没接线"的典型——开关、库、槽三层空转。当前模型行为里没有任何动态示例输入。
+
+### 10.4 CoT：模板合格，但被"双默认关"压平成静态后缀
+
+**已实现**：`COT_ANCHOR_TEMPLATE` 六字段锚点（Current Goal / Known Info / Missing Info / Next Step / Expected Result / Risk Preview）+ `REFLECTION_SUFFIX` 三问自检，并有 tier 映射（tier_1 无、tier_2 锚点、tier_3 锚点 + 反思）；实现位于 `reasoning/cot-anchors.ts:26-90`。
+
+**注入点**（拼在 system prompt 末尾）：
+
+```1359:1366:packages/modu-agent/src/graph/nodes.ts
+    const tier = state.complexity_assessment?.tier as ComplexityTier | undefined
+    const cotPrompt = _cotAnchorEnabled ? composeCotPrompt(tier) : ''
+    const effectiveSystemPrompt = cotPrompt
+      ? `${systemPrompt ?? ''}\n\n${cotPrompt}`
+      : systemPrompt
+```
+
+**问题**
+
+1. **默认关**：`cot_anchor.enabled=false`（`config/runtime-config.ts:432-434`），`config.yaml` 未开 → 当前部署**完全不注入**。
+2. **即使打开也退化为常量**：tier 来自 `complexity_assessment`，而它默认也关（`config/runtime-config.ts:427-429`）→ `state.complexity_assessment` 为空 → `composeCotPrompt` 走 `tier_2` → 永远只有锚点、永远无反思、所有任务同一档，"tier 自适应"名存实亡。
+3. **不可验证**：function calling 模式下 Thought 不进 `content`（代码注释也承认"下游不强制解析 Thought 结构"，`cot-anchors.ts:14`），锚点只是"要求模型内部如此思考"，无解析、无校验、无回灌。
+4. **真正的 CoT 不在这里**：一是模型原生 thinking（thinking 模型 + `reasoning_content`，见 `nodes.ts:1319-1321` 的 400 防护注释）；二是 plan-execute 的"先计划再执行"，且**步骤上下文里的自检提示质量更高**——
+
+```54:61:packages/modu-agent/src/graph/plan-execute/context.ts
+    if (expectedOutput) {
+      lines.push(`Expected output of this step: ${expectedOutput}`)
+    }
+    if (verificationHint) {
+      lines.push(`Self-check before finishing: ${verificationHint}`)
+    }
+```
+
+即：**PLAN + `verification_hint` 承担了实际生效的"思维链/自检"职责，`cot_anchor` 只是一层关闭的附加后缀**。缺失的是 self-consistency、验证轮、反思结果回灌与误判率度量（`adaptive_termination` 默认关且仅 advisory，见 H-4）。
+
+### 10.5 结构化输出：一处真结构化，其余靠"提示词 + 正则"
+
+**唯一有强约束的地方是 planner**（全仓最扎实的一段）：
+
+```696:712:packages/modu-agent/src/graph/plan-execute/planner.ts
+        if (!isRetry) {
+          const structuredPlan = await _tryStructuredOutput(
+            llm, effectiveMessages, bindOpts, effectiveMaxSteps, realtimeToolNames, truncated,
+          )
+          if (structuredPlan) { plan = structuredPlan; usedStructuredOutput = true; break }
+        }
+```
+
+降级链完整：`withStructuredOutput(PlanSchema)` → JSON-in-text → `_extractJson` + 字段别名归一 + `PlanSchema.safeParse` → 失败重试 1 次（简洁 prompt + maxSteps 减半 + temperature 0）→ 仍失败则空 plan 降级直答。`PlanSchema` 为 `{goal, steps[1..20]}`，超出 `max_steps` 会告警并截断（`plan-execute/types.ts:110-113`、`planner.ts:386-396`）。
+
+**其余输出全部是"软结构化"**
+
+| 输出点 | 约束方式 | 校验方式 | 失败行为 |
+|---|---|---|---|
+| planner 计划 | zod + structured output | ✅ `safeParse` | 重试 → 降级直答 |
+| 文档交付格式（确认语/文档位置/核心内容速览） | 自然语言模板（`factory.ts:153-158`）+ 补救节点（`nodes.ts:1154-1163`） | ❌ 无 parse | 程序化兜底拼接（`nodes.ts:1950-1968`） |
+| 质量评审 JSON | 提示词"仅输出合法 JSON"（`prompt-templates.ts:194-229`） | 正则提取 + `JSON.parse`（`feedback/quality-monitor.ts:381-387`） | 默认分/降级 |
+| 共识 judge JSON | 同上 | 正则 + parse | 降级 |
+| 注入判定 JSON | 同上 | 正则 + parse | **解析失败按未检出**（`policy-rules.ts:286-300`，安全侧偏松） |
+| 工具参数 | function calling（`parametersSchema()`） | ✅ provider 侧 | 工具错误 |
+
+**关键缺口**
+
+1. 全仓 **0 处** `response_format` / `json_object`（检索无命中）→ 从未使用 provider 级 JSON Mode；
+2. 最终回答**没有任何 schema**，"结构化"只存在于 planner 与内部 judge，用户可见输出靠提示词自律；
+3. 除 planner 的 1 次重试外，**没有 repair loop**（拿到非法 JSON 后回灌错误让其修正）；
+4. 没有输出合规率指标（PR-6 要求的"JSON 合法率 / 格式遵从率"未落地）。
+
+### 10.6 负向约束：提示词极密，代码兜底部分生效
+
+**提示词层（密集但不可验证）**
+
+- 默认 prompt 28 条中至少 12 条纯负向：`NEVER fabricate`、`NEVER output a pure natural-language AIMessage`、`NEVER include raw tool JSON`、`NEVER make promises`、`NEVER call the same tool with SAME arguments twice`、`NEVER search for the same topic more than once`、`Do NOT chain redundant calls` 等（`factory.ts:121-160`）。
+- planner：`MUST NOT call them yourself`、`STRICT JSON only`、`NEVER embed a plan object`、`MUST NOT contain plan-schema field names`——同一件事用 4 条不同措辞反复强调，是"塌陷补丁"的痕迹（`prompt-templates.ts:44-75`）。
+- 步骤上下文：`SCOPE: NOT the final step...`、`do NOT fabricate`、`Do NOT repeat`（`plan-execute/context.ts:67-107`）。
+- 文档节点：`【禁止】再调用任何工具`（`nodes.ts:1157`）。
+
+**代码层（真正有执行力的部分）**
+
+| 护栏 | 位置 | 是否生效 |
+|---|---|---|
+| doc-gen guard（强制收尾/阻断重复 doc_writer/失败 2 次终止） | `graph/nodes.ts:809-862` | ✅ |
+| 孤儿 `tool_calls` 全局净化 | `graph/nodes.ts:1348` | ✅ |
+| HITL 审批（`sensitive_tools`: code_executor/sql_query/file_ops_write） | `config.yaml:35-43` | ✅ |
+| ACTION_GUARDRAILS（写文件/删文件/SQL 写/HTTP 写/网络代码） | `tools/tool-guardrails.ts:61-108` | ✅ research/planning pack 打开 |
+| 输出脱敏（密钥/内网 IP/PII） | `perception/security/output-guard-node.ts` | ❌ `sanitize_output.enabled=false`（`runtime-config.ts:274-279`） |
+| 输入注入检测 | `perception/security/*` | ⚠️ `enable_guard=true` 但 `block_on_injection=false`，且 `builtin_processors.enabled=false` → `injection_detected` 恒 false，阻断不可达 |
+| 三层策略引擎（input/tool/output policy） | `factory.ts:992-1008` | ⚠️ 仅登记规则，`policy.engine.enabled=false` 不消费 |
+| code_executor 沙箱 | `tools/code-executor.ts` | ⚠️ 仅 timeout 10s + 正则黑名单（macOS rlimit 无效、Windows 跳过） |
+
+**关键缺口**
+
+1. **负向约束全是"祈使句"，无判定函数**：只有 doc 场景做了 artifact 级程序化校验，其余（如"不要重复调用同一工具""不要粘贴工具 JSON"）纯靠模型自觉；
+2. **与代码重复表达 → 必然漂移**：prompt 说 "typically 3-5 rounds"，实际 `max_reasoning_iterations=3` → 硬上限 6；`doc-gen-guard` 的规则在 prompt 里又写了一遍；
+3. **中英混杂**：英文硬规则 + 中文交付模板 + 中文领域 md，同一次请求内三种语言契约互相稀释；
+4. **无指令层级与数据隔离**：检索结果、文件名、工具返回都直接拼进上下文，未用 `<<<USER_DATA>>>` 之类边界包裹，间接注入面敞口（安全约束也没有"不可被后层覆盖"的声明）；
+5. **规则数量已过载**：7KB / 28 条，编号 15 直接跳到 21、存在 11a/11b，边际约束力递减，且规则之间开始互相稀释（"必须闭环" vs "禁止多余工具轮次"）。
+
+### 10.7 跨五项共性问题（比单项缺陷更根本）
+
+1. **三套机制并存，只有一套生效**：字面量（生效）、PromptRegistry（只做"同 id 覆盖 + 回退"，`version` 只写不读、`list(taskType)` 全仓无调用方——`core/registry.ts:437-440`）、场景包 `prompts/*.json`（注册即死，`kernel/scenario-loader.ts:293`）。
+2. **能力齐全但默认关**：`cot_anchor`、`few_shot`、`prompt_composer`（靠包开）、`complexity_assessment`、`adaptive_termination`、`action_guardrails`、`sanitize_output`、`policy.engine`、`perception.builtin_processors`——九项均默认 false，形成"文档里都有、运行时都没有"。
+3. **变量注入无契约**：`renderTemplateContent` 缺失变量原样保留 `{{name}}`，无必填校验、无长度上限、无转义、无数据区包裹（`reasoning/prompt-registry.ts:34-47`，同 P-4）。
+4. **无回归门禁**：`packages/evals` 无 prompt 数据集（JSON 合法率 / 工具命中率 / 格式遵从率 / prompt_tokens），CI 也不跑 modu-agent 内核用例（同 H-11、PR-6）。
+5. **能力无入口**：`systemPrompt` 后端可用、前端不可写；`domain` 由 `agentMode` 硬映射（`agent-bridge.ts:158-160`），用户无法选择领域。
+
+### 10.8 建议（按"最小改动、最大收益"排序，与 §2.3 对齐）
+
+| 优先级 | 动作 | 解决的基础 |
+|---|---|---|
+| P0 | **拆主 prompt**：`role / language / tool-policy / narration / delivery / safety` 六块，装配顺序固定为"安全 → 领域 → 会话 → 运行时"，并加字符快照测试（PR-1） | 角色设定、负向约束 |
+| P0 | **变量注入契约**：`{name, required, maxChars, wrap:'user-data'}`，缺失必填 dev 抛错，超长截断留标记，用户来源包 `<<<USER_DATA>>>`（PR-2） | 负向约束（注入面） |
+| P1 | **Few-shot 要么接线要么下线**：给 `InMemoryExampleStore` 一个种子集（或从 feedback 高分样本入池）+ 打通 `taskSpec` 槽；否则删开关，避免"以为有"（当前 0 生效） | Few-shot |
+| P1 | **CoT 去伪**：打开 `complexity_assessment` 的规则化 tier（避免额外 LLM 调用），让 tier 映射真正分级；或直接删 `cot_anchor`，把"自检"统一收敛到已在生效的 `verification_hint` | CoT |
+| P1 | **结构化输出扩展**：文档交付改为可 parse 的固定块（正则/JSON）并断言；planner 在支持的 provider 上走 `json_schema`；补一次"带错误信息回灌"的 repair loop | 结构化输出 |
+| P1 | **负向约束下沉**：prompt 只保留 3 条硬负向 + 2 个正反例，其余改代码判定（重复工具调用检测、工具 JSON 泄漏检测、轮次预算统一从 `max_reasoning_iterations` 生成） | 负向约束 |
+| P2 | 打开输出脱敏影子模式 → 拦截态；打开 `policy.engine` 灰度；补 prompt 回归集（PR-6）；Web 增加"角色设定"入口（PR-7） | 全部 |
+
+> **归结一句话**：这套代码在 Prompt 工程五项上都不缺"实现"，缺的是**接线、默认值和校验**——角色只有一句、Few-shot 三层空转、CoT 双默认关、结构化只覆盖 planner、负向约束靠祈使句。因此优化重点不是再写更长的提示词，而是把已有的注册表 / 片段 / 模板 / 校验点接上主链路，并给关键约束补上可判定的代码与回归门禁；这与 §8.1 的"接线优先于新建"判断一致。
