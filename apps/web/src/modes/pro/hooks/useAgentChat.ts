@@ -35,6 +35,7 @@ import {
 } from '@pioneering/agent-protocol';
 import { bindAgentModeRuntime } from '../../../lib/agent-host';
 import { getSelectedSkills } from '../../../store/skillSelectionStore';
+import { getLocale, getPersona } from '../../../lib/persona';
 
 // ========== 类型定义 ==========
 
@@ -588,6 +589,7 @@ export function useAgentChat(
       // P0（选择→执行）：读取本轮勾选的技能。未选择时不发字段，
       // 服务端按默认策略处理（与改造前行为一致）。
       const skills = getSelectedSkills('pro');
+      const persona = getPersona();
 
       (async () => {
         try {
@@ -603,6 +605,9 @@ export function useAgentChat(
               agentMode: 'react_agent',
               // P0（选择→执行）：技能选择随请求透传
               ...(skills.length > 0 ? { skills } : {}),
+              // P1（RP-5）：用户 persona / 角色语言透传
+              ...(persona ? { persona } : {}),
+              locale: getLocale(),
               // P0：模型透传；未选中/未加载时省略，由后端默认模型兜底
               ...(params.model ? { model: params.model } : {}),
               ...(params.editMessageId
@@ -675,6 +680,7 @@ export function useAgentChat(
 
       // P0（选择→执行）：恢复时沿用同一技能选择，避免暂停/恢复之间工具集漂移
       const skills = getSelectedSkills('pro');
+      const persona = getPersona();
 
       try {
         const response = await streamResume(
@@ -686,6 +692,9 @@ export function useAgentChat(
             answer: input.answer ?? null,
             answerId: input.answerId ?? null,
             ...(skills.length > 0 ? { skills } : {}),
+            // P1（RP-5）：恢复时沿用同一 persona / locale
+            ...(persona ? { persona } : {}),
+            locale: getLocale(),
           },
           controller.signal,
         );

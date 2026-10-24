@@ -55,6 +55,13 @@ export const AgentChatRequestSchema = z.object({
    * 上限 20 项，防止恶意长列表撑爆图缓存。
    */
   skills: z.array(z.string().min(1).max(64)).max(20).nullable().optional(),
+  /**
+   * P1（RP-5）：用户 persona（仅风格/称呼/输出偏好）。
+   * 上限 2000 字符；服务端与内核都会做覆盖检测与长度截断，policy 层不可被覆盖。
+   */
+  persona: z.string().max(2000).nullable().optional(),
+  /** 角色语言（zh / en）；省略时由内核按 zh 处理。 */
+  locale: z.enum(['zh', 'en']).nullable().optional(),
 })
 export type AgentChatRequest = z.infer<typeof AgentChatRequestSchema>
 
@@ -157,6 +164,9 @@ export const AgentResumeRequestSchema = z.object({
    * 省略时按服务端默认策略重建图；提供则按该选择裁剪工具与提示。
    */
   skills: z.array(z.string().min(1).max(64)).max(20).nullable().optional(),
+  /** P1（RP-5）：恢复时沿用同一 persona，避免暂停前后角色漂移。 */
+  persona: z.string().max(2000).nullable().optional(),
+  locale: z.enum(['zh', 'en']).nullable().optional(),
 })
 export type AgentResumeRequest = z.infer<typeof AgentResumeRequestSchema>
 

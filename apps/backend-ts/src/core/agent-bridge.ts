@@ -63,6 +63,9 @@ function graphCacheKey(configurable: Record<string, any>): string {
     plan_execute: configurable.plan_execute_enabled ?? false,
     domain: configurable.domain ?? null,
     skills: configurable.skills ?? null,
+    // P1（RP-5）：persona / locale 参与构图分片，避免不同角色共用同一张图
+    persona: configurable.persona ?? null,
+    locale: configurable.locale ?? null,
     // L3-1.2：技能集合（增删技能 / 启停）变化时使旧图失效，实现「无需重启」
     skills_revision: getSkillsRevision(),
   })
@@ -223,6 +226,10 @@ export interface StreamAgentCompletionOptions {
   ctx: StreamContext
   model?: string | null
   systemPrompt?: string | null
+  /** P1（RP-5）：用户 persona（仅风格层，内核会做覆盖检测）。 */
+  persona?: string | null
+  /** 角色语言（zh / en）。 */
+  locale?: string | null
   history?: { role: string; content: string }[]
   // P4: 支持 per-request 切换 Plan-Execute 图
   agentMode?: 'react_agent' | 'plan_execute'
@@ -267,6 +274,13 @@ export async function* streamAgentCompletion(
   }
   if (agentMode === 'plan_execute') {
     configurable.plan_execute_enabled = true
+  }
+  // P1（RP-5）：persona / locale 透传到内核角色装配
+  if (opts.persona) {
+    configurable.persona = opts.persona
+  }
+  if (opts.locale) {
+    configurable.locale = opts.locale
   }
   // P0（选择→执行）：只有显式传入时才进入 configurable，
   // 保证「未传」与改造前完全一致（不触发图重建、不裁剪工具）。
@@ -407,6 +421,9 @@ export interface ResumeAgentOptions {
    * 省略 = 不裁剪（服务端默认）；提供则重建对应工具集的图。
    */
   skills?: string[] | null
+  /** P1（RP-5）：恢复时沿用同一 persona / locale，避免暂停前后角色漂移。 */
+  persona?: string | null
+  locale?: string | null
   traceId?: string
   // T2.3：取消信号
   signal?: AbortSignal | null
@@ -475,8 +492,9 @@ export async function* streamAgentResume(
   const isPlanExecute = await _probePlanExecutePaused(probeGraph, sessionId)
   // P0：恢复时沿用同一技能选择，否则暂停时可见的工具在恢复后可能缺失。
   const resumeSkills = normalizeSkills(opts.skills)
+  const hasPersona = Boolean(opts.persona || opts.locale)
   let graph = probeGraph
-  if (isPlanExecute || resumeSkills !== undefined) {
+  if (isPlanExecute || resumeSkills !== undefined || hasPersona) {
     const configurable: Record<string, any> = {}
     if (isPlanExecute) {
       configurable.plan_execute_enabled = true
@@ -488,6 +506,12 @@ export async function* streamAgentResume(
     }
     if (resumeSkills !== undefined) {
       configurable.skills = resumeSkills
+    }
+    if (opts.persona) {
+      configurable.persona = opts.persona
+    }
+    if (opts.locale) {
+      configurable.locale = opts.locale
     }
     graph = await getCachedGraph(configurable)
     logger.info(

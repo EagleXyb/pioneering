@@ -64,6 +64,10 @@ export interface AgentCompletionBody {
    * 省略 = 服务端默认策略；空数组 = 明确不使用技能。
    */
   skills?: string[];
+  /** P1（RP-5）：用户 persona（仅风格/称呼/输出偏好，≤2000 字符）。 */
+  persona?: string;
+  /** 角色语言；省略按 zh 处理。 */
+  locale?: 'zh' | 'en';
 }
 
 /** 发起 Agent 生成（SSE）。响应已通过 ok 校验，调用方交给 parseAguiStream */
@@ -95,6 +99,9 @@ export interface AgentResumeBody {
   answerId?: string | null;
   /** 恢复时沿用首次请求的技能选择（省略 = 服务端默认） */
   skills?: string[];
+  /** P1（RP-5）：恢复时沿用同一 persona / locale。 */
+  persona?: string;
+  locale?: 'zh' | 'en';
 }
 
 /** 恢复 HITL 暂停的 run（SSE），续写同一条 assistant 消息 */

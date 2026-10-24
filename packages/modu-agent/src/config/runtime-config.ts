@@ -473,11 +473,18 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     // 启用后 DynamicFewShotSelector 从示例库检索 MMR 示例注入 agentNode
     // 示例库初始为空时静默跳过（零侵入）
     few_shot: {
-      enabled: false,  // R-11 低风险，默认关闭
+      enabled: false,  // R-11 低风险，默认关闭；需显式 opt-in
       max_examples: 3,  // 单次注入最多 3 个示例
-      max_tokens_budget: 1500,  // 示例 token 硬上限
+      max_tokens_budget: 1500,  // 示例 token 硬上限（CJK 按 1 字 1 token 估算）
       min_quality_score: 0.7,  // 低于此分的示例不入库/不检索
       mmr_lambda: 0.7,  // MMR 多样性权重（0=纯相关性，1=纯多样性）
+      // P1（FS-3）：是否允许把线上高分 run 沉淀为示例候选（默认关闭）
+      collect_from_feedback: false,
+      collect_min_quality: 0.85,
+      // P2（FS-8）：示例 TTL（天）；0/null = 不过期
+      max_age_days: 180,
+      // 注入时是否打日志（默认关闭，避免高频日志）
+      log_injection: false,
     },
     // P2-3: 动态工具编排（串行/并行/条件分支）
     // 启用后多个独立 tool_calls 通过 Send API 并行分发

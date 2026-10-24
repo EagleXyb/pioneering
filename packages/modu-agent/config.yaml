@@ -14,6 +14,18 @@ react_optimization:
     enabled: true
     system_prompt_max_chars: 8000
     runtime_context_max_chars: 4000
+  # P0（FS-2）：Few-shot 最小闭环。种子示例随包内置，反馈高分 run 可按需入池。
+  # 默认关闭（与 runtime-config 默认一致），显式改为 true 即启用：
+  #   - 首次启用建议 max_examples=2、max_tokens_budget=900，观察 token 与质量；
+  #   - 关闭/删除本段即回到"不注入示例"的既有行为。
+  few_shot:
+    enabled: false
+    max_examples: 2
+    max_tokens_budget: 900
+    min_quality_score: 0.8
+    mmr_lambda: 0.7
+    collect_from_feedback: false
+    max_age_days: 180
 
 # LLM 生成上限。
 # 框架内置默认仅 512（graph/adapters/llm-adapter.ts: `runtimeConfig.get('llm.max_tokens', 512)`），

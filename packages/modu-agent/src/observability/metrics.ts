@@ -44,6 +44,10 @@ export class MetricsRegistry {
   private _tool_latency: any = null
   // L4-4.2：技能调用计数（skill / tool / status 维度）
   private _skill_invocations: any = null
+  // P2（RP-7）：角色装配与 persona 治理计数
+  private _role_events: any = null
+  // P2（FS-8）：Few-shot 注入计数
+  private _few_shot_injections: any = null
 
   constructor(enabled?: boolean | null) {
     if (enabled === undefined || enabled === null) {
@@ -141,6 +145,19 @@ export class MetricsRegistry {
         labelNames: ['skill', 'tool', 'status'],
         registers: [this._registry],
       })
+      // P2（RP-7 / FS-8）：角色与 Few-shot 治理指标
+      this._role_events = new Counter({
+        name: 'modu_agent_role_events_total',
+        help: 'Role composition / persona governance events',
+        labelNames: ['event', 'profile'],
+        registers: [this._registry],
+      })
+      this._few_shot_injections = new Counter({
+        name: 'modu_agent_few_shot_injections_total',
+        help: 'Few-shot fragment injections',
+        labelNames: ['status'],
+        registers: [this._registry],
+      })
       logger.info('MetricsRegistry: metrics enabled')
     } catch (e) {
       logger.warning('MetricsRegistry: init failed, falling back to no-op: %s', String(e))
@@ -213,6 +230,31 @@ export class MetricsRegistry {
       }
     } catch (e) {
       logger.debug('record_termination_advice failed: %s', String(e))
+    }
+  }
+
+  /**
+   * P2（RP-7）：记录角色装配/治理事件。
+   *
+   * event: composed（装配成功）/ persona_rejected（persona 被拒）/ persona_applied。
+   * profile 使用稳定 id（如 role.react.zh），基数可控。
+   */
+  record_role_event(event: string, profile: string = 'unknown'): void {
+    if (!this.enabled) return
+    try {
+      this._role_events.labels({ event, profile }).inc()
+    } catch (e) {
+      logger.debug('record_role_event failed: %s', String(e))
+    }
+  }
+
+  /** P2（FS-8）：记录一次 Few-shot 注入（status: injected / empty / error）。 */
+  record_few_shot_injection(status: string = 'injected'): void {
+    if (!this.enabled) return
+    try {
+      this._few_shot_injections.labels({ status }).inc()
+    } catch (e) {
+      logger.debug('record_few_shot_injection failed: %s', String(e))
     }
   }
 

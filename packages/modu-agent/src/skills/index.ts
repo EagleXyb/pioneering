@@ -68,9 +68,23 @@ export {
 export {
   DynamicFewShotSelector,
   InMemoryExampleStore,
+  estimateTokensCjk,
+  tokenizeForMatch,
   formatExample,
   formatExamplesAsPrompt,
   mmrSelect,
   type FewShotExample,
+  type FewShotTurn,
   type ExampleStore,
 } from './few-shot-selector.js'
+// P0（FS-2 / FS-3）：共享示例库与反馈入池
+export {
+  getSharedFewShotStore,
+  setSharedFewShotStore,
+  resetFewShotStore,
+  isFewShotStoreSeeded,
+  recordFewShotExample,
+  buildCandidateFromRun,
+} from './few-shot-store.js'
+// P0（FS-2）：内置种子示例
+export { FEW_SHOT_SEEDS, getFewShotSeeds } from './few-shot-seeds.js'

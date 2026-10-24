@@ -126,6 +126,10 @@ export interface SendMessageRequest {
    * 云端由 zod 校验，本地由 agent-runtime 白名单归一化。
    */
   agentMode?: 'react_agent' | 'plan_execute'
+  /** 用户 persona（仅风格层；云端/内核都会做长度限制与覆盖检测）。 */
+  persona?: string
+  /** 角色语言。 */
+  locale?: 'zh' | 'en'
 }
 
 // ---- Agent ----

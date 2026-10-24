@@ -16,6 +16,14 @@
 
 import { getConfig } from '../config/runtime-config.js'
 
+/** 轨迹中的单轮消息（Agent 示例优先使用轨迹，而非单轮问答）。 */
+export interface FewShotTurn {
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  /** assistant 轮可选：工具调用（name + arguments）。 */
+  tool_calls?: Array<{ name: string; arguments?: Record<string, unknown> }>
+}
+
 /**
  * Few-shot 示例结构（对应文档 EXAMPLE_SCHEMA）。
  */
@@ -36,6 +44,15 @@ export interface FewShotExample {
   quality_score: number
   /** 创建时间戳（ms） */
   created_at?: number
+  /** 来源（治理用：人工 / 线上反馈 / 失败修复）。 */
+  source?: 'manual' | 'feedback' | 'repair'
+  /** 示例版本（治理用）。 */
+  version?: string
+  /**
+   * 可选轨迹：`user → assistant(tool_calls) → tool → assistant(final)`。
+   * 存在时优先按轨迹格式化，教"过程"而不只是"答案"。
+   */
+  trajectory?: FewShotTurn[]
 }
 
 /**
@@ -54,33 +71,106 @@ export interface ExampleStore {
   count(): Promise<number>
 }
 
+/** CJK 字符范围（中日韩统一表意文字 + 假名 + 谚文）。 */
+const _CJK_RE = /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/
+
+/**
+ * 估算字符串 token 数（P1 / FS-5）。
+ *
+ * 旧实现统一按 `ceil(len/4)`，对中文低估约 4 倍；此处按 CJK 1 字 ≈ 1 token、
+ * 其余 4 字符 ≈ 1 token 估算，误差显著更小（不引入 tokenizer 依赖）。
+ */
+export function estimateTokensCjk(text: string): number {
+  if (!text) return 0
+  let cjk = 0
+  let other = 0
+  for (const ch of text) {
+    if (_CJK_RE.test(ch)) cjk += 1
+    else other += 1
+  }
+  return Math.ceil(cjk + other / 4)
+}
+
+/**
+ * 轻量分词（P1 / FS-5）：ASCII 单词 + CJK bigram。
+ *
+ * 中文没有空格，旧实现 `split(/\s+/)` 会把整句当成一个 term，只能命中完全子串。
+ * 这里用 bigram 近似，既无第三方依赖，又能覆盖"对比 / 方案 / 优缺点"这类词。
+ */
+export function tokenizeForMatch(text: string): string[] {
+  if (!text) return []
+  const lower = String(text).toLowerCase()
+  const tokens: string[] = []
+  for (const m of lower.matchAll(/[a-z0-9_]+/g)) {
+    if (m[0].length > 1) tokens.push(m[0])
+  }
+  const cjkSegments = lower.match(/[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]+/g) ?? []
+  for (const seg of cjkSegments) {
+    if (seg.length === 1) {
+      tokens.push(seg)
+      continue
+    }
+    for (let i = 0; i < seg.length - 1; i += 1) {
+      tokens.push(seg.slice(i, i + 2))
+    }
+  }
+  return tokens
+}
+
 /**
  * 纯内存示例库实现。
  *
- * 使用简单的关键词匹配作为相关性评分（无语义嵌入依赖）。
+ * 使用 CJK bigram + ASCII 词匹配作为相关性评分（无语义嵌入依赖）。
  * 生产环境建议替换为 ChromaExampleStore（语义嵌入检索）。
+ *
+ * P2（FS-8）治理：
+ *   - 按 `input` 归一化去重，重复时保留质量分更高者；
+ *   - 支持 TTL（`maxAgeDays`），过期示例在检索与写入时被忽略；
+ *   - 记录来源/版本，便于审计与回滚。
  */
 export class InMemoryExampleStore implements ExampleStore {
   private _examples: FewShotExample[] = []
+  private _maxAgeDays: number | null
 
-  constructor(initial: FewShotExample[] = []) {
+  constructor(
+    initial: FewShotExample[] = [],
+    options: { maxAgeDays?: number | null } = {},
+  ) {
     this._examples = [...initial]
+    this._maxAgeDays = options.maxAgeDays ?? null
+  }
+
+  private _isExpired(example: FewShotExample, now = Date.now()): boolean {
+    if (this._maxAgeDays === null || this._maxAgeDays <= 0) return false
+    const created = example.created_at ?? 0
+    if (created <= 0) return false
+    return now - created > this._maxAgeDays * 24 * 60 * 60 * 1000
+  }
+
+  private _dedupeKey(example: FewShotExample): string {
+    return String(example.input ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
   }
 
   async search(query: string, limit: number): Promise<FewShotExample[]> {
-    if (this._examples.length === 0) return []
-    const queryLower = query.toLowerCase()
-    const queryTerms = queryLower.split(/\s+/).filter((t) => t.length > 1)
+    // 空查询不返回示例，避免把"随机示例"注入到无关请求
+    if (!query || query.trim() === '' || limit <= 0) return []
+    const alive = this._examples.filter((ex) => !this._isExpired(ex))
+    if (alive.length === 0) return []
 
-    const scored = this._examples.map((ex) => {
-      const inputLower = ex.input.toLowerCase()
-      let score = 0
-      for (const term of queryTerms) {
-        if (inputLower.includes(term)) score += 1
+    const queryLower = query.toLowerCase()
+    const queryTerms = tokenizeForMatch(query)
+    const querySet = new Set(queryTerms)
+
+    const scored = alive.map((ex) => {
+      const exampleTerms = tokenizeForMatch(ex.input)
+      let overlap = 0
+      for (const t of exampleTerms) {
+        if (querySet.has(t)) overlap += 1
       }
-      // 整体包含加分
-      if (inputLower.includes(queryLower)) score += 2
-      return { example: ex, score }
+      const norm = overlap / Math.max(querySet.size, 1)
+      // 整体包含加分（短查询命中）
+      const bonus = queryLower && ex.input.toLowerCase().includes(queryLower) ? 0.5 : 0
+      return { example: ex, score: norm + bonus }
     })
 
     return scored
@@ -90,26 +180,52 @@ export class InMemoryExampleStore implements ExampleStore {
   }
 
   async add(example: FewShotExample): Promise<boolean> {
+    if (this._isExpired(example)) return false
+    const key = this._dedupeKey(example)
+    if (!key) return false
+
+    const existingIdx = this._examples.findIndex((ex) => this._dedupeKey(ex) === key)
+    if (existingIdx >= 0) {
+      // 去重：同输入只保留质量分更高的一条
+      if (this._examples[existingIdx].quality_score >= example.quality_score) return false
+      this._examples[existingIdx] = example
+      return true
+    }
+
     this._examples.push(example)
     return true
   }
 
   async count(): Promise<number> {
-    return this._examples.length
+    return this._examples.filter((ex) => !this._isExpired(ex)).length
   }
 }
 
-/**
- * 估算字符串的 token 数（粗略：按 4 字符 = 1 token）。
- */
+/** 内部别名：统一使用 CJK 感知估算。 */
 function _estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4)
+  return estimateTokensCjk(text)
 }
 
 /**
  * 格式化示例为 prompt 文本。
+ *
+ * 有 `trajectory` 时按对话轨迹输出（教过程），否则回退到输入/输出对。
  */
 export function formatExample(example: FewShotExample): string {
+  if (Array.isArray(example.trajectory) && example.trajectory.length > 0) {
+    const lines: string[] = [`输入：${example.input}`, '轨迹：']
+    for (const turn of example.trajectory) {
+      const role = turn.role === 'assistant' ? '助手' : turn.role === 'tool' ? '工具' : '用户'
+      lines.push(`  [${role}] ${turn.content}`)
+      if (Array.isArray(turn.tool_calls) && turn.tool_calls.length > 0) {
+        for (const call of turn.tool_calls) {
+          const args = call.arguments ? JSON.stringify(call.arguments) : '{}'
+          lines.push(`    调工具 ${call.name} 参数 ${args}`)
+        }
+      }
+    }
+    return lines.join('\n')
+  }
   const parts: string[] = []
   parts.push(`输入：${example.input}`)
   parts.push(`输出：${example.output}`)
@@ -153,25 +269,26 @@ export function mmrSelect(
   if (candidates.length <= maxExamples) return [...candidates]
 
   const queryLower = query.toLowerCase()
-  const queryTerms = queryLower.split(/\s+/).filter((t) => t.length > 1)
+  const queryTerms = tokenizeForMatch(query)
+  const querySet = new Set(queryTerms)
 
-  // 计算示例与 query 的相关性
+  // 计算示例与 query 的相关性（CJK bigram + ASCII 词）
   const relevanceScores = candidates.map((ex) => {
     const inputLower = ex.input.toLowerCase()
     let score = 0
-    for (const term of queryTerms) {
-      if (inputLower.includes(term)) score += 1
+    for (const term of tokenizeForMatch(ex.input)) {
+      if (querySet.has(term)) score += 1
     }
-    if (inputLower.includes(queryLower)) score += 2
-    return score / Math.max(queryTerms.length + 2, 1) // 归一化到 0-1
+    if (queryLower && inputLower.includes(queryLower)) score += 2
+    return score / Math.max(querySet.size + 2, 1) // 归一化到 0-1
   })
 
-  // 计算示例间相似度（基于输入文本的词重叠）
+  // 计算示例间相似度（基于输入文本的 token 重叠）
   const simMatrix: number[][] = candidates.map((a) =>
     candidates.map((b) => {
       if (a.id === b.id) return 1.0
-      const aTerms = new Set(a.input.toLowerCase().split(/\s+/))
-      const bTerms = new Set(b.input.toLowerCase().split(/\s+/))
+      const aTerms = new Set(tokenizeForMatch(a.input))
+      const bTerms = new Set(tokenizeForMatch(b.input))
       let overlap = 0
       for (const t of aTerms) {
         if (bTerms.has(t)) overlap += 1
@@ -331,9 +448,12 @@ export class DynamicFewShotSelector {
     if (example.quality_score < this._minQualityScore) {
       return false
     }
+    // P2（FS-8）：补齐治理字段，保证可追溯与可回滚。
     return this._store.add({
       ...example,
       created_at: example.created_at ?? Date.now(),
+      source: example.source ?? 'manual',
+      version: example.version ?? '1',
     })
   }
 }

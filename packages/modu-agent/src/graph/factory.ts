@@ -56,8 +56,15 @@ import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
 import { ObservationDistiller } from './adapters/observation-distiller.js'
 // P1-4: 四层 Prompt 解耦架构
 import { PromptComposer } from '../reasoning/prompt-composer.js'
+// P0（RP-1~RP-4）：角色契约与变体
+import {
+  composeRolePrompt,
+  resolveRoleProfile,
+  splitLegacyRules,
+} from '../reasoning/role-profile.js'
 // P0（T-01）：观测统一 boot（接线 3 个零调用函数 + 5 个死配置键）
 import { boot_observability } from '../observability/boot.js'
+import { get_metrics_registry } from '../observability/metrics.js'
 // P0（T-02）：LLM token 用量埋点（通用适配层）
 import { apply_llm_metrics } from './adapters/llm-metrics.js'
 // P0（T-08）：模型路由桥接（ModuLLM → LangChain Runnable）
@@ -867,10 +874,63 @@ export async function create_agent(
   // 系统提示词（P0-优化: 宿主未传入时使用默认防幻觉 prompt 作为底线约束）
   // P2（T-14）: 经 Prompt 注册表渲染 `agent.default_system`（宿主可注册同 id 模板覆盖）；
   // 未注册时回退本模块字面量模板 → 字符与迁移前完全一致。
+  // P0（RP-1~RP-4）：角色契约装配。
+  //
+  // 优先级（从高到低）：
+  //   1. 宿主显式 system_prompt / systemPrompt —— 完全覆盖，保持既有契约；
+  //   2. 宿主已注册的 agent.default_system —— 视为显式覆盖；
+  //   3. 内置角色契约（identity/scope/policy/capability/delivery/refusal + 规则块），
+  //      按 agentMode × locale 解析变体，并追加用户 persona（仅风格层）。
+  const roleMode =
+    configurable['agent_mode'] ??
+    (configurable['plan_execute_enabled'] === true ? 'plan_execute' : 'react_agent')
+  const roleLocale = configurable['locale'] ?? null
+  const roleProfile = resolveRoleProfile({ mode: roleMode, locale: roleLocale })
+  const roleComposed = composeRolePrompt(
+    roleProfile,
+    splitLegacyRules(_DEFAULT_ANTI_HALLUCINATION_PROMPT),
+    configurable['persona'] ?? null,
+  )
+  if (roleComposed.personaRejectedReason) {
+    logger.warning('[role] persona rejected: %s', roleComposed.personaRejectedReason)
+  }
+
+  const _registeredDefault = getRegistry().getPrompt(_DEFAULT_SYSTEM_PROMPT_TEMPLATE.id)
+  const _hostOverrodeDefault =
+    _registeredDefault !== undefined &&
+    _registeredDefault.messages?.[0]?.content !== _DEFAULT_ANTI_HALLUCINATION_PROMPT
+
+  const _registryEnabled = runtimeConfig.get('prompt.registry.enabled', true)
   let effectiveSystemPrompt =
     configurable['system_prompt'] ??
     systemPrompt ??
-    renderPromptWithFallback('agent.default_system', {}, _DEFAULT_SYSTEM_PROMPT_TEMPLATE)
+    (!_registryEnabled
+      // 注册表单点回滚：与迁移前一致，直接使用字面量
+      ? renderPromptWithFallback('agent.default_system', {}, _DEFAULT_SYSTEM_PROMPT_TEMPLATE)
+      : (_hostOverrodeDefault
+          ? renderPromptWithFallback('agent.default_system', {}, _DEFAULT_SYSTEM_PROMPT_TEMPLATE)
+          : roleComposed.text))
+
+  logger.info(
+    '[role] profile=%s@%s mode=%s locale=%s persona=%s chars=%d',
+    roleComposed.profile.id,
+    roleComposed.profile.version,
+    roleComposed.profile.mode,
+    roleComposed.profile.locale,
+    roleComposed.persona ? 'applied' : '(none)',
+    effectiveSystemPrompt.length,
+  )
+  try {
+    const metrics = get_metrics_registry()
+    metrics.record_role_event('composed', roleComposed.profile.id)
+    if (configurable['persona'] && !roleComposed.persona) {
+      metrics.record_role_event('persona_rejected', roleComposed.profile.id)
+    } else if (roleComposed.persona) {
+      metrics.record_role_event('persona_applied', roleComposed.profile.id)
+    }
+  } catch {
+    // 指标不可用不影响装配
+  }
 
   // P1: 聚合已注册 Skill 的提示片段（gated by skills.enabled；无 Skill 时返回原提示）
   // P0：only = 本轮被选中的技能；P1-c：catalogOnly = 只注入目录（默认关闭）。
@@ -953,6 +1013,8 @@ export async function create_agent(
         domain: configurable['domain'] ?? null,
         taskSpec: configurable['task_spec'] ?? null,
         runtimeContext: markdownRuntimeContext,
+        // P0（RP-2）：领域/任务/运行时层不得覆盖身份与安全约束
+        enforcePolicy: true,
       })
       logger.info('[P1-4] PromptComposer enabled: domain=%s taskSpec=%s runtimeContext=%s',
         configurable['domain'] ?? '(none)',

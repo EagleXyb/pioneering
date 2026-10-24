@@ -26,6 +26,7 @@ import { extractPerceptionContext } from '../perception/index.js'
 import type { ModuAgentState } from './state.js'
 import { renderPromptWithFallback } from '../reasoning/prompt-registry.js'
 import { DOC_GEN_TASK_PROMPT_TEMPLATE } from './prompt-templates.js'
+import { get_metrics_registry } from '../observability/metrics.js'
 
 /** 感知上下文片段。 */
 const _perceptionFragment: ContextFragment = {
@@ -100,16 +101,30 @@ const _observationsFragment: ContextFragment = {
   },
 }
 
-/** Few-shot 动态示例片段（gated by 注入的 selector；为空时静默跳过）。 */
+/**
+ * Few-shot 动态示例片段（gated by 注入的 selector；为空时静默跳过）。
+ *
+ * P0（FS-4）：位置定为 `append`（当前用户消息之后）。
+ *   - 对 chat 模型而言，示例靠近本轮指令，recency 最佳；
+ *   - 动态示例不进入 system 前缀，因此不会破坏 provider 前缀缓存；
+ *   - 字符预算 6000 防止示例库增长导致上下文失控（约 3–5 条中文轨迹）。
+ */
+const _FEW_SHOT_MAX_CHARS = 6000
 const _fewShotFragment: ContextFragment = {
   id: 'ctx.few_shot',
   priority: 45,
   placement: 'append',
+  budget: _FEW_SHOT_MAX_CHARS,
   async build(state: ModuAgentState, ctx): Promise<string | null> {
     const selector = ctx.fewShotSelector
     if (!selector) return null
     const query = state.cleaned_text ?? ''
     const fewShotPrompt = await selector.selectAndFormat(query)
+    try {
+      get_metrics_registry().record_few_shot_injection(fewShotPrompt ? 'injected' : 'empty')
+    } catch {
+      // 指标不可用不影响注入
+    }
     return fewShotPrompt ? fewShotPrompt : null
   },
 }

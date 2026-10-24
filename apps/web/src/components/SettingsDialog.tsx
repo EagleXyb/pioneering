@@ -77,6 +77,8 @@ interface Prefs {
   density: Density;
   fontSize: number;
   enterToSend: boolean;
+  /** P1（RP-5）：角色设定（仅风格/称呼/输出偏好，≤2000 字符）。 */
+  persona: string;
   // —— 以下偏好已持久化但功能未接通，UI 禁用并标"开发中"，保留字段避免老数据丢失 ——
   language: 'zh-CN' | 'en-US';
   notifDesktop: boolean;
@@ -94,6 +96,7 @@ const DEFAULT_PREFS: Prefs = {
   notifDesktop: false,
   notifSound: true,
   enterToSend: true,
+  persona: '',
   showTimestamp: true,
   voiceShortcut: true,
   privacyMode: false,
@@ -553,6 +556,24 @@ export default function SettingsDialog({
                         />
                       }
                     />
+                    <div className="setting-row setting-row--card settings-persona">
+                      <div className="setting-row-text">
+                        <div className="setting-row-title">角色设定</div>
+                        <div className="setting-row-desc">
+                          仅影响语气、称呼与输出偏好（≤2000 字），不会覆盖安全、权限与拒答规则
+                        </div>
+                      </div>
+                      <textarea
+                        className="settings-persona-input"
+                        value={prefs.persona}
+                        maxLength={2000}
+                        rows={3}
+                        placeholder="例如：回答先给结论，再给依据；称呼我为「你」即可。"
+                        onChange={(e) => update('persona', e.target.value)}
+                        aria-label="角色设定"
+                      />
+                      <div className="settings-persona-count">{prefs.persona.length}/2000</div>
+                    </div>
                     <SettingRow
                       title="显示消息时间"
                       desc="在每条消息旁显示发送时间（即将支持）"

@@ -29,6 +29,11 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 
 import { getConfig } from '../config/runtime-config.js'
 import { getRegistry } from '../core/registry.js'
+// P1（FS-3）：高分 run 沉淀为 Few-shot 候选
+import {
+  buildCandidateFromRun,
+  recordFewShotExample,
+} from '../skills/few-shot-store.js'
 // P1（T-11）: 记忆策略统一契约（可选注入；未注入时走 store 直连，行为不变）
 import type { MemoryStrategy } from '../core/interfaces/memory-strategy.js'
 // P2（T-15）: 上下文策略统一契约 + 构建器（可选注入；未注册时回退内置默认策略，行为不变）
@@ -2130,6 +2135,33 @@ export function makeFeedbackNode(
             sessionId, Object.keys(configOverrides),
           )
         }
+      }
+
+      // P1（FS-3）：高分 run 沉淀为 Few-shot 候选（默认关闭）。
+      // 只在高分、有完整输入输出、且显式开启时才写入；任何异常不影响主流程。
+      try {
+        const collectEnabled = getConfig().get(
+          'react_optimization.few_shot.collect_from_feedback', false,
+        )
+        const minQuality = Number(getConfig().get(
+          'react_optimization.few_shot.collect_min_quality', 0.85,
+        ))
+        const evaluation = result['evaluation'] as Record<string, any> | null | undefined
+        const score = Number(
+          evaluation?.['overall'] ?? evaluation?.['score'] ?? 0,
+        )
+        const promptText = String(state.input_data?.['prompt'] ?? '')
+        if (collectEnabled && score >= minQuality && promptText && state.response) {
+          await recordFewShotExample(buildCandidateFromRun({
+            id: `fb.${sessionId}.${Date.now()}`,
+            input: promptText,
+            output: String(state.response),
+            domain: state.task_type ?? undefined,
+            qualityScore: score,
+          }))
+        }
+      } catch (e: any) {
+        logger.warning('[few-shot] feedback collection skipped: %s', String(e?.message ?? e))
       }
 
       return {

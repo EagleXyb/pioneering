@@ -904,3 +904,190 @@ const _fewShotFragment: ContextFragment = {
 | P2 | 打开输出脱敏影子模式 → 拦截态；打开 `policy.engine` 灰度；补 prompt 回归集（PR-6）；Web 增加"角色设定"入口（PR-7） | 全部 |
 
 > **归结一句话**：这套代码在 Prompt 工程五项上都不缺"实现"，缺的是**接线、默认值和校验**——角色只有一句、Few-shot 三层空转、CoT 双默认关、结构化只覆盖 planner、负向约束靠祈使句。因此优化重点不是再写更长的提示词，而是把已有的注册表 / 片段 / 模板 / 校验点接上主链路，并给关键约束补上可判定的代码与回归门禁；这与 §8.1 的"接线优先于新建"判断一致。
+
+---
+
+## 11. 角色设定与 Few-shot 专项分析与优化方案（2026-10-24 补充）
+
+> 核查范围：`packages/modu-agent`（Prompt 装配、上下文片段、场景包、Skill、子图）、`packages/docs`（既有结论）、`apps/backend-ts`（会话与请求契约）、`apps/web`、`apps/desktop`（用户入口）
+> 核查方法：源码逐点走读 + 配置默认值交叉验证 + "是否有消费方 / 是否有生产方"双向检索 + 运行时开关对照
+> 定位：§10.2、§10.3 已给出结论，本节补齐"实现链路 + 行业基线 + 可落地改造点与优先级"，并修正其中两处需要展开的判断（角色冲突的具体来源、Few-shot 即使打开也会失效的原因）。
+
+### 11.1 角色设定：四类来源、一条拼接链
+
+角色信息不是由某个"角色模块"统一管理的，而是四类来源分别注入、最后被字符串拼接在一起：
+
+| 来源 | 位置 | 实际内容 | 生效条件 | 强度 |
+|---|---|---|---|---|
+| 主 Agent 角色 | `graph/factory.ts:121` | `You are a helpful AI assistant.` + 28 条规则，实测 7068 字符 | 始终生效（未传 `system_prompt` 时） | 角色 1 句，规则占绝对多数 |
+| 人格 / 边界 | `packages/modu-agent/SOUL.md:9` | "只做编码与工程辅助，不越权执行破坏性操作" | `react_optimization.markdown_prompt.enabled=true`（`config.yaml:13-14` 已开） | 语气与边界各 1 行 |
+| 工作准则身份 | `packages/modu-agent/AGENTS.md:8` | "你是 pioneering 的编码助手 Agent" | 同上 | 1 句 + 5 条 SOP |
+| 领域角色 | `packs/research-pack/domains/research_writer.md:2`、`packs/planning-pack/domains/task_planner.md` | "你是研究分析领域的专业 Agent……" / 任务规划角色 | `prompt_composer.enabled`（`pack.yaml:11-14` 由场景包打开） | 1 句 + 术语表 + 输出要求 |
+| 子 Agent 角色 | `graph/prompt-templates.ts:125-161` | research/coding/review/default，各 1–2 句英文 | `multi_agent.enabled=true`（`runtime-config.ts:84-86` 默认 false） | 极薄，默认不可达 |
+| 用户自定义 | `configurable.system_prompt` / `chat_sessions.systemPrompt` | 任意文本 | 后端可用，Web 无入口，桌面端丢弃 | 事实上不可用 |
+
+装配顺序是：主 prompt → Skills 片段 → Markdown 文档（AGENTS/SOUL 合并进 system，USER/MEMORY 作为 runtimeContext）→ `PromptComposer`（systemCore → domain → taskSpec → runtimeContext）→ 作为 `system[0]`；随后 `agentNode` 再按优先级追加 6 段运行时片段。四层之间只加双换行，没有预算、没有去重、没有"后层不得覆盖安全约束"的校验：
+
+```53:71:packages/modu-agent/src/reasoning/prompt-composer.ts
+  static compose(input: PromptComposerInput): string {
+    const parts: string[] = []
+    if (input.systemCore) parts.push(input.systemCore)
+    ...
+    return parts.join('\n\n')
+  }
+```
+
+按当前 `config.yaml` 实际生效的组合是：**默认主角色 + 规则（始终）+ AGENTS/SOUL（已开）+ 领域角色（场景包已开）**；子 Agent 角色与用户自定义不生效。也就是说，`pro` 与 `task` 两条链路看到的"我是谁"由同一段通用角色 + 同一份"编码助手"文档决定，领域差异只在后面追加一段。
+
+### 11.2 角色设定的六个结构性缺陷
+
+**R-1 角色被规则稀释，且不可判定。** `system[0]` 的真实结构是"1 句通用角色 + 7KB 规则"，角色在 token 占比上不足 1%，且位置最靠前、最易被后续长文稀释。更关键的是，角色没有说明"服务谁、负责什么、不负责什么、什么情况拒答或转交、冲突时如何取舍"，模型只能把自己理解为"一个被约束的执行器"，而不是"一个研究/规划专家"。角色应有的"职责 + 决策准则 + 交付契约"三件事，只做了第三件（文档交付模板）。
+
+**R-2 多角色并列且语义冲突，没有优先级。** 同一次请求里可能同时出现四种身份：`helpful AI assistant`（默认）、`编码助手 Agent`（AGENTS.md）、`只做编码与工程辅助`（SOUL.md）、`研究分析/任务规划专业 Agent`（领域包）。其中 SOUL 的"只做编码"与 research-pack 的研究写作角色是直接矛盾的；`pro`（react_agent）与 `task`（plan_execute）共用同一主 prompt，也没有任何"冲突时听谁"的声明。拼接顺序不等于优先级——模型看到的是一堆并列陈述，而不是一个带裁决规则的角色体系。
+
+**R-3 没有按模式、模型、语言、租户的变体。** 全局只有一套主角色。`pro` 与 `task` 的职责差异巨大（研究与交付 vs 规划与执行），却共用同一段角色；中英文请求复用同一段英文规则；GLM/DeepSeek/Qwen 的工具调用格式与思考模式差异没有适配。行业里这些差异通常通过"角色 profile × 语言 × 模型族"的正交变体解决，而不是在同一个 prompt 里追加条件分支。
+
+**R-4 角色在建图期固化，用户侧零入口。** `configurable.system_prompt` 进入图缓存 key（`agent-bridge.ts:59-66`），改一句角色就换一张图；没有热更新、没有灰度、没有按会话覆盖。用户侧更直接：后端 `chat_sessions.systemPrompt` 在用（`routes/agent.ts:569`），但 Web 设置没有该分区（`apps/web/src/components/SettingsDialog.tsx`），桌面端在 `agent-runtime.ts:234-243` 的白名单里把它静默丢弃。所谓"自定义角色"在产品层面不存在。
+
+**R-5 子 Agent 角色过薄，且默认不可达。** 四个角色各 1–2 句英文，没有输出 schema、没有工具范围、没有失败交接规则；即便如此，`multi_agent.enabled=false` 使这条路径在默认部署里完全走不到。角色体系里"最像角色"的部分，恰好是最不生效的部分。
+
+**R-6 没有角色行为度量。** 没有拒答准确率、越权率、领域术语命中率、交付格式遵从率、转交率这类指标，角色改动无法验证，只能"感觉变了"。这也导致 R-1/R-2 的问题长期不可见。
+
+### 11.3 Few-shot：组件完备，链路全断
+
+`skills/few-shot-selector.ts` 是 Prompt 层实现质量最高的一份代码，五个部件都在：
+
+| 部件 | 位置 | 实现要点 |
+|---|---|---|
+| 示例结构 | `few-shot-selector.ts:22-39` | `id/input/output/domain/complexity/pattern/quality_score` |
+| 示例库 | `few-shot-selector.ts:63-100` | `InMemoryExampleStore`，关键词重叠打分，无嵌入依赖 |
+| MMR | `few-shot-selector.ts:146-210` | λ=0.7，相关性按词重叠归一化，相似度用 Jaccard |
+| 选择器 | `few-shot-selector.ts:226-338` | 检索 top 3k → 质量过滤 → MMR → token 预算 → 格式化 |
+| 配置门控 | `few-shot-selector.ts:255-270` | 读 `react_optimization.few_shot.*`，未启用返回 null |
+
+接入点也已接好：`graph.ts:874-885` 构造选择器，`graph.ts:567` 按 `profile.fewShotEnabled` 注入 `makeAgentNode`，`context-strategies.ts:104-115` 以 `priority=45, placement='append'` 的片段调用 `selectAndFormat(state.cleaned_text)`，结果作为 SystemMessage 追加。
+
+但端到端是 0 生效，四个断点缺一不可：
+
+| 断点 | 证据 | 后果 |
+|---|---|---|
+| 开关默认关 | `runtime-config.ts:475-481` 为 `false`，`config.yaml` 未覆盖 | 选择器根本不被创建 |
+| 示例库是空的内存库 | `graph.ts:878` `new InMemoryExampleStore()` 不传初始数据 | 即使打开也是空库 |
+| 全仓没有写入方 | `addExample()` 仅出现在 `tests/skills/few-shot-selector.test.ts`，`src/` 零调用 | 库永远是空的 |
+| 承载槽没有生产方 | `configurable['task_spec']` 只有 `factory.ts:954` 消费，全仓无写入 | 设计给 few-shot 的槽永远 null |
+
+```874:885:packages/modu-agent/src/graph/graph.ts
+export function createFewShotSelector(): any {
+  try {
+    if (getConfig().get('react_optimization.few_shot.enabled', false)) {
+      // 使用内存示例库（生产环境可替换为 ChromaExampleStore）
+      const store = new InMemoryExampleStore()
+      return DynamicFewShotSelector.fromConfig(store)
+    }
+  } catch (e: any) { ... }
+  return null
+}
+```
+
+另外还有三处"准 Few-shot"，同样很弱：planner 的 `GOOD/BAD example` 是硬编码 2 条，只教"描述不要写成嵌套 JSON"，不教任务（`prompt-templates.ts:98-99`）；Skill 的 `examples()` 有注入路径（`skills/adapter.ts:45-57`），但 `skills.enabled=false`（`runtime-config.ts:201-202`），且仓库只有 `math` 一个技能、没有 examples；场景包 `example-pack/prompts/writing_style.json` 被 `scenario-loader.ts:293-307` 注册进 PromptRegistry，但 `list(taskType)` 全仓无调用方，注册即死。
+
+**即使现在把开关打开，效果也会显著打折**，原因有五个：其一，`InMemoryExampleStore` 用 `query.split(/\s+/)` 分词，中文没有空格，整句会退化成一个 term，只能命中完全子串，召回率极低；其二，`_estimateTokens = ceil(len/4)` 对中文低估约四倍，1500 的预算实际只能装三百多汉字；其三，示例是 `input/output` 单轮问答对，而 Agent 需要的是"思考 → 工具调用 → 观察 → 收尾"的轨迹，教答案不教过程；其四，`placement='append'` 把示例追加在历史之后，既远离任务指令，又让前缀缓存每次失效；其五，没有去重、时效、版本、PII 清洗，也没有"示例不得与评测集重叠"的约束。
+
+### 11.4 行业成熟做法
+
+#### 11.4.1 Role Prompting：角色是"职责契约"，不是"人设"
+
+成熟实现通常把角色写成五段，而不是一句"你是专家"：身份与对象（你是谁、服务谁、在什么产品/渠道工作）、职责边界（负责什么、不负责什么、什么情况拒答或转交）、决策准则（冲突时的优先级，例如安全 > 合规 > 正确性 > 效率 > 风格；不确定时的默认动作）、能力声明（能用哪些工具与数据，不得声称具备未接入的能力）、交付契约（输出结构、语言、长度、引用与格式）。
+
+围绕这五段，有六条工程原则。第一，单一主角色 + 能力层，不要多个人格并列；领域包应作为"专业能力增强"叠加，并显式声明"不改变安全边界与拒答策略"。第二，角色与工具/权限一致，角色声称的能力必须在工具白名单与权限矩阵里真实存在，否则会产生"声称能做但做不到"的幻觉。第三，稳定前缀 + 版本化，角色放在 `system[0]` 且保持稳定以命中 provider 前缀缓存，按 mode/model/locale/tenant 做正交变体，用快照测试与 A/B 管理。第四，用户可定制只限 persona 层（称呼、语气、输出偏好），policy 与安全层不可被覆盖，并要有长度上限与注入检测。第五，角色可度量，至少包括拒答准确率、越权率、领域术语命中率、格式遵从率、转交率与平均轮次。第六，长度克制，成熟产品的主角色通常在 200–800 token，规则靠结构化约束与代码判定兜底，而不是无限追加祈使句。
+
+#### 11.4.2 Few-shot：示例是"边界说明书"，不是"知识库"
+
+成熟做法遵循八条原则。第一，示例用来表达难以言说的边界——格式、判定阈值、拒答口径、工具选择、失败恢复；能用 schema 或代码约束的，不靠示例。第二，质量优先于数量，3–5 个覆盖"正例 + 反例 + 边界例"的示例通常优于 20 个同质示例，且必须与真实输入分布一致。第三，动态检索加多样性：embedding 召回 → rerank → MMR 去重 → token 预算截断；DSPy 的 `BootstrapFewShot` 一类做法更进一步，把"选哪些示例"当作可自动优化的参数。第四，Agent 场景必须用轨迹示例，即 `user → thought/tool_call → observation → final` 的完整片段，而不是单轮问答，并且要展示参数写法与一次失败重试。第五，放置靠近指令：放在任务说明之后、用户输入之前，或作为 user/assistant 对话对；稳定示例可放前缀吃缓存，动态示例放尾部。第六，治理闭环：来源（人工标注 / 线上高分轨迹 / 失败修复样本）、质量门槛、去重、时效、版本、PII 清洗、与评测集隔离。第七，必须做 A/B：有/无 few-shot、不同示例数与检索策略，按任务类型分层看成功率、轮次、token 与延迟；强模型上收益递减，弱模型与格式敏感任务收益最大。第八，安全：示例本身是不可信输入面，外部来源示例要清洗，避免把注入 payload 带进系统提示。
+
+### 11.5 差距对照
+
+| 维度 | 当前实现 | 行业成熟做法 | 差距性质 |
+|---|---|---|---|
+| 角色结构 | 1 句角色 + 28 条规则 | 身份/边界/准则/能力/交付五段契约 | 结构缺失 |
+| 角色一致性 | 四类角色并列，SOUL 与领域包语义冲突 | 单一主角色 + 能力层 + 显式优先级 | 治理缺失 |
+| 角色变体 | 全局唯一，pro/task 共用 | 按 mode/model/locale/tenant 正交变体 | 工程缺失 |
+| 角色生命周期 | 建图期固化进缓存 key | 版本化、热更新、灰度、可回放 | 工程缺失 |
+| 角色入口 | 后端有字段，Web 无 UI，桌面丢弃 | persona 层用户可配、policy 层锁定 | 产品缺失 |
+| 角色度量 | 无 | 拒答/越权/术语/格式/转交指标 | 评估缺失 |
+| Few-shot 链路 | 开关关 + 空库 + 无写入方 + 槽为空 | 种子集 + 生产方 + 预算 + 评测 | 接线缺失 |
+| Few-shot 检索 | 关键词、中文失效、char/4 估算 | 嵌入召回 + rerank + MMR + CJK 估算 | 质量缺失 |
+| 示例形态 | 单轮 Q/A | Agent 轨迹（含工具调用与失败恢复） | 范式缺失 |
+| 示例治理 | 无 | 质量/去重/时效/版本/PII/隔离 | 治理缺失 |
+
+### 11.6 优化方案（含落点、预期效果与优先级）
+
+#### 11.6.1 角色设定
+
+| 编号 | 目标 | 具体改法（代码落点） | 预期效果 | 优先级 |
+|---|---|---|---|---|
+| RP-1 | 角色契约化 | 新增 `prompt/role-profile.ts`，定义 `AgentRoleProfile { identity, audience, scope, non_goals, decision_policy, capabilities, delivery, refusal }`；把 `factory.ts:121-160` 拆成 `role/scope/policy/capability/delivery/safety` 六个 block，由 `composeRolePrompt(profile, { locale, mode })` 组合；用快照测试锁定输出 | 角色从"一句话"变为可判定契约；单块可改、可回归；规则冗余下降 | P0 |
+| RP-2 | 唯一主角色 + 优先级 | 默认只保留一个主角色；领域包改为 `capability_overlay`（只增强术语与输出要求，不改身份与边界）；`PromptComposer` 增加 `immutablePrefix` 与 `assertNoOverride`，固定顺序"安全 → 主角色 → 能力 → 会话 persona → 运行时"；把实际来源写入 run metadata 的 `role_source` | 消除"四重身份"；冲突从"靠模型猜"变为"结构上不可能" | P0 |
+| RP-3 | 冲突消解 | 把 `SOUL.md` 拆为 `SOUL.base.md`（语气/边界）与按模式的 `SOUL.coding.md`；"只做编码"只在 coding 通道注入，pro/task 改用"研究与交付/规划与执行"边界；`AGENTS.md` 的身份句限定在编码场景；加一条 `role_conflict_check` 单测 | 修掉当前最直接的语义矛盾；避免研究任务被"只做编码"约束 | P0 |
+| RP-4 | 模式/语言/模型变体 | `resolveRoleProfile({ agentMode, locale, modelFamily })`：pro → research & delivery，task → planner & executor；zh/en 两版；模型族只影响格式与工具调用说明，不影响角色身份 | 两条主链路各司其职；中文场景 token 降 30% 左右 | P1 |
+| RP-5 | 用户入口 | Web `SettingsDialog` 增加"角色设定"（≤2KB，仅 persona 层）；后端写入 `chat_sessions.metadata.persona` 并做注入扫描；桌面端放开 `agent-runtime.ts:234-243` 白名单并加长度限制；服务端强制 policy 层不可覆盖 | 满足定制诉求且不破坏安全边界 | P1 |
+| RP-6 | 版本化与热更新 | 角色 profile 带 `id@version`，写入 `agent_runs.metadata`；把角色注入从"建图期 `system_prompt`"迁移为"运行期第 0 个片段"，使改角色不重建图；保留按比例灰度 | 角色可回放、可灰度、改动成本从"换图"降为"换配置" | P1 |
+| RP-7 | 角色度量 | 新增 `role_refusal_total`、`scope_violation_total`、`format_compliance`、`terminology_hit` 指标；用 30 条固定 fixture 做角色回归（应拒答/应转交/应使用术语/应遵守交付格式） | 角色改动可验证，避免"感觉变了" | P2 |
+| RP-8 | 子 Agent 角色补齐 | `prompt-templates.ts:125-161` 每个角色补输出 schema、工具范围、失败交接规则；`subgraph/builder.ts:55-80` 支持 `task_type` 组合选择；在 `multi_agent` 打开前先补单测 | 多 Agent 开启后角色不空心化 | P2 |
+
+#### 11.6.2 Few-shot
+
+| 编号 | 目标 | 具体改法（代码落点） | 预期效果 | 优先级 |
+|---|---|---|---|---|
+| FS-1 | 先做"保留或下线"的决策 | 若保留：按下述 FS-2~FS-8 执行；若下线：删除 `few-shot-selector.ts`、`ctx.few_shot` 片段、`few_shot` 配置与导出，避免"文档里有、运行时没有"；决策写入 ADR | 消除死代码与错误预期 | P0 |
+| FS-2 | 种子集 | 新增 `packs/*/few_shot/*.json`，每任务类型 20–50 条人工精选示例，带 `domain/complexity/pattern/quality_score`；启动时 `new InMemoryExampleStore(seed)` 或切 Chroma；缺失时显式告警而非静默跳过 | 打开开关即有效果；可做基线对比 | P0 |
+| FS-3 | 生产方 | 在 `feedback` 与 `memory_update` 之间加"候选池"：质量分 ≥0.8 且人工抽检通过的 run 转示例，调用 `addExample`；按内容哈希去重，设 TTL 与来源标记 | 示例库能自增长，且不会污染 | P1 |
+| FS-4 | 槽接线 | 二选一：宿主在请求前用 `selectAndFormat` 产出 `configurable.task_spec`；或把 `context-strategies.ts:104-115` 的 `placement` 从 `append` 改为"任务指令之后"，并保证不与 `taskSpec` 双注入 | 示例真正进入模型可见位置 | P0 |
+| FS-5 | 检索质量 | 用 embedding 召回（复用 store 的向量能力或网关 embedding）+ rerank；中文按字 bigram 或分词后匹配；`_estimateTokens` 改为 CJK=1 字 1 token、ASCII=/4 | 中文召回从"几乎为零"变为可用；预算不再被低估 | P1 |
+| FS-6 | 轨迹化 | `FewShotExample` 增加 `trajectory: Array<{ role, content, tool_calls? }>`；`formatExamplesAsPrompt` 输出 user/assistant/tool 对话块；每条示例含一次工具失败与修正 | 示例教"过程"而非"答案"，对 Agent 才有效 | P1 |
+| FS-7 | 预算与缓存友好 | 稳定示例放 system 前缀（可选），动态示例固定放任务指令后；`max_examples=3`、`max_tokens_budget` 按模型窗口比例配置；注入条数与 token 打点 | 控制成本，避免打断前缀缓存 | P1 |
+| FS-8 | 治理与 A/B | 示例带版本、来源、创建时间；PII 清洗；与 eval 集做重叠检测；按任务类型做"有/无 few-shot"分层 A/B（成功率、轮次、token、延迟） | 示例质量可运营，收益可证明 | P2 |
+
+#### 11.6.3 三处"准 Few-shot"的处置
+
+planner 的 `GOOD/BAD example`（`prompt-templates.ts:98-99`）应升级为"每任务类型 2–3 条真实轨迹片段"，至少覆盖一次工具参数写法与一次失败重试；否则保持现状但明确它只是格式示例，不计入 Few-shot 能力。Skill 的 `examples()` 路径（`skills/adapter.ts:45-57`）在 `skills.enabled` 打开前应视为不可用，打开后需补至少一个带 examples 的技能作为回归样本。场景包 `writing_style.json` 需要接通 `list(taskType)` 消费（在 `agentNode` 增加第 7 个片段），否则删除注册与文件，避免"注册即死"的第三套机制继续存在。
+
+### 11.7 实施顺序、依赖与验收
+
+**P0（建议 1 个迭代，先做"一致性"与"去空转"）**：先做 RP-1 + RP-2 + RP-3，把角色收敛为"单一主角色 + 能力层 + 固定优先级"，并用快照测试保证拆分本身不改变行为；同时解决 SOUL 与领域包的语义冲突。Few-shot 侧先做 FS-1 决策，若保留则并行做 FS-2 种子集与 FS-4 槽接线。验收标准是：30 条角色 fixture 中不再出现互相矛盾的身份陈述；同一 deployment 下 `role_source` 唯一且可追溯；Few-shot 打开后 `select()` 返回非空，关闭时 token 变化不超过 5%。
+
+**P1（1–2 个迭代，做"变体"与"质量"）**：RP-4 模式/语言变体、RP-5 用户入口、RP-6 版本化与热更新；FS-3 生产方、FS-5 检索质量、FS-6 轨迹化、FS-7 预算与位置。验收标准是：pro/task、zh/en 四种组合各有独立角色且互不污染；改角色不再触发图重建；中文示例召回 recall@3 ≥ 0.6；token 估算误差 <15%；示例注入后任务成功率提升可测（同任务集 A/B）。
+
+**P2（治理与评估）**：RP-7 角色度量与回归、RP-8 子 Agent 角色补齐；FS-8 治理与 A/B。验收标准是：角色相关指标进入看板；示例库有版本、来源、时效与 PII 审计；有/无 Few-shot 的分层报告能稳定复现。
+
+### 11.8 风险与边界
+
+角色拆分本身会改变模型行为，必须用字符快照 + 小流量灰度双重保护，避免"结构更好了但回答变了"；领域包改为能力层后，要防止"研究任务失去研究语气"，需要用术语命中率与人工抽检做兜底。Few-shot 最大的风险是"示例复制"与"过拟合格式"，因此条数上限、MMR 多样性与反例覆盖必须同时存在；嵌入检索会引入延迟与成本，需要缓存、批量与关键词降级三条退路。用户 persona 入口是新的注入面，必须坚持"policy 层不可覆盖 + 长度上限 + 注入扫描"。中文分词引入新依赖时要有 bigram 兜底，避免因分词器缺失导致整条链路静默失效。
+
+> **本节归结**：角色设定的问题不是"没写角色"，而是"写了四个角色、没有裁决规则"；Few-shot 的问题不是"算法不好"，而是"开关、库、写入方、承载槽四层全断，且即使接通也不适配中文与 Agent 轨迹"。因此 P0 的动作应当是把角色收敛成一份可判定的契约、把 Few-shot 从"死代码"变成"有种子、有生产方、有位置"的最小闭环；P1 再解决变体、检索质量与轨迹形态；P2 才谈度量与治理。这与 §10.8 的排序一致，但把"角色冲突消解"和"Few-shot 中文/轨迹适配"从隐含前提提升为显式任务。
+
+### 11.9 实施状态（2026-10-24）
+
+本节方案已按 P0 → P1 → P2 落地，改动集中在内核 Prompt/Context 装配，并向宿主与两个客户端透传必要参数。
+
+| 优先级 | 编号 | 实施内容 | 主要落点 |
+|---|---|---|---|
+| P0 | RP-1 | 角色八段契约（identity/audience/scope/non_goals/decision_policy/capabilities/delivery/refusal）+ 规则五块切分；旧 "You are a helpful AI assistant" 句被剥离，避免与 IDENTITY 冲突 | `reasoning/role-profile.ts`、`graph/factory.ts` |
+| P0 | RP-2 | 非核心层覆盖防护：`PromptComposer.enforcePolicy` + `dropReservedSections`，domain/taskSpec/runtimeContext 中的 IDENTITY/SAFETY 段被剥离 | `reasoning/prompt-composer.ts`、`graph/factory.ts` |
+| P0 | RP-3 | 修复角色冲突：`SOUL.md` 去掉"只做编码"边界，`AGENTS.md` 改为全局准则而非编码助手身份 | `SOUL.md`、`AGENTS.md` |
+| P0 | FS-1/FS-2 | Few-shot 决策为"保留 + 显式 opt-in"；新增 12 条种子示例（research/document/coding/planning/default）与进程级共享库 | `skills/few-shot-seeds.ts`、`skills/few-shot-store.ts`、`graph/graph.ts` |
+| P0 | FS-4 | 片段接线：`ctx.few_shot` 使用种子库，`append` 在当前用户消息之后，字符预算 6000 | `graph/context-strategies.ts` |
+| P1 | RP-4 | 角色变体：`resolveRoleProfile({ mode, locale })`，4 mode × 2 locale；pro→react、task→plan，zh/en 各一版 | `reasoning/role-profile.ts`、`graph/factory.ts` |
+| P1 | RP-5 | persona 入口：请求 schema（≤2000）、bridge 透传、图缓存 key、桌面白名单、Web「设置 → 对话 → 角色设定」；内核做覆盖检测与拒绝 | `schemas/agent.ts`、`core/agent-bridge.ts`、`agent-runtime.ts`、`SettingsDialog.tsx`、`lib/persona.ts` |
+| P1 | RP-6 | 角色 `id@version` 进入构图缓存 key 与日志；**尚未**写入 `agent_runs`（表无 metadata 字段） | `graph/factory.ts`、`agent-bridge.ts` |
+| P1 | FS-3 | 高分 run 入池：feedback 节点按 `collect_from_feedback` + `collect_min_quality` 写入共享库（默认关闭） | `graph/nodes.ts`、`skills/few-shot-store.ts` |
+| P1 | FS-5 | CJK 感知：1 字 ≈ 1 token 估算 + ASCII 词/CJK bigram 分词（未接 embedding） | `skills/few-shot-selector.ts` |
+| P1 | FS-6 | 轨迹示例：`trajectory` 字段与 `formatExample` 对话化输出（含工具调用） | `skills/few-shot-selector.ts`、`few-shot-seeds.ts` |
+| P1 | FS-7 | 预算与位置：6000 字符上限、`append` 贴近本轮指令、动态示例不破坏前缀缓存 | `graph/context-strategies.ts` |
+| P2 | RP-7 | 指标：`modu_agent_role_events_total{event,profile}`、`modu_agent_few_shot_injections_total{status}` | `observability/metrics.ts`、`graph/factory.ts`、`context-strategies.ts` |
+| P2 | RP-8 | 子 Agent 角色补强：输出契约、工具范围、失败交接 | `graph/prompt-templates.ts` |
+| P2 | FS-8 | 治理：按 input 去重、TTL、来源/版本字段（未做 PII 清洗与 eval 集隔离） | `skills/few-shot-selector.ts` |
+
+验证结果：`@pioneering/modu-agent` 构建通过；`tests/reasoning + tests/skills` 245 项通过，`tests/graph` 382 项通过；backend 相关单测 39 项通过；web `useAgentChat` 21 项通过；desktop `agent-runtime` 31 项通过；backend/web/desktop typecheck 均通过。
+
+明确未完成项：Few-shot 检索仍为 bigram 关键词而非向量召回；`agent_runs` 未持久化角色版本；示例 PII 清洗与 eval 集隔离未实现；Web persona 仅存 localStorage，未做会话级持久化；`few_shot.enabled` 默认仍为 false（需在部署配置显式打开）。这些属于 P1 尾项与 P2 治理范围，不影响已落地的接线与契约。

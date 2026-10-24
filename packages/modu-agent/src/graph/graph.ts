@@ -68,10 +68,8 @@ import { ComplexityAssessor } from '../reasoning/complexity-assessor.js'
 // P0-3: Observation 蒸馏器
 import { ObservationDistiller } from './adapters/observation-distiller.js'
 // P2-2: Few-shot 动态示例选择
-import {
-  DynamicFewShotSelector,
-  InMemoryExampleStore,
-} from '../skills/few-shot-selector.js'
+import { DynamicFewShotSelector } from '../skills/few-shot-selector.js'
+import { getSharedFewShotStore } from '../skills/few-shot-store.js'
 import { make_supervisor_node, route_from_supervisor } from './subgraph/supervisor.js'
 import {
   makePlanContextInjector,
@@ -874,9 +872,16 @@ edges.push({
 export function createFewShotSelector(): any {
   try {
     if (getConfig().get('react_optimization.few_shot.enabled', false)) {
-      // 使用内存示例库（生产环境可替换为 ChromaExampleStore）
-      const store = new InMemoryExampleStore()
-      return DynamicFewShotSelector.fromConfig(store)
+      // P0（FS-2）：使用进程级共享库（内置种子，反馈可继续入池）。
+      const store = getSharedFewShotStore()
+      const selector = DynamicFewShotSelector.fromConfig(store)
+      if (selector) {
+        const seeded = getConfig().get('react_optimization.few_shot.log_injection', false)
+        if (seeded) {
+          logger.info('[few-shot] selector enabled (shared store seeded)')
+        }
+      }
+      return selector
     }
   } catch (e: any) {
     logger.warning('[P2-2] Few-shot selector init failed, skipping: %s', String(e?.message ?? e))

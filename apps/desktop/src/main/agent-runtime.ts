@@ -241,6 +241,15 @@ export function validateSendRequest(request: unknown): SendMessageRequest | null
       typeof r.agentMode === 'string' && ALLOWED_AGENT_MODES.has(r.agentMode)
         ? (r.agentMode as SendMessageRequest['agentMode'])
         : undefined,
+    // P1（RP-5）：persona / locale 透传（限长 2000，避免任意长文本进入内核）
+    persona:
+      typeof r.persona === 'string'
+        ? r.persona.slice(0, 2000)
+        : undefined,
+    locale:
+      r.locale === 'zh' || r.locale === 'en'
+        ? r.locale
+        : undefined,
   }
 }
 
@@ -344,12 +353,22 @@ async function executeSend(run: AgentRun, request: SendMessageRequest): Promise<
     //   其余模式（含默认 react_agent）复用内核编译图缓存 get_runner()，
     //   避免每次 run 全量重建（LLM/工具/checkpointer/store）。
     const enablePlanExecute = request.agentMode === 'plan_execute'
-    const graph = enablePlanExecute
-      ? await create_agent({ configurable: { plan_execute_enabled: true } })
+    // P1（RP-5）：persona / locale 属于建图期输入（角色装配发生在 create_agent）
+    const roleOverrides: Record<string, unknown> = {}
+    if (request.persona) roleOverrides.persona = request.persona
+    if (request.locale) roleOverrides.locale = request.locale
+    const hasBuildOverrides = enablePlanExecute || Object.keys(roleOverrides).length > 0
+    const graph = hasBuildOverrides
+      ? await create_agent({
+          configurable: {
+            ...(enablePlanExecute ? { plan_execute_enabled: true } : {}),
+            ...roleOverrides,
+          },
+        })
       : await get_runner()
-    // 记录会话所用图：plan 图不进 get_runner 缓存，resume/abort/getState
-    // 必须复用同一图实例（拓扑含 planner/step_dispatch/step_finalize）。
-    if (enablePlanExecute) rememberSessionGraph(run.sessionId, graph)
+    // 记录会话所用图：plan / persona 图不进 get_runner 缓存，resume/abort/getState
+    // 必须复用同一图实例（拓扑或角色契约可能不同）。
+    if (hasBuildOverrides) rememberSessionGraph(run.sessionId, graph)
     const adapter = new AGUIStreamAdapter(traceId)
     const inputData: Record<string, unknown> = { input_type: 'text', prompt: request.message }
     if (request.history && request.history.length > 0) {

@@ -33,6 +33,48 @@ export interface PromptComposerInput {
   taskSpec?: string | null
   /** 运行时上下文片段（用户画像、环境信息等）；空/null 时跳过 runtime 层 */
   runtimeContext?: string | null
+  /**
+   * P0（RP-2）：是否强制"非核心层不得覆盖角色/安全约束"。
+   *
+   * 开启后，domain / taskSpec / runtimeContext 中若出现与核心层同名的保留段落
+   * （IDENTITY / SCOPE / DECISION POLICY / REFUSAL / SAFETY），该段落会被剥离。
+   * 默认 false，保证既有字符等价测试与默认路径零变化；create_agent 显式开启。
+   */
+  enforcePolicy?: boolean
+}
+
+/** 只允许出现在核心层的保留段落标题（大小写不敏感前缀匹配）。 */
+const _RESERVED_HEADINGS: ReadonlyArray<string> = [
+  'IDENTITY',
+  'AUDIENCE',
+  'SCOPE',
+  'NON-GOALS',
+  'DECISION POLICY',
+  'CAPABILITIES',
+  'DELIVERY CONTRACT',
+  'REFUSAL',
+  'SAFETY',
+  'SAFETY & TRUTHFULNESS',
+  'TOOL BUDGET',
+  'USER PREFERENCE',
+]
+
+/**
+ * 剥离文本中的保留段落（P0 / RP-2）。
+ *
+ * 仅识别 `## <Heading>` 形式的段落；标题命中 `_RESERVED_HEADINGS` 时整段移除。
+ * 返回剥离后的文本；未命中时原样返回，保证默认路径字符等价。
+ */
+export function dropReservedSections(text: string): string {
+  if (!text) return text
+  const blocks = text.split(/\n(?=##\s+)/)
+  const kept = blocks.filter((block) => {
+    const m = block.match(/^##\s+([^\n]+)/)
+    if (!m) return true
+    const title = m[1].trim().toUpperCase()
+    return !_RESERVED_HEADINGS.some((r) => title === r || title.startsWith(`${r} `))
+  })
+  return kept.join('\n').trim()
 }
 
 /**
@@ -54,18 +96,29 @@ export class PromptComposer {
     const parts: string[] = []
     if (input.systemCore) parts.push(input.systemCore)
 
+    // P0（RP-2）：非核心层不得覆盖身份/安全约束。
+    const guard = (text: string): string =>
+      input.enforcePolicy === true ? dropReservedSections(text) : text
+
     // Domain 层：通过 DOMAIN_ADAPTERS 注册表查找并渲染
     if (input.domain) {
       const adapter = getDomainAdapter(input.domain)
       const rendered = renderDomainAdapter(adapter)
-      if (rendered) parts.push(rendered)
+      const safe = rendered ? guard(rendered) : ''
+      if (safe) parts.push(safe)
     }
 
     // TaskSpec 层：直接拼接（由调用方组装内容）
-    if (input.taskSpec) parts.push(input.taskSpec)
+    if (input.taskSpec) {
+      const safe = guard(input.taskSpec)
+      if (safe) parts.push(safe)
+    }
 
     // RuntimeContext 层：直接拼接
-    if (input.runtimeContext) parts.push(input.runtimeContext)
+    if (input.runtimeContext) {
+      const safe = guard(input.runtimeContext)
+      if (safe) parts.push(safe)
+    }
 
     return parts.join('\n\n')
   }

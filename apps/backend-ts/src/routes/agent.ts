@@ -656,6 +656,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               model: resolveModelAlias(dto.model) ?? null,
               systemPrompt,
               history,
+              // P1（RP-5）：用户 persona / 角色语言透传
+              persona: dto.persona ?? null,
+              locale: dto.locale ?? null,
               // P4: 透传 agentMode 以启用 Plan-Execute 图
               agentMode: dto.agentMode,
               // P0（选择→执行）：本轮技能选择（省略 = 服务端默认）
@@ -771,6 +774,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           model: resolveModelAlias(dto.model) ?? null,
           systemPrompt,
           history,
+          // P1（RP-5）：非流式路径同样透传 persona / locale
+          persona: dto.persona ?? null,
+          locale: dto.locale ?? null,
           // P4: 透传 agentMode 以启用 Plan-Execute 图
           agentMode: dto.agentMode,
           // P0（选择→执行）：非流式路径同样透传技能选择
@@ -954,6 +960,9 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             answerId: dto.answerId ?? undefined,
             // P0（选择→执行）：恢复时沿用同一技能选择，避免工具集漂移
             skills: resumeSkills ?? undefined,
+            // P1（RP-5）：恢复时沿用同一 persona / locale
+            persona: dto.persona ?? null,
+            locale: dto.locale ?? null,
             signal: resumeStopController.signal,
             // 与 streamAgentCompletion 同构：resume 段正文经 ctx 回填后落库
             ctx,

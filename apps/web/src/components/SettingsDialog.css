@@ -1246,3 +1246,35 @@ html[data-density='compact'] .settings-dialog-root .settings-scroll-inner {
     margin-right: 8px;
   }
 }
+
+/* ===== P1（RP-5）：角色设定 ===== */
+.settings-persona {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.settings-persona-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--set-divider);
+  border-radius: 8px;
+  background: var(--set-input-bg, transparent);
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.settings-persona-input:focus {
+  outline: none;
+  border-color: var(--set-accent, #3b82f6);
+}
+
+.settings-persona-count {
+  align-self: flex-end;
+  font-size: 12px;
+  opacity: 0.6;
+}
