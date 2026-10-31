@@ -81,7 +81,7 @@ import { getSessionInputDraftKey, removeInputDraft } from '@/lib/input/input-dra
 
 import { useInputDraftPersistence } from '@/hooks/use-input-draft-persistence'
 import { useChatStore } from '@/stores/chatStore'
-import { useHitlStore } from '@/stores/hitlStore'
+import { useHitlStore } from '@pioneering/agent-protocol'
 import { useAppStore } from '@/stores/useAppStore'
 import { resolveBinding } from '../../../../../shared/hotkey-registry'
 import { matchesAccelerator } from '@/lib/match-accelerator'

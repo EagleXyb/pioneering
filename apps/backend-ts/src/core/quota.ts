@@ -2,10 +2,11 @@
  * Token 配额校验与用量记录（chat / agent 通道共用，T2.5 抽取）
  *
  * - checkQuota：入口校验总/日限额（resetAt 过期先重置），超限抛 429
- * - recordUsage：写入 token_usage 并扣减用户配额，缺失真实 usage 时按 length/4 估算
+ * - recordUsage：写入 token_usage 并扣减用户配额，缺失真实 usage 时统一走 estimateTokens
  */
 import type { PrismaClient } from '@prisma/client'
 import { TooManyRequestsError } from '../plugins/error-handler.js'
+import { estimateTokens } from './token-estimator.js'
 
 export interface TokenUsageData {
   promptTokens?: number
@@ -47,7 +48,8 @@ export async function checkQuota(
 export interface RecordUsageParams {
   userId: string
   sessionId: string
-  messageId: string
+  /** 关联的 assistant 消息；暂停/中止且未落库时允许为空（费用仍需结算） */
+  messageId: string | null
   model: string
   usage?: TokenUsageData
   promptText: string
@@ -64,9 +66,9 @@ export async function recordUsage(
   prisma: PrismaClient,
   p: RecordUsageParams,
 ): Promise<void> {
-  const promptTokens = p.usage?.promptTokens ?? Math.floor(p.promptText.length / 4)
+  const promptTokens = p.usage?.promptTokens ?? estimateTokens(p.promptText)
   const completionTokens =
-    p.usage?.completionTokens ?? Math.floor(p.completionText.length / 4)
+    p.usage?.completionTokens ?? estimateTokens(p.completionText)
   const totalTokens =
     p.usage?.totalTokens ?? promptTokens + completionTokens
 

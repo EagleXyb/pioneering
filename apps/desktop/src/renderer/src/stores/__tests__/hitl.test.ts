@@ -17,7 +17,9 @@ import {
   selectIsHitlPaused,
   type ChatState
 } from '@renderer/stores/chatStore'
-import { useHitlStore } from '@renderer/stores/hitlStore'
+import { useHitlStore } from '@pioneering/agent-protocol'
+// 协议层状态机依赖宿主注入 chatStore / transport 动作
+import '@renderer/lib/hitl-host'
 import {
   getClarifyMetrics,
   resetClarifyMetrics,

@@ -22,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { useHitlStore, type HitlItem } from '@/stores/hitlStore'
+import { useHitlStore, type HitlItem } from '@pioneering/agent-protocol'
 
 export function HitlClarifyDialog({ item }: { item: HitlItem }) {
   const resolve = useHitlStore((s) => s.resolve)

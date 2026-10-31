@@ -17,7 +17,7 @@ import * as legacy from './llm-legacy.js'
 type Message = { role: string; content: string }
 
 /** 网关开关：默认开启；设为 0/false/off 时回落到 P0 直连实现。 */
-function isGatewayEnabled(): boolean {
+export function isGatewayEnabled(): boolean {
   const v = (process.env.LLM_GATEWAY_ENABLED ?? '').trim().toLowerCase()
   return v !== '0' && v !== 'false' && v !== 'off'
 }

@@ -39,6 +39,50 @@ jobs:
       - name: Web tests
         run: npm test -w @pioneering/web
 
+  agent:
+    name: Agent Kernel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build shared packages
+        run: npm run build:packages
+
+      # 内核测试此前从不执行：21k 行测试守护的正是最核心的 Agent 逻辑
+      - name: Kernel tests
+        run: npm test -w @pioneering/modu-agent
+
+  desktop:
+    name: Desktop
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      # desktop 目前独立安装（不在根 workspaces 内），跳过 Electron 二进制下载，
+      # 单测为 node 环境且内核经 vi.mock 隔离。
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Desktop tests
+        run: npm test
+
   eval:
     name: Eval Smoke Gate
     runs-on: ubuntu-latest

@@ -4,6 +4,7 @@ import { env } from './config/env.js'
 import { startInterruptScheduler, stopInterruptScheduler } from './core/agent-scheduler.js'
 import { activateConfiguredPacks } from './core/scenario-boot.js'
 import { applyPersistedSkillState } from './core/skill-state.js'
+import { build_checkpointer, getCheckpointerStatus, getConfig } from '@pioneering/modu-agent'
 
 async function start() {
   try {
@@ -17,6 +18,12 @@ async function start() {
     } catch (e) {
       console.warn('[skills] apply persisted state failed (fallback to config.yaml):', e)
     }
+
+    // 启动期探测 checkpointer：配置 sqlite 但原生依赖缺失时直接失败，
+    // 避免"看起来持久化、重启后 HITL 暂停态全丢"的静默降级。
+    const checkpointerType = String(getConfig().get('memory.checkpointer_type', 'memory'))
+    await build_checkpointer(checkpointerType)
+    console.info(`[checkpointer] ${JSON.stringify(getCheckpointerStatus())}`)
 
     const app = await buildApp()
     await app.listen({ host: env.HOST, port: env.PORT })

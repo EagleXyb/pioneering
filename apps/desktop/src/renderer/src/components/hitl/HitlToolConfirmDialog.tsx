@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { useHitlStore, type HitlItem } from '@/stores/hitlStore'
+import { useHitlStore, type HitlItem } from '@pioneering/agent-protocol'
 import { cn } from '@/lib/utils'
 
 export function HitlToolConfirmDialog({ item }: { item: HitlItem }) {

@@ -114,6 +114,33 @@ let _sharedMemoryCheckpointer: any = null
  */
 let _sqliteSaverUnavailable = false
 
+/** 是否已显式允许在 sqlite 不可用时降级到内存。 */
+let _volatileFallbackAllowed = false
+/** sqlite 不可用原因（供 /health 等运行时状态接口展示）。 */
+let _sqliteUnavailableReason: string | null = null
+/** 当前实际生效的检查点模式。 */
+let _activeCheckpointerMode: CheckpointerMode = 'unknown'
+
+export type CheckpointerMode = 'sqlite' | 'memory' | 'memory_fallback' | 'none' | 'unknown'
+
+/**
+ * 运行时可观测状态：配置声明与实际生效必须可对账。
+ *
+ * 生产配置 sqlite 但实际降级为内存时，HITL 暂停态会在重启后丢失，
+ * 调用方（后端 /health）应把这个事实暴露出来，而不是只写在启动日志。
+ */
+export function getCheckpointerStatus(): {
+  mode: CheckpointerMode
+  sqliteAvailable: boolean
+  reason: string | null
+} {
+  return {
+    mode: _activeCheckpointerMode,
+    sqliteAvailable: !_sqliteSaverUnavailable,
+    reason: _sqliteUnavailableReason,
+  }
+}
+
 /**
  * 默认防幻觉系统提示词（P0-优化 + P0-强化）。
  *
@@ -196,12 +223,22 @@ export async function build_checkpointer(
   checkpointerType: string = 'memory',
 ): Promise<any> {
   if (checkpointerType === 'none') {
+    _activeCheckpointerMode = 'none'
     return null
   }
 
   if (checkpointerType === 'sqlite') {
-    // 已确认不可用（如原生绑定缺失）：直接复用共享单例，不重复尝试与告警
+    // 已确认不可用（如原生绑定缺失）：
+    //   - 显式允许 volatile 时复用共享内存单例；
+    //   - 否则直接失败，避免"配置说持久化、实际重启即丢暂停态"的静默降级。
     if (_sqliteSaverUnavailable) {
+      if (!_volatileFallbackAllowed) {
+        throw new Error(
+          '[checkpointer] memory.checkpointer_type="sqlite" but SqliteSaver is unavailable: '
+          + `${_sqliteUnavailableReason ?? 'unknown reason'}. `
+          + 'Set memory.allow_volatile_checkpointer=true to explicitly accept in-memory fallback.',
+        )
+      }
       return _getOrCreateSharedMemoryCheckpointer()
     }
     try {
@@ -211,11 +248,26 @@ export async function build_checkpointer(
         const connString = String(
           getConfig().get('memory.sqlite_path', 'checkpoints.db'),
         )
+        _activeCheckpointerMode = 'sqlite'
         return SqliteSaver.fromConnString(connString)
       }
       throw new Error('SqliteSaver not found in module')
     } catch (e: any) {
       _sqliteSaverUnavailable = true
+      _sqliteUnavailableReason = String(e?.message ?? e)
+      const allowVolatile = Boolean(
+        getConfig().get('memory.allow_volatile_checkpointer', false),
+      )
+      if (!allowVolatile) {
+        _activeCheckpointerMode = 'unknown'
+        throw new Error(
+          '[checkpointer] SqliteSaver unavailable and volatile fallback is not allowed: '
+          + `${_sqliteUnavailableReason}. `
+          + 'Set memory.allow_volatile_checkpointer=true to accept in-memory checkpoint.',
+        )
+      }
+      _volatileFallbackAllowed = true
+      _activeCheckpointerMode = 'memory_fallback'
       logger.warning('SqliteSaver not available, falling back to MemorySaver: %s', String(e))
       // 修复（2026-10-14）：降级也必须复用模块级共享单例。
       // 原实现 `return new MemorySaver()` 每次调用都新建实例——plan_execute 请求图
@@ -231,6 +283,7 @@ export async function build_checkpointer(
   // HITL 依赖：interrupt 状态保存在 checkpointer 中，跨请求 resume 需要复用
   // 同一个 MemorySaver 实例——若每次 create_agent() 新建，中断状态会随实例销毁丢失。
   // 改为惰性单例后，所有图实例共享同一份 checkpoint 数据（与 get_runner 缓存语义一致）。
+  _activeCheckpointerMode = 'memory'
   return _getOrCreateSharedMemoryCheckpointer()
 }
 

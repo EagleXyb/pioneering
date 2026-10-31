@@ -100,6 +100,8 @@ model ChatSession {
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
 
+  /// 会话列表热查询：按用户 + 归档态过滤，按更新时间倒序
+  @@index([userId, isArchived, updatedAt], map: "idx_chat_sessions_user_archived_updated")
   @@map("chat_sessions")
 }
 
@@ -131,6 +133,8 @@ model ChatMessage {
   childMessages  ChatMessage[]  @relation("MessageParent")
   planSteps      PlanStep[]
 
+  /// 历史加载热查询：sessionId + createdAt DESC + LIMIT
+  @@index([sessionId, createdAt], map: "idx_chat_messages_session_created")
   @@map("chat_messages")
 }
 

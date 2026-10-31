@@ -12,6 +12,7 @@
 // 单实例约束：并发控制是进程内串行锁；多实例需要数据库行锁或 Redis 锁（终态再收敛）。
 import type { PrismaClient } from '@prisma/client'
 import { TooManyRequestsError } from '../plugins/error-handler.js'
+import { estimateTokens } from './token-estimator.js'
 
 export interface QuotaReservation {
   userId: string
@@ -170,7 +171,7 @@ export function markQuotaSettled(reservation: QuotaReservation | null | undefine
 
 /** 估算本次请求的预扣额度（prompt 粗估 + 输出上限）。 */
 export function estimateReservation(promptText: string, maxTokens?: number | null): number {
-  const promptTokens = Math.max(1, Math.ceil(promptText.length / 4))
+  const promptTokens = Math.max(1, estimateTokens(promptText))
   const outputTokens = Math.max(1, maxTokens ?? 1024)
   return promptTokens + outputTokens
 }

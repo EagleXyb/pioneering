@@ -180,9 +180,10 @@ describe('PluginsPage 插件列表', () => {
     expect(screen.getByText('github')).toBeInTheDocument();
     expect(screen.getByText('internal')).toBeInTheDocument();
     expect(screen.getByText('已连接 · 3 个工具')).toBeInTheDocument();
-    // 内置目录（静态候选）
-    expect(screen.getByText('飞书企业号')).toBeInTheDocument();
-    expect(screen.getByText('17.4 万人使用')).toBeInTheDocument();
+    // 内置目录：只展示可真实安装的条目，且不使用示意使用量
+    expect(screen.getByText('Notion')).toBeInTheDocument();
+    expect(screen.getAllByText('官方接入模板').length).toBeGreaterThan(0);
+    expect(screen.queryByText('17.4 万人使用')).not.toBeInTheDocument();
   });
 
   it('目录项与已接入插件按名称去重（github 只出现一次）', () => {
@@ -195,9 +196,9 @@ describe('PluginsPage 插件列表', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '办公' }));
 
-    expect(screen.getByText('飞书企业号')).toBeInTheDocument();
     expect(screen.getByText('Notion')).toBeInTheDocument();
-    // 非办公类（工程）与未分类卡片被过滤
+    expect(screen.getByText('Slack')).toBeInTheDocument();
+    // 非办公类（未分类的真实插件）被过滤
     expect(screen.queryByText('github')).not.toBeInTheDocument();
     expect(screen.queryByText('internal')).not.toBeInTheDocument();
   });
@@ -237,13 +238,11 @@ describe('PluginsPage 插件列表', () => {
     expect(screen.getByText(/NOTION_TOKEN/)).toBeInTheDocument();
   });
 
-  it('无官方服务的目录项按钮置灰为「即将上线」', () => {
+  it('无官方接入模板的规划项不进入目录（避免「已接入」错觉）', () => {
     render(<PluginsPage />);
 
-    const btn = within(cardOf('飞书企业号')).getByRole('button', {
-      name: '即将上线',
-    });
-    expect(btn).toBeDisabled();
+    expect(screen.queryByText('飞书企业号')).not.toBeInTheDocument();
+    expect(screen.queryByText('即将上线')).not.toBeInTheDocument();
   });
 
   it('已连接插件点击「已连接」调用启停接口并 toast', async () => {

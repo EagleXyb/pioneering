@@ -88,6 +88,8 @@ export {
   create_agent,
   build_checkpointer,
   build_store,
+  getCheckpointerStatus,
+  type CheckpointerMode,
   _build_judge_llm,
   _build_modu_llm,
   _build_llm_router,

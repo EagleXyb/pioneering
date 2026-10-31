@@ -1,16 +1,186 @@
 /* ============================================================
-   settings-dialog.css — SettingsDialog 专用滚动条样式
-   目标：滚动条不要太宽、颜色不要太深（Windows 默认滚动条过粗过深）
+   settings-dialog.css — 设置弹窗样式
+   目标：滚动条规格 + 设置弹窗级设计令牌（对齐 apps/web SettingsDialog.css）
    作用域：所有样式以 .settings-dialog-root 为前缀，绝不泄漏到应用其它部分。
-   兼容：
-     · WebKit (Chromium / Electron / Safari)：::-webkit-scrollbar 系列
-     · Firefox：scrollbar-width / scrollbar-color
-   规格（与参考截图的细浅视觉对齐）：
-     · 宽度：垂直 6px / 水平 6px
-     · Thumb：#e0e0e0（浅灰），悬停 #bfbfbf，圆角 3px（= 宽度一半呈胶囊）
-     · Track：transparent（不显示，让内容区更干净）
-     · 左右栏（侧边栏导航 + 右侧内容）统一此规格
+
+   主题机制（与 web 一致）：
+     · 亮色为 :root 默认值；
+     · 深色两套等价选择器：.dark / [data-theme='dark']（显式或 system 经
+       applyTheme 写入的 .dark class），以及 @media (prefers-color-scheme: dark)
+       下 :root:not([data-theme='light']) 的首帧/系统兜底。
    ============================================================ */
+
+/* ---------- 设置令牌（亮色默认，对齐 web 的 --set-* 规范） ----------
+   注：令牌挂在 :root 而非 .settings-dialog-root，因为设置页的 Select 下拉
+   会 createPortal 到 body，脱离弹窗作用域；全局声明可保证 portal 内同样
+   命中同一套亮/暗色值。 ---------- */
+:root {
+  --set-surface: #ffffff;          /* 窗口 / 右栏主区背景 */
+  --set-card: #ffffff;             /* SectionCard / 控件背景 */
+  --set-surface-alt: #fafafa;      /* 斑马纹 / 内嵌面 */
+  --set-row-hover: #f5f9ff;        /* 设置行 hover 浅蓝高亮 */
+  --set-sidebar-bg: #f2f2f2;
+  --set-sidebar-hover: #e8e8e8;
+  --set-sidebar-active: #e0e0e0;
+  --set-divider: #f0f0f0;          /* 行间分隔线 / 侧栏分组线 */
+  --set-border: #f0f0f0;           /* 卡片描边 */
+  --set-title: #1a1a1a;
+  --set-text: #262626;
+  --set-text-secondary: #595959;
+  --set-desc: #8c8c8c;
+  --set-icon: #8c8c8c;
+  --set-faint: #bfbfbf;
+  --set-disabled: #e8e8e8;
+  --set-hover: #e8e8e8;            /* 通用灰色 hover（图标钮 / 帮助项） */
+  --set-hover-bg: #f5f5f5;         /* 行 / 按钮中性 hover 底 */
+  --set-close-hover: rgba(0, 0, 0, 0.05);
+  --set-control-border: #d9d9d9;
+  --set-control-border-hover: #bfbfbf;
+  --set-switch-on: #52c41a;
+  --set-switch-off: #d9d9d9;
+  --set-switch-knob: #ffffff;
+  --set-input-bg: #ffffff;
+  --set-accent: #1677ff;           /* 交互强调色（录制选中 / 链接） */
+  --set-accent-bg: #e6f4ff;
+  --set-accent-border: #91caff;
+  --set-success: #52c41a;
+  --set-success-bg: #f0f9eb;
+  --set-success-border: #d9f7be;
+  --set-warning: #faad14;
+  --set-warning-bg: #fffbe6;
+  --set-warning-border: #ffe58f;
+  --set-warning-text: #8c6d1f;
+  --set-danger: #ff4d4f;
+  --set-danger-strong: #d9363e;
+  --set-danger-bg: #fff2f0;
+  --set-danger-border: #ffccc7;
+  --set-danger-text: #8c3b38;
+  --set-info-bg: rgba(59, 130, 246, 0.08);
+  --set-info-border: rgba(59, 130, 246, 0.25);
+  --set-info-text: #1d4ed8;
+  --set-warn-bg: rgba(250, 173, 20, 0.08);
+  --set-warn-border: rgba(250, 173, 20, 0.3);
+  --set-warn-text: #ad6800;
+  --set-scroll-thumb: #e0e0e0;
+  --set-scroll-thumb-hover: #bfbfbf;
+  --set-shadow: 0 16px 56px rgba(0, 0, 0, 0.14);
+}
+
+/* 弹窗外壳消费令牌 */
+.settings-dialog-root {
+  background: var(--set-surface);
+  color: var(--set-text);
+  box-shadow: var(--set-shadow);
+}
+
+/* ---------- 深色令牌（显式深色 / system 深色经 .dark class） ---------- */
+.dark,
+[data-theme='dark'] {
+  --set-surface: #141414;
+  --set-card: #1f1f1f;
+  --set-surface-alt: #232323;
+  --set-row-hover: #26313d;
+  --set-sidebar-bg: #1a1a1a;
+  --set-sidebar-hover: #262626;
+  --set-sidebar-active: #2f2f2f;
+  --set-divider: #2e2e2e;
+  --set-border: #2e2e2e;
+  --set-title: #ededed;
+  --set-text: #d9d9d9;
+  --set-text-secondary: #c9c9c9;
+  --set-desc: #8c8c8c;
+  --set-icon: #7a7a7a;
+  --set-faint: #6e6e6e;
+  --set-disabled: #4a4a4a;
+  --set-hover: #2c2c2c;
+  --set-hover-bg: #2c2c2c;
+  --set-close-hover: rgba(255, 255, 255, 0.08);
+  --set-control-border: #3d3d3d;
+  --set-control-border-hover: #4f4f4f;
+  --set-switch-on: #52c41a;
+  --set-switch-off: #3d3d3d;
+  --set-switch-knob: #e6e6e6;
+  --set-input-bg: #1f1f1f;
+  --set-accent: #46a8f0;
+  --set-accent-bg: #1f2d3d;
+  --set-accent-border: #2f4a63;
+  --set-success: #34d399;
+  --set-success-bg: #14322a;
+  --set-success-border: #1e5c47;
+  --set-warning: #fbbf24;
+  --set-warning-bg: #332b14;
+  --set-warning-border: #665020;
+  --set-warning-text: #e3c06a;
+  --set-danger: #f87171;
+  --set-danger-strong: #ff9898;
+  --set-danger-bg: #3a1c1c;
+  --set-danger-border: #6b3030;
+  --set-danger-text: #e8a0a0;
+  --set-info-bg: rgba(70, 168, 240, 0.12);
+  --set-info-border: rgba(70, 168, 240, 0.32);
+  --set-info-text: #79c0ff;
+  --set-warn-bg: rgba(251, 191, 36, 0.12);
+  --set-warn-border: rgba(251, 191, 36, 0.32);
+  --set-warn-text: #fbbf24;
+  --set-scroll-thumb: #3d3d3d;
+  --set-scroll-thumb-hover: #4f4f4f;
+  --set-shadow: 0 16px 56px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- 深色令牌（系统深色兜底，无 .dark / 无 data-theme 的首帧） ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    --set-surface: #141414;
+    --set-card: #1f1f1f;
+    --set-surface-alt: #232323;
+    --set-row-hover: #26313d;
+    --set-sidebar-bg: #1a1a1a;
+    --set-sidebar-hover: #262626;
+    --set-sidebar-active: #2f2f2f;
+    --set-divider: #2e2e2e;
+    --set-border: #2e2e2e;
+    --set-title: #ededed;
+    --set-text: #d9d9d9;
+    --set-text-secondary: #c9c9c9;
+    --set-desc: #8c8c8c;
+    --set-icon: #7a7a7a;
+    --set-faint: #6e6e6e;
+    --set-disabled: #4a4a4a;
+    --set-hover: #2c2c2c;
+    --set-hover-bg: #2c2c2c;
+    --set-close-hover: rgba(255, 255, 255, 0.08);
+    --set-control-border: #3d3d3d;
+    --set-control-border-hover: #4f4f4f;
+    --set-switch-on: #52c41a;
+    --set-switch-off: #3d3d3d;
+    --set-switch-knob: #e6e6e6;
+    --set-input-bg: #1f1f1f;
+    --set-accent: #46a8f0;
+    --set-accent-bg: #1f2d3d;
+    --set-accent-border: #2f4a63;
+    --set-success: #34d399;
+    --set-success-bg: #14322a;
+    --set-success-border: #1e5c47;
+    --set-warning: #fbbf24;
+    --set-warning-bg: #332b14;
+    --set-warning-border: #665020;
+    --set-warning-text: #e3c06a;
+    --set-danger: #f87171;
+    --set-danger-strong: #ff9898;
+    --set-danger-bg: #3a1c1c;
+    --set-danger-border: #6b3030;
+    --set-danger-text: #e8a0a0;
+    --set-info-bg: rgba(70, 168, 240, 0.12);
+    --set-info-border: rgba(70, 168, 240, 0.32);
+    --set-info-text: #79c0ff;
+    --set-warn-bg: rgba(251, 191, 36, 0.12);
+    --set-warn-border: rgba(251, 191, 36, 0.32);
+    --set-warn-text: #fbbf24;
+    --set-scroll-thumb: #3d3d3d;
+    --set-scroll-thumb-hover: #4f4f4f;
+    --set-shadow: 0 16px 56px rgba(0, 0, 0, 0.55);
+  }
+}
 
 /* ---------- WebKit (Electron main / Chrome) ---------- */
 
@@ -26,14 +196,14 @@
 }
 
 .settings-dialog-root .settings-scroll-area::-webkit-scrollbar-thumb {
-  background: #e0e0e0;
+  background: var(--set-scroll-thumb);
   border-radius: 3px;
   border: none;
   transition: background-color 0.15s ease;
 }
 
 .settings-dialog-root .settings-scroll-area::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
+  background: var(--set-scroll-thumb-hover);
 }
 
 /* 让 WebKit 上下按钮消失（不需要） */
@@ -59,13 +229,13 @@
 }
 
 .settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-thumb {
-  background: #d9d9d9;   /* 侧栏背景 #f2f2f2 比内容区深一点，thumb 也稍深色 */
+  background: var(--set-scroll-thumb);
   border-radius: 3px;
   border: none;
 }
 
 .settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
+  background: var(--set-scroll-thumb-hover);
 }
 
 .settings-dialog-root .settings-sidebar-scroll::-webkit-scrollbar-button {
@@ -80,10 +250,10 @@
 
 .settings-dialog-root .settings-scroll-area {
   scrollbar-width: thin;
-  scrollbar-color: #e0e0e0 transparent;
+  scrollbar-color: var(--set-scroll-thumb) transparent;
 }
 
 .settings-dialog-root .settings-sidebar-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #d9d9d9 transparent;
+  scrollbar-color: var(--set-scroll-thumb) transparent;
 }

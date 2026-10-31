@@ -61,9 +61,9 @@ export function SecuritySection() {
       <div
         className="flex items-start gap-2 rounded-lg border px-3 py-2.5 leading-[1.55] mb-2"
         style={{
-          background: 'rgba(250,173,20,0.08)',
-          borderColor: 'rgba(250,173,20,0.3)',
-          color: '#ad6800',
+          background: 'var(--set-warn-bg)',
+          borderColor: 'var(--set-warn-border)',
+          color: 'var(--set-warn-text)',
           fontSize: pxToRem(12)
         }}
       >
@@ -226,16 +226,16 @@ export function SecuritySection() {
         {/* 头部：标题 + 两个操作按钮 */}
         <div
           className="flex items-center justify-between"
-          style={{ padding: '14px 16px', background: '#fff', borderBottom: '1px solid #f0f0f0' }}
+          style={{ padding: '14px 16px', background: 'var(--set-card)', borderBottom: '1px solid var(--set-border)' }}
         >
           <div className="flex flex-col min-w-0 pr-4">
             <span
               className="shrink-0 truncate"
-              style={{ fontSize: pxToRem(14), color: '#262626', fontWeight: 600 }}
+              style={{ fontSize: pxToRem(14), color: 'var(--set-text)', fontWeight: 600 }}
             >
               审计中心
             </span>
-            <span className="mt-1 truncate" style={{ fontSize: pxToRem(12), color: '#8c8c8c' }}>
+            <span className="mt-1 truncate" style={{ fontSize: pxToRem(12), color: 'var(--set-desc)' }}>
               拦截/放行记录与日志导出
             </span>
           </div>
@@ -275,8 +275,8 @@ function SectionCard({ children }: { children: ReactNode }) {
     <div
       className="shrink-0 w-full overflow-hidden"
       style={{
-        background: '#fff',
-        border: '1px solid #f0f0f0',
+        background: 'var(--set-card)',
+        border: '1px solid var(--set-border)',
         borderRadius: 8
       }}
     >
@@ -289,7 +289,7 @@ function GroupHeader({ label }: { label: string }) {
   return (
     <div
       className="font-semibold select-none shrink-0"
-      style={{ fontSize: pxToRem(14), color: '#262626', marginTop: 32, marginBottom: 16 }}
+      style={{ fontSize: pxToRem(14), color: 'var(--set-text)', marginTop: 32, marginBottom: 16 }}
     >
       {label}
     </div>
@@ -309,10 +309,10 @@ function RowShell({
   zebra?: boolean
   hover?: boolean
 }) {
-  const bg = zebra ? (index % 2 === 1 ? '#fafafa' : '#fff') : '#fff'
+  const bg = zebra ? (index % 2 === 1 ? 'var(--set-surface-alt)' : 'var(--set-card)') : 'var(--set-card)'
   return (
     <div
-      className={cn('relative', hover && 'transition-colors hover:bg-[#f5f9ff]')}
+      className={cn('relative', hover && 'transition-colors hover:bg-[var(--set-row-hover)]')}
       style={{ background: bg }}
     >
       <div
@@ -323,7 +323,7 @@ function RowShell({
       </div>
       {!last && (
         <div
-          style={{ height: 1, background: '#f0f0f0', marginLeft: 16, marginRight: 16 }}
+          style={{ height: 1, background: 'var(--set-border)', marginLeft: 16, marginRight: 16 }}
           aria-hidden
         />
       )}
@@ -352,8 +352,8 @@ function LeftColumn({
             width: 20,
             height: 20,
             marginTop: 1,
-            background: '#f5f5f5',
-            color: '#8c8c8c'
+            background: 'var(--set-hover-bg)',
+            color: 'var(--set-desc)'
           }}
         >
           {icon}
@@ -363,7 +363,7 @@ function LeftColumn({
         <div className="flex items-center gap-2 min-w-0">
           <span
             className="shrink-0 truncate"
-            style={{ fontSize: pxToRem(14), color: '#262626', fontWeight: 500, lineHeight: '20px' }}
+            style={{ fontSize: pxToRem(14), color: 'var(--set-text)', fontWeight: 500, lineHeight: '20px' }}
           >
             {title}
           </span>
@@ -372,9 +372,9 @@ function LeftColumn({
               className="shrink-0 rounded-[4px] px-1.5 py-px select-none"
               style={{
                 fontSize: pxToRem(11),
-                color: '#bfbfbf',
-                background: '#fafafa',
-                border: '1px dashed #e5e5e5'
+                color: 'var(--set-desc)',
+                background: 'var(--set-surface-alt)',
+                border: '1px dashed var(--set-divider)'
               }}
             >
               {titleHint}
@@ -384,7 +384,7 @@ function LeftColumn({
         {subtitle && (
           <span
             className="mt-1 truncate"
-            style={{ fontSize: pxToRem(12), color: '#8c8c8c', lineHeight: '18px' }}
+            style={{ fontSize: pxToRem(12), color: 'var(--set-desc)', lineHeight: '18px' }}
           >
             {subtitle}
           </span>
@@ -460,12 +460,12 @@ function LinkRow({
           height: 26,
           background: 'transparent',
           border: 'none',
-          color: '#bfbfbf',
+          color: 'var(--set-faint)',
           cursor: 'pointer',
           padding: 4
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = '#595959')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = '#bfbfbf')}
+        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--set-text-secondary)')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--set-faint)')}
         title="前往配置"
         aria-label="前往配置"
       >
@@ -496,9 +496,9 @@ function StatusTagRow({
   tagVariant?: 'success' | 'warning' | 'default'
 }) {
   const styles = {
-    success: { bg: '#f0f9eb', color: '#52c41a', border: '1px solid #d9f7be' },
-    warning: { bg: '#fffbe6', color: '#faad14', border: '1px solid #ffe58f' },
-    default: { bg: '#f5f5f5', color: '#595959', border: '1px solid #e8e8e8' }
+    success: { bg: 'var(--set-success-bg)', color: 'var(--set-success)', border: '1px solid var(--set-success-border)' },
+    warning: { bg: 'var(--set-warning-bg)', color: 'var(--set-warning)', border: '1px solid var(--set-warning-border)' },
+    default: { bg: 'var(--set-hover-bg)', color: 'var(--set-text-secondary)', border: '1px solid var(--set-disabled)' }
   }[tagVariant]
 
   return (
@@ -548,16 +548,16 @@ function BackupLimitRow({
             disabled={disabled}
             value={Number.isFinite(value) ? value : 0}
             onChange={(e) => onChange(parseInt(e.target.value || '0', 10))}
-            className="outline-none bg-white text-right"
+            className="outline-none bg-[var(--set-card)] text-right"
             style={{
               width: 84,
               height: 28,
               padding: '0 10px',
-              border: '1px solid #d9d9d9',
+              border: '1px solid var(--set-control-border)',
               borderRight: 'none',
               borderRadius: '5px 0 0 5px',
               fontSize: pxToRem(13),
-              color: '#262626'
+              color: 'var(--set-text)'
             }}
           />
           <div
@@ -565,12 +565,12 @@ function BackupLimitRow({
             style={{
               height: 28,
               padding: '0 10px',
-              background: '#fafafa',
-              border: '1px solid #d9d9d9',
+              background: 'var(--set-surface-alt)',
+              border: '1px solid var(--set-control-border)',
               borderLeft: 'none',
               borderRadius: '0 5px 5px 0',
               fontSize: pxToRem(12),
-              color: '#595959'
+              color: 'var(--set-text-secondary)'
             }}
           >
             MB
@@ -584,9 +584,9 @@ function BackupLimitRow({
             height: 30,
             padding: '0 12px',
             fontSize: pxToRem(13),
-            background: disabled ? '#fafafa' : '#fff',
-            border: '1px solid #d9d9d9',
-            color: disabled ? '#bfbfbf' : '#595959',
+            background: disabled ? 'var(--set-surface-alt)' : 'var(--set-card)',
+            border: '1px solid var(--set-control-border)',
+            color: disabled ? 'var(--set-faint)' : 'var(--set-text-secondary)',
             cursor: disabled ? 'not-allowed' : 'pointer'
           }}
         >
@@ -635,10 +635,10 @@ function NumberRow({
           width: 70,
           height: 28,
           padding: '0 10px',
-          background: disabled ? '#f5f5f5' : '#fff',
-          border: disabled ? '1px solid #f0f0f0' : '1px solid #d9d9d9',
+          background: disabled ? 'var(--set-hover-bg)' : 'var(--set-card)',
+          border: disabled ? '1px solid var(--set-border)' : '1px solid var(--set-control-border)',
           fontSize: pxToRem(13),
-          color: disabled ? '#bfbfbf' : '#262626',
+          color: disabled ? 'var(--set-faint)' : 'var(--set-text)',
           cursor: disabled ? 'not-allowed' : 'text'
         }}
       />
@@ -702,7 +702,7 @@ function LogRow({
   content: string
   timestamp: string
 }) {
-  const bg = index % 2 === 1 ? '#fafafa' : '#fff'
+  const bg = index % 2 === 1 ? 'var(--set-surface-alt)' : 'var(--set-card)'
   return (
     <div className="relative" style={{ background: bg }}>
       <div
@@ -713,7 +713,7 @@ function LogRow({
           size={14}
           strokeWidth={1.8}
           className="shrink-0 mt-0.5"
-          style={{ color: '#8c8c8c' }}
+          style={{ color: 'var(--set-desc)' }}
         />
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-start gap-2 min-w-0">
@@ -721,28 +721,28 @@ function LogRow({
               className="shrink-0 rounded-[4px] px-1.5 py-px select-none"
               style={{
                 fontSize: pxToRem(11),
-                background: '#e6f4ff',
-                color: '#1677ff',
-                border: '1px solid #91caff'
+                background: 'var(--set-accent-bg)',
+                color: 'var(--set-accent)',
+                border: '1px solid var(--set-accent-border)'
               }}
             >
               {tag}
             </span>
             <span
               className="truncate min-w-0"
-              style={{ fontSize: pxToRem(13), color: '#262626', lineHeight: '18px' }}
+              style={{ fontSize: pxToRem(13), color: 'var(--set-text)', lineHeight: '18px' }}
             >
               {content}
             </span>
           </div>
-          <span className="mt-1 shrink-0" style={{ fontSize: pxToRem(11), color: '#bfbfbf' }}>
+          <span className="mt-1 shrink-0" style={{ fontSize: pxToRem(11), color: 'var(--set-desc)' }}>
             {timestamp}
           </span>
         </div>
       </div>
       {!last && (
         <div
-          style={{ height: 1, background: '#f0f0f0', marginLeft: 16, marginRight: 16 }}
+          style={{ height: 1, background: 'var(--set-border)', marginLeft: 16, marginRight: 16 }}
           aria-hidden
         />
       )}
@@ -777,16 +777,16 @@ function Switch({
       className={cn(
         'relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200',
         effectiveDisabled && 'cursor-not-allowed opacity-60',
-        !effectiveDisabled && 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1677ff]/40'
+        !effectiveDisabled && 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--set-accent)]'
       )}
       style={{
         width: 30,
         height: 17,
-        background: effectiveChecked ? '#52c41a' : '#d9d9d9'
+        background: effectiveChecked ? 'var(--set-switch-on)' : 'var(--set-switch-off)'
       }}
     >
       <span
-        className="pointer-events-none inline-block transform rounded-full bg-white transition-transform duration-200"
+        className="pointer-events-none inline-block transform rounded-full bg-[var(--set-switch-knob)] transition-transform duration-200"
         style={{
           width: 13,
           height: 13,
@@ -801,7 +801,7 @@ function Switch({
 
 function InfoBadge({ title }: { title: string }) {
   return (
-    <span title={title} className="shrink-0" style={{ cursor: 'help', color: '#1677ff' }}>
+    <span title={title} className="shrink-0" style={{ cursor: 'help', color: 'var(--set-accent)' }}>
       <Info size={14} strokeWidth={1.8} />
     </span>
   )
@@ -814,10 +814,10 @@ function SettingsGearButton({ onClick }: { onClick: () => void }) {
       aria-label="配置规则"
       title="配置敏感保护规则"
       onClick={onClick}
-      className="shrink-0 flex items-center justify-center rounded-full border border-[#d9d9d9] bg-white transition-colors hover:bg-[#f5f5f5] hover:border-[#bfbfbf]"
+      className="shrink-0 flex items-center justify-center rounded-full border border-[var(--set-control-border)] bg-[var(--set-card)] transition-colors hover:bg-[var(--set-hover-bg)] hover:border-[var(--set-faint)]"
       style={{ width: 24, height: 24 }}
     >
-      <SettingsGear size={13} stroke="#8c8c8c" strokeWidth={1.8} />
+      <SettingsGear size={13} stroke="var(--set-desc)" strokeWidth={1.8} />
     </button>
   )
 }
@@ -842,18 +842,18 @@ function ButtonGhost({
         height: 28,
         padding: '0 10px',
         fontSize: pxToRem(12),
-        background: '#fff',
-        border: '1px solid #d9d9d9',
-        color: danger ? '#ff4d4f' : '#595959',
+        background: 'var(--set-card)',
+        border: '1px solid var(--set-control-border)',
+        color: danger ? 'var(--set-danger)' : 'var(--set-text-secondary)',
         cursor: 'pointer'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = danger ? '#fff1f0' : '#f5f5f5'
-        e.currentTarget.style.borderColor = danger ? '#ffccc7' : '#bfbfbf'
+        e.currentTarget.style.background = danger ? 'var(--set-danger-bg)' : 'var(--set-hover-bg)'
+        e.currentTarget.style.borderColor = danger ? 'var(--set-danger-border)' : 'var(--set-faint)'
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = '#fff'
-        e.currentTarget.style.borderColor = '#d9d9d9'
+        e.currentTarget.style.background = 'var(--set-card)'
+        e.currentTarget.style.borderColor = 'var(--set-control-border)'
       }}
     >
       {icon}

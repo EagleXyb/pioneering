@@ -23,7 +23,7 @@ import { AgentStatus } from './ChatStatus'
 // P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
 import { ImageLightbox } from './ImageLightbox'
 import { selectIsHitlPaused, useChatStore } from '../../stores/chatStore'
-import { useHitlStore } from '@/stores/hitlStore'
+import { useHitlStore } from '@pioneering/agent-protocol'
 import { useFeatureFlag } from '@/lib/feature-flags'
 import type { Message } from '@shared/types'
 import type { ImageAttachment } from '@/lib/input/image-attachments'

@@ -33,7 +33,7 @@ const STATUS_CONFIG: Record<TimelineStatus, { label: string; dotClass: string; t
   running: {
     label: '执行中',
     dotClass: 'border-[#3b82f6] bg-[#3b82f6] text-white',
-    titleClass: 'text-[#2563eb]'
+    titleClass: 'text-[#2563eb] dark:text-blue-400'
   },
   done: {
     label: '已完成',
@@ -43,7 +43,7 @@ const STATUS_CONFIG: Record<TimelineStatus, { label: string; dotClass: string; t
   failed: {
     label: '失败',
     dotClass: 'border-red-500 bg-red-500 text-white',
-    titleClass: 'text-red-600'
+    titleClass: 'text-red-600 dark:text-red-400'
   }
 }
 

@@ -29,9 +29,11 @@ import { z } from 'zod'
 import { buildSchema } from '../utils/zod-schema.js'
 import { checkQuota, recordUsage } from '../core/quota.js'
 import { loadSessionHistoryByBudget } from '../core/context-budget.js'
+import { estimateTokens } from '../core/token-estimator.js'
 import { enforceRateLimit } from '../plugins/rate-limit.js'
 import { recordSseDisconnect } from '../core/metrics.js'
 import { runEventHub } from '../core/run-events.js'
+import { SseWriter } from '../core/sse-writer.js'
 import { idempotencyStore, getIdempotencyKey } from '../core/idempotency.js'
 import {
   estimateReservation,
@@ -709,7 +711,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           const assistantMsgId = genId('msg_')
           // P1-6 修复：优先使用上游真实 usage 的 completionTokens
           const nonStreamCompletionTokens = (resultData as any).usage?.completion_tokens
-          const nonStreamTokenCount = nonStreamCompletionTokens ?? Math.floor(content.length / 4)
+          const nonStreamTokenCount = nonStreamCompletionTokens ?? estimateTokens(content)
           await fastify.prisma.chatMessage.create({
             data: {
               id: assistantMsgId,
@@ -743,6 +745,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           })
           markQuotaSettled(quotaReservation)
 
+          const promptTokens =
+            (resultData as any).usage?.prompt_tokens ?? estimateTokens(dto.message)
+          const completionTokens =
+            (resultData as any).usage?.completion_tokens ?? estimateTokens(content)
+          const totalTokens =
+            (resultData as any).usage?.total_tokens ?? promptTokens + completionTokens
+
           const payload = {
             id: `chatcmpl_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
             sessionId,
@@ -755,9 +764,9 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               },
             ],
             usage: {
-              promptTokens: (resultData as any).usage?.prompt_tokens ?? Math.floor(dto.message.length / 4),
-              completionTokens: (resultData as any).usage?.completion_tokens ?? Math.floor(content.length / 4),
-              totalTokens: (resultData as any).usage?.total_tokens ?? Math.floor((dto.message.length + content.length) / 4),
+              promptTokens,
+              completionTokens,
+              totalTokens,
             },
             createdAt: new Date().toISOString(),
           }
@@ -807,35 +816,27 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
         // P5：统一写帧入口——分配 seq、进入回放缓冲、再写连接。
         // 连接已断开时继续缓冲（客户端可用 Last-Event-ID 回放），不中断生成。
-        const writeFrame = (frame: string) => {
+        // 写入统一走 SseWriter：缓冲满时等待 drain，避免慢客户端撑爆内存。
+        const writer = new SseWriter(reply.raw)
+        const writeFrame = async (frame: string): Promise<boolean> => {
           const seq = runEventHub.publish(runId, frame)
-          if (seq === null) return
-          try {
-            if (!reply.raw.destroyed && !reply.raw.writableEnded) {
-              reply.raw.write(`id: ${seq}\n${frame}`)
-            }
-          } catch {
-            // 连接已关闭：仅保留缓冲
-          }
+          if (seq === null) return true
+          return writer.write(`id: ${seq}\n${frame}`)
         }
 
         // 1) RUN_STARTED（对齐 Python）
-        writeFrame(`data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: sessionId, runId })}\n\n`)
+        await writeFrame(`data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: sessionId, runId })}\n\n`)
 
         // 1.5) 联网搜索结果（结构化来源，独立于正文，前端用于"N 篇来源"入口与来源面板）
         if (searchSources.length > 0) {
-          writeFrame(`data: ${JSON.stringify({ type: 'WEB_SEARCH_SOURCES', sources: searchSources })}\n\n`)
+          await writeFrame(`data: ${JSON.stringify({ type: 'WEB_SEARCH_SOURCES', sources: searchSources })}\n\n`)
         }
 
         // P2-6：SSE 心跳，与 agent 通道保持一致。
         // 长回答 / 思考期间可能长时间无 data 帧，中间代理会按 idle timeout 断开；
         // 每 15s 发一行 SSE 注释（前端解析器忽略非 data: 行）。
         const heartbeat = setInterval(() => {
-          try {
-            if (!reply.raw.writableEnded) reply.raw.write(': ping\n\n')
-          } catch {
-            // 连接已关闭，忽略
-          }
+          void writer.write(': ping\n\n')
         }, 15_000)
 
         // 2) 流式输出 AG-UI 事件（对齐 Python: async for sse_str in llm_service.stream_agui(...)）
@@ -863,13 +864,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
                 // 忽略解析错误
               }
             }
-            writeFrame(sseStr)
+            await writeFrame(sseStr)
           }
         } catch (e) {
           streamError = true
           // 流异常时发送 RUN_ERROR（abort 时不发，因为 streamAgui 内部已处理）
           if (!abortController.signal.aborted) {
-            writeFrame(
+            await writeFrame(
               `data: ${JSON.stringify({ type: 'RUN_ERROR', message: String(e), code: 'STREAM_ERROR' })}\n\n`,
             )
           }
@@ -888,7 +889,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         if (usageRef.current) {
           runFinishedData.usage = usageRef.current
         }
-        writeFrame(`data: ${JSON.stringify(runFinishedData)}\n\n`)
+        await writeFrame(`data: ${JSON.stringify(runFinishedData)}\n\n`)
         // P5：事件写完再标记结束，回放订阅者收到终态后关闭
         runEventHub.finish(runId)
 
@@ -921,9 +922,9 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               ? (blocks as Prisma.InputJsonValue[])
               : Prisma.JsonNull
 
-          // P1-6 修复：优先使用上游真实 usage 的 completionTokens，回退到 length/4 估算
+          // P1-6 修复：优先使用上游真实 usage 的 completionTokens，回退到统一估算
           const realCompletionTokens = usageRef.current?.completionTokens
-          const tokenCount = realCompletionTokens ?? Math.floor(fullContent.length / 4)
+          const tokenCount = realCompletionTokens ?? estimateTokens(fullContent)
 
           await fastify.prisma.chatMessage.create({
             data: {
@@ -1080,6 +1081,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           ...corsHeaders,
         })
 
+        const writer = new SseWriter(reply.raw)
         let closed = false
         let heartbeat: ReturnType<typeof setInterval> | null = null
 
@@ -1101,11 +1103,9 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             cleanup()
             return
           }
-          try {
-            reply.raw.write(`id: ${event.seq}\n${event.frame}`)
-          } catch {
-            cleanup()
-          }
+          void writer.write(`id: ${event.seq}\n${event.frame}`).then((ok) => {
+            if (!ok) cleanup()
+          })
         })
 
         if (!subscription) {
@@ -1115,7 +1115,11 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
         for (const event of subscription.backlog) {
           if (closed) break
-          reply.raw.write(`id: ${event.seq}\n${event.frame}`)
+          const ok = await writer.write(`id: ${event.seq}\n${event.frame}`)
+          if (!ok) {
+            cleanup()
+            return
+          }
         }
 
         if (subscription.finished) {
@@ -1124,11 +1128,9 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         heartbeat = setInterval(() => {
-          try {
-            if (!reply.raw.writableEnded) reply.raw.write(': ping\n\n')
-          } catch {
-            cleanup()
-          }
+          void writer.write(': ping\n\n').then((ok) => {
+            if (!ok) cleanup()
+          })
         }, 15_000)
         ;(heartbeat as unknown as { unref?: () => void }).unref?.()
 
@@ -1235,7 +1237,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
         // P1-6 修复：优先使用上游真实 usage 的 completionTokens
         const regenCompletionTokens = (resultData as any).usage?.completion_tokens
-        const regenTokenCount = regenCompletionTokens ?? Math.floor(content.length / 4)
+        const regenTokenCount = regenCompletionTokens ?? estimateTokens(content)
         const newMsg = await fastify.prisma.chatMessage.create({
           data: {
             id: genId('msg_'),

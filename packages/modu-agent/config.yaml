@@ -7,6 +7,9 @@ memory:
   checkpointer_type: sqlite
   sqlite_path: checkpoints.db
   checkpointer_max_threads: 100
+  # sqlite saver 不可用时的行为：false = 启动失败（默认）；
+  # 仅在明确接受"HITL 暂停态随重启丢失"的开发环境才设为 true。
+  allow_volatile_checkpointer: false
 
 react_optimization:
   # 4.5 风险①：Markdown 文档提示注入（首次安装默认开启，配合下方 .md 模板）
@@ -25,7 +28,6 @@ react_optimization:
     min_quality_score: 0.8
     mmr_lambda: 0.7
     collect_from_feedback: false
-    max_age_days: 180
 
 # LLM 生成上限。
 # 框架内置默认仅 512（graph/adapters/llm-adapter.ts: `runtimeConfig.get('llm.max_tokens', 512)`），

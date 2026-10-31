@@ -105,7 +105,7 @@ export function AccountMenu({
     setSettingsOpen(true)
   }
 
-  const themeLabel = theme === 'light' ? '浅色' : theme === 'dark' ? '深色' : '跟随系统'
+  const themeLabel = theme === 'light' ? '浅色模式' : theme === 'dark' ? '深色模式' : '跟随系统'
 
   return (
     <div className="conversation-list-footer flex items-center justify-between px-2 py-1.5 border-t border-border shrink-0 min-h-[44px]">
@@ -222,11 +222,11 @@ export function AccountMenu({
               >
                 <DropdownMenuRadioItem value="light" className="flex items-center gap-2">
                   <Sun className="size-4 text-amber-500" />
-                  <span>浅色</span>
+                  <span>浅色模式</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="dark" className="flex items-center gap-2">
                   <Moon className="size-4 text-blue-400" />
-                  <span>深色</span>
+                  <span>深色模式</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="system" className="flex items-center gap-2">
                   <Monitor className="size-4 text-muted-foreground" />

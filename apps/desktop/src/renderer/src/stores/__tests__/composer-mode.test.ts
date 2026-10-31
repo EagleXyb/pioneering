@@ -5,7 +5,8 @@ import { setAgentTransport } from '@renderer/services/transport'
 import type { ChatState } from '@renderer/stores/chatStore'
 import { useChatStore } from '@renderer/stores/chatStore'
 // 与真实应用一致：hitlStore 模块求值时自注册到 hitl-bridge（selectSession 等会经桥调用）
-import '@renderer/stores/hitlStore'
+import '@pioneering/agent-protocol'
+import '@renderer/lib/hitl-host'
 
 // 云端 Agent 会话创建打桩（local 通道在 node 环境不可用，走云端分支即可覆盖模式解析）
 const createAgentSession = vi.fn()

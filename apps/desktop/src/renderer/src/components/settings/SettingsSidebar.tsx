@@ -29,13 +29,17 @@ function NavItem({
         'w-full flex items-center gap-3 rounded-[4px] px-3 text-sm text-left transition-colors duration-150',
         'h-[33px]',
         isActive
-          ? 'bg-[#e0e0e0] font-semibold text-[#262626]'
-          : 'text-[#262626] hover:bg-[#e8e8e8]'
+          ? 'bg-[var(--set-sidebar-active)] font-semibold text-[var(--set-text)]'
+          : 'text-[var(--set-text)] hover:bg-[var(--set-sidebar-hover)]'
       )}
     >
       <Icon
         className="shrink-0"
-        style={{ width: 18, height: 18, color: isActive ? '#595959' : '#8c8c8c' }}
+        style={{
+          width: 18,
+          height: 18,
+          color: isActive ? 'var(--set-text-secondary)' : 'var(--set-icon)'
+        }}
       />
       <span className="truncate">{label}</span>
     </button>
@@ -49,7 +53,7 @@ function Divider() {
       aria-hidden
       style={{
         height: 1,
-        background: '#e6e6e6',
+        background: 'var(--set-divider)',
         marginTop: 8,
         marginBottom: 8,
         marginLeft: 12,
@@ -65,7 +69,7 @@ export function SettingsSidebar() {
   return (
     <nav
       className="settings-sidebar-scroll flex flex-col overflow-y-auto shrink-0"
-      style={{ width: 230, background: '#f2f2f2', padding: '20px 12px' }}
+      style={{ width: 230, background: 'var(--set-sidebar-bg)', padding: '20px 12px' }}
     >
       <div className="flex flex-col gap-[4px]">
         {settingsCategories.map((c) => (

@@ -36,6 +36,9 @@ import { checkInterruptTimeout, get_runner, resume_sync } from '@pioneering/modu
 import { trackInterruptSession } from '../core/agent-scheduler.js'
 import { checkQuota, recordUsage } from '../core/quota.js'
 import { loadSessionHistoryByBudget } from '../core/context-budget.js'
+import { estimateTokens } from '../core/token-estimator.js'
+import { runEventHub } from '../core/run-events.js'
+import { SseWriter } from '../core/sse-writer.js'
 import { applyUserMessageEdit } from '../core/message-edit.js'
 
 // ===== Agent 流式运行注册表（供 /agent/completions/stop 中止生成）=====
@@ -62,6 +65,52 @@ async function verifySessionOwner(
     throw new NotFoundError('会话不存在')
   }
   return session
+}
+
+/**
+ * 结算一次 run 段产生的用量。
+ *
+ * 全终态（completed / paused / error / aborted）都必须结算：上游 token 已真实消耗，
+ * 原实现只在「正常完成」时记账，导致「生成一半点停止 = 免费」。
+ * messageId 允许为空（ReAct 暂停未落库时也一样结算费用）。
+ */
+async function settleRunUsage(
+  prisma: PrismaClient,
+  opts: {
+    userId: string
+    sessionId: string
+    messageId: string | null
+    model?: string | null
+    promptText: string
+    ctx: StreamContext
+  },
+): Promise<void> {
+  // 没有任何产出且未采集到上游 usage（例如 create_agent 阶段就失败）时不计费，
+  // 避免把"尚未触达模型"的请求按估算值记到用户账上。
+  const hasConsumption =
+    opts.ctx.promptTokens > 0 ||
+    opts.ctx.completionTokens > 0 ||
+    opts.ctx.answerContent.length > 0 ||
+    opts.ctx.contentBlocks.length > 0 ||
+    opts.ctx.planData.length > 0
+  if (!hasConsumption) return
+
+  const promptTokens =
+    opts.ctx.promptTokens > 0 ? opts.ctx.promptTokens : estimateTokens(opts.promptText)
+  const completionTokens =
+    opts.ctx.completionTokens > 0
+      ? opts.ctx.completionTokens
+      : estimateTokens(opts.ctx.answerContent)
+
+  await recordUsage(prisma, {
+    userId: opts.userId,
+    sessionId: opts.sessionId,
+    messageId: opts.messageId,
+    model: opts.model ?? env.LLM_DEFAULT_MODEL,
+    usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+    promptText: opts.promptText,
+    completionText: opts.ctx.answerContent,
+  })
 }
 
 // 对应 Python: _session_to_response
@@ -607,6 +656,18 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           let sseCount = 0
           let runMessageId: string | undefined
 
+          // P5：Agent 通道同样注册事件缓冲，断线后可按 Last-Event-ID 回放；
+          // 写入统一走 SseWriter，缓冲满时等待 drain（与 chat 通道一致）。
+          runEventHub.start(runId, userId)
+          const writer = new SseWriter(reply.raw)
+          const writeEvent = async (eventDict: Record<string, string>): Promise<boolean> => {
+            sseCount++
+            const frame = `data: ${eventDict.data}\n\n`
+            const seq = runEventHub.publish(runId, frame)
+            if (seq === null) return true
+            return writer.write(`id: ${seq}\n${frame}`)
+          }
+
           // 注册运行（供 /completions/stop 中止本流），连接关闭时自动清理
           const stopController = new AbortController()
           const stopRunId = genId('arun_')
@@ -616,13 +677,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
           // 中间代理（nginx 等）可能按 idle timeout 断开连接，表现为"任务无缘无故中断"。
           // 每 15s 发一行注释帧（SSE 规范中的 comment，前端解析器会忽略非 data: 行）。
           const heartbeat = setInterval(() => {
-            try {
-              if (!reply.raw.writableEnded) {
-                reply.raw.write(': ping\n\n')
-              }
-            } catch {
-              // 连接已关闭，忽略
-            }
+            void writer.write(': ping\n\n')
           }, 15_000)
 
           let finishedNormally = false
@@ -674,8 +729,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
                 ctx.abortReason = 'user_cancel'
                 break
               }
-              sseCount++
-              reply.raw.write(`data: ${eventDict.data}\n\n`)
+              await writeEvent(eventDict)
             }
             finishedNormally = true
           } catch (e: any) {
@@ -685,10 +739,13 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               { err: e, sessionId },
               '[agent.completions] stream.pre_stream_error',
             )
-            reply.raw.write(
-              `data: ${JSON.stringify({ type: 'RUN_ERROR', code: 'INTERNAL', message: String(e) })}\n\n`,
-            )
+            await writeEvent({
+              data: JSON.stringify({ type: 'RUN_ERROR', code: 'INTERNAL', message: String(e) }),
+            })
           }
+
+          // P5：流结束（含异常）后标记运行结束，回放订阅者收到终态后关闭
+          runEventHub.finish(runId)
 
           fastify.log.info(
             { sessionId, sseCount, streamError, answerLen: ctx.answerContent.length },
@@ -725,17 +782,6 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
                   '[agent.completions] persist.plan_steps',
                 )
               }
-              // T2.5：记录用量（仅正常完成；暂停/错误段待最终消息落库时计量）
-              if (!ctx.paused && !streamError && !ctx.abortReason) {
-                await recordUsage(fastify.prisma, {
-                  userId,
-                  sessionId,
-                  messageId: assistantMsg.id,
-                  model: session?.model ?? env.LLM_DEFAULT_MODEL,
-                  promptText: dto.message,
-                  completionText: ctx.answerContent,
-                })
-              }
             } catch (e: any) {
               // 持久化失败不影响已发送的 SSE 流
               fastify.log.error({ err: e, sessionId }, 'Failed to persist agent assistant message')
@@ -746,6 +792,20 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               '[agent.completions] skip_persist.empty',
             )
           }
+          // T2.5：全终态结算用量（completed / paused / error / aborted 均计费）
+          try {
+            await settleRunUsage(fastify.prisma, {
+              userId,
+              sessionId,
+              messageId: runMessageId ?? null,
+              model: session?.model ?? env.LLM_DEFAULT_MODEL,
+              promptText: dto.message,
+              ctx,
+            })
+          } catch (e: any) {
+            fastify.log.error({ err: e, sessionId }, 'Failed to settle agent usage')
+          }
+
           if (ctx.paused) {
             // T2.2：真暂停（等待用户答复）才注册 TTL sweep；HITL_ABORTED 不跟踪
             if (ctx.runPaused) trackInterruptSession(sessionId)
@@ -793,6 +853,20 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             { sessionId, planStepsCount },
             '[agent.completions] persist.plan_steps',
           )
+        }
+
+        // T2.5：非流式路径同样结算用量
+        try {
+          await settleRunUsage(fastify.prisma, {
+            userId,
+            sessionId,
+            messageId: assistantMsg.id,
+            model: session?.model ?? env.LLM_DEFAULT_MODEL,
+            promptText: dto.message,
+            ctx,
+          })
+        } catch (e: any) {
+          fastify.log.error({ err: e, sessionId }, 'Failed to settle agent usage')
         }
 
         // T5.5：收尾 agent_run
@@ -871,6 +945,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         let streamError = false
         const ctx = new StreamContext()
         let resumeMessageId: string | undefined
+        const writer = new SseWriter(reply.raw)
 
         // 2026-10-14：续写定位——找到暂停时落库的半截 assistant 消息与其 plan 基线。
         // completions 暂停时已落库半截消息（metadata.paused=true）；resume 段正文
@@ -972,7 +1047,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               break
             }
             sseCount++
-            reply.raw.write(`data: ${eventDict.data}\n\n`)
+            await writer.write(`data: ${eventDict.data}\n\n`)
             // 复用 collectMetadataFromEvent 收集元数据（RUN_PAUSED 会再次置 ctx.paused）
             collectMetadataFromEvent(eventDict, ctx)
             // T5.5：收集 resume 段事件时间轴
@@ -984,7 +1059,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             { err: e, sessionId: dto.sessionId },
             '[agent.resume] stream.pre_stream_error',
           )
-          reply.raw.write(
+          await writer.write(
             `data: ${JSON.stringify({ type: 'RUN_ERROR', code: 'INTERNAL', message: String(e) })}\n\n`,
           )
         }
@@ -1010,17 +1085,6 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
               continueMessageId,
             })
             resumeMessageId = assistantMsg.id
-            // T2.5：记录用量（仅正常完成；暂停/错误段随最终消息计量）
-            if (!streamError && !ctx.paused && !ctx.abortReason) {
-              await recordUsage(fastify.prisma, {
-                userId,
-                sessionId: dto.sessionId,
-                messageId: assistantMsg.id,
-                model: env.LLM_DEFAULT_MODEL,
-                promptText: dto.feedback ?? '',
-                completionText: ctx.answerContent,
-              })
-            }
           } catch (e: any) {
             fastify.log.error({ err: e, sessionId: dto.sessionId }, 'Failed to persist resume assistant message')
           }
@@ -1030,6 +1094,20 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             { sessionId: dto.sessionId },
             '[agent.resume] skip_persist.re_paused',
           )
+        }
+
+        // T2.5：resume 段同样全终态结算（再次暂停 / 中止 / 错误都要计费）
+        try {
+          await settleRunUsage(fastify.prisma, {
+            userId,
+            sessionId: dto.sessionId,
+            messageId: resumeMessageId ?? continueMessageId ?? null,
+            model: env.LLM_DEFAULT_MODEL,
+            promptText: dto.feedback ?? '',
+            ctx,
+          })
+        } catch (e: any) {
+          fastify.log.error({ err: e, sessionId: dto.sessionId }, 'Failed to settle agent usage')
         }
 
         // T5.5：若带 runId，按 resume 结果收尾原 run（合并首次 + resume 事件、seq 延续）
@@ -1196,6 +1274,103 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         })
         if (!run) throw new NotFoundError('执行记录不存在')
         return runToResponse(run)
+      })
+
+      // GET /agent/runs/:runId/events —— 断线后按 Last-Event-ID 续读 Agent 事件流。
+      // 与 /chat/runs/:runId/events 同构；运行仍在进行时继续接收后续事件。
+      app.get('/runs/:runId/events', buildSchema({
+        params: z.object({ runId: z.string() }),
+        tags: ['agent'],
+        summary: '回放 Agent 运行事件（SSE，支持 Last-Event-ID）',
+        security: [{ BearerAuth: [] }],
+      }), async (req, reply) => {
+        const { runId } = req.params as { runId: string }
+        const owner = runEventHub.ownerOf(runId)
+        if (!owner || owner !== req.user.id) {
+          throw new NotFoundError('运行不存在或已过期')
+        }
+
+        const header = req.headers['last-event-id']
+        const headerValue = Array.isArray(header) ? header[0] : header
+        const afterRaw =
+          headerValue ?? (req.query as { after?: string } | undefined)?.after ?? '0'
+        const afterSeq = Number(afterRaw) || 0
+
+        const reqOrigin = req.headers.origin
+        const corsHeaders: Record<string, string> = {}
+        if (reqOrigin && isOriginAllowed(reqOrigin)) {
+          corsHeaders['Access-Control-Allow-Origin'] = reqOrigin
+          corsHeaders['Access-Control-Allow-Credentials'] = 'true'
+        }
+
+        reply.hijack()
+        reply.raw.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          ...corsHeaders,
+        })
+
+        const writer = new SseWriter(reply.raw)
+        let closed = false
+        let heartbeat: ReturnType<typeof setInterval> | null = null
+        let subscription: ReturnType<typeof runEventHub.subscribe> = null
+
+        const cleanup = () => {
+          if (closed) return
+          closed = true
+          subscription?.unsubscribe()
+          if (heartbeat) clearInterval(heartbeat)
+          try {
+            reply.raw.end()
+          } catch {
+            // 已关闭
+          }
+        }
+
+        subscription = runEventHub.subscribe(runId, afterSeq, (event) => {
+          if (closed) return
+          if (event === null) {
+            cleanup()
+            return
+          }
+          void writer.write(`id: ${event.seq}\n${event.frame}`).then((ok) => {
+            if (!ok) cleanup()
+          })
+        })
+
+        if (!subscription) {
+          cleanup()
+          return
+        }
+
+        for (const event of subscription.backlog) {
+          if (closed) break
+          const ok = await writer.write(`id: ${event.seq}\n${event.frame}`)
+          if (!ok) {
+            cleanup()
+            return
+          }
+        }
+
+        if (subscription.finished) {
+          cleanup()
+          return
+        }
+
+        heartbeat = setInterval(() => {
+          void writer.write(': ping\n\n').then((ok) => {
+            if (!ok) cleanup()
+          })
+        }, 15_000)
+        ;(heartbeat as unknown as { unref?: () => void }).unref?.()
+
+        reply.raw.on('close', () => {
+          closed = true
+          subscription?.unsubscribe()
+          if (heartbeat) clearInterval(heartbeat)
+        })
       })
 
       // ========== Plan 步骤时间轴恢复 ==========

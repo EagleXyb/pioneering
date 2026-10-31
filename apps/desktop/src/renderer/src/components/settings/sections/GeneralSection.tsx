@@ -48,8 +48,8 @@ import { formatBindingForDisplay } from '@/lib/match-accelerator'
 
 // ===== 常量：下拉选项 =====
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
-  { value: 'light', label: '亮色' },
-  { value: 'dark', label: '深色' },
+  { value: 'light', label: '浅色模式' },
+  { value: 'dark', label: '深色模式' },
   { value: 'system', label: '跟随系统' }
 ]
 const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
@@ -180,7 +180,7 @@ export function GeneralSection() {
                 type="button"
                 title="配置快捷键"
                 aria-label="配置快捷键"
-                className="flex items-center justify-center rounded-full border border-[#d9d9d9] bg-white hover:bg-[#f5f5f5] hover:border-[#bfbfbf] transition-colors"
+                className="flex items-center justify-center rounded-full border border-[var(--set-control-border)] bg-[var(--set-card)] hover:bg-[var(--set-hover-bg)] hover:border-[var(--set-faint)] transition-colors"
                 style={{ width: 26, height: 26 }}
                 onClick={() => {
                   // 跳转快捷键设置页（分类已合并：placeholder → ShortcutsSection）
@@ -188,7 +188,7 @@ export function GeneralSection() {
                   setSettingsOpen(true)
                 }}
               >
-                <SettingsGear size={14} stroke="#8c8c8c" strokeWidth={1.8} />
+                <SettingsGear size={14} stroke="var(--set-desc)" strokeWidth={1.8} />
               </button>
             </div>
           }
@@ -228,7 +228,7 @@ function GroupHeader({ label }: { label: string }) {
   return (
     <div
       className="font-semibold select-none shrink-0"
-      style={{ fontSize: pxToRem(14), color: '#262626', marginTop: 32, marginBottom: 16 }}
+      style={{ fontSize: pxToRem(14), color: 'var(--set-text)', marginTop: 32, marginBottom: 16 }}
     >
       {label}
     </div>
@@ -242,8 +242,8 @@ function SectionCard({ children }: { children: ReactNode }) {
     <div
       className="shrink-0 w-full overflow-hidden"
       style={{
-        background: '#fff',
-        border: '1px solid #f0f0f0',
+        background: 'var(--set-card)',
+        border: '1px solid var(--set-border)',
         borderRadius: 8
       }}
     >
@@ -268,10 +268,10 @@ function SettingRow({
   /** 用于斑马条纹：索引从 0 开始（由父 SectionCard 内传入） */
   index?: number
 }) {
-  const zebraBg = index % 2 === 1 ? '#fafafa' : '#fff'
+  const zebraBg = index % 2 === 1 ? 'var(--set-surface-alt)' : 'var(--set-card)'
   return (
     <div
-      className="relative transition-colors hover:bg-[#f5f9ff]"
+      className="relative transition-colors hover:bg-[var(--set-row-hover)]"
       style={{ background: zebraBg }}
     >
       <div
@@ -282,14 +282,14 @@ function SettingRow({
         <div className="flex flex-col min-w-0 pr-6 flex-1">
           <span
             className="shrink-0 truncate"
-            style={{ fontSize: pxToRem(14), color: '#262626', lineHeight: pxToRem(20), fontWeight: 500 }}
+            style={{ fontSize: pxToRem(14), color: 'var(--set-text)', lineHeight: pxToRem(20), fontWeight: 500 }}
           >
             {title}
           </span>
           {subtitle && (
             <span
               className="mt-1 truncate"
-              style={{ fontSize: pxToRem(12), color: '#8c8c8c', lineHeight: pxToRem(18) }}
+              style={{ fontSize: pxToRem(12), color: 'var(--set-desc)', lineHeight: pxToRem(18) }}
             >
               {subtitle}
             </span>
@@ -301,7 +301,7 @@ function SettingRow({
       {!last && (
         <div
           // 卡片内部行分隔线：全宽不缩进，与快捷键卡片一致
-          style={{ height: 1, background: '#f0f0f0', marginLeft: 16, marginRight: 16 }}
+          style={{ height: 1, background: 'var(--set-border)', marginLeft: 16, marginRight: 16 }}
           aria-hidden
         />
       )}
@@ -437,20 +437,20 @@ function Select<T extends string>({
             }
           }
         }}
-        className="flex items-center justify-between w-full px-3 bg-white text-left transition-colors hover:border-[#bfbfbf] focus:outline-none focus:ring-2 focus:ring-[#1677ff]/30 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-[#d9d9d9]"
+        className="flex items-center justify-between w-full px-3 bg-[var(--set-card)] text-left transition-colors hover:border-[var(--set-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--set-accent)] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-[var(--set-control-border)]"
         style={{
           height: 30,
-          border: '1px solid #d9d9d9',
+          border: '1px solid var(--set-control-border)',
           borderRadius: 8,
           fontSize: pxToRem(13),
-          color: '#262626'
+          color: 'var(--set-text)'
         }}
       >
         <span className="truncate pr-2">{current.label}</span>
         <ChevronDown
           size={14}
           strokeWidth={2}
-          stroke="#8c8c8c"
+          stroke="var(--set-desc)"
           className={cn('shrink-0 transition-transform', open && '-rotate-180')}
         />
       </button>
@@ -485,8 +485,8 @@ function Select<T extends string>({
                 top: pos.top,
                 width: pos.width,
                 borderRadius: 8,
-                border: '1px solid #f0f0f0',
-                background: '#fff',
+                border: '1px solid var(--set-border)',
+                background: 'var(--set-card)',
                 // 关键（同 backdrop）：显式恢复 pointer events，否则 Radix modal
                 // 的 pointer-events:none 会让选项无法被点击。
                 pointerEvents: 'auto',
@@ -500,7 +500,7 @@ function Select<T extends string>({
                 const isSelected = o.value === value
                 const isActive = i === activeIdx
                 // 选中总是蓝底优先；未选中才应用 hover/键盘 active 淡蓝
-                const bg = isSelected ? '#f0f7ff' : isActive ? '#f5f9ff' : '#fff'
+                const bg = isSelected ? 'var(--set-accent-bg)' : isActive ? 'var(--set-row-hover)' : 'var(--set-card)'
                 return (
                   <div
                     key={o.value}
@@ -517,7 +517,7 @@ function Select<T extends string>({
                       height: 32,
                       lineHeight: '32px',
                       fontSize: pxToRem(13),
-                      color: isSelected ? '#1677ff' : '#262626',
+                      color: isSelected ? 'var(--set-accent)' : 'var(--set-text)',
                       background: bg
                     }}
                   >
@@ -550,16 +550,16 @@ function Switch({
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        'relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1677ff]/40'
+        'relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--set-accent)]'
       )}
       style={{
         width: 30,
         height: 17,
-        background: checked ? '#52c41a' : '#d9d9d9'
+        background: checked ? 'var(--set-switch-on)' : 'var(--set-switch-off)'
       }}
     >
       <span
-        className="pointer-events-none inline-block transform rounded-full bg-white transition-transform duration-200"
+        className="pointer-events-none inline-block transform rounded-full bg-[var(--set-switch-knob)] transition-transform duration-200"
         style={{
           width: 13,
           height: 13,
@@ -588,17 +588,17 @@ function HotkeyTag({ keys }: { keys: string[] }) {
               height: 22,
               padding: '0 6px',
               borderRadius: 5,
-              background: '#fff',
-              border: '1px solid #d9d9d9',
-              color: '#595959',
+              background: 'var(--set-card)',
+              border: '1px solid var(--set-control-border)',
+              color: 'var(--set-text-secondary)',
               fontFamily: 'ui-sans-serif, system-ui, -apple-system',
-              boxShadow: 'inset 0 -1px 0 #f0f0f0'
+              boxShadow: 'inset 0 -1px 0 var(--set-border)'
             }}
           >
             {k}
           </span>
           {i < keys.length - 1 && (
-            <span style={{ fontSize: pxToRem(12), color: '#bfbfbf', padding: '0 2px' }}>
+            <span style={{ fontSize: pxToRem(12), color: 'var(--set-faint)', padding: '0 2px' }}>
               +
             </span>
           )}
@@ -627,20 +627,20 @@ function PathPicker({
     // 期望 340px，但绝不允许超出所在行宽：maxWidth 兜底 + 允许 flex 收缩
     <div className="flex items-stretch" style={{ width: 340, maxWidth: '100%', minWidth: 0 }}>
       <div
-        className="flex items-center gap-2 px-3 bg-white min-w-0"
+        className="flex items-center gap-2 px-3 bg-[var(--set-card)] min-w-0"
         style={{
           flex: '1 1 0%',
           height: 30,
-          border: '1px solid #d9d9d9',
+          border: '1px solid var(--set-control-border)',
           borderRight: 'none',
           borderRadius: '8px 0 0 8px',
           fontSize: pxToRem(12),
-          color: '#595959',
+          color: 'var(--set-text-secondary)',
           opacity: disabled ? 0.55 : 1
         }}
         title={value || '应用数据目录（默认）'}
       >
-        <FolderOpen size={13} stroke="#8c8c8c" strokeWidth={1.8} className="shrink-0" />
+        <FolderOpen size={13} stroke="var(--set-desc)" strokeWidth={1.8} className="shrink-0" />
         <span className="truncate min-w-0 flex-1">
           {value || '应用数据目录（默认，即将支持自定义）'}
         </span>

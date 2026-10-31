@@ -70,6 +70,9 @@ export const DEFAULT_CONFIG: Record<string, any> = {
     //     并无代码通过 RuntimeConfig.get('memory.context_window' / 'memory.enable_compression') 读取，
     //     故在 P0 清理中移除（见文档 4.4）。
     checkpointer_type: 'memory',
+    // 显式允许在 sqlite saver 不可用时降级内存；默认 false（宁可启动失败，
+    // 也不让"HITL 暂停态随重启丢失"变成静默行为）。
+    allow_volatile_checkpointer: false,
     // P1-7：内存检查点 LRU 上限（按 thread 计）。MemorySaver 为进程级单例，
     // 0/缺省回退到内置默认 100；长周期多会话进程靠此防止 state 无限累积。
     checkpointer_max_threads: 100,
@@ -481,8 +484,6 @@ export const DEFAULT_CONFIG: Record<string, any> = {
       // P1（FS-3）：是否允许把线上高分 run 沉淀为示例候选（默认关闭）
       collect_from_feedback: false,
       collect_min_quality: 0.85,
-      // P2（FS-8）：示例 TTL（天）；0/null = 不过期
-      max_age_days: 180,
       // 注入时是否打日志（默认关闭，避免高频日志）
       log_injection: false,
     },

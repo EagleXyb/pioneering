@@ -166,10 +166,10 @@ export function ShortcutsSection() {
       {degraded && (
         <div
           className="flex items-start gap-2 rounded-[5px] px-4 py-3 mb-3"
-          style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
+          style={{ background: 'var(--set-warning-bg)', border: '1px solid var(--set-warning-border)' }}
         >
-          <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: '#faad14' }} />
-          <div style={{ color: '#8c6d1f', fontSize: pxToRem(13) }}>
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--set-warning)' }} />
+          <div style={{ color: 'var(--set-warning-text)', fontSize: pxToRem(13) }}>
             当前为纯浏览器环境：快捷键修改不会持久化，全局快捷键（如唤起主窗口）不可用。
             渲染层快捷键仍按默认绑定生效。
           </div>
@@ -180,10 +180,10 @@ export function ShortcutsSection() {
       {globalConflicts.length > 0 && (
         <div
           className="flex items-start gap-2 rounded-[5px] px-4 py-3 mb-3"
-          style={{ background: '#fff2f0', border: '1px solid #ffccc7' }}
+          style={{ background: 'var(--set-danger-bg)', border: '1px solid var(--set-danger-border)' }}
         >
-          <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: '#ff4d4f' }} />
-          <div style={{ color: '#8c3b38', fontSize: pxToRem(13) }}>
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--set-danger)' }} />
+          <div style={{ color: 'var(--set-danger-text)', fontSize: pxToRem(13) }}>
             {globalConflicts.join('；')}
           </div>
         </div>
@@ -193,21 +193,21 @@ export function ShortcutsSection() {
       <div className="flex items-center justify-between" style={{ marginTop: 32, marginBottom: 16 }}>
         <div
           className="flex items-center gap-2 rounded-[5px] px-3"
-          style={{ width: 240, height: 30, background: '#fff', border: '1px solid #d9d9d9' }}
+          style={{ width: 240, height: 30, background: 'var(--set-card)', border: '1px solid var(--set-control-border)' }}
         >
-          <Search size={14} style={{ color: '#bfbfbf' }} />
+          <Search size={14} style={{ color: 'var(--set-faint)' }} />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索快捷键"
             className="flex-1 outline-none bg-transparent"
-            style={{ fontSize: pxToRem(13), color: '#262626' }}
+            style={{ fontSize: pxToRem(13), color: 'var(--set-text)' }}
           />
           {query && (
             <button
               onClick={() => setQuery('')}
               className="flex items-center"
-              style={{ color: '#bfbfbf', cursor: 'pointer' }}
+              style={{ color: 'var(--set-faint)', cursor: 'pointer' }}
               aria-label="清空搜索"
             >
               <X size={13} />
@@ -221,9 +221,9 @@ export function ShortcutsSection() {
           style={{
             height: 30,
             fontSize: pxToRem(13),
-            background: '#fff',
-            border: '1px solid #d9d9d9',
-            color: '#595959',
+            background: 'var(--set-card)',
+            border: '1px solid var(--set-control-border)',
+            color: 'var(--set-text-secondary)',
             cursor: isApplying ? 'not-allowed' : 'pointer',
             opacity: isApplying ? 0.6 : 1
           }}
@@ -237,8 +237,8 @@ export function ShortcutsSection() {
       <div
         className="overflow-hidden"
         style={{
-          background: '#fff',
-          border: '1px solid #f0f0f0',
+          background: 'var(--set-card)',
+          border: '1px solid var(--set-border)',
           borderRadius: 8
         }}
       >
@@ -247,13 +247,13 @@ export function ShortcutsSection() {
           className="flex items-center"
           style={{
             padding: '12px 16px',
-            background: '#fafafa',
-            borderBottom: '1px solid #f0f0f0'
+            background: 'var(--set-surface-alt)',
+            borderBottom: '1px solid var(--set-border)'
           }}
         >
-          <span style={{ color: '#8c8c8c', width: 260, fontSize: pxToRem(12) }}>命令</span>
-          <span style={{ color: '#8c8c8c', flex: 1, fontSize: pxToRem(12) }}>按键绑定</span>
-          <span style={{ color: '#8c8c8c', width: 60, textAlign: 'right', fontSize: pxToRem(12) }}>操作</span>
+          <span style={{ color: 'var(--set-desc)', width: 260, fontSize: pxToRem(12) }}>命令</span>
+          <span style={{ color: 'var(--set-desc)', flex: 1, fontSize: pxToRem(12) }}>按键绑定</span>
+          <span style={{ color: 'var(--set-desc)', width: 60, textAlign: 'right', fontSize: pxToRem(12) }}>操作</span>
         </div>
 
         {/* 列表行 */}
@@ -264,24 +264,24 @@ export function ShortcutsSection() {
             const isRecording = recordingId === def.id
             const isLast = idx === rows.length - 1
             // 斑马条纹：偶数行微灰背景，与截图一致
-            const zebraBg = idx % 2 === 1 ? '#fafafa' : '#fff'
+            const zebraBg = idx % 2 === 1 ? 'var(--set-surface-alt)' : 'var(--set-card)'
             return (
               <div
                 key={def.id}
-                className="flex items-center transition-colors hover:bg-[#f5f9ff]"
+                className="flex items-center transition-colors hover:bg-[var(--set-row-hover)]"
                 style={{
                   padding: '13px 16px',
                   background: zebraBg,
-                  borderBottom: isLast ? 'none' : '1px solid #f0f0f0'
+                  borderBottom: isLast ? 'none' : '1px solid var(--set-border)'
                 }}
               >
                 {/* 命令列 */}
                 <div className="flex flex-col min-w-0" style={{ width: 260 }}>
-                  <span className="truncate" style={{ fontSize: pxToRem(14), color: '#262626', fontWeight: 500 }}>
+                  <span className="truncate" style={{ fontSize: pxToRem(14), color: 'var(--set-text)', fontWeight: 500 }}>
                     {def.label}
                   </span>
                   {def.scope === 'global' && (
-                    <span style={{ fontSize: pxToRem(12), color: '#bfbfbf', marginTop: 2 }}>全局（窗口外生效）</span>
+                    <span style={{ fontSize: pxToRem(12), color: 'var(--set-desc)', marginTop: 2 }}>全局（窗口外生效）</span>
                   )}
                 </div>
 
@@ -295,13 +295,13 @@ export function ShortcutsSection() {
                       height: 26,
                       padding: '0 10px',
                       fontSize: pxToRem(12),
-                      background: isRecording ? '#e6f4ff' : binding ? '#f5f5f5' : 'transparent',
+                      background: isRecording ? 'var(--set-accent-bg)' : binding ? 'var(--set-hover-bg)' : 'transparent',
                       border: isRecording
-                        ? '1px solid #1677ff'
+                        ? '1px solid var(--set-accent)'
                         : binding
-                          ? '1px solid #e5e5e5'
-                          : '1px dashed #d9d9d9',
-                      color: binding ? '#595959' : '#bfbfbf',
+                          ? '1px solid var(--set-divider)'
+                          : '1px dashed var(--set-control-border)',
+                      color: binding ? 'var(--set-text-secondary)' : 'var(--set-faint)',
                       cursor: def.readOnly ? 'not-allowed' : 'pointer',
                       opacity: def.readOnly ? 0.7 : 1
                     }}
@@ -314,7 +314,7 @@ export function ShortcutsSection() {
                     <button
                       onClick={() => resetOne(def.id)}
                       className="flex items-center gap-1"
-                      style={{ fontSize: pxToRem(12), color: '#8c8c8c', cursor: 'pointer', background: 'transparent', border: 'none' }}
+                      style={{ fontSize: pxToRem(12), color: 'var(--set-desc)', cursor: 'pointer', background: 'transparent', border: 'none' }}
                       title="恢复此命令默认绑定"
                     >
                       <RotateCcw size={12} />
@@ -331,7 +331,7 @@ export function ShortcutsSection() {
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: def.allowEmpty && !def.readOnly ? '#bfbfbf' : '#e8e8e8',
+                      color: def.allowEmpty && !def.readOnly ? 'var(--set-faint)' : 'var(--set-disabled)',
                       cursor: def.allowEmpty && !def.readOnly ? 'pointer' : 'not-allowed',
                       padding: 4
                     }}
@@ -343,10 +343,10 @@ export function ShortcutsSection() {
                           : '必需绑定，不可禁用'
                     }
                     onMouseEnter={(e) => {
-                      if (def.allowEmpty && !def.readOnly) e.currentTarget.style.color = '#ff4d4f'
+                      if (def.allowEmpty && !def.readOnly) e.currentTarget.style.color = 'var(--set-danger)'
                     }}
                     onMouseLeave={(e) => {
-                      if (def.allowEmpty && !def.readOnly) e.currentTarget.style.color = '#bfbfbf'
+                      if (def.allowEmpty && !def.readOnly) e.currentTarget.style.color = 'var(--set-faint)'
                     }}
                   >
                     <Trash2 size={15} />
@@ -357,7 +357,7 @@ export function ShortcutsSection() {
           })
         ) : (
           /* 空态（在卡片内） */
-          <div className="py-10 text-center" style={{ color: '#bfbfbf', fontSize: pxToRem(13) }}>
+          <div className="py-10 text-center" style={{ color: 'var(--set-desc)', fontSize: pxToRem(13) }}>
             没有匹配「{query}」的命令
           </div>
         )}
@@ -367,14 +367,14 @@ export function ShortcutsSection() {
       {conflictInfo && (
         <div
           className="flex items-start justify-between gap-2 rounded-[5px] px-4 py-3 mt-4"
-          style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
+          style={{ background: 'var(--set-warning-bg)', border: '1px solid var(--set-warning-border)' }}
         >
-          <div style={{ color: '#8c6d1f', fontSize: pxToRem(13) }}>
+          <div style={{ color: 'var(--set-warning-text)', fontSize: pxToRem(13) }}>
             {conflictInfo.binding} 已被「{conflictInfo.others.join('、')}」使用，同时生效时先命中者执行。
           </div>
           <button
             onClick={() => setConflictInfo(null)}
-            style={{ background: 'transparent', border: 'none', color: '#bfbfbf', cursor: 'pointer' }}
+            style={{ background: 'transparent', border: 'none', color: 'var(--set-faint)', cursor: 'pointer' }}
             aria-label="关闭提示"
           >
             <X size={14} />
@@ -386,14 +386,14 @@ export function ShortcutsSection() {
       {dangerBinding && (
         <div
           className="flex items-start justify-between gap-2 rounded-[5px] px-4 py-3 mt-2"
-          style={{ background: '#fff2f0', border: '1px solid #ffccc7' }}
+          style={{ background: 'var(--set-danger-bg)', border: '1px solid var(--set-danger-border)' }}
         >
-          <div style={{ color: '#8c3b38', fontSize: pxToRem(13) }}>
+          <div style={{ color: 'var(--set-danger-text)', fontSize: pxToRem(13) }}>
             {dangerBinding} 存在浏览器/系统原生行为（关闭窗口、刷新等），可能干扰应用操作，建议换用其它组合。
           </div>
           <button
             onClick={() => setDangerBinding(null)}
-            style={{ background: 'transparent', border: 'none', color: '#bfbfbf', cursor: 'pointer' }}
+            style={{ background: 'transparent', border: 'none', color: 'var(--set-faint)', cursor: 'pointer' }}
             aria-label="关闭提示"
           >
             <X size={14} />
@@ -477,9 +477,9 @@ function CaptureOverlay({
     >
       <div
         className="rounded-[8px] flex flex-col items-center gap-4"
-        style={{ background: '#fff', padding: '28px 40px', minWidth: 380 }}
+        style={{ background: 'var(--set-card)', padding: '28px 40px', minWidth: 380 }}
       >
-        <div style={{ fontSize: pxToRem(16), fontWeight: 600, color: '#262626' }}>请按下新的快捷键组合</div>
+        <div style={{ fontSize: pxToRem(16), fontWeight: 600, color: 'var(--set-text)' }}>请按下新的快捷键组合</div>
 
         {/* 实时键位显示 */}
         <div
@@ -487,16 +487,16 @@ function CaptureOverlay({
           style={{
             minWidth: 180,
             height: 40,
-            background: '#fafafa',
-            border: '1px solid #f0f0f0',
+            background: 'var(--set-surface-alt)',
+            border: '1px solid var(--set-border)',
             fontSize: pxToRem(14),
-            color: current ? '#595959' : '#bfbfbf'
+            color: current ? 'var(--set-text-secondary)' : 'var(--set-faint)'
           }}
         >
           {current ?? '等待输入…'}
         </div>
 
-        <div style={{ fontSize: pxToRem(12), color: '#8c8c8c' }}>
+        <div style={{ fontSize: pxToRem(12), color: 'var(--set-desc)' }}>
           按 Esc 取消录制；仅含修饰键的组合不会保存
         </div>
 
@@ -506,9 +506,9 @@ function CaptureOverlay({
           style={{
             padding: '5px 16px',
             fontSize: pxToRem(13),
-            background: '#fff',
-            border: '1px solid #d9d9d9',
-            color: '#595959',
+            background: 'var(--set-card)',
+            border: '1px solid var(--set-control-border)',
+            color: 'var(--set-text-secondary)',
             cursor: 'pointer'
           }}
         >

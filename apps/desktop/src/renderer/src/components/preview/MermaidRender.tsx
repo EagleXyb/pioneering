@@ -16,6 +16,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react'
+import { useAppStore } from '@/stores/useAppStore'
 
 // 模块级递增序号：保证 mermaid.render 的临时容器 id 全局唯一，避免并发冲突
 let mermaidIdSeq = 0
@@ -28,6 +29,13 @@ export function MermaidRender({ content }: MermaidRenderProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 图表配色跟随应用主题：显式深色 / system 且系统为深色时用 dark 主题
+  const theme = useAppStore((s) => s.theme)
+  const systemDark =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+  const isDark = theme === 'dark' || (theme === 'system' && systemDark)
 
   useEffect(() => {
     let cancelled = false
@@ -41,8 +49,8 @@ export function MermaidRender({ content }: MermaidRenderProps) {
           startOnLoad: false,
           // 严格模式：禁 html 标签 / 脚本 / click 交互，产出纯矢量 SVG
           securityLevel: 'strict',
-          // 预览面板为白色底（与 ArtifactRender iframe 分支一致），用 neutral 主题
-          theme: 'neutral'
+          // 图表配色随主题切换：浅色用 neutral，深色用 dark
+          theme: isDark ? 'dark' : 'neutral'
         })
         const renderResult = (await mermaid.render(`mermaid-preview-${++mermaidIdSeq}`, content)) as
           | string
@@ -64,7 +72,7 @@ export function MermaidRender({ content }: MermaidRenderProps) {
     return () => {
       cancelled = true
     }
-  }, [content])
+  }, [content, isDark])
 
   // 降级：解析/加载失败 → 错误提示 + 源码纯文本视图（与 code 产物视图一致）
   if (error) {
@@ -73,7 +81,7 @@ export function MermaidRender({ content }: MermaidRenderProps) {
         <div className="shrink-0 border-b border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           图表解析失败，已降级显示源码：{error}
         </div>
-        <pre className="artifact-view m-0 min-h-0 flex-1 overflow-auto p-4 font-mono text-[13px] leading-[1.65] bg-gray-50 text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+        <pre className="artifact-view m-0 min-h-0 flex-1 overflow-auto p-4 font-mono text-[13px] leading-[1.65] bg-card text-foreground">
           <code>{content}</code>
         </pre>
       </div>
@@ -81,7 +89,7 @@ export function MermaidRender({ content }: MermaidRenderProps) {
   }
 
   return (
-    <div className="relative h-full w-full overflow-auto bg-white p-4">
+    <div className="relative h-full w-full overflow-auto bg-card p-4">
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
           图表渲染中…

@@ -86,8 +86,8 @@ export interface CatalogItem {
   install?: InstallTemplate;
 }
 
-/** 内置精选应用目录 */
-export const CATALOG: ReadonlyArray<CatalogItem> = [
+/** 全部候选条目（含尚未提供官方接入模板的规划项） */
+const ALL_CATALOG: ReadonlyArray<CatalogItem> = [
   {
     id: 'feishu',
     name: '飞书企业号',
@@ -411,7 +411,15 @@ export const CATALOG: ReadonlyArray<CatalogItem> = [
   },
 ];
 
-/** 按 id 查找目录项 */
+/**
+ * 对用户展示的目录：仅保留有官方接入模板、可真实安装的条目。
+ * 模板缺省的规划项不再进入目录，避免用户把"规划中"误认为"已接入"。
+ */
+export const CATALOG: ReadonlyArray<CatalogItem> = ALL_CATALOG.filter((c) =>
+  Boolean(c.install),
+);
+
+/** 按 id 查找目录项（含规划项，供已接入插件复用元数据） */
 export function findCatalogItem(id: string): CatalogItem | undefined {
-  return CATALOG.find((c) => c.id.toLowerCase() === id.toLowerCase());
+  return ALL_CATALOG.find((c) => c.id.toLowerCase() === id.toLowerCase());
 }

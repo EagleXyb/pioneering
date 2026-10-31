@@ -67,7 +67,7 @@ export function AboutSection() {
         <VersionRow />
         <Divider />
         <ActionRow
-          icon={<Globe className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />}
+          icon={<Globe className="shrink-0" size={18} stroke="var(--set-desc)" strokeWidth={2} />}
           label="关于 Pioneering"
           actionLabel="前往官网"
           external
@@ -75,7 +75,7 @@ export function AboutSection() {
         />
         <Divider />
         <ActionRow
-          icon={<FileText className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />}
+          icon={<FileText className="shrink-0" size={18} stroke="var(--set-desc)" strokeWidth={2} />}
           label="帮助文档"
           actionLabel="查看文档"
           external
@@ -83,14 +83,14 @@ export function AboutSection() {
         />
         <Divider />
         <ActionRow
-          icon={<MessageSquare className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />}
+          icon={<MessageSquare className="shrink-0" size={18} stroke="var(--set-desc)" strokeWidth={2} />}
           label="意见反馈"
           actionLabel="填写反馈"
           onClick={() => alert('意见反馈功能正在建设中')}
         />
         <Divider />
         <ActionRow
-          icon={<LinkIcon className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />}
+          icon={<LinkIcon className="shrink-0" size={18} stroke="var(--set-desc)" strokeWidth={2} />}
           label="联系我们"
           actionLabel="发送邮件"
           external
@@ -120,8 +120,8 @@ function MenuCard({ children }: { children: ReactNode }) {
       className="w-full overflow-hidden"
       style={{
         borderRadius: '5px',
-        background: '#ffffff',
-        border: '1px solid #f0f0f0'
+        background: 'var(--set-card)',
+        border: '1px solid var(--set-border)'
       }}
     >
       {children}
@@ -133,7 +133,7 @@ function MenuCard({ children }: { children: ReactNode }) {
 // 行分隔线：1px #f0f0f0；首行前不渲染（调用方自行控制）
 // ==================================================
 function Divider() {
-  return <div style={{ height: 1, background: '#f0f0f0', marginLeft: 62 }} aria-hidden />
+  return <div style={{ height: 1, background: 'var(--set-border)', marginLeft: 62 }} aria-hidden />
 }
 
 // ==================================================
@@ -177,17 +177,17 @@ function VersionRow() {
     <div
       className="flex items-center justify-between px-4 py-[13px] cursor-default select-none"
       style={{
-        background: hover ? '#f0f0f0' : 'transparent',
+        background: hover ? 'var(--set-border)' : 'transparent',
         transition: 'background-color 0.15s ease'
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
       <span className="flex items-center gap-[10px] min-w-0">
-        <Info className="shrink-0" size={18} stroke="#8c8c8c" strokeWidth={2} />
+        <Info className="shrink-0" size={18} stroke="var(--set-desc)" strokeWidth={2} />
         <span className="flex flex-col min-w-0">
-          <span className="text-[#262626] truncate" style={{ fontSize: pxToRem(14) }}>当前版本 v{version}</span>
-          <span className="text-[#bfbfbf] mt-0.5 truncate" style={{ fontSize: pxToRem(11) }}>
+          <span className="text-[var(--set-text)] truncate" style={{ fontSize: pxToRem(14) }}>当前版本 v{version}</span>
+          <span className="text-[var(--set-desc)] mt-0.5 truncate" style={{ fontSize: pxToRem(11) }}>
             {status === 'checked'
               ? '暂无自动更新通道，可前往官网获取新版本'
               : 'Powered by Electron 42 · React 19 · LangGraph'}
@@ -208,13 +208,13 @@ function SocialFollowCard() {
     <div
       className="w-full rounded-[5px] px-6 py-5 flex flex-col items-center gap-4"
       style={{
-        background: '#ffffff',
-        border: '1px solid #f0f0f0'
+        background: 'var(--set-card)',
+        border: '1px solid var(--set-border)'
       }}
     >
-      <p className="text-[#595959] text-center" style={{ fontSize: pxToRem(14) }}>关注我们，获取实用技巧与产品最新动态</p>
+      <p className="text-[var(--set-text-secondary)] text-center" style={{ fontSize: pxToRem(14) }}>关注我们，获取实用技巧与产品最新动态</p>
       <div className="flex items-start justify-center gap-10 flex-wrap">
-        <QrPlaceholder label="公众号" accent="#1677ff" />
+        <QrPlaceholder label="公众号" accent="var(--set-accent)" />
         <QrPlaceholder label="社区频道" accent="#13c2c2" />
       </div>
     </div>
@@ -235,11 +235,11 @@ function LegalFooter({ className = '' }: { className?: string }) {
   return (
     <div
       className={`text-center select-none ${className}`}
-      style={{ color: '#bfbfbf', fontSize: pxToRem(13) }}
+      style={{ color: 'var(--set-desc)', fontSize: pxToRem(13) }}
     >
       <a
         href="#"
-        style={{ ...linkBase, color: hover1 ? '#595959' : '#bfbfbf' }}
+        style={{ ...linkBase, color: hover1 ? 'var(--set-text-secondary)' : 'var(--set-desc)' }}
         onMouseEnter={() => setHover1(true)}
         onMouseLeave={() => setHover1(false)}
         onClick={(e) => {
@@ -249,10 +249,10 @@ function LegalFooter({ className = '' }: { className?: string }) {
       >
         隐私政策
       </a>
-      <span className="mx-2" style={{ color: '#d9d9d9' }}>|</span>
+      <span className="mx-2" style={{ color: 'var(--set-control-border)' }}>|</span>
       <a
         href="#"
-        style={{ ...linkBase, color: hover2 ? '#595959' : '#bfbfbf' }}
+        style={{ ...linkBase, color: hover2 ? 'var(--set-text-secondary)' : 'var(--set-desc)' }}
         onMouseEnter={() => setHover2(true)}
         onMouseLeave={() => setHover2(false)}
         onClick={(e) => {
@@ -297,8 +297,8 @@ function ActionRow({ icon, label, actionLabel, external, onClick }: ActionRowPro
       onMouseLeave={() => setHover(false)}
       className="flex items-center justify-between px-4 py-[13px] cursor-pointer select-none"
       style={{
-        background: hover ? '#f0f0f0' : 'transparent',
-        color: '#262626',
+        background: hover ? 'var(--set-border)' : 'transparent',
+        color: 'var(--set-text)',
         transition: 'background-color 0.15s ease',
         outline: 'none'
       }}
@@ -356,18 +356,18 @@ function ActionButton({
 
   // ====== variant → 文字色 & 常态边框色（非 default 态直接用语义色边框，像"已取得结果"的状态按钮）======
   const variantFg =
-    variant === 'success' ? '#52c41a' : variant === 'error' ? '#ff4d4f' : '#595959'
+    variant === 'success' ? 'var(--set-success)' : variant === 'error' ? 'var(--set-danger)' : 'var(--set-text-secondary)'
   const variantBorder =
     variant === 'success'
-      ? '#95de64'
+      ? 'var(--set-success-border)'
       : variant === 'error'
-        ? '#ff7875'
+        ? 'var(--set-danger-border)'
         : hover
-          ? '#bfbfbf'
-          : '#d9d9d9'
-  const effectiveFg = disabled ? '#bfbfbf' : variantFg
-  const effectiveBg = disabled ? '#fafafa' : hover ? '#f5f5f5' : '#fff'
-  const effectiveBorder = disabled ? '#f0f0f0' : variantBorder
+          ? 'var(--set-faint)'
+          : 'var(--set-control-border)'
+  const effectiveFg = disabled ? 'var(--set-faint)' : variantFg
+  const effectiveBg = disabled ? 'var(--set-surface-alt)' : hover ? 'var(--set-hover-bg)' : 'var(--set-card)'
+  const effectiveBorder = disabled ? 'var(--set-border)' : variantBorder
 
   // ===== 公共 inline style 提取（避免两份代码分裂） =====
   const sharedStyle: React.CSSProperties = {
@@ -526,7 +526,7 @@ function QrPlaceholder({ label, accent }: { label: string; accent: string }) {
     <div className="flex flex-col items-center gap-2 shrink-0">
       <div
         className="rounded-[5px] p-2 border"
-        style={{ background: '#fff', borderColor: '#ebebeb' }}
+        style={{ background: '#fff', borderColor: 'var(--set-border)' }}
       >
         <svg width={120} height={120} viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
           <rect x={0} y={0} width={120} height={120} fill="#fff" />
@@ -551,7 +551,7 @@ function QrPlaceholder({ label, accent }: { label: string; accent: string }) {
           <rect x={54} y={54} width={12} height={12} rx={2} fill={accent} opacity={0.9} />
         </svg>
       </div>
-      <span style={{ color: '#8c8c8c', fontSize: pxToRem(11) }}>{label}</span>
+      <span style={{ color: 'var(--set-desc)', fontSize: pxToRem(11) }}>{label}</span>
     </div>
   )
 }

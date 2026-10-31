@@ -132,7 +132,7 @@ export function ConversationList({ selectionEnabled = true }: ConversationListPr
                                 if (e.key === 'Escape') cancelRename()
                               }}
                               maxLength={200}
-                              className="w-full text-[13px] bg-white border border-primary rounded px-1 py-0.5 outline-none"
+                              className="w-full text-[13px] bg-background border border-primary rounded px-1 py-0.5 outline-none"
                             />
                           </form>
                         ) : (

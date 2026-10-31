@@ -15,6 +15,7 @@ dotenv.config()
 const _defaultDocRoot = path.join(os.homedir(), '.pioneering', 'documents')
 
 const EnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().default('postgresql://postgres:root@localhost:5432/pioneering'),
 
   JWT_SECRET: z.string().default('default-secret-change-in-production'),
@@ -67,13 +68,16 @@ export const env = EnvSchema.parse(process.env)
 process.env['MODU_DOC_WRITER_ROOT'] = env.DOC_WRITER_ROOT
 
 // P1-2 修复：JWT_SECRET 弱默认值守卫
-// 生产环境使用默认密钥时发出警告（不拒绝启动，避免破坏开发流程）
+// 生产环境直接拒绝启动；开发/测试环境仅告警（避免破坏本地流程）。
 const _WEAK_JWT_SECRETS = new Set(['default-secret-change-in-production', ''])
 if (_WEAK_JWT_SECRETS.has(env.JWT_SECRET)) {
-  console.warn(
-    '[config] WARNING: JWT_SECRET is using a default/empty value. '
-    + 'Set a strong secret via environment variable in production.',
-  )
+  const message =
+    '[config] JWT_SECRET is using a default/empty value. '
+    + 'Set a strong secret via environment variable before deploying.'
+  if (env.NODE_ENV === 'production') {
+    throw new Error(message)
+  }
+  console.warn(message)
 }
 
 export type Env = typeof env

@@ -107,16 +107,53 @@ interface AppState {
   setDefaultModel: (id: string) => void
 }
 
+const SYSTEM_DARK_QUERY = '(prefers-color-scheme: dark)'
+
+/** 系统深色监听是否已注册（进程内仅注册一次，避免重复绑定） */
+let systemThemeListenerBound = false
+
+/** 按当前模式解析实际生效主题；system 跟随系统偏好，其余直接返回 */
+function resolveTheme(theme: ThemeMode): 'light' | 'dark' {
+  if (theme !== 'system') return theme
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'light'
+  return window.matchMedia(SYSTEM_DARK_QUERY).matches ? 'dark' : 'light'
+}
+
+/**
+ * 将主题同步到 documentElement（对齐 web 端 store/themeContext 的注入机制）：
+ * - `.dark` class：desktop 的 Tailwind dark: 变体与组件深色规则依赖它；
+ * - 显式 light/dark：写入 data-theme；
+ * - system：移除 data-theme，交由 CSS 的 @media (prefers-color-scheme: dark)
+ *   + :root:not([data-theme='light']) 兜底，保持与 web 完全一致的语义。
+ */
 function applyTheme(theme: ThemeMode): void {
   const root = document.documentElement
-  const resolved =
-    theme === 'system'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : theme
+  const resolved = resolveTheme(theme)
   root.classList.toggle('dark', resolved === 'dark')
-  root.setAttribute('data-theme', resolved)
+  if (theme === 'system') {
+    root.removeAttribute('data-theme')
+  } else {
+    root.setAttribute('data-theme', resolved)
+  }
+  bindSystemThemeListener()
+}
+
+/**
+ * 订阅系统主题变化：仅当用户选择「跟随系统」时同步 `.dark` class。
+ * system 模式下 data-theme 保持缺省，CSS 媒体查询会自动跟随，
+ * 这里只负责让 dark: 工具类与组件级深色选择器同步切换。
+ */
+function bindSystemThemeListener(): void {
+  if (systemThemeListenerBound) return
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+  const mql = window.matchMedia(SYSTEM_DARK_QUERY)
+  const handler = (): void => {
+    if (useAppStore.getState().theme !== 'system') return
+    document.documentElement.classList.toggle('dark', mql.matches)
+  }
+  if (typeof mql.addEventListener === 'function') mql.addEventListener('change', handler)
+  else if (typeof mql.addListener === 'function') mql.addListener(handler)
+  systemThemeListenerBound = true
 }
 
 function applyLanguage(language: Language): void {
@@ -182,7 +219,7 @@ const DEFAULT_MODEL_CONFIGS: ModelConfigItem[] = [
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      theme: 'light',
+      theme: 'system',
       language: 'zh-CN',
       fontSize: 'medium',
       hotkeys: {},

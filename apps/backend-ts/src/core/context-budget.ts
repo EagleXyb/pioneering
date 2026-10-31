@@ -2,9 +2,11 @@
  * 会话历史的 token 预算选择（T3.7）
  *
  * 替代固定「最近 20 条」：始终保留最近 keepLastN 条，其余消息从旧到新
- * 在 token 预算（chars/4 近似）内尽量多带，输出保持旧→新顺序。
+ * 在 token 预算内尽量多带，输出保持旧→新顺序。
+ * token 估算统一走 estimateTokens，避免中文被 chars/4 系统性低估。
  */
 import type { PrismaClient } from '@prisma/client'
+import { estimateTokens } from './token-estimator.js'
 
 export interface HistoryBudget {
   /** token 上限（0=不限制） */
@@ -40,7 +42,7 @@ export async function loadSessionHistoryByBudget(
   })) as Array<{ id: string; role: string; content: string | null }>
 
   const cost = (content: string | null): number =>
-    Math.max(1, Math.ceil((content ?? '').length / 4))
+    Math.max(1, estimateTokens(content ?? ''))
 
   // 1) 最近 N 条无条件保留（unshift 维持旧→新）
   const kept: HistoryMessage[] = []

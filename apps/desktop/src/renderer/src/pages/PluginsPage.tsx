@@ -482,7 +482,7 @@ export function PluginsPage() {
           <div className="px-8 pb-12">
             {/* T13：目录与「X 万人在用」为静态演示数据，安装态已支持本地持久化；
                 插件市场后端联动上线前以角标如实标注。 */}
-            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-700">
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
               演示数据：插件目录展示中，安装状态仅保存在本机
             </div>
             {/* 分类胶囊行 */}

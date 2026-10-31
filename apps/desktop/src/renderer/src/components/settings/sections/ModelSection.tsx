@@ -251,10 +251,10 @@ export function ModelSection() {
     <div className="space-y-5">
       {/* 标题区 */}
       <div>
-        <h2 className="font-semibold leading-[1.2] tracking-[0.01em]" style={{ color: '#1a1a1a', fontSize: pxToRem(22) }}>
+        <h2 className="font-semibold leading-[1.2] tracking-[0.01em]" style={{ color: 'var(--set-title)', fontSize: pxToRem(22) }}>
           模型管理
         </h2>
-        <p className="mt-1 leading-[1.5] text-[#595959]" style={{ fontSize: pxToRem(13) }}>
+        <p className="mt-1 leading-[1.5] text-[var(--set-text-secondary)]" style={{ fontSize: pxToRem(13) }}>
           配置 API key 添加更多可用模型，预置模型默认使用稳定版本。
         </p>
       </div>
@@ -265,8 +265,8 @@ export function ModelSection() {
           <Plus className="size-4" />
           添加模型
         </Button>
-        <label className="flex items-center gap-2 text-[#595959]" style={{ fontSize: pxToRem(12) }}>
-          <ShieldCheck className="size-3.5 text-[#8c8c8c]" />
+        <label className="flex items-center gap-2 text-[var(--set-text-secondary)]" style={{ fontSize: pxToRem(12) }}>
+          <ShieldCheck className="size-3.5 text-[var(--set-desc)]" />
           默认模型
           <select
             value={enabledOptions.some((m) => m.value === defaultModel) ? defaultModel : 'Auto'}
@@ -289,9 +289,9 @@ export function ModelSection() {
       <div
         className="flex items-start gap-2 rounded-lg border px-3 py-2.5 leading-[1.55]"
         style={{
-          background: 'rgba(59,130,246,0.08)',
-          borderColor: 'rgba(59,130,246,0.25)',
-          color: '#1d4ed8',
+          background: 'var(--set-info-bg)',
+          borderColor: 'var(--set-info-border)',
+          color: 'var(--set-info-text)',
           fontSize: pxToRem(12)
         }}
       >
@@ -302,12 +302,12 @@ export function ModelSection() {
       {/* 表格 */}
       <div
         className="overflow-hidden rounded-lg border"
-        style={{ borderColor: '#e5e5e5', background: '#fff' }}
+        style={{ borderColor: 'var(--set-divider)', background: 'var(--set-card)' }}
       >
         {/* 表头 */}
         <div
           className="grid grid-cols-[1fr_240px_120px] items-center px-4 py-2 font-medium"
-          style={{ background: '#f5f5f5', color: '#595959', fontSize: pxToRem(12) }}
+          style={{ background: 'var(--set-hover-bg)', color: 'var(--set-text-secondary)', fontSize: pxToRem(12) }}
         >
           <div>模型</div>
           <div>服务商</div>
@@ -315,9 +315,9 @@ export function ModelSection() {
         </div>
 
         {/* 行 */}
-        <div className="divide-y" style={{ borderColor: '#f0f0f0' }}>
+        <div className="divide-y" style={{ borderColor: 'var(--set-border)' }}>
           {rows.length === 0 && (
-            <div className="px-4 py-10 text-center text-[#8c8c8c]" style={{ fontSize: pxToRem(13) }}>
+            <div className="px-4 py-10 text-center text-[var(--set-desc)]" style={{ fontSize: pxToRem(13) }}>
               暂无模型，点击「添加模型」开始配置。
             </div>
           )}
@@ -327,26 +327,26 @@ export function ModelSection() {
             return (
               <div
                 key={item.id}
-                className="grid grid-cols-[1fr_240px_120px] items-center px-4 py-[10px] transition-colors hover:bg-[#fafafa]"
+                className="grid grid-cols-[1fr_240px_120px] items-center px-4 py-[10px] transition-colors hover:bg-[var(--set-surface-alt)]"
               >
                 {/* 模型列：图标 + 名称 + 密钥状态（T6：密钥经系统密钥库加密存储） */}
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div
                     className="flex size-6 shrink-0 items-center justify-center rounded-[6px]"
-                    style={{ background: '#f5f5f5' }}
+                    style={{ background: 'var(--set-hover-bg)' }}
                   >
                     <IconComp className={cn('size-3.5', iconColor)} />
                   </div>
                   <span className="flex min-w-0 flex-col">
                     <span
                       className="truncate font-medium"
-                      style={{ color: '#262626', fontSize: pxToRem(13) }}
+                      style={{ color: 'var(--set-text)', fontSize: pxToRem(13) }}
                     >
                       {item.name}
                     </span>
                     <span
                       className="mt-0.5 flex shrink-0 items-center gap-1 truncate"
-                      style={{ fontSize: pxToRem(11), color: '#8c8c8c' }}
+                      style={{ fontSize: pxToRem(11), color: 'var(--set-desc)' }}
                       title={secretMap[item.id]?.hasApiKey ? `已保存密钥：${secretMap[item.id]?.masked ?? ''}` : '未配置 API Key，使用后端默认密钥'}
                     >
                       <KeyRound className="size-3 shrink-0" />
@@ -358,13 +358,13 @@ export function ModelSection() {
                 </div>
 
                 {/* 服务商 */}
-                <div className="truncate text-[#595959]" style={{ fontSize: pxToRem(12) }}>{item.provider}</div>
+                <div className="truncate text-[var(--set-text-secondary)]" style={{ fontSize: pxToRem(12) }}>{item.provider}</div>
 
                 {/* 操作列：编辑 / 删除 / 开关 */}
                 <div className="flex items-center justify-end gap-1.5">
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-[4px] text-[#8c8c8c] transition-colors hover:bg-black/5 hover:text-[#595959]"
+                    className="flex h-7 w-7 items-center justify-center rounded-[4px] text-[var(--set-desc)] transition-colors hover:bg-[var(--set-hover-bg)] hover:text-[var(--set-text-secondary)]"
                     title="编辑"
                     onClick={() => openEditDialog(item)}
                   >
@@ -372,7 +372,7 @@ export function ModelSection() {
                   </button>
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-[4px] text-[#8c8c8c] transition-colors hover:bg-red-50 hover:text-red-500"
+                    className="flex h-7 w-7 items-center justify-center rounded-[4px] text-[var(--set-desc)] transition-colors hover:bg-[var(--set-danger-bg)] hover:text-[var(--set-danger)]"
                     title="删除"
                     onClick={() => handleDelete(item)}
                   >
@@ -394,7 +394,7 @@ export function ModelSection() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="!max-w-[480px] !p-0 !gap-0 overflow-hidden" style={{ borderRadius: 12 }}>
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="font-semibold" style={{ color: '#1a1a1a', fontSize: pxToRem(16) }}>
+            <DialogTitle className="font-semibold" style={{ color: 'var(--set-title)', fontSize: pxToRem(16) }}>
               {dialogTitle}
             </DialogTitle>
             <DialogDescription className="sr-only">{dialogTitle}</DialogDescription>
@@ -457,7 +457,7 @@ export function ModelSection() {
                 <button
                   type="button"
                   onClick={handleClearKey}
-                  className="self-start text-[12px] text-[#ff4d4f] hover:text-[#d9363e]"
+                  className="self-start text-[12px] text-[var(--set-danger)] hover:text-[var(--set-danger-strong)]"
                 >
                   清除已保存的密钥
                 </button>
@@ -470,7 +470,7 @@ export function ModelSection() {
                 checked={form.enabled}
                 onCheckedChange={(v) => setForm({ ...form, enabled: v })}
               />
-              <span className="ml-2.5 text-[#595959]" style={{ fontSize: pxToRem(12) }}>
+              <span className="ml-2.5 text-[var(--set-text-secondary)]" style={{ fontSize: pxToRem(12) }}>
                 启用后将出现在输入框模型列表
               </span>
             </div>
@@ -497,16 +497,16 @@ export function ModelSection() {
           height: 32px;
           width: 100%;
           border-radius: 6px;
-          border: 1px solid #d9d9d9;
-          background: #fff;
+          border: 1px solid var(--set-control-border);
+          background: var(--set-card);
           padding: 0 10px;
           font-size: 13px;
-          color: #262626;
+          color: var(--set-text);
           outline: none;
           transition: border-color .15s;
         }
         .input-field:focus {
-          border-color: #1677ff;
+          border-color: var(--set-accent);
           box-shadow: 0 0 0 2px rgba(22,119,255,0.12);
         }
         select.input-field {
@@ -526,7 +526,7 @@ function Label({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="flex items-center h-8 font-medium"
-      style={{ color: '#595959', fontSize: pxToRem(13) }}
+      style={{ color: 'var(--set-text-secondary)', fontSize: pxToRem(13) }}
     >
       {children}
     </div>
@@ -541,8 +541,8 @@ function Switch({
   checked: boolean
   onCheckedChange: (v: boolean) => void
 }) {
-  const OFF = 'bg-[#d9d9d9]'
-  const ON = 'bg-[#52c41a]'
+  const OFF = 'bg-[var(--set-switch-off)]'
+  const ON = 'bg-[var(--set-switch-on)]'
   return (
     <button
       type="button"
@@ -550,13 +550,13 @@ function Switch({
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        'relative inline-flex h-5 w-[30px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1677ff]/40',
+        'relative inline-flex h-5 w-[30px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--set-accent)]',
         checked ? ON : OFF
       )}
     >
       <span
         className={cn(
-          'pointer-events-none inline-block h-[14px] w-[14px] transform rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200',
+          'pointer-events-none inline-block h-[14px] w-[14px] transform rounded-full bg-[var(--set-switch-knob)] shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200',
           checked ? 'translate-x-[13px]' : 'translate-x-[3px]'
         )}
       />

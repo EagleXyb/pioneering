@@ -224,7 +224,7 @@ export function LocalRuntimeSection({
                       className={cn(
                         'inline-flex items-center gap-1 text-xs rounded-md px-1.5 py-0.5',
                         info.encrypted
-                          ? 'text-green-600 bg-green-50'
+                          ? 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-500/10'
                           : 'text-muted-foreground bg-muted'
                       )}
                     >

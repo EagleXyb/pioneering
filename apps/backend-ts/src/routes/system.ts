@@ -3,6 +3,8 @@ import { FastifyPluginAsync } from 'fastify'
 import { env } from '../config/env.js'
 import { AVAILABLE_MODELS } from '../config/models.js'
 import { llmGateway } from '../core/llm-gateway.js'
+import { isGatewayEnabled } from '../core/llm.js'
+import { getCheckpointerStatus, getConfig } from '@pioneering/modu-agent'
 
 // 注意：不要为响应声明 `response` schema，否则 Fastify 的 fast-json-stringify
 // 在未指定 properties 时会把对象序列化为 {}（导致 version / models 等字段丢失）
@@ -59,11 +61,25 @@ export const systemRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // 对应 Python: @router.get("/health")
+  // L-2：把决定 P0/P1 风险的四个运行时事实暴露出来，避免只写在启动日志里。
   fastify.get('/health', { schema: SCHEMA_HEALTH }, async () => {
+    let otelEnabled = false
+    try {
+      otelEnabled = Boolean(getConfig().get('observability.tracing.enabled', false))
+    } catch {
+      // 配置不可读时按关闭处理
+    }
+
     return {
       status: 'healthy',
       version: '0.1.0',
       timestamp: new Date().toISOString(),
+      runtime: {
+        checkpointer: getCheckpointerStatus(),
+        llmGatewayEnabled: isGatewayEnabled(),
+        otelEnabled,
+        transportMode: process.env.TRANSPORT_MODE ?? 'http',
+      },
     }
   })
 }

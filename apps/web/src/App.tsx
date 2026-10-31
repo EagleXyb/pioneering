@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Outlet, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './layout/Sidebar/Sidebar';
 import { TopNav } from './layout/TopNav/TopNav';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -109,6 +109,9 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* 根路径：统一进入默认会话入口，避免直接访问域名时 404 */}
+          <Route path="/" element={<Navigate to="/chat" replace />} />
 
           {/* 主应用 — 受路由守卫保护，未登录跳转登录页 */}
           <Route element={<AppLayout />}>

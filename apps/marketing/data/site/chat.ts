@@ -11,7 +11,7 @@ export interface DemoMessage {
 }
 
 export const FAB_TITLE = '认知陪练'
-export const FAB_SUBTITLE = '基于你的方法论知识库 · 免注册 3 轮'
+export const FAB_SUBTITLE = '方法论框架对话示例 · 邀请制内测'
 export const FAB_AVATAR = '知'
 
 export const DEMO_MESSAGES: DemoMessage[] = [

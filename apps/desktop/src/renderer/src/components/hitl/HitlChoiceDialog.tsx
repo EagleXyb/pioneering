@@ -22,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { useHitlStore, type HitlItem } from '@/stores/hitlStore'
+import { useHitlStore, type HitlItem } from '@pioneering/agent-protocol'
 
 export function HitlChoiceDialog({ item }: { item: HitlItem }) {
   const resolve = useHitlStore((s) => s.resolve)

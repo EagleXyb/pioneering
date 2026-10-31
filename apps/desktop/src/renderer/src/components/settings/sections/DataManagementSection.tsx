@@ -60,14 +60,14 @@ export function DataManagementSection() {
                 height: 30,
                 padding: '0 14px',
                 fontSize: pxToRem(13),
-                background: active ? '#f0f0f0' : 'transparent',
-                color: active ? '#262626' : '#595959',
+                background: active ? 'var(--set-border)' : 'transparent',
+                color: active ? 'var(--set-text)' : 'var(--set-text-secondary)',
                 fontWeight: active ? 600 : 400,
                 cursor: 'pointer',
                 border: 'none'
               }}
               onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.background = '#f5f5f5'
+                if (!active) e.currentTarget.style.background = 'var(--set-hover-bg)'
               }}
               onMouseLeave={(e) => {
                 if (!active) e.currentTarget.style.background = 'transparent'
@@ -84,8 +84,8 @@ export function DataManagementSection() {
       <div
         className="overflow-hidden shrink-0 w-full"
         style={{
-          background: '#fff',
-          border: '1px solid #f0f0f0',
+          background: 'var(--set-card)',
+          border: '1px solid var(--set-border)',
           borderRadius: 8,
           minHeight: 120
         }}
@@ -100,9 +100,9 @@ export function DataManagementSection() {
           <activeTab.icon
             size={28}
             strokeWidth={1.5}
-            style={{ color: '#d9d9d9', marginBottom: 10 }}
+            style={{ color: 'var(--set-control-border)', marginBottom: 10 }}
           />
-          <span style={{ fontSize: pxToRem(13), color: '#8c8c8c' }}>{activeTab.emptyText}</span>
+          <span style={{ fontSize: pxToRem(13), color: 'var(--set-desc)' }}>{activeTab.emptyText}</span>
         </div>
       </div>
     </div>

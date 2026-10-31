@@ -40,8 +40,8 @@ import {
 import { buildTraceFromContentBlocks } from '../services/trace-builder'
 // T8 修复（修复任务清单 T8）：不再顶层 import hitlStore（消除双向循环依赖），
 // 类型仅用 type-only import（编译期擦除），运行时经 hitl-bridge 惰性获取。
-import type { HitlItem } from './hitlStore'
-import { getHitlStore } from './hitl-bridge'
+import type { HitlItem } from '@pioneering/agent-protocol'
+import { getHitlStore } from '@pioneering/agent-protocol'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 60000
 const DEFAULT_AGENT_MODE_VALUE = 'react_agent'

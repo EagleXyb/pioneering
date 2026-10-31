@@ -232,7 +232,8 @@ export default function PluginsPage() {
       key: `cat:${c.id}`,
       name: c.name,
       description: c.description,
-      foot: c.usage,
+      // 目录只展示可安装项；接入模板是真实供给，不使用示意使用量数字
+      foot: '官方接入模板',
       color: c.color,
       icon: APP_ICONS[c.id] ?? Puzzle,
       category: c.category,

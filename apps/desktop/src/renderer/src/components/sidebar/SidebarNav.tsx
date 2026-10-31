@@ -85,8 +85,8 @@ export function SidebarNav({ activeNavKey, onCreate, onNavClick }: SidebarNavPro
         <span className="text-sm font-normal">新建任务</span>
       </Button>
 
-      {/* ---- 导航项 ---- */}
-      {NAV_ITEMS.map((item) => {
+      {/* ---- 导航项：placeholder 页面不进入侧栏，避免用户无提示地走进空页 ---- */}
+      {NAV_ITEMS.filter((item) => !item.placeholder).map((item) => {
         const Icon = item.icon
         const isActive = activeNavKey === item.key
         return (

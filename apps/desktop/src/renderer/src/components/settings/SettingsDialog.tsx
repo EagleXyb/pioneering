@@ -43,7 +43,7 @@ export function SettingsDialog() {
           width: 1000,
           height: 680,
           borderRadius: 12,
-          boxShadow: '0 16px 56px rgba(0,0,0,0.14)',
+          boxShadow: 'var(--set-shadow)',
           // 让弹壳下的 1rem = 档位基准（small=13 / medium=14 / large=16），
           // 配合内部用 rem 声明的字号，档位切换时整个弹框按比例缩放。
           fontSize: `${shellRemPx}px`,
@@ -55,12 +55,12 @@ export function SettingsDialog() {
         <SettingsSidebar />
 
         {/* 右栏：内容区 */}
-        <div className="flex flex-col flex-1 min-w-0 bg-white relative">
+        <div className="flex flex-col flex-1 min-w-0 bg-[var(--set-surface)] relative">
           {/* 右上角关闭按钮：绝对定位贴近角落 */}
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="absolute top-4 right-4 flex items-center justify-center h-8 w-8 text-[#8c8c8c] hover:text-[#595959] hover:bg-black/5 transition-colors bg-transparent border-none p-0 cursor-pointer rounded-md z-10"
+            className="absolute top-4 right-4 flex items-center justify-center h-8 w-8 text-[var(--set-icon)] hover:text-[var(--set-text)] hover:bg-[var(--set-close-hover)] transition-colors bg-transparent border-none p-0 cursor-pointer rounded-md z-10"
             aria-label="关闭"
           >
             <X style={{ width: pxToRem(18), height: pxToRem(18) }} strokeWidth={1.5} />
@@ -70,7 +70,7 @@ export function SettingsDialog() {
           <div className="shrink-0 px-10 pt-8 pb-4">
             <DialogTitle
               className="m-0 font-semibold leading-none tracking-[0.01em]"
-              style={{ color: '#1a1a1a', fontSize: pxToRem(22) }}
+              style={{ color: 'var(--set-title)', fontSize: pxToRem(22) }}
             >
               {label}
             </DialogTitle>

@@ -182,9 +182,9 @@ function CodeBlockComponent({
   }, [])
 
   return (
-    <div className="group/code w-full min-w-0 max-w-none my-3 rounded-xl border border-border/50 bg-white dark:bg-zinc-900">
+    <div className="group/code w-full min-w-0 max-w-none my-3 rounded-xl border border-border/50 bg-card text-foreground">
       {/* 顶部标题栏 */}
-      <div className="flex items-center justify-between bg-gray-100 dark:bg-zinc-700/90 h-[38px] px-3 border-b border-border/60">
+      <div className="flex items-center justify-between bg-accent h-[38px] px-3 border-b border-border/60">
         {/* 左侧：语言标识 + 折叠按钮 */}
         <div className="flex items-center gap-1">
           <span className="font-mono text-[11px] font-medium text-muted-foreground select-none">
@@ -246,7 +246,7 @@ function CodeBlockComponent({
         style={{ gridTemplateRows: collapsed ? '0fr' : '1fr' }}
       >
         <div className="min-h-0 overflow-hidden">
-          <pre className="code-block-pre overflow-x-auto p-4 bg-white dark:bg-zinc-900">
+          <pre className="code-block-pre overflow-x-auto p-4 bg-card">
             <code className={className} {...codeProps}>{children}</code>
           </pre>
         </div>

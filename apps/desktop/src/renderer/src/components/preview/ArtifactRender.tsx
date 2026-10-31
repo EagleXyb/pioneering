@@ -97,7 +97,7 @@ function CodeView({ content, language }: { content: string; language?: string })
   }, [lang, content])
 
   return (
-    <pre className="artifact-view m-0 h-full min-h-0 w-full overflow-auto p-4 font-mono text-[13px] leading-[1.65] tab-size-4 bg-gray-50 text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+    <pre className="artifact-view m-0 h-full min-h-0 w-full overflow-auto p-4 font-mono text-[13px] leading-[1.65] tab-size-4 bg-card text-foreground">
       <code>{highlighted ?? content}</code>
     </pre>
   )

@@ -7,6 +7,8 @@ import './mocks/electron-mock'
 
 import App from './App'
 import './index.css'
+// HITL 宿主接线：统一使用 @pioneering/agent-protocol 的状态机，注入 chatStore 动作
+import './lib/hitl-host'
 
 // 云边双模阶段 1：控制台切换 Agent 传输通道（dev 冒烟用）
 //   window.__setAgentTransportMode('ipc') / window.__setAgentTransportMode('http')

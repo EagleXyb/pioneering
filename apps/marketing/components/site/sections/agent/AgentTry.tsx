@@ -48,11 +48,7 @@ export function AgentTry() {
                   </div>
                 ))}
               </div>
-              <TryComposer
-                placeholder="继续聊，或留下邮箱保存上下文…"
-                submitLabel="继续 · 留下邮箱保存上下文"
-                note={AGENT_TRY.note}
-              />
+              <TryComposer label="进入产品体验" note={AGENT_TRY.note} />
             </div>
           </div>
         </div>
