@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>创路 Agent · 产品需求文档（V2.9 现状基线）</title>
+<style>
+  :root{
+    --bg:#f7f6f2; --paper:#ffffff; --ink:#1d2025; --muted:#6f747c;
+    --line:#e4e2dc; --line-strong:#cfccc4;
+    --accent:#0f5c5a; --accent-soft:#e7f1ef; --accent-line:#bcd8d4;
+    --warn:#8a5a12; --warn-soft:#fbf1de; --danger:#8c2f2f; --danger-soft:#f8e9e7;
+    --tbd:#6b5b8a; --tbd-soft:#f0ebf7;
+    --radius:10px; --maxw:980px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141517; --paper:#1c1e21; --ink:#e9e7e2; --muted:#a0a4ab;
+      --line:#2e3136; --line-strong:#43474d;
+      --accent:#6fc8c1; --accent-soft:#1f2d2c; --accent-line:#2f4a47;
+      --warn:#e0b264; --warn-soft:#31281a; --danger:#e08c88; --danger-soft:#33201f;
+      --tbd:#b4a1d6; --tbd-soft:#292335;
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 28px}
+
+  /* Cover */
+  .cover{padding:72px 0 36px; border-bottom:1px solid var(--line)}
+  .eyebrow{font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:18px}
+  .cover h1{font-size:38px; line-height:1.25; margin:0 0 14px; letter-spacing:-.01em; font-weight:700}
+  .cover .sub{font-size:16px; color:var(--muted); max-width:720px; margin:0 0 28px}
+  .meta{display:flex; flex-wrap:wrap; gap:10px 26px; font-size:13px; color:var(--muted)}
+  .meta b{color:var(--ink); font-weight:600}
+
+  /* Summary */
+  .summary{padding:34px 0; border-bottom:1px solid var(--line)}
+  .summary-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
+  .stat{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px}
+  .stat .n{font-size:24px; font-weight:700; letter-spacing:-.01em}
+  .stat .l{font-size:12px; color:var(--muted); margin-top:4px}
+  .notice{margin-top:18px; padding:14px 16px; background:var(--accent-soft); border:1px solid var(--accent-line); border-radius:var(--radius); font-size:13.5px}
+
+  /* Layout */
+  .layout{display:grid; grid-template-columns:220px 1fr; gap:44px; padding:40px 0 80px}
+  nav.toc{position:sticky; top:28px; align-self:start; max-height:calc(100vh - 56px); overflow:auto; font-size:13px}
+  nav.toc .t{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:10px}
+  nav.toc a{display:block; color:var(--muted); padding:4px 0 4px 10px; border-left:2px solid transparent}
+  nav.toc a:hover{color:var(--ink); text-decoration:none; border-left-color:var(--line-strong)}
+  nav.toc a.sub{padding-left:20px; font-size:12.5px}
+
+  main{min-width:0}
+  section{padding:30px 0; border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:none}
+  h2{font-size:24px; margin:0 0 8px; letter-spacing:-.01em; font-weight:700}
+  h2 .num{color:var(--accent); font-variant-numeric:tabular-nums; margin-right:10px}
+  h3{font-size:17px; margin:26px 0 8px; font-weight:650}
+  h4{font-size:14.5px; margin:18px 0 6px; font-weight:600; color:var(--ink)}
+  .lead{color:var(--muted); font-size:13.5px; margin:0 0 14px}
+  p{margin:9px 0}
+  ul,ol{margin:8px 0 12px; padding-left:22px}
+  li{margin:4px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:1px 5px}
+
+  /* Chips */
+  .chip{display:inline-block; font-size:11px; line-height:1.6; padding:1px 7px; border-radius:999px; border:1px solid var(--line-strong); color:var(--muted); vertical-align:middle; margin:0 2px; white-space:nowrap}
+  .chip.ok{color:var(--accent); border-color:var(--accent-line); background:var(--accent-soft)}
+  .chip.placeholder{color:var(--warn); border-color:#e6d3ad; background:var(--warn-soft)}
+  .chip.tbd{color:var(--tbd); border-color:#d7cce9; background:var(--tbd-soft)}
+  .chip.risk{color:var(--danger); border-color:#e3c3bf; background:var(--danger-soft)}
+
+  /* Cards */
+  .cards{display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin:16px 0}
+  .card{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px}
+  .card .h{font-weight:650; margin-bottom:4px}
+  .card .d{font-size:13px; color:var(--muted)}
+  .fr{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px; margin:14px 0}
+  .fr .id{font-size:11px; letter-spacing:.08em; color:var(--accent); font-weight:600; margin-bottom:2px}
+  .fr .name{font-weight:650; font-size:15.5px; margin-bottom:8px}
+  .fr dl{display:grid; grid-template-columns:76px 1fr; gap:6px 14px; margin:0; font-size:13.5px}
+  .fr dt{color:var(--muted); font-size:12.5px}
+  .fr dd{margin:0}
+
+  /* Tables */
+  table{width:100%; border-collapse:collapse; margin:12px 0 16px; font-size:13px; background:var(--paper)}
+  th,td{border:1px solid var(--line); padding:9px 11px; text-align:left; vertical-align:top}
+  th{background:var(--bg); font-weight:600; font-size:12.5px; color:var(--muted); letter-spacing:.02em}
+  tr:nth-child(even) td{background:color-mix(in srgb,var(--bg) 55%, transparent)}
+  td .chip{font-size:10.5px}
+
+  /* Flow */
+  .flow{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0}
+  .flow .node{background:var(--paper); border:1px solid var(--line-strong); border-radius:8px; padding:7px 12px; font-size:12.5px}
+  .flow .arrow{color:var(--muted); font-size:13px}
+  .rule{font-size:12.5px; color:var(--muted); margin-top:6px}
+  .callout{border-left:3px solid var(--accent); background:var(--accent-soft); padding:12px 14px; border-radius:0 var(--radius) var(--radius) 0; font-size:13.5px; margin:14px 0}
+  .callout.warn{border-left-color:#c08a2e; background:var(--warn-soft)}
+  .callout.tbd{border-left-color:#8d77b8; background:var(--tbd-soft)}
+
+  footer{padding:28px 0 70px; font-size:12.5px; color:var(--muted)}
+  .evidence{font-size:12px; color:var(--muted); margin-top:10px}
+  .kv{display:grid; grid-template-columns:110px 1fr; gap:4px 14px; font-size:13px}
+  .kv .k{color:var(--muted)}
+
+  @media (max-width: 900px){
+    .layout{grid-template-columns:1fr}
+    nav.toc{position:static; max-height:none; order:-1; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px}
+    .summary-grid{grid-template-columns:repeat(2,1fr)}
+    .cards{grid-template-columns:1fr}
+    .cover h1{font-size:30px}
+  }
+  @media print{
+    nav.toc{display:none}
+    .layout{display:block}
+    body{background:#fff}
+    section{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="cover">
+    <div class="eyebrow">Product Requirements Document · 现状基线</div>
+    <h1>创路 Agent · 产品需求文档</h1>
+    <p class="sub">基于 <code>apps/backend-ts</code>、<code>apps/desktop</code>、<code>apps/marketing</code>、<code>apps/web</code>、<code>apps/mobile</code>、<code>packages</code> 的现有实现反向梳理，描述产品已具备的行为、角色与状态规则，并明确占位与待定边界。</p>
+    <div class="meta">
+      <span>版本：<b>V2.9 现状基线</b></span>
+      <span>日期：<b>2026-11-01</b></span>
+      <span>状态：<b>评审稿</b></span>
+      <span>范围：<b>Web / Desktop / Backend / Marketing</b></span>
+    </div>
+  </header>
+
+  <div class="summary">
+    <div class="summary-grid">
+      <div class="stat"><div class="n">3</div><div class="l">对话模式：聊天 / 分析 / 任务</div></div>
+      <div class="stat"><div class="n">2</div><div class="l">运行形态：云端后端 / 桌面本地</div></div>
+      <div class="stat"><div class="n">4</div><div class="l">HITL 类型：工具审批 / 选择 / 方案 / 澄清</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">移动端现状：仅占位目录</div></div>
+    </div>
+    <div class="notice">
+      <b>阅读约定：</b>本文以“代码可验证的用户行为”为准，不把营销文案或占位页面当作已交付能力。
+      <span class="chip ok">已实现</span> 用户可感知且链路闭环；
+      <span class="chip placeholder">占位</span> 有入口但未接通真实能力；
+      <span class="chip tbd">TBD</span> 缺少产品决策；
+      <span class="chip risk">风险</span> 存在体验或一致性缺口。
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" aria-label="目录">
+      <div class="t">目录</div>
+      <a href="#bg">1. 背景与目标</a>
+      <a href="#scope">2. 产品范围与角色</a>
+      <a href="#model">3. 产品模型与核心流程</a>
+      <a href="#fr">4. 功能需求</a>
+      <a class="sub" href="#acc">4.1 账户与身份</a>
+      <a class="sub" href="#mode">4.2 对话模式</a>
+      <a class="sub" href="#msg">4.3 消息与过程</a>
+      <a class="sub" href="#act">4.4 消息操作</a>
+      <a class="sub" href="#hitl">4.5 HITL</a>
+      <a class="sub" href="#agent">4.6 工具·技能·场景</a>
+      <a class="sub" href="#art">4.7 产物与来源</a>
+      <a class="sub" href="#file">4.8 文件与附件</a>
+      <a class="sub" href="#modelcfg">4.9 模型·密钥·用量</a>
+      <a class="sub" href="#sess">4.10 会话管理</a>
+      <a class="sub" href="#plugin">4.11 插件市场</a>
+      <a class="sub" href="#set">4.12 设置</a>
+      <a class="sub" href="#desk">4.13 桌面端专有</a>
+      <a class="sub" href="#site">4.14 官网营销站</a>
+      <a class="sub" href="#mobile">4.15 移动端</a>
+      <a class="sub" href="#admin">4.16 管理与可观测</a>
+      <a href="#rules">5. 共享规则与状态</a>
+      <a href="#gap">6. 已知边界与差距</a>
+      <a href="#open">7. 开放问题</a>
+    </nav>
+
+    <main>
+      <section id="bg">
+        <h2><span class="num">1</span>背景与目标</h2>
+        <p>产品同时存在两套对外叙事：官网把自己描述为“不替你下判断，让你看清自己是怎么下判断的<strong>认知陪练智能体</strong>”；产品内的“关于”则写的是“<strong>创路 Agent · 多模态智能工作台</strong>”。代码实现更接近后者：三模式对话、工具执行、过程可视化、产物生成与多端接入。</p>
+        <div class="callout tbd">
+          <b>定位差异（需产品决策）：</b>官网强调认知训练与方法论溯源（先问后答、知识溯源、反问收尾），实现侧强调工作任务完成（分析、任务、文档产物）。本 PRD 以“可执行产品现状”为主，官网叙事作为品牌层单列，两者是否需要收敛见第 7 节。
+        </div>
+        <p>从现有实现可以确认的产品目标：让用户在同一个产品内完成从“提出模糊问题”到“得到可追溯结果”的闭环——可以只是对话，也可以是带工具执行的分析，或先确认计划再执行的任务；过程可见、关键动作可人工确认、结果可复制与留档。</p>
+        <div class="cards">
+          <div class="card"><div class="h">要解决的问题</div><div class="d">长流程 Agent 的黑盒感、不可中断、不可纠错；不同任务强度缺少分层入口；云端与离线场景割裂。</div></div>
+          <div class="card"><div class="h">产品回应</div><div class="d">三模式分层、过程容器与执行轨迹、HITL 暂停确认、编辑重发与重新生成、双端 + 本地运行时。</div></div>
+        </div>
+      </section>
+
+      <section id="scope">
+        <h2><span class="num">2</span>产品范围与角色</h2>
+        <h3>2.1 端与范围</h3>
+        <table>
+          <thead><tr><th>端</th><th>定位</th><th>现状</th></tr></thead>
+          <tbody>
+            <tr><td>Web（apps/web）</td><td>浏览器内的主产品：聊天 / 分析 / 任务 / 插件市场 / 设置</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>Desktop（apps/desktop）</td><td>桌面客户端：同一套三模式能力 + 本地运行时 + 快捷键 + 系统集成</td><td><span class="chip ok">已实现</span>，部分页面占位</td></tr>
+            <tr><td>Backend（apps/backend-ts）</td><td>账户、会话、Agent 执行、模型网关、配额、管理面</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>Agent 内核（packages）</td><td>Agent 执行内核：编排、工具、技能、MCP、场景包与流式事件</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>Marketing（apps/marketing）</td><td>品牌官网：首页 / 智能体 / 认知 / 案例 / 洞察 / 关于 / 趋势</td><td><span class="chip ok">已实现</span>（演示内容为静态）</td></tr>
+            <tr><td>Mobile（apps/mobile）</td><td>移动端</td><td><span class="chip placeholder">无实现</span>，空目录占位</td></tr>
+          </tbody>
+        </table>
+
+        <h3>2.2 角色</h3>
+        <div class="kv">
+          <span class="k">访客</span><span>浏览官网、查看静态对话演示；不能进入产品工作台。</span>
+          <span class="k">普通用户</span><span>注册/登录后拥有个人会话、消息、配额与设置；数据按用户隔离。</span>
+          <span class="k">本地单用户</span><span>桌面端在无后端/离线时以固定本地身份工作，不经过登录；会话与消息落本地库。</span>
+          <span class="k">管理员</span><span>由部署配置指定；可查看用户列表、修改技能白名单、访问可观测与成本数据。</span>
+        </div>
+
+        <h3>2.3 范围边界</h3>
+        <p><b>P0（本次基线覆盖）：</b>登录进入 → 发起一种模式 → 流式获得结果 / 完成人工确认 → 得到回答或产物 → 可编辑、重试、归档。</p>
+        <p><b>P1（已存在但非核心闭环）：</b>插件·技能市场、MCP 连接、用量与成本、归档会话、快捷键、主题与字号。</p>
+        <p><b>明确未交付：</b>移动端、桌面“助理/我的文件/更多/空间”、自动化后端调度、桌面插件真实安装、收藏夹/官网/下载电脑版入口、隐私模式、桌面通知与提示音、多语言。</p>
+      </section>
+
+      <section id="model">
+        <h2><span class="num">3</span>产品模型与核心流程</h2>
+        <h3>3.1 核心对象</h3>
+        <table>
+          <thead><tr><th>对象</th><th>定义</th><th>关键属性（产品语义）</th></tr></thead>
+          <tbody>
+            <tr><td>会话</td><td>一次连续对话的容器，分为普通聊天与 Agent 会话</td><td>模式（无 / ReAct / Plan-Execute）、运行时（云端 / 本地）、归属用户、归档状态、消息数</td></tr>
+            <tr><td>消息</td><td>会话中的一条用户或助手内容</td><td>角色、正文、过程块（思考 / 工具 / 叙述）、反馈、token 用量、模型</td></tr>
+            <tr><td>执行轨迹</td><td>一次 Agent 执行的可视化过程记录</td><td>节点（思考 / 工具调用 / 观察 / 计划步骤）、耗时、状态、token</td></tr>
+            <tr><td>HITL 项</td><td>需要用户确认或回答才能继续的暂停点</td><td>类型、所属会话与执行、选项/工具信息、有效期</td></tr>
+            <tr><td>产物</td><td>Agent 生成的文档或可预览结果</td><td>标题、内容、来源消息、文件位置</td></tr>
+            <tr><td>技能 / 插件</td><td>可被 Agent 调用的能力单元或外部服务</td><td>启用状态、工具数、连接状态、冲突提示</td></tr>
+            <tr><td>用量</td><td>用户 token 消耗与配额</td><td>日配额、已用、重置时间、按模型计价</td></tr>
+          </tbody>
+        </table>
+
+        <h3>3.2 模式映射（固定约定）</h3>
+        <table>
+          <thead><tr><th>入口</th><th>会话类型</th><th>Agent 模式</th><th>用户心智</th></tr></thead>
+          <tbody>
+            <tr><td>Web <code>/chat</code> / 桌面默认对话</td><td>普通聊天</td><td>不进入 Agent 执行流程</td><td>快速问答、搜索、文档写作</td></tr>
+            <tr><td>Web <code>/pro</code>（智能分析）</td><td>Agent 会话</td><td>ReAct 执行</td><td>边想边做，工具执行过程可见，可人工确认</td></tr>
+            <tr><td>Web <code>/task</code>（任务）</td><td>Agent 会话</td><td>先计划后执行</td><td>先出计划、确认后逐步执行</td></tr>
+            <tr><td>桌面 Agent 模式</td><td>Agent 会话（云端或本地）</td><td>按会话记录的模式复用同一张图</td><td>与 Web 分析 / 任务一致；本地离线可用</td></tr>
+          </tbody>
+        </table>
+
+        <h3>3.3 核心旅程</h3>
+        <div class="flow">
+          <span class="node">登录 / 本地身份</span><span class="arrow">→</span>
+          <span class="node">选择模式并新建会话</span><span class="arrow">→</span>
+          <span class="node">输入问题 / 附件</span><span class="arrow">→</span>
+          <span class="node">流式输出与过程</span><span class="arrow">→</span>
+          <span class="node">必要时人工确认</span><span class="arrow">→</span>
+          <span class="node">回答 / 产物</span><span class="arrow">→</span>
+          <span class="node">编辑重发 / 重试 / 反馈 / 归档</span>
+        </div>
+      </section>
+
+      <section id="fr">
+        <h2><span class="num">4</span>功能需求</h2>
+        <p class="lead">按用户任务组织。每条需求包含目的、触发、处理规则、结果与状态、异常与边界；跨模块共享规则在第 5 节统一定义，功能章节不再重复。</p>
+
+        <!-- 4.1 -->
+        <h3 id="acc">4.1 账户与身份</h3>
+        <div class="fr">
+          <div class="id">FR-ACC-01</div>
+          <div class="name">注册、登录与会话保持</div>
+          <dl>
+            <dt>目的</dt><dd>让用户建立可被隔离的个人空间，并在多次访问间保持登录态。</dd>
+            <dt>触发</dt><dd>首次访问受保护页面，或主动进入登录 / 注册页。</dd>
+            <dt>规则</dt><dd>支持账号密码注册与登录；浏览器端在访问令牌过期时自动刷新，刷新失败则清空登录态并回到登录页；桌面端登录态保存在本地安全存储中，重启后恢复。</dd>
+            <dt>结果</dt><dd>登录后进入上次使用的模式页；未登录访问工作台会被拦截到登录页。</dd>
+            <dt>异常</dt><dd>账号或密码错误直接提示，不触发自动刷新；网络故障保留本地缓存并标记可重试，不误判为“未登录”。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-ACC-02</div>
+          <div class="name">个人资料与退出</div>
+          <dl>
+            <dt>触发</dt><dd>账户弹层 / 设置-账户分区。</dd>
+            <dt>规则</dt><dd>展示昵称、用户名、邮箱、手机号、注册时间与用户 ID；支持刷新资料与复制关键字段；退出登录需二次确认，退出后清除令牌并回到未登录态。</dd>
+            <dt>结果</dt><dd>资料更新即时反映在侧边栏账户区；退出后不再能读写个人会话。</dd>
+            <dt>状态</dt><dd><span class="chip ok">已实现</span>（云端）；本地单用户不显示登录入口。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-ACC-03</div>
+          <div class="name">找回密码 / 微信登录</div>
+          <dl>
+            <dt>现状</dt><dd>Web 提供找回密码页面；后端提供小程序与网页微信登录接口。<span class="chip tbd">TBD</span>：微信登录在产品内是否有可见入口、找回密码是否真实发送凭证，需产品确认。</dd>
+            <dt>规则（若有）</dt><dd>找回流程必须可验证身份且不泄露账号是否存在；微信登录需完成账号绑定合并策略（见开放问题）。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.2 -->
+        <h3 id="mode">4.2 对话模式</h3>
+        <div class="fr">
+          <div class="id">FR-MODE-01</div>
+          <div class="name">普通聊天（Chat）</div>
+          <dl>
+            <dt>目的</dt><dd>低成本、低门槛的问答与写作，支持搜索增强、深度思考与引用来源。</dd>
+            <dt>触发</dt><dd>Web <code>/chat</code> 或桌面默认对话；首次发送自动创建会话。</dd>
+            <dt>规则</dt><dd>可选“深度思考”与“联网搜索”；可指定模型；支持图片与文件附件；回答以流式输出；可在回答后查看参考来源面板。</dd>
+            <dt>结果</dt><dd>会话与消息持久化；首条消息后会话标题自动生成；回答支持复制、点赞/点踩、分享、重新生成。</dd>
+            <dt>异常</dt><dd>流式超时、网络断开可重试；服务端错误以可读文案提示；停止生成保留已产出内容。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MODE-02</div>
+          <div class="name">智能分析（Pro / ReAct）</div>
+          <dl>
+            <dt>目的</dt><dd>面对需要检索、计算、写作的复杂问题，展示 Agent 的推理与工具过程，并在关键动作前请求确认。</dd>
+            <dt>触发</dt><dd>Web <code>/pro</code>；桌面在 Agent 模式下发起分析。</dd>
+            <dt>规则</dt><dd>使用 ReAct 图；过程块（思考 / 工具调用 / 叙述）统一收进可折叠“过程容器”；运行中展开并计时，完成后收起为一行摘要；工具连续同类调用聚合为批次行；右侧提供推理过程 / 执行轨迹面板。</dd>
+            <dt>结果</dt><dd>最终回答与过程分离；操作栏提供复制、赞/踩、分享、重新生成与 token 用量；可生成文档产物。</dd>
+            <dt>异常</dt><dd>工具上限或中止后无最终回答时展示兜底提示，而不是空白消息；暂停等待人工确认时保留半截消息并显示状态。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MODE-03</div>
+          <div class="name">任务（Task / Plan-Execute）</div>
+          <dl>
+            <dt>目的</dt><dd>把复杂目标拆成可确认的计划，再逐步执行，适合多步骤研究与交付。</dd>
+            <dt>触发</dt><dd>Web <code>/task</code>；桌面任务入口。</dd>
+            <dt>规则</dt><dd>先生成计划；计划确认属于 HITL；确认后按步骤调度执行，步骤状态在任务监控面板可见；未确认或拒绝时不进入执行。</dd>
+            <dt>结果</dt><dd>任务步骤、工具执行与最终产物均可在会话内追溯；计划步骤状态同步到监控面板。</dd>
+            <dt>异常</dt><dd>执行中可中止；步骤失败需标记失败原因并允许重新生成或编辑重发。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MODE-04</div>
+          <div class="name">模式切换与隔离</div>
+          <dl>
+            <dt>规则</dt><dd>模式属于会话属性，不在同一会话内混用；不同模式的会话在侧边栏统一列出但保留各自的执行方式；新建会话的默认模式由用户所在入口决定。</dd>
+            <dt>异常</dt><dd>恢复历史会话时按会话记录的执行方式恢复；计划执行能力不可用时不得降级执行。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.3 -->
+        <h3 id="msg">4.3 消息与过程展示</h3>
+        <div class="fr">
+          <div class="id">FR-MSG-01</div>
+          <div class="name">用户消息气泡</div>
+          <dl>
+            <dt>规则</dt><dd>用户消息右对齐展示；超过 5 行默认折叠，可点击气泡或“展开/收起”按钮切换；悬停显示时间、编辑、复制。</dd>
+            <dt>结果</dt><dd>编辑入口仅在会话空闲且消息已持久化时出现。</dd>
+            <dt>边界</dt><dd>拖选文本或点击消息内链接不触发折叠切换；图片附件点击进入应用内大图预览。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MSG-02</div>
+          <div class="name">助手消息与操作栏</div>
+          <dl>
+            <dt>规则</dt><dd>助手消息通栏展示，不带气泡底色；消息结束后显示操作栏：复制、赞、踩、分享、重新生成；有 token 用量时展示总量；有执行轨迹时提供轨迹入口（Web 形态为胶囊，桌面内联展示）。</dd>
+            <dt>状态</dt><dd>默认悬停显隐；触屏设备常显；运行中不展示操作栏。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MSG-03</div>
+          <div class="name">过程容器</div>
+          <dl>
+            <dt>规则</dt><dd>一轮执行的思考、叙述、工具动作收进“过程容器”；运行中显示“运行中 · 已用 X”，终态显示“已完成 · 耗时 X”；终态自动收起，用户手动展开后保持当前选择。</dd>
+            <dt>内容</dt><dd>深度思考以左竖线引用块展示，可展开查看完整思维链；工具行动作行展示中文动作名与参数摘要，可展开参数与观测结果；连续同类工具调用聚合为批次行。</dd>
+            <dt>异常</dt><dd>空思考段不渲染；运行中的空内容以“准备中 / 开始思考”占位；工具执行失败标记为失败并可查看原因。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.4 -->
+        <h3 id="act">4.4 消息操作</h3>
+        <div class="fr">
+          <div class="id">FR-ACT-01</div>
+          <div class="name">编辑重发</div>
+          <dl>
+            <dt>触发</dt><dd>用户消息悬停操作栏的“编辑”；仅云端会话、会话空闲（非流式、非暂停）且消息已持久化时可用。</dd>
+            <dt>规则</dt><dd>行内编辑卡片替换原气泡，支持自动增高、Enter 发送、Shift+Enter 换行、Esc 取消，输入法合成中的 Enter 不发送；提交后以该消息为新起点，更新正文并截断其后的全部消息与回复，重新执行本轮。</dd>
+            <dt>结果</dt><dd>目标消息保持原位并显示新正文；后续消息被移除；新的助手回复重新流式产出；会话标题不变。</dd>
+            <dt>异常</dt><dd>无法将该消息对齐到服务端真实记录时，不执行截断并提示“刷新后重试”；本地（离线）会话暂不开放编辑。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-ACT-02</div>
+          <div class="name">重新生成</div>
+          <dl>
+            <dt>触发</dt><dd>助手消息操作栏“重新生成”。</dd>
+            <dt>规则</dt><dd>定位触发该回复的上一条用户消息，截断其后的消息并重新执行；沿用原回复所使用的模型，避免默认模型导致结果不可复现。</dd>
+            <dt>异常</dt><dd>运行中禁止操作；找不到对应用户消息时提示，不做无依据的重跑。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-ACT-03</div>
+          <div class="name">反馈、分享与停止</div>
+          <dl>
+            <dt>规则</dt><dd>点赞/点踩为可取消状态，变更失败时回滚并提示；分享优先调用系统分享，不可用时复制正文；停止生成立即终止本次执行，已产出内容保留并进入终态。</dd>
+            <dt>结果</dt><dd>反馈即时更新本端状态并异步同步；停止后仍可重新生成或继续提问；停止也会结算已消耗的用量。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.5 -->
+        <h3 id="hitl">4.5 HITL（人工在环）</h3>
+        <div class="fr">
+          <div class="id">FR-HITL-01</div>
+          <div class="name">暂停与确认</div>
+          <dl>
+            <dt>触发</dt><dd>Agent 在执行中需要用户确认工具调用、做出选择、确认计划或回答澄清问题时。</dd>
+            <dt>类型</dt><dd>
+              <table>
+                <thead><tr><th>类型</th><th>用户看到的动作</th><th>用户可选</th></tr></thead>
+                <tbody>
+                  <tr><td>工具审批</td><td>“等待你确认该操作”，展示工具与参数</td><td>批准 / 拒绝 / 修改参数</td></tr>
+                  <tr><td>选择</td><td>“等待你选择”，展示候选项</td><td>选择一个或多个选项 / 其他</td></tr>
+                  <tr><td>方案确认</td><td>“等待你确认方案”，展示计划</td><td>批准执行 / 拒绝 / 修改</td></tr>
+                  <tr><td>澄清</td><td>“正在询问用户”，展示问题</td><td>文本回答 / 跳过</td></tr>
+                </tbody>
+              </table>
+            </dd>
+            <dt>规则</dt><dd>暂停期间输入区切换为 HITL 精简态，禁止发起新一轮执行；恢复后继续写入同一条助手消息；审批默认有效期 300 秒，超时自动拒绝并进入可恢复终态。</dd>
+            <dt>异常</dt><dd>恢复失败或暂停项已失效时明确提示，不留下悬空弹窗；用户点击停止等价于取消该待确认操作。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.6 -->
+        <h3 id="agent">4.6 工具、技能与场景包</h3>
+        <div class="fr">
+          <div class="id">FR-AGENT-01</div>
+          <div class="name">内置工具</div>
+          <dl>
+            <dt>规则</dt><dd>Agent 可按需调用：时间获取、联网搜索、计算、文档写作；桌面本地运行时还可注册代码执行等敏感工具；工具调用需遵循敏感工具审批策略。</dd>
+            <dt>结果</dt><dd>工具输入与输出进入执行轨迹；搜索结果以来源卡片展示；文档写作产物进入产物面板。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-AGENT-02</div>
+          <div class="name">技能（Skills）</div>
+          <dl>
+            <dt>规则</dt><dd>技能按能力分层；用户可在发送前选择本轮启用的技能（空数组表示明确不用）；管理员可控制平台技能的启用白名单，白名单持久化并在重启后生效。</dd>
+            <dt>结果</dt><dd>技能决定本轮可用的工具集合；技能选择随用户消息保存，暂停恢复时沿用同一选择，避免工具集漂移。</dd>
+            <dt>权限</dt><dd>普通用户只能选择已启用技能；管理操作对非管理员一律拒绝。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-AGENT-03</div>
+          <div class="name">场景包与领域角色</div>
+          <dl>
+            <dt>规则</dt><dd>产品内置研究写作与任务规划两个场景包；仅在启用时把领域角色接入提示词组装；分析模式默认研究写作领域，任务模式默认任务规划领域。</dd>
+            <dt>边界</dt><dd>场景包未激活时不注入领域，不改变默认行为；场景包加载失败不阻断服务。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.7 -->
+        <h3 id="art">4.7 产物与来源</h3>
+        <div class="fr">
+          <div class="id">FR-ART-01</div>
+          <div class="name">产物生成与预览</div>
+          <dl>
+            <dt>触发</dt><dd>Agent 判断任务需要交付文档时，使用文档写作工具生成 Markdown 等文件。</dd>
+            <dt>规则</dt><dd>产物自动命名并写入用户文档目录；生成后校验并登记为可追溯产物；消息内给出产物入口。</dd>
+            <dt>结果</dt><dd>产物面板支持预览、复制正文、下载、关闭、跳回来源消息；删除会话不应误删已有文件。</dd>
+            <dt>异常</dt><dd>写入失败需回传明确错误，不把失败当成功；空内容产物不得登记。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-ART-02</div>
+          <div class="name">来源与引用</div>
+          <dl>
+            <dt>规则</dt><dd>回答中的参考来源汇总到来源面板；来源项可点击打开；执行轨迹中的搜索观测可展开原始结果。</dd>
+            <dt>边界</dt><dd>来源仅在真实检索产生时展示，不伪造引用；无来源时面板不出现。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.8 -->
+        <h3 id="file">4.8 文件与附件</h3>
+        <div class="fr">
+          <div class="id">FR-FILE-01</div>
+          <div class="name">上传与附件展示</div>
+          <dl>
+            <dt>规则</dt><dd>支持图片、PDF、纯文本；单文件上限 10MB；图片可多张随消息发送；附件在消息内以缩略图或文件卡片展示；图片支持应用内放大。</dd>
+            <dt>边界</dt><dd>非图片类型的附件不得作为可执行内容在新窗口直接渲染；草稿图片存本地资产，不随草稿以明文大对象反复读写。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.9 -->
+        <h3 id="modelcfg">4.9 模型、密钥与用量</h3>
+        <div class="fr">
+          <div class="id">FR-MODEL-01</div>
+          <div class="name">模型选择</div>
+          <dl>
+            <dt>规则</dt><dd>对外暴露两个模型意图：标准对话（别名 fast）与深度推理（别名 reasoning）；用户可按会话选择模型或交由后端决定。</dd>
+            <dt>边界</dt><dd>历史客户端可能仍发送展示名或旧 ID，服务端需将其收敛到当前真实模型；未知模型不允许静默替换，应给出可读错误。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MODEL-02</div>
+          <div class="name">自有模型与密钥（桌面）</div>
+          <dl>
+            <dt>规则</dt><dd>桌面设置可维护模型列表（名称、提供方、模型 ID、启用状态）；密钥经系统密钥库加密存储，界面只回显掩码；可设置默认模型。</dd>
+            <dt>结果</dt><dd>启用的模型出现在输入框模型选择器；默认模型决定新请求使用的模型；“Auto” 表示由后端决定。</dd>
+            <dt>安全</dt><dd>明文密钥不得写入普通配置或日志；删除模型时同步清除对应密钥。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-MODEL-03</div>
+          <div class="name">用量与配额</div>
+          <dl>
+            <dt>规则</dt><dd>按用户设置每日 token 配额，0 表示不限；配额按自然日重置；请求前校验，超限返回明确的限流提示；一轮执行在终态（完成 / 暂停 / 错误 / 中止）都必须结算真实消耗。</dd>
+            <dt>展示</dt><dd>会话与设置中展示 token 用量；成本面板按模型单价估算近 7 天调用。</dd>
+            <dt>异常</dt><dd>未真正开始执行（例如初始化失败）不按估算值计费；部分完成被中止不得免费。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.10 -->
+        <h3 id="sess">4.10 会话管理</h3>
+        <div class="fr">
+          <div class="id">FR-SESS-01</div>
+          <div class="name">列表、分页与归档</div>
+          <dl>
+            <dt>规则</dt><dd>会话按最近更新时间倒序；使用游标分页避免重复/跳过；可重命名、归档、恢复与删除；归档会话集中在设置的数据管理分区处理。</dd>
+            <dt>结果</dt><dd>删除为不可逆操作，需二次确认；删除会话同时清理消息与关联执行记录。</dd>
+            <dt>边界</dt><dd>加载历史失败不清空本地已有消息；切换会话时取消旧请求，避免串线。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-SESS-02</div>
+          <div class="name">搜索与空间（现状）</div>
+          <dl>
+            <dt>现状</dt><dd>桌面侧边栏提供“任务 / 空间”分组，空间为空态“即将开放”。<span class="chip placeholder">占位</span></dd>
+            <dt>待定</dt><dd>是否需要全局会话搜索、空间归属与跨设备同步，见开放问题。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.11 -->
+        <h3 id="plugin">4.11 插件·技能市场</h3>
+        <div class="fr">
+          <div class="id">FR-PLUGIN-01</div>
+          <div class="name">Web 插件页</div>
+          <dl>
+            <dt>规则</dt><dd>聚合两类对象：已接入的 MCP 服务与可安装目录；提供分类、搜索、推荐位、已安装状态与“添加插件”入口；安装需选择传输方式并填写连接信息。</dd>
+            <dt>状态</dt><dd>已安装项展示连接状态；不支持安装的条目置灰；演示数据需标识，避免与真实服务混淆。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-PLUGIN-02</div>
+          <div class="name">桌面插件页</div>
+          <dl>
+            <dt>现状</dt><dd>提供插件 / 技能 / 工作伙伴三个页签、分类与卡片网格，但安装与管理状态仅保存在页面本地，未接通真实安装。<span class="chip placeholder">占位</span></dd>
+            <dt>要求</dt><dd>在接通前不得向用户承诺“已安装/可调用”；与 Web 的 MCP 安装能力应对齐。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.12 -->
+        <h3 id="set">4.12 设置</h3>
+        <table>
+          <thead><tr><th>端</th><th>分区</th><th>可用能力</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="9">Web</td><td>账户</td><td>个人资料、刷新、复制、退出</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>通用</td><td>主题、界面密度、正文字号、语言（禁用）</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>对话</td><td>Enter 发送、角色设定（≤2000 字）</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>用量与成本</td><td>近 7 天模型调用统计</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>技能</td><td>平台技能启用状态（管理员）</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>MCP</td><td>服务连接状态</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>数据管理</td><td>归档会话查看 / 恢复 / 删除</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>帮助与反馈</td><td>帮助文档 / 意见反馈 / 联系我们</td><td><span class="chip placeholder">占位链接</span></td></tr>
+            <tr><td>关于</td><td>版本、产品名、技术栈</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td rowspan="9">Desktop</td><td>账号</td><td>占位“功能建设中”</td><td><span class="chip placeholder">占位</span></td></tr>
+            <tr><td>通用</td><td>主题、字体档位、语言</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>快捷键</td><td>发送/换行/唤起等全局与局部快捷键</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>系统设置</td><td>服务地址、本地运行时、认证等复合页</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>智能体 / 记忆 / 助理</td><td>占位分类</td><td><span class="chip placeholder">占位</span></td></tr>
+            <tr><td>模型</td><td>模型列表、默认模型、密钥掩码管理</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>数据管理</td><td>本地会话数据</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>安全中心</td><td>安全相关设置</td><td><span class="chip ok">已实现</span></td></tr>
+            <tr><td>关于</td><td>版本与产品说明</td><td><span class="chip ok">已实现</span></td></tr>
+          </tbody>
+        </table>
+        <p class="rule">未接通项（Web：桌面通知、提示音、显示消息时间、隐私模式、账号管理、升级权益；桌面：账号、智能体、记忆、助理）必须保持禁用态并标注“开发中”，不得让用户误以为已生效。</p>
+
+        <!-- 4.13 -->
+        <h3 id="desk">4.13 桌面端专有能力</h3>
+        <div class="fr">
+          <div class="id">FR-DESK-01</div>
+          <div class="name">云边双模</div>
+          <dl>
+            <dt>规则</dt><dd>有可用后端时走云端会话与账户体系；无后端或用户选择本地运行时时，启用本地单用户身份，会话与消息保存在本地，Agent 在本地执行。</dd>
+            <dt>结果</dt><dd>本地模式免登录、断网可用；本地会话在侧边栏独立展示；本地数据不自动上传云端。</dd>
+            <dt>边界</dt><dd>本地与云端的会话/消息同步尚未实现；本地会话不开放编辑重发（上下文无法截断）。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-DESK-02</div>
+          <div class="name">系统集成</div>
+          <dl>
+            <dt>规则</dt><dd>支持全局快捷键唤起/隐藏窗口；原生菜单动作可打开设置；窗口支持最大化、全屏、开发者工具；外部链接仅允许 http(s) 交给系统浏览器；应用内提供检查更新、网络检查、打开日志目录。</dd>
+            <dt>安全</dt><dd>渲染进程沙箱 + 隔离上下文，禁止页面直接访问 Node；内容安全策略限制外链与脚本来源；预览内容与 Markdown 均需净化。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-DESK-03</div>
+          <div class="name">桌面二级页面现状</div>
+          <dl>
+            <dt>规则</dt><dd>“助理”“我的文件”“更多”为开发中占位；“自动化”仅维护页面本地定时任务与模板，不接后端调度；“插件”为静态数据。<span class="chip placeholder">占位</span></dd>
+            <dt>要求</dt><dd>占位页不得出现可创建但实际不会执行的成功反馈；自动化任务需在接通调度后展示真实运行记录。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.14 -->
+        <h3 id="site">4.14 官网营销站</h3>
+        <div class="fr">
+          <div class="id">FR-SITE-01</div>
+          <div class="name">页面与内容</div>
+          <dl>
+            <dt>页面</dt><dd>首页、智能体（含能力、样例、体验、学习、定价、FAQ）、认知、案例、洞察、关于、趋势。</dd>
+            <dt>规则</dt><dd>全站统一导航与页脚；桌面端提供导航下拉，移动端提供汉堡手风琴；移动端底部常驻 CTA 跳转智能体体验区；内容为品牌叙事与方法论，不与工作台账号体系直接联动。</dd>
+            <dt>结果</dt><dd>访客可完整浏览并跳转体验区；<span class="chip placeholder">静态演示</span>：体验区对话为预置样例，不产生真实 Agent 会话；“免注册体验 3 轮”为文案承诺，产品侧未实现对应额度。</dd>
+            <dt>边界</dt><dd>首页数据（读者数、学员数、合作机构、完课率）与证言为原型占位，上线前必须替换或删除；三档定价与企业版 CTA 的具体权益与价格 <span class="chip tbd">TBD</span>。</dd>
+          </dl>
+        </div>
+
+        <!-- 4.15 -->
+        <h3 id="mobile">4.15 移动端</h3>
+        <div class="fr">
+          <div class="id">FR-MOBILE-01</div>
+          <div class="name">现状与要求</div>
+          <dl>
+            <dt>现状</dt><dd><code>apps/mobile</code> 为空目录，无实现。<span class="chip placeholder">未交付</span></dd>
+            <dt>要求（若立项）</dt><dd>必须先确定信息架构：是复用 Web 的三模式工作台，还是只做会话查看与轻量提问；登录方式、推送、离线能力与 HITL 处理需单独定义。</dd>
+            <dt>风险</dt><dd>当前营销站在移动端提供“体验智能体”入口，但产品无移动端实现，存在预期落差。<span class="chip risk">风险</span></dd>
+          </dl>
+        </div>
+
+        <!-- 4.16 -->
+        <h3 id="admin">4.16 管理与可观测</h3>
+        <div class="fr">
+          <div class="id">FR-ADMIN-01</div>
+          <div class="name">用户与配额管理</div>
+          <dl>
+            <dt>规则</dt><dd>管理员可查看用户列表（分页、搜索、敏感字段脱敏）与用户每日 token 配额/已用；可观测面提供请求、错误、流式断开、成本等指标。</dd>
+            <dt>权限</dt><dd>管理操作必须强制鉴权；未配置管理员时写操作一律拒绝（fail-closed）。</dd>
+          </dl>
+        </div>
+        <div class="fr">
+          <div class="id">FR-ADMIN-02</div>
+          <div class="name">技能与配置治理</div>
+          <dl>
+            <dt>规则</dt><dd>技能启用状态支持持久化并在重启后恢复；可查看技能来源、工具数与冲突；系统模型目录是唯一事实源，前后端不得各自维护默认模型。</dd>
+            <dt>结果</dt><dd>管理变更对下一次请求生效；异常配置需回退到安全默认，不得让服务无法启动。</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section id="rules">
+        <h2><span class="num">5</span>共享规则与状态</h2>
+        <h3>5.1 角色与权限矩阵</h3>
+        <table>
+          <thead><tr><th>能力</th><th>访客</th><th>普通用户</th><th>本地单用户</th><th>管理员</th></tr></thead>
+          <tbody>
+            <tr><td>浏览官网 / 静态演示</td><td>✓</td><td>✓</td><td>—</td><td>✓</td></tr>
+            <tr><td>创建 / 读写自己的会话</td><td>✗</td><td>✓</td><td>仅本地库</td><td>✓（自己的）</td></tr>
+            <tr><td>选择已启用技能</td><td>✗</td><td>✓</td><td>✓（本地配置）</td><td>✓</td></tr>
+            <tr><td>修改平台技能白名单</td><td>✗</td><td>✗</td><td>✗</td><td>✓</td></tr>
+            <tr><td>查看全量用户 / 成本指标</td><td>✗</td><td>✗</td><td>✗</td><td>✓</td></tr>
+            <tr><td>查看他人会话</td><td>✗</td><td>✗</td><td>✗</td><td>✗（不做越权）</td></tr>
+          </tbody>
+        </table>
+        <p class="rule">原则：用户数据按归属隔离；管理员权限不自动等于可读用户对话内容；本地模式不产生云端身份。</p>
+
+        <h3>5.2 生命周期状态</h3>
+        <table>
+          <thead><tr><th>对象</th><th>状态流转</th><th>禁止 / 回收</th></tr></thead>
+          <tbody>
+            <tr><td>助手消息</td><td>待发送 → 流式 → （可选）暂停 → 恢复流式 → 完成 / 错误 / 已中止</td><td>运行中不发操作栏；中止视为终态，保留已产出内容</td></tr>
+            <tr><td>HITL 项</td><td>待答复 → 批准 / 拒绝 / 回答 → 恢复执行</td><td>超时（审批 300 秒）自动拒绝；同一时刻只承接一个展示项，其余排队</td></tr>
+            <tr><td>会话</td><td>新建 → 活跃 → 归档 → 恢复 / 删除</td><td>删除不可逆；归档不删除消息；临时会话不可编辑重发</td></tr>
+            <tr><td>产物</td><td>生成 → 登记 → 预览 / 下载</td><td>空内容不登记；删除会话不删除已生成文件</td></tr>
+            <tr><td>技能</td><td>启用 ↔ 禁用</td><td>禁用后不再进入本轮工具集；管理员变更持久化</td></tr>
+          </tbody>
+        </table>
+
+        <h3>5.3 消息截断与重跑规则（统一定义）</h3>
+        <ul>
+          <li>“编辑重发”与“重新生成”都以某条用户消息为锚点，截断该消息之后的全部消息与回复再重跑；前者更新正文，后者沿用原文。</li>
+          <li>被截断的消息在会话历史中不再出现；对应执行记录与计划步骤一并失效。</li>
+          <li>锚点必须能对上服务端真实消息；对不上时拒绝执行并提示刷新，不允许按位置猜测。</li>
+          <li>云端会话支持；本地会话因上下文由本地运行时维护，暂不支持编辑重发。</li>
+        </ul>
+
+        <h3>5.4 用量、配额与计费</h3>
+        <ul>
+          <li>配额按用户、按自然日；超限时阻止新一轮执行 并返回明确文案。</li>
+          <li>已触达模型的执行 在所有终态结算；未真正开始执行（例如初始化失败）不计费。</li>
+          <li>请求前可预占配额，结束后按真实用量结算，差额回补；并发请求不得绕过上限。</li>
+          <li>成本展示为估算值，单价来自模型目录；调价只影响后续统计。</li>
+        </ul>
+
+        <h3>5.5 错误、重试与超时</h3>
+        <ul>
+          <li>流式响应只设“空闲超时”（默认 60 秒无数据即中止），不设总时长上限；超时可重试。</li>
+          <li>网络或服务端错误发生在执行开始后，客户端可用事件游标续读，最多两次，不重复请求模型。</li>
+          <li>鉴权失败与限流有独立文案；鉴权失败清理登录态，限流提示稍后重试。</li>
+          <li>无最终回答的完成态必须展示兜底提示（可能达到工具上限或被中止），不能渲染为空白。</li>
+        </ul>
+
+        <h3>5.6 安全与数据</h3>
+        <ul>
+          <li>Markdown 输出按白名单净化；链接拦截 <code>javascript:</code> 等危险协议；产物预览在沙箱环境中渲染。</li>
+          <li>上传按允许类型与大小校验；非图片附件不得以可执行页面形式打开。</li>
+          <li>模型密钥在桌面端经系统密钥库加密，界面与日志不回传明文。</li>
+          <li>桌面渲染进程启用沙箱与上下文隔离，内容安全策略限制外部脚本与连接来源。</li>
+          <li>会话删除、归档、编辑、重新生成等不可逆动作需可识别、可确认；删除需二次确认。</li>
+        </ul>
+      </section>
+
+      <section id="gap">
+        <h2><span class="num">6</span>已知边界与差距</h2>
+        <table>
+          <thead><tr><th>#</th><th>差距</th><th>影响</th><th>处理建议</th></tr></thead>
+          <tbody>
+            <tr><td>G1</td><td>官网“认知陪练”定位与产品“智能工作台”定位不一致</td><td>用户预期与产品能力错位</td><td>产品决策后统一文案与功能叙事（见 Q1）</td></tr>
+            <tr><td>G2</td><td>移动端无实现，官网移动端 CTA 指向“体验智能体”</td><td>移动访客有预期落差</td><td>明确移动端范围或调整 CTA 承诺</td></tr>
+            <tr><td>G3</td><td>桌面助理 / 我的文件 / 更多 / 空间为占位</td><td>入口存在但不可用</td><td>隐藏或明确“开发中”，排期后再放出</td></tr>
+            <tr><td>G4</td><td>桌面自动化仅本地前端状态，无真实调度</td><td>用户创建的任务不会按时执行</td><td>要么接通后端调度，要么暂停创建入口</td></tr>
+            <tr><td>G5</td><td>桌面插件页为静态数据，与 Web MCP 安装能力不一致</td><td>“安装”不可靠，能力承诺失真</td><td>复用 Web 的安装/连接链路，或标注演示</td></tr>
+            <tr><td>G6</td><td>本地会话不支持编辑重发</td><td>离线用户少一种纠错路径</td><td>补齐本地会话的上下文截断能力后再开放</td></tr>
+            <tr><td>G7</td><td>桌面无全局 toast</td><td>反馈以底部错误条 / 静默降级呈现</td><td>统一轻提示组件或明确替代反馈位</td></tr>
+            <tr><td>G8</td><td>官网数据、证言、定价为原型占位</td><td>对外可信度风险</td><td>上线前替换真实内容并补齐定价</td></tr>
+            <tr><td>G9</td><td>Web 与桌面设置分区不一致（如账号、记忆、智能体）</td><td>同一产品两套心智</td><td>统一信息架构或明确端差异理由</td></tr>
+            <tr><td>G10</td><td>多语言、通知、提示音、显示时间、隐私模式均未接通</td><td>设置项存在但不可用</td><td>保持禁用 + “开发中”标识，避免误解</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="open">
+        <h2><span class="num">7</span>开放问题</h2>
+        <p class="lead">以下问题会改变产品边界或权限，需产品负责人决策；未决策前按本文标记的假设执行。</p>
+        <table>
+          <thead><tr><th>ID</th><th>问题</th><th>为什么重要</th><th>当前假设</th></tr></thead>
+          <tbody>
+            <tr><td>Q1</td><td>产品定位以“认知陪练智能体”还是“多模态智能工作台”为准？</td><td>决定首屏、模式命名、结果形态与官网文案</td><td>[Assumption, TBD] 以工作台为交付基线，官网叙事后续收敛</td></tr>
+            <tr><td>Q2</td><td>移动端是否立项？范围是完整工作台还是会话查看 + 轻提问？</td><td>影响信息架构、推送、离线与 HITL</td><td>[TBD] 暂不纳入基线</td></tr>
+            <tr><td>Q3</td><td>免费额度、三档定价与企业版权益是什么？</td><td>影响配额、限流与官网承诺</td><td>[TBD] 配额存在但具体数值由部署配置</td></tr>
+            <tr><td>Q4</td><td>“免注册体验 3 轮”是否作为真实获客能力？</td><td>涉及匿名会话、限流、数据留存与合规</td><td>[TBD] 目前仅为静态演示</td></tr>
+            <tr><td>Q5</td><td>插件市场是否允许用户安装任意 MCP 服务？</td><td>涉及安全边界、工具审批与责任归属</td><td>[Assumption, TBD] 默认需管理员审核或白名单</td></tr>
+            <tr><td>Q6</td><td>自动化是否接后端调度？失败重试与通知策略？</td><td>决定能否对外承诺“定时任务”</td><td>[TBD] 当前仅前端记录，不承诺执行</td></tr>
+            <tr><td>Q7</td><td>本地 ↔ 云端是否需要单向/双向同步？冲突如何处理？</td><td>影响离线体验与数据一致性</td><td>[TBD] 当前不自动同步</td></tr>
+            <tr><td>Q8</td><td>对话数据留存期限、导出与删除权如何定义？</td><td>合规与隐私承诺</td><td>[TBD] 仅支持删除会话/消息，无导出</td></tr>
+            <tr><td>Q9</td><td>微信登录与账号合并策略？</td><td>影响账户唯一性与数据归属</td><td>[TBD] 后端具备能力，前端入口未确认</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer>
+        <div><b>调研范围：</b>apps/backend-ts（路由、core、Agent 桥接）、apps/desktop（renderer 页面/状态/本地运行时）、apps/web（三模式/插件/设置）、apps/marketing（页面与数据文案）、apps/mobile（空目录）、packages（modu-agent / agent-protocol / llm-*）。</div>
+        <div class="evidence">文档性质：现状基线 PRD，用于对齐产品、设计与研发对“当前已交付行为”的共同理解。文中未标注来源的数字、价格、期限均为未定项，不代表承诺。</div>
+      </footer>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>
