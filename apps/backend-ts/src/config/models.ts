@@ -64,6 +64,9 @@ export const AVAILABLE_MODELS = [
  */
 export const LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = {
   'deepseek-v4-flash': 'deepseek-flash',
+  // 「DeepSeek-V4.1-Flash」是展示名，上游只接受真实 ID deepseek-flash。
+  // 旧客户端 / 本地缓存可能把展示名当 model 下发，这里统一收敛，避免 400。
+  'deepseek-v4.1-flash': 'deepseek-flash',
 }
 
 /**
@@ -85,7 +88,15 @@ export const MODEL_ALIASES: Readonly<Record<string, string>> = {
  */
 export function resolveModelAlias(input?: string | null): string | undefined {
   if (!input) return undefined
-  return MODEL_ALIASES[input] ?? input
+  const key = input.trim()
+  const lower = key.toLowerCase()
+  const aliased = MODEL_ALIASES[key] ?? MODEL_ALIASES[lower]
+  if (aliased) return aliased
+  // 真实模型 ID 的大小写兜底（如历史客户端写入的 deepseek-v4-Pro）
+  const model = AVAILABLE_MODELS.find(
+    (m) => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower,
+  )
+  return model?.id ?? key
 }
 
 /**
@@ -96,7 +107,7 @@ export function resolveModelAlias(input?: string | null): string | undefined {
  */
 export function toModelAlias(input?: string | null): string | undefined {
   if (!input) return undefined
-  const resolved = MODEL_ALIASES[input] ?? input
+  const resolved = resolveModelAlias(input) ?? input
   const found = AVAILABLE_MODELS.find(
     (m) => m.id === resolved || m.alias === resolved,
   )

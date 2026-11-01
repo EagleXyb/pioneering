@@ -49,6 +49,16 @@ describe('config/models — 模型单一事实源', () => {
     expect(toModelAlias('deepseek-v4-flash')).toBe('fast');
   });
 
+  it('展示名形态的旧值解析为真实模型 ID，不再原样发往上游', () => {
+    // 上游只接受 deepseek-flash / deepseek-v4-pro；
+    // 「DeepSeek-V4.1-Flash」是展示名，旧客户端可能把它当 model 下发（曾触发 400）。
+    expect(resolveModelAlias('deepseek-v4.1-flash')).toBe(DEFAULT_MODEL);
+    expect(resolveModelAlias('DeepSeek-V4.1-Flash')).toBe(DEFAULT_MODEL);
+    expect(toModelAlias('deepseek-v4.1-flash')).toBe('fast');
+    // 真实 ID 的大小写写错同样收敛（desktop 历史配置存在 deepseek-v4-Pro）
+    expect(resolveModelAlias('deepseek-v4-Pro')).toBe(REASONING_MODEL);
+  });
+
   it('未知值原样透传，空值返回 undefined', () => {
     expect(resolveModelAlias('deepseek-v4-pro')).toBe('deepseek-v4-pro');
     expect(resolveModelAlias('some-vendor-model')).toBe('some-vendor-model');
