@@ -69,6 +69,15 @@ interface MessageScrollerListProps {
   hasMore?: boolean
   isLoadingMore?: boolean
   onLoadMore?: () => void
+  /** 用户消息是否可编辑（会话空闲时由 ChatArea 判定） */
+  canEditUserMessage?: boolean
+  /** 当前处于编辑态的消息 id（同一时刻仅一条） */
+  editingMessageId?: string | null
+  /** 编辑提交中 */
+  submittingEdit?: boolean
+  onStartEdit?: (messageId: string) => void
+  onCancelEdit?: () => void
+  onSubmitEdit?: (messageId: string, nextText: string) => void | Promise<void>
 }
 
 export function MessageScrollerList({
@@ -82,7 +91,13 @@ export function MessageScrollerList({
   isStreaming,
   hasMore,
   isLoadingMore,
-  onLoadMore
+  onLoadMore,
+  canEditUserMessage,
+  editingMessageId,
+  submittingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit
 }: MessageScrollerListProps) {
   // 跳转源消息：预览面板「跳转到源消息」写入 highlightMessageIdAtom 后，
   // 这里消费该信号——滚动定位到对应消息并做短暂高亮，随后清除信号。
@@ -166,6 +181,12 @@ export function MessageScrollerList({
                     streamingToolCalls={isStreamingMsg ? streamingToolCalls : undefined}
                     streamingTraceNodes={isStreamingMsg ? streamingTraceNodes : undefined}
                     streamingTraceRootOrder={isStreamingMsg ? streamingTraceRootOrder : undefined}
+                    editable={msg.role === 'user' && !!canEditUserMessage}
+                    editing={msg.id === editingMessageId}
+                    submittingEdit={!!submittingEdit && msg.id === editingMessageId}
+                    onStartEdit={() => onStartEdit?.(msg.id)}
+                    onCancelEdit={onCancelEdit}
+                    onSubmitEdit={(next) => onSubmitEdit?.(msg.id, next)}
                   />
                 </MessageScrollerItem>
               )

@@ -170,8 +170,29 @@ export interface ChatState {
   loadMoreMessages: () => Promise<void>
   sendMessage: (
     content: string,
-    extra?: { images?: ImageAttachment[]; selectedFiles?: string[]; skill?: string | null; model?: string }
+    extra?: {
+      images?: ImageAttachment[]
+      selectedFiles?: string[]
+      skill?: string | null
+      model?: string
+      /**
+       * 编辑重发（内部通道）：uiMessageId 为本地列表中的乐观 id，
+       * realMessageId 为对齐后的后端真实 id（本地会话两者相同）。
+       */
+      edit?: { uiMessageId: string; realMessageId: string }
+    }
   ) => Promise<void>
+  /**
+   * 编辑用户消息并重发（对齐 web 方案 B）：
+   * 本地乐观截断到目标消息，请求体携带真实 messageId + truncateAfter，
+   * 由后端更新正文并截断其后消息；本地会话同步截断 SQLite。
+   * @returns 是否成功启动重发（无法定位真实 id / 会话忙时返回 false）
+   */
+  editMessage: (
+    messageId: string,
+    content: string,
+    extra?: { model?: string }
+  ) => Promise<boolean>
   stopStreaming: () => void
   setAgentMode: (mode: boolean) => void
   /** T10：切换计划模式（开启隐含开启 Agent 模式；关闭不影响 Agent 模式） */
@@ -405,6 +426,46 @@ function isAgentSession(session: ChatSession | undefined): boolean {
 /** 云边双模阶段 2：会话是否归属本地运行时（SQLite DAO + IPC Transport） */
 function isLocalSession(session: ChatSession | undefined): boolean {
   return session?.runtime === 'local'
+}
+
+/** 本地乐观消息 id（user-<ts> / assistant-<ts>-<seq>）；需与后端真实 id 对齐后才能编辑 */
+const OPTIMISTIC_MESSAGE_ID_RE = /^(?:user|assistant)-\d+/
+
+/**
+ * 本地乐观 id → 后端真实 id（对齐 web resolveLocalMessageIds）。
+ *
+ * 策略：拉取历史后从尾部向前做 (role, 正文) 单调回溯匹配，每条远端消息
+ * 最多使用一次；匹配不上就不写入映射（宁可不编辑，也不改错消息）。
+ */
+async function resolveRealMessageIds(
+  sessionId: string,
+  localMessages: Message[]
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (!localMessages.some((m) => OPTIMISTIC_MESSAGE_ID_RE.test(m.id))) return map
+
+  let remote: Array<{ id: string; role: string; content: string }>
+  try {
+    const resp = await chatService.getMessages(sessionId, undefined, 100, 'before')
+    remote = (resp.messages ?? [])
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ id: m.id, role: m.role, content: m.content ?? '' }))
+  } catch {
+    return map
+  }
+
+  let j = remote.length - 1
+  for (let i = localMessages.length - 1; i >= 0; i -= 1) {
+    const local = localMessages[i]!
+    if (!OPTIMISTIC_MESSAGE_ID_RE.test(local.id)) continue
+    while (j >= 0 && !(remote[j]!.role === local.role && remote[j]!.content === local.content)) {
+      j -= 1
+    }
+    if (j < 0) break
+    map.set(local.id, remote[j]!.id)
+    j -= 1
+  }
+  return map
 }
 
 /**
@@ -773,10 +834,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // 必须从最新状态取 targetSession：无 sessionId 时上方 createSession 已异步 set 新会话，
     // 闭包里的旧 sessions 引用找不到它，会导致阶段一乐观标题失效、agentMode 误判
     const targetSession = get().sessions.find((s) => s.id === _sessionId)
+
+    // ===== 编辑重发（方案 B）：定位目标用户消息，截断其后的本地消息 =====
+    // 目标消息在列表中被就地替换为新正文，assistant 占位重新追加；
+    // 后端由 messageId + truncateAfter 在同一事务内更新正文并截断其后消息。
+    const editInfo = extra?.edit
+    const existingList = get().messages[_sessionId] || []
+    const editIndex = editInfo
+      ? existingList.findIndex((m) => m.id === editInfo.uiMessageId && m.role === 'user')
+      : -1
+    if (editInfo && editIndex === -1) {
+      set({ error: '无法定位该消息，请刷新会话后重试' })
+      return
+    }
+
     // 阶段一（乐观命名）：首条消息且标题仍是默认值时，立即截取前 30 字给用户瞬时反馈。
     // 仅更新本地并记录 optimisticTitle，供阶段二（AI 命名）判断是否仍待生成。
+    // 编辑重发不改变标题（内容属于既有会话），跳过。
     let optimisticTitle: string | null = null
     if (
+      !editInfo &&
       targetSession &&
       targetSession.title === DEFAULT_SESSION_TITLE &&
       (targetSession.messageCount ?? 0) === 0
@@ -801,6 +878,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: now,
       images: images.length ? images : undefined
     }
+
+    // 编辑重发：保留原消息 id / 时间戳，仅替换正文（本地 SQLite 与 UI 同步）
+    const editedUserMessage: Message | null =
+      editInfo && editIndex >= 0
+        ? { ...existingList[editIndex]!, content }
+        : null
 
     const assistantMsgId = `assistant-${now}-${mySeq}`
     const assistantPlaceholder: Message = {
@@ -831,19 +914,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .catch((e) => console.warn('[chatStore] local persist assistant failed:', e))
     }
     if (isLocal) {
-      void localChatService
-        .appendMessages(_sessionId, [toPersistMessage(userMessage)])
-        .catch((e) => console.warn('[chatStore] local persist user message failed:', e))
+      if (editedUserMessage) {
+        // 编辑重发：先删掉目标消息及其后的旧消息（含旧回复），再以原 id + 新正文回写。
+        // 保持 message_count / 顺序一致，assistant 终态仍由 persistAssistant 落库。
+        const removedIds = existingList.slice(editIndex).map((m) => m.id)
+        void localChatService
+          .deleteMessages(_sessionId, removedIds)
+          .then(() =>
+            localChatService.appendMessages(_sessionId, [toPersistMessage(editedUserMessage)])
+          )
+          .catch((e) => console.warn('[chatStore] local persist edited message failed:', e))
+      } else {
+        void localChatService
+          .appendMessages(_sessionId, [toPersistMessage(userMessage)])
+          .catch((e) => console.warn('[chatStore] local persist user message failed:', e))
+      }
     }
 
     set((state) => ({
       messages: {
         ...state.messages,
-        [_sessionId]: [
-          ...(state.messages[_sessionId] || []),
-          userMessage,
-          assistantPlaceholder
-        ]
+        [_sessionId]: editedUserMessage
+          ? [...existingList.slice(0, editIndex), editedUserMessage, assistantPlaceholder]
+          : [
+              ...(state.messages[_sessionId] || []),
+              userMessage,
+              assistantPlaceholder
+            ]
       },
       streamingContent: '',
       streamingThinking: '',
@@ -996,7 +1093,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       model: model && model !== 'Auto' ? model : undefined,
       // 云边对齐（P1）：外层图模式透传（plan_execute → Plan-Execute 图）。
       // 云端由 AgentChatRequestSchema 校验；本地由 agent-runtime 白名单归一化。
-      agentMode: targetSession?.agentMode === 'plan_execute' ? 'plan_execute' : undefined
+      agentMode: targetSession?.agentMode === 'plan_execute' ? 'plan_execute' : undefined,
+      // 编辑重发（方案 B）：携带真实 messageId 时，后端在同一事务内更新正文并截断其后消息。
+      // 本地 IPC 由 validateSendRequest 白名单丢弃，改由渲染端截断 SQLite + history。
+      messageId: editInfo?.realMessageId,
+      truncateAfter: editInfo ? true : undefined
     }
     let controller: AbortController
     if (useAgent) {
@@ -1005,8 +1106,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ? getTransportForRuntime('local')
         : getAgentTransport()
       if (transport.kind === 'ipc') {
-        // 本地模式：主进程无会话状态，携带多轮上下文
-        streamRequest.history = buildIpcHistory(get().messages[_sessionId])
+        // 本地模式：主进程无会话状态，携带多轮上下文。
+        // 编辑重发以「目标消息之前」的历史为准，避免把旧正文又作为上下文注入。
+        streamRequest.history = editedUserMessage
+          ? buildIpcHistory(existingList.slice(0, editIndex))
+          : buildIpcHistory(get().messages[_sessionId])
       }
       controller = transport.sendMessage(streamRequest, streamHandler)
     } else {
@@ -1547,6 +1651,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }),
 
   clearError: () => set({ error: null }),
+
+  editMessage: async (messageId, content, extra) => {
+    const { currentSessionId, sessions, messages, isStreaming, hitlPausedSessionId } = get()
+    if (!currentSessionId) return false
+    if (isStreaming) {
+      set({ error: '正在生成回复，请稍后再试' })
+      return false
+    }
+    if (hitlPausedSessionId === currentSessionId) {
+      set({ error: '当前会话正在等待你的答复，请先处理待确认项后再编辑重发。' })
+      return false
+    }
+    const text = content.trim()
+    if (!text) return false
+
+    const list = messages[currentSessionId] || []
+    const target = list.find((m) => m.id === messageId)
+    if (!target || target.role !== 'user') {
+      set({ error: '无法定位该消息，请刷新会话后重试' })
+      return false
+    }
+
+    // 云端从历史加载的真实 id 可直接使用；本会话新发的乐观 id 需先对齐后端。
+    // 本地会话的 id 本身就是 SQLite 主键，无需对齐。
+    const session = sessions.find((s) => s.id === currentSessionId)
+    let realMessageId = messageId
+    if (!isLocalSession(session) && OPTIMISTIC_MESSAGE_ID_RE.test(messageId)) {
+      const resolved = await resolveRealMessageIds(currentSessionId, list)
+      const real = resolved.get(messageId)
+      if (!real) {
+        // 宁可失败也不猜 id：错配会改错后端数据
+        set({ error: '无法定位该消息，请刷新会话后重试' })
+        return false
+      }
+      realMessageId = real
+    }
+
+    await get().sendMessage(text, {
+      model: extra?.model,
+      edit: { uiMessageId: messageId, realMessageId }
+    })
+    return true
+  },
 
   regenerateMessage: async (messageId) => {
     const { currentSessionId, messages, sessions, isStreaming } = get()

@@ -1,39 +1,33 @@
 // ============================================================
 // AccountMenu — Sidebar 底部账户菜单
 // ============================================================
-// 头像/昵称/副标题触发 DropdownMenu，卡片式菜单，参照设计图：
-//   ┌──────────────────────────────┐
-//   │ desktop                      │  ← 大标题 + 灰色邮箱
-//   │ desktop@example.com          │
-//   ├──────────────────────────────┤  ← 通栏分隔线
-//   │ 个人中心 / 外观设置 / 帮助与反馈 > │
-//   ├──────────────────────────────┤
-//   │ 主题      浅色（居中）       > │  ← 子菜单，黑色箭头
-//   │ 关于软件                    > │
-//   ├──────────────────────────────┤
-//   │ ↪ 退出登录（红）             │
-//   ├──────────────────────────────┤
-//   │       Pioneering v0.1.0      │
-//   └──────────────────────────────┘
-// 规格（设计图等比换算，卡片宽 288px）：
-//   · 圆角 16px / 无内边距（分隔线与 hover 通栏）
-//   · 标题 20px 加粗；副标题 15px muted
-//   · 行高 42px；行文字 18px；图标 16px；行内边距 18px
-//   · 退出登录 #E7000B，行高 50px
-//   · 底部版本 13px 居中
+// 头像/昵称/副标题触发 DropdownMenu，菜单内容与样式逐项复刻
+// apps/web 的 AccountPopover（layout/Sidebar/AccountPopover.tsx +
+// sidebar.css .account-popover）：
+//   设置 / 外观设置（级联：跟随系统·浅色模式·深色模式，当前项对勾）/
+//   收藏夹 / 创路Agent官网 / 下载创路电脑版 / 帮助与反馈 / 退出登录
+// 规格（web .account-popover）：
+//   · 容器：min-width 240px / 6px 内边距 / 16px 外圆角
+//   · 行：10px×12px 内边距 / 10px 圆角 / 14px 字号 / 16px 图标 / 2px 上下间距
+//   · hover：行内圆底 #e2e3e8（深色 #2c2c2c）
+//   · 分隔线：1px，左右 4px、上下 6px 内缩（#e5e7eb / #2a2a2a）
+//   · 占位项（收藏夹/官网/下载电脑版）：弱文字色 + 禁止光标
+//   · 退出登录：常态同主文字色，hover 浅红底 + 红字
 // ============================================================
 
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useSetAtom } from 'jotai'
 import {
   Settings,
   Sun,
   Moon,
   Monitor,
-  HelpCircle,
+  Palette,
+  BookmarkPlus,
+  Globe,
+  MonitorDown,
+  CircleHelp,
   LogOut,
-  LogIn,
-  User,
-  ChevronRight
+  Check
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -44,13 +38,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem
+  DropdownMenuSubContent
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { settingsOpenAtom, settingsCategoryAtom } from '@/stores/atoms'
-import { useAppStore, type ThemeMode } from '@/stores/useAppStore'
+import {
+  settingsOpenAtom,
+  settingsCategoryAtom,
+  openConfirmDialogAtom
+} from '@/stores/atoms'
+import { useAppStore } from '@/stores/useAppStore'
 import { authService } from '@/services/api/auth'
 
 export interface AccountMenuProps {
@@ -65,14 +61,20 @@ export interface AccountMenuProps {
 }
 
 // ============================================================
-// 卡片内统一视觉 token
+// 菜单行统一视觉 token（逐项对齐 web .account-popover-item）
 // ============================================================
-/** 普通行：36px 高 / 16px 字 / 18px 横向内边距 / 18px 图标 / 无圆角（通栏 hover） */
-const ROW_CLASS =
-  'h-[36px] !py-0 px-[18px] gap-3 rounded-none text-[16px] [&_svg]:size-[18px]'
-/** 次级行（登录入口/退出登录）：46px 高 */
-const ROW_CLASS_TALL =
-  'h-[46px] !py-0 px-[18px] gap-3 rounded-none text-[16px] [&_svg]:size-[18px]'
+/** 行：约 40px 高 / 14px 字 / 10×12px 内边距 / 10px 圆角 / 16px 图标 / 行内 hover */
+const ITEM_CLASS =
+  'my-0.5 !py-2.5 !px-3 !gap-[11px] rounded-[10px] text-[14px] font-normal text-[#1a1d23] dark:text-[#ededed] [&_svg]:size-4 focus:!bg-[#e2e3e8] dark:focus:!bg-[#2c2c2c]'
+/** 置灰占位项：弱文字色 + 禁止光标 + 无 hover 高亮（web .account-popover-item--pending） */
+const PENDING_ITEM_CLASS = cn(
+  ITEM_CLASS,
+  'cursor-not-allowed text-[#9ca3af] dark:text-[#7a7a7a]',
+  '[&_svg]:text-[#9ca3af] dark:[&_svg]:text-[#7a7a7a]',
+  'focus:!bg-transparent dark:focus:!bg-transparent focus:!text-[#9ca3af] dark:focus:!text-[#7a7a7a]'
+)
+/** 分隔线：左右 4px、上下 6px 内缩 */
+const DIVIDER_CLASS = '!mx-1 !my-1.5 !bg-[#e5e7eb] dark:!bg-[#2a2a2a]'
 
 /**
  * 底部账户菜单。认证态未定时展示骨架屏，已定时展示头像与昵称。
@@ -88,24 +90,28 @@ export function AccountMenu({
 }: AccountMenuProps) {
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setSettingsCategory = useSetAtom(settingsCategoryAtom)
+  const openConfirm = useSetAtom(openConfirmDialogAtom)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
 
-  const handleLogout = () => {
-    void authService.logout()
-  }
-
-  const handleLoginClick = () => {
-    setSettingsCategory('auth')
-    setSettingsOpen(true)
+  /** 退出登录：与 web 一致先弹确认框，确认后再登出 */
+  const handleLogoutClick = () => {
+    openConfirm({
+      id: 'account-logout',
+      title: '退出登录',
+      description: '确认退出当前账号吗？',
+      confirmText: '确认退出',
+      confirmVariant: 'destructive',
+      onConfirm: async () => {
+        await authService.logout()
+      }
+    })
   }
 
   const openSettingsWithCategory = (categoryId: string) => {
     setSettingsCategory(categoryId)
     setSettingsOpen(true)
   }
-
-  const themeLabel = theme === 'light' ? '浅色模式' : theme === 'dark' ? '深色模式' : '跟随系统'
 
   return (
     <div className="conversation-list-footer flex items-center justify-between px-2 py-1.5 border-t border-border shrink-0 min-h-[44px]">
@@ -153,130 +159,87 @@ export function AccountMenu({
         <DropdownMenuContent
           side="top"
           align="start"
-          sideOffset={6}
-          className="w-[288px] rounded-[16px] border-border/60 !p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+          sideOffset={8}
+          className="min-w-[240px] rounded-[16px] !p-1.5"
         >
-          {/* ===== 头部：大标题 + 灰色副标题 ===== */}
-          <div className="px-[18px] pt-5 pb-[22px]">
-            {isSettling ? (
-              <div className="flex flex-col gap-1.5 py-0.5">
-                <div className="h-4 w-24 animate-pulse rounded bg-muted" />
-                <div className="h-3 w-36 animate-pulse rounded bg-muted/70" />
-              </div>
-            ) : (
-              <>
-                <div className="truncate text-[20px] font-bold leading-snug text-foreground">
-                  {displayName}
-                </div>
-                <div
-                  className={cn(
-                    'mt-1 truncate text-[15px]',
-                    isError ? 'text-destructive' : 'text-muted-foreground'
-                  )}
-                >
-                  {displaySubtitle}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* 通栏分隔线 */}
-          <DropdownMenuSeparator className="!mx-0 !my-0" />
-
-          {/* ===== 分组 1：个人中心 / 外观设置 / 帮助与反馈 ===== */}
-          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('account')}>
-            <User className="shrink-0" />
-            <span className="truncate">个人中心</span>
-            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
+          {/* ===== 设置 ===== */}
+          <DropdownMenuItem
+            className={ITEM_CLASS}
+            onSelect={() => openSettingsWithCategory('general')}
+          >
+            <Settings className="shrink-0" />
+            <span className="truncate">设置</span>
           </DropdownMenuItem>
 
-          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('appearance')}>
-            <Sun className="shrink-0" />
-            <span className="truncate">外观设置</span>
-            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
-          </DropdownMenuItem>
-
-          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('about')}>
-            <HelpCircle className="shrink-0" />
-            <span className="truncate">帮助与反馈</span>
-            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
-          </DropdownMenuItem>
-
-          {/* 通栏分隔线 */}
-          <DropdownMenuSeparator className="!mx-0 !my-0" />
-
-          {/* ===== 分组 2：主题（子菜单）/ 关于软件 ===== */}
+          {/* ===== 外观设置：级联子菜单（跟随系统 / 浅色 / 深色），当前项右侧对勾 ===== */}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className={ROW_CLASS}>
-              <Sun className="shrink-0" />
-              <span className="truncate">主题</span>
-              {/* 主题值：占据剩余空间并居中（与设计图一致），非 ml-auto 靠右 */}
-              <span className="flex-1 text-center text-[13px] font-normal text-muted-foreground">
-                {themeLabel}
-              </span>
+            <DropdownMenuSubTrigger
+              className={cn(
+                ITEM_CLASS,
+                '[&>svg:last-child]:text-[#9ca3af] dark:[&>svg:last-child]:text-[#7a7a7a]'
+              )}
+            >
+              <Palette className="shrink-0" />
+              <span className="truncate">外观设置</span>
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="min-w-[150px]">
-              <DropdownMenuRadioGroup
-                value={theme}
-                onValueChange={(v) => setTheme(v as ThemeMode)}
-              >
-                <DropdownMenuRadioItem value="light" className="flex items-center gap-2">
-                  <Sun className="size-4 text-amber-500" />
-                  <span>浅色模式</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="dark" className="flex items-center gap-2">
-                  <Moon className="size-4 text-blue-400" />
-                  <span>深色模式</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="system" className="flex items-center gap-2">
-                  <Monitor className="size-4 text-muted-foreground" />
-                  <span>跟随系统</span>
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
+            <DropdownMenuSubContent className="min-w-[196px] rounded-[16px] !p-1.5">
+              <DropdownMenuItem className={ITEM_CLASS} onSelect={() => setTheme('system')}>
+                <Monitor className="shrink-0" />
+                <span>跟随系统</span>
+                {theme === 'system' && <Check className="ml-auto shrink-0" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem className={ITEM_CLASS} onSelect={() => setTheme('light')}>
+                <Sun className="shrink-0" />
+                <span>浅色模式</span>
+                {theme === 'light' && <Check className="ml-auto shrink-0" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem className={ITEM_CLASS} onSelect={() => setTheme('dark')}>
+                <Moon className="shrink-0" />
+                <span>深色模式</span>
+                {theme === 'dark' && <Check className="ml-auto shrink-0" />}
+              </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          <DropdownMenuItem className={ROW_CLASS} onSelect={() => openSettingsWithCategory('about')}>
-            <Settings className="shrink-0" />
-            <span className="truncate">关于软件</span>
-            <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
+          {/* ===== 占位项（功能未上线）：弱文字色 + 禁止光标 ===== */}
+          <DropdownMenuItem className={PENDING_ITEM_CLASS} onSelect={() => undefined}>
+            <BookmarkPlus className="shrink-0" />
+            <span className="truncate">收藏夹</span>
           </DropdownMenuItem>
 
-          {/* 通栏分隔线 */}
-          <DropdownMenuSeparator className="!mx-0 !my-0" />
+          <DropdownMenuSeparator className={DIVIDER_CLASS} />
 
-          {/* ===== 分组 3：退出登录 / 登录入口 =====
-              仅在确认已登录时提供登出；未登录时改为提供登录入口，
-              避免出现「未登录却可点退出登录」的无效操作 */}
-          {isAuthed ? (
-            <DropdownMenuItem
-              onSelect={handleLogout}
-              className={cn(
-                ROW_CLASS_TALL,
-                'text-[#E7000B] focus:text-[#E7000B] focus:bg-[#E7000B]/[0.07]'
-              )}
-            >
-              <LogOut className="shrink-0" />
-              <span className="truncate">退出登录</span>
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem
-              onSelect={handleLoginClick}
-              disabled={isSettling}
-              className={ROW_CLASS_TALL}
-            >
-              <LogIn className="shrink-0" />
-              <span className="truncate">{isError ? '重新连接并登录' : '登录账户'}</span>
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem className={PENDING_ITEM_CLASS} onSelect={() => undefined}>
+            <Globe className="shrink-0" />
+            <span className="truncate">创路Agent官网</span>
+          </DropdownMenuItem>
 
-          {/* 通栏分隔线 */}
-          <DropdownMenuSeparator className="!mx-0 !my-0" />
+          <DropdownMenuItem className={PENDING_ITEM_CLASS} onSelect={() => undefined}>
+            <MonitorDown className="shrink-0" />
+            <span className="truncate">下载创路电脑版</span>
+          </DropdownMenuItem>
 
-          {/* ===== 底部：版本号 ===== */}
-          <div className="py-6 text-center text-[13px] text-muted-foreground/60 select-none">
-            Pioneering v0.1.0
-          </div>
+          <DropdownMenuItem
+            className={ITEM_CLASS}
+            onSelect={() => openSettingsWithCategory('help')}
+          >
+            <CircleHelp className="shrink-0" />
+            <span className="truncate">帮助与反馈</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className={DIVIDER_CLASS} />
+
+          {/* ===== 退出登录：常态同主文字色，hover 浅红底 + 红字 ===== */}
+          <DropdownMenuItem
+            className={cn(
+              ITEM_CLASS,
+              'focus:!bg-[#fee2e2] dark:focus:!bg-[#3a1c1c] focus:!text-[#ef4444] dark:focus:!text-[#f87171]'
+            )}
+            onSelect={handleLogoutClick}
+          >
+            <LogOut className="shrink-0" />
+            <span className="truncate">退出登录</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

@@ -1,6 +1,6 @@
 import { useState, memo, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { useSetAtom } from 'jotai'
-import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share, MessageCircleQuestion, ShieldCheck, ListChecks, ClipboardCheck, ChevronDown, ChevronUp } from 'lucide-react'
+import { Copy, ThumbsUp, ThumbsDown, Check, RotateCcw, Share, MessageCircleQuestion, ShieldCheck, ListChecks, ClipboardCheck, ChevronDown, ChevronUp, Info, PencilLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -39,10 +39,129 @@ interface MessageBubbleProps {
   /** M2: trace 树（流式期间用实时快照，历史消息用 message.traceNodes/traceRootOrder） */
   streamingTraceNodes?: Record<string, TraceNode>
   streamingTraceRootOrder?: string[]
+  /** 用户消息是否可编辑（会话空闲且已持久化时由父层传入） */
+  editable?: boolean
+  /** 是否处于编辑态（同一时刻仅一条） */
+  editing?: boolean
+  /** 编辑提交中（禁用取消/发送） */
+  submittingEdit?: boolean
+  onStartEdit?: () => void
+  onCancelEdit?: () => void
+  onSubmitEdit?: (nextText: string) => void | Promise<void>
 }
 
 /** 用户气泡折叠态展示的正文行数（对齐 web UserMessageBubble） */
 const COLLAPSED_LINES = 5
+
+/** 编辑提示：明确"重新开始对话"的后果与产物保留策略（对齐 web） */
+const EDIT_HINT = '编辑后将从此处重新开始对话，后续消息会被新回复替换；已有产物不会被删除'
+
+/**
+ * 用户消息行内编辑器（对齐 web UserMessageBubble 的编辑态）：
+ * 多行文本框 + 提示条 + 取消/发送；Enter 发送、Shift+Enter 换行、Esc 取消，
+ * IME 合成中的 Enter 不发送。
+ */
+function UserMessageEditor({
+  initialText,
+  submitting,
+  onSubmit,
+  onCancel
+}: {
+  initialText: string
+  submitting: boolean
+  onSubmit: (text: string) => void | Promise<void>
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(initialText)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 自动增高：44px 起步、240px 封顶
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = ''
+    const height = Math.min(240, Math.max(44, el.scrollHeight))
+    el.style.height = `${height}px`
+  }, [value])
+
+  // 进入编辑态聚焦并把光标置于末尾
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      const end = el.value.length
+      try {
+        el.setSelectionRange(end, end)
+      } catch {
+        // 忽略不支持选区的情况
+      }
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [])
+
+  const canSubmit = !submitting && value.trim().length > 0
+
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    void onSubmit(value.trim())
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!submitting) onCancel()
+      return
+    }
+    if (e.key !== 'Enter') return
+    // IME 合成中的 Enter 用于确认候选词，不触发发送
+    if (e.nativeEvent.isComposing) return
+    if (e.shiftKey) return
+    e.preventDefault()
+    handleSubmit()
+  }
+
+  return (
+    <div className="w-full min-w-[380px] rounded-[12px] border border-[rgba(59,130,246,0.42)] bg-card p-2 pb-1.5 shadow-sm">
+      <textarea
+        ref={textareaRef}
+        rows={1}
+        value={value}
+        spellCheck={false}
+        aria-label="编辑消息"
+        aria-busy={submitting || undefined}
+        className="block min-h-[44px] max-h-[240px] w-full resize-none bg-transparent px-1 py-0.5 text-[14px] leading-[1.6] text-foreground outline-none"
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+      <div className="mt-1.5 flex items-center justify-between gap-3">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-xs leading-[1.5] text-muted-foreground">
+          <Info className="size-[13px] shrink-0" aria-hidden />
+          {EDIT_HINT}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="h-[30px] rounded-[8px] px-3 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="h-[30px] rounded-[8px] bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {submitting ? '发送中…' : '发送'}
+          </button>
+        </span>
+      </div>
+    </div>
+  )
+}
 
 /** 已处理耗时：从暂停消息产生起每秒刷新（120s 超时内即可读到秒级反馈） */
 function useElapsedSeconds(start: number): number {
@@ -102,7 +221,13 @@ export const MessageBubble = memo(function MessageBubble({
   streamingThinking,
   streamingToolCalls,
   streamingTraceNodes,
-  streamingTraceRootOrder
+  streamingTraceRootOrder,
+  editable,
+  editing,
+  submittingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState(false)
@@ -313,7 +438,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {(displayContent || message.content || isStreaming || useTrace) && (
+        {(displayContent || message.content || isStreaming || useTrace) && !editing && (
           <Bubble
             variant={isUser ? 'secondary' : 'ghost'}
             align={align}
@@ -403,6 +528,16 @@ export const MessageBubble = memo(function MessageBubble({
           </Bubble>
         )}
 
+        {/* 编辑态：用行内编辑卡片替换原气泡（对齐 web UserMessageBubble） */}
+        {isUser && editing && (
+          <UserMessageEditor
+            initialText={displayContent}
+            submitting={!!submittingEdit}
+            onSubmit={(next) => onSubmitEdit?.(next)}
+            onCancel={() => onCancelEdit?.()}
+          />
+        )}
+
         {/* P3：通用文件附件（非图片）置于正文之后、点赞点踩栏之前 */}
         {message.attachments && message.attachments.length > 0 && (
           <AttachmentList attachments={message.attachments} isUser={isUser} />
@@ -416,25 +551,41 @@ export const MessageBubble = memo(function MessageBubble({
           </p>
         )}
 
-        {/* 用户消息悬停元信息行（时间 / 复制），与助手操作栏同一范式：
-            默认透明，hover / focus-within 显示（对齐 web UserMessageBubble） */}
-        {isUser && (
-          <MessageFooter className="px-0 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity gap-0.5 min-h-7">
+        {/* 用户消息悬停元信息行（时间 / 编辑 / 复制），对齐 web UserMessageBubble：
+            28px 圆角操作钮 + 12px 时间，默认透明，hover / focus-within 显示 */}
+        {isUser && !editing && (
+          <MessageFooter className="mt-1 min-h-7 gap-0.5 px-0 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
             {userTimeText && (
               <span className="mr-1 text-xs text-muted-foreground whitespace-nowrap select-none">
                 {userTimeText}
               </span>
             )}
+            {editable && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
+                    onClick={() => onStartEdit?.()}
+                    aria-label="编辑"
+                  >
+                    <PencilLine className="!size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">编辑</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
                   onClick={handleCopy}
                   aria-label={copied ? '已复制' : '复制消息内容'}
                 >
-                  {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+                  {copied ? <Check className="!size-3.5 text-green-500" /> : <Copy className="!size-3.5" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">{copied ? '已复制' : '复制'}</TooltipContent>
@@ -442,19 +593,20 @@ export const MessageBubble = memo(function MessageBubble({
           </MessageFooter>
         )}
 
-        {/* T07：actions 由 MessageFooter 承载，align="end" 时自动右对齐 */}
+        {/* T07：actions 由 MessageFooter 承载，align="end" 时自动右对齐
+            顺序 / 尺寸对齐 web 分析模式：复制 · 赞 · 踩 · 分享 · 重新生成（28px 钮 / 15px 图标） */}
         {isAssistant && !isStreaming && message.content && (
-          <MessageFooter className="opacity-0 group-hover/message:opacity-100 transition-opacity gap-1">
+          <MessageFooter className="mt-1.5 gap-0.5 px-0 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
                   onClick={handleCopy}
                   aria-label={copied ? '已复制' : '复制消息内容'}
                 >
-                  {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+                  {copied ? <Check className="!size-[15px] text-green-500" /> : <Copy className="!size-[15px]" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">{copied ? '已复制' : '复制'}</TooltipContent>
@@ -463,13 +615,13 @@ export const MessageBubble = memo(function MessageBubble({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
                   onClick={() => toggleMessageFeedback(message.id, feedback === 'like' ? 'none' : 'like')}
                   aria-label={feedback === 'like' ? '取消赞' : '赞'}
                   aria-pressed={feedback === 'like'}
                 >
-                  <ThumbsUp className={cn('size-3', feedback === 'like' && 'text-blue-500')} />
+                  <ThumbsUp className={cn('!size-[15px]', feedback === 'like' && 'text-[#3b82f6] dark:text-[#46a8f0]')} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">赞</TooltipContent>
@@ -478,13 +630,13 @@ export const MessageBubble = memo(function MessageBubble({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
                   onClick={() => toggleMessageFeedback(message.id, feedback === 'dislike' ? 'none' : 'dislike')}
                   aria-label={feedback === 'dislike' ? '取消踩' : '踩'}
                   aria-pressed={feedback === 'dislike'}
                 >
-                  <ThumbsDown className={cn('size-3', feedback === 'dislike' && 'text-red-500')} />
+                  <ThumbsDown className={cn('!size-[15px]', feedback === 'dislike' && 'text-[#3b82f6] dark:text-[#46a8f0]')} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">踩</TooltipContent>
@@ -493,35 +645,34 @@ export const MessageBubble = memo(function MessageBubble({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6"
-                  onClick={handleRegenerate}
-                  aria-label="重新生成回复"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
+                  onClick={handleShare}
+                  aria-label={shared ? '内容已复制' : '分享此消息'}
                 >
-                  <RotateCcw className="size-3" />
+                  {shared ? <Check className="!size-[15px] text-green-500" /> : <Share className="!size-[15px]" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">重新生成</TooltipContent>
+              <TooltipContent side="top">{shared ? '已复制' : '分享'}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6"
-                  onClick={handleShare}
-                  aria-label={shared ? '内容已复制' : '分享此消息'}
+                  size="icon-xs"
+                  className="text-muted-foreground hover:!bg-[#e2e3e8] hover:!text-foreground dark:hover:!bg-[#2c2c2c]"
+                  onClick={handleRegenerate}
+                  aria-label="重新生成回复"
                 >
-                  {shared ? <Check className="size-3 text-green-500" /> : <Share className="size-3" />}
+                  <RotateCcw className="!size-[15px]" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">{shared ? '已复制' : '分享'}</TooltipContent>
+              <TooltipContent side="top">重新生成</TooltipContent>
             </Tooltip>
-            {message.model && (
-              <span className="text-[10px] text-muted-foreground ml-1">{message.model}</span>
-            )}
             {message.tokenUsage?.total && message.tokenUsage.total > 0 && (
-              <span className="text-[10px] text-muted-foreground">{message.tokenUsage.total} tokens</span>
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                {message.tokenUsage.total} tokens
+              </span>
             )}
           </MessageFooter>
         )}

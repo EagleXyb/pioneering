@@ -9,12 +9,10 @@
 //   - 无左侧圆点时间线轨道，整体为缩进对齐的列表
 // ============================================================
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   ChevronRight,
   Loader2,
-  CheckCircle2,
-  CircleAlert,
   TerminalSquare,
   Globe,
   Clock,
@@ -24,8 +22,8 @@ import {
 import { cn } from '@/lib/utils'
 import { getToolDisplayName } from '@/lib/constants'
 import type { TraceNode } from '@shared/types'
-import { formatDuration } from '@/lib/trace-utils'
 import { ObservationResult } from './ObservationResult'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface AgentTimelineProps {
   nodes: Record<string, TraceNode>
@@ -33,8 +31,30 @@ interface AgentTimelineProps {
   isStreaming?: boolean
 }
 
+/** 毫秒 → 「1 分 37 秒」/「8 秒」（对齐 web ProcessContainer 的摘要口径） */
+function formatProcessTime(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`
+}
+
 export function AgentTimeline({ nodes, rootOrder, isStreaming = false }: AgentTimelineProps) {
-  const [expanded, setExpanded] = useState(true)
+  // 运行中展开；流式 → 终态自动收起为一行摘要（对齐 web ProcessContainer）
+  const [expanded, setExpanded] = useState(isStreaming)
+  const prevStreamingRef = useRef(isStreaming)
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) setExpanded(false)
+    prevStreamingRef.current = isStreaming
+  }, [isStreaming])
+
+  // 运行中每秒刷新耗时（终态后停止，避免无意义重渲染）
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (!isStreaming) return
+    const timer = window.setInterval(() => setTick((v) => v + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [isStreaming])
 
   const { overallStatus, totalDurationMs } = useMemo(() => {
     const visibleNodes = rootOrder
@@ -58,38 +78,43 @@ export function AgentTimeline({ nodes, rootOrder, isStreaming = false }: AgentTi
       errorCount > 0 ? 'error' : runningCount > 0 ? 'running' : 'completed'
 
     return { overallStatus: status, totalDurationMs: totalMs }
-  }, [nodes, rootOrder, isStreaming])
+  }, [nodes, rootOrder, isStreaming, tick])
 
+  // 摘要措辞对齐 web：终态「已完成 · 耗时 X」；运行中「运行中 · 已用 X」
+  const timePart =
+    totalDurationMs > 0
+      ? `${overallStatus === 'running' ? '已用' : '耗时'} ${formatProcessTime(totalDurationMs)}`
+      : ''
   const statusText = {
-    running: '正在执行',
+    running: '运行中',
     completed: '已完成',
     error: '执行出错'
   }[overallStatus]
+  const summary = `${statusText}${timePart ? ` · ${timePart}` : ''}`
 
   return (
-    <div className="agent-timeline mb-1">
-      {/* 顶部状态行：图标 + 状态文字 + 耗时 + 折叠箭头（最右） */}
+    <div className="agent-timeline mb-2.5">
+      {/* 顶部摘要行：状态 + 耗时 + 折叠箭头（内容宽度、行内排列，对齐 web 过程容器） */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 py-0.5 text-left transition-opacity hover:opacity-70 rounded"
+        aria-expanded={expanded}
+        aria-label={`执行过程，${summary}`}
+        className={cn(
+          'inline-flex max-w-full items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-2 -ml-0.5',
+          'text-[1rem] leading-6 text-muted-foreground select-none',
+          'transition-colors hover:text-foreground hover:bg-accent'
+        )}
       >
-        {overallStatus === 'running' ? (
-          <Loader2 className="size-4 shrink-0 animate-spin text-foreground/40" />
-        ) : overallStatus === 'error' ? (
-          <CircleAlert className="size-4 shrink-0 text-destructive/80" />
-        ) : (
-          <CheckCircle2 className="size-4 shrink-0 text-foreground/40" />
+        {overallStatus === 'running' && (
+          <span className="size-1.5 shrink-0 rounded-full bg-blue-500 animate-pulse" aria-hidden />
         )}
-        <span className="text-[15px] text-foreground/50">{statusText}</span>
-        {totalDurationMs > 0 && (
-          <span className="text-[15px] text-foreground/40 font-mono tabular-nums">
-            {formatDuration(totalDurationMs)}
-          </span>
-        )}
+        <span className={cn('truncate', overallStatus === 'error' && 'text-destructive')}>
+          {summary}
+        </span>
         <ChevronRight
           className={cn(
-            'ml-auto size-4 shrink-0 text-foreground/30 transition-transform duration-200',
+            'size-3.5 shrink-0 transition-transform duration-200',
             expanded && 'rotate-90'
           )}
         />
@@ -98,12 +123,16 @@ export function AgentTimeline({ nodes, rootOrder, isStreaming = false }: AgentTi
       {/* 内容区：平滑折叠动画 */}
       <div
         className={cn(
-          'grid transition-[grid-template-rows] duration-200 ease-out',
-          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          'grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out',
+          expanded
+            ? 'grid-rows-[1fr] opacity-100 translate-y-0'
+            : 'grid-rows-[0fr] opacity-0 -translate-y-[3px]'
         )}
+        aria-hidden={!expanded}
+        inert={!expanded ? true : undefined}
       >
-        <div className="overflow-hidden">
-          <div className="mt-0.5">
+        <div className="overflow-hidden min-h-0">
+          <div className="flex flex-col gap-1.5 pt-0.5">
             {rootOrder.map((nodeId) => {
               const node = nodes[nodeId]
               if (!node || node.kind === 'text') return null
@@ -135,10 +164,10 @@ function ToolIcon({ toolName, isRunning, isError, className }: {
 
   return (
     <Icon className={cn(
-      'size-4 shrink-0',
-      isRunning && 'animate-spin text-foreground/40',
-      isError && 'text-destructive/70',
-      !isRunning && !isError && 'text-foreground/40',
+      'size-3.5 shrink-0',
+      isRunning && 'animate-pulse text-blue-500 dark:text-blue-400',
+      isError && 'text-destructive/80',
+      !isRunning && !isError && 'text-muted-foreground',
       className
     )} />
   )
@@ -255,42 +284,29 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
     return node.label || node.kind
   }, [isThinking, isObservation, isToolCall, node.toolName, node.label, argSummary])
 
-  const durationMs =
-    node.durationMs ??
-    (node.startTime && node.endTime ? node.endTime - node.startTime : undefined)
-
   const indent = depth * 14
 
-  // 深度思考：可折叠行（与其他时间线行对齐：标题行 + 右侧折叠箭头），
-  // 内容左侧竖线引用，段落间空行分隔
+  // 深度思考：可折叠行（对齐 web tao-reasoning：行内标题 + 左竖线引用内容）
   if (isThinking) {
-    // 按空行拆分段落，过滤末尾因流式/分隔符产生的空段落，避免抖动
-    const paragraphs = (node.content ?? '')
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter((p, idx, arr) => p || idx !== arr.length - 1)
-
     return (
       <div className="py-0.5" style={{ paddingLeft: indent }}>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className="flex w-full items-center gap-2 text-left py-0.5 min-h-[22px] rounded cursor-pointer hover:opacity-70 transition-opacity"
+          className={cn(
+            'inline-flex max-w-full items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-2 -ml-0.5',
+            'text-[1rem] leading-6 text-muted-foreground select-none',
+            'transition-colors hover:text-foreground hover:bg-accent'
+          )}
         >
-          <Brain className="size-4 shrink-0 text-foreground/40" />
-          <span className="text-[14px] text-foreground/55 flex-1">深度思考</span>
-          {durationMs !== undefined && durationMs > 0 && !isRunning && (
-            <span className="text-[13px] text-foreground/35 font-mono tabular-nums shrink-0">
-              {formatDuration(durationMs)}
-            </span>
-          )}
-          {isRunning && (
-            <span className="text-[13px] text-foreground/40 shrink-0">思考中</span>
-          )}
+          <Brain className={cn('size-3.5 shrink-0', isRunning && 'animate-pulse')} aria-hidden />
+          <span className={cn('truncate', isRunning && 'animate-pulse')}>
+            {isRunning ? '开始思考' : '深度思考'}
+          </span>
           <ChevronRight
             className={cn(
-              'size-4 shrink-0 text-foreground/30 transition-transform duration-200',
+              'size-3.5 shrink-0 transition-transform duration-200',
               expanded && 'rotate-90'
             )}
           />
@@ -298,23 +314,23 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
 
         <div
           className={cn(
-            'grid transition-[grid-template-rows] duration-200 ease-out',
-            expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+            'grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out',
+            expanded
+              ? 'grid-rows-[1fr] opacity-100 translate-y-0'
+              : 'grid-rows-[0fr] opacity-0 -translate-y-[3px]'
           )}
+          aria-hidden={!expanded}
+          inert={!expanded ? true : undefined}
         >
-          <div className="overflow-hidden">
-            <div className="relative pl-3 py-0.5">
-              <div className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-border/70" />
-              <div className="text-[12px] text-foreground/50 leading-relaxed break-words space-y-2">
-                {paragraphs.map((para, idx) => (
-                  <p key={idx} className="whitespace-pre-wrap">{para}</p>
-                ))}
-                {node.status === 'running' && (
-                  <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-foreground/30 align-middle" aria-hidden>
-                    ▊
-                  </span>
-                )}
-              </div>
+          <div className="overflow-hidden min-h-0">
+            {/* 引用式思考正文：左 4px 竖线、限高内部滚动（对齐 web tao-reasoning-body） */}
+            <div className="ml-0.5 max-h-[188px] overflow-y-auto overscroll-contain border-l-4 border-border py-0.5 pl-4 pr-2 text-[1rem] leading-[1.75] text-muted-foreground">
+              <MarkdownRenderer content={node.content ?? ''} />
+              {isRunning && (
+                <span className="ml-0.5 inline-block h-4 w-1 translate-y-0.5 animate-pulse bg-muted-foreground/50" aria-hidden>
+                  ▊
+                </span>
+              )}
             </div>
             {hasChildren && (
               <div className="mt-0.5">
@@ -336,39 +352,27 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
     return null
   }
 
-  // 工具调用/其他节点：可折叠行
+  // 工具调用/其他节点：可折叠行（对齐 web tao-tool：行内图标 + 摘要 + 箭头）
   return (
     <div className="py-0.5" style={{ paddingLeft: indent }}>
       <button
         type="button"
         onClick={() => hasContent && setExpanded((v) => !v)}
         className={cn(
-          'flex w-full items-center gap-2 text-left py-0.5 min-h-[22px] rounded',
-          hasContent && 'cursor-pointer hover:opacity-70 transition-opacity',
+          'inline-flex max-w-full items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-2 -ml-0.5 text-left',
+          'text-[1rem] leading-6 text-muted-foreground select-none transition-colors',
+          hasContent && 'cursor-pointer hover:text-foreground hover:bg-accent',
           !hasContent && 'cursor-default'
         )}
       >
         <ToolIcon toolName={node.toolName} isRunning={isRunning} isError={isError} />
-        <span
-          className={cn(
-            'text-[14px] flex-1 truncate',
-            isError ? 'text-destructive/80' : 'text-foreground/55'
-          )}
-        >
+        <span className={cn('truncate', isError && 'text-destructive/80')}>
           {title}
         </span>
-        {durationMs !== undefined && durationMs > 0 && !isRunning && (
-          <span className="text-[13px] text-foreground/35 font-mono tabular-nums shrink-0">
-            {formatDuration(durationMs)}
-          </span>
-        )}
-        {isRunning && (
-          <span className="text-[13px] text-foreground/40 shrink-0">执行中</span>
-        )}
         {hasContent && (
           <ChevronRight
             className={cn(
-              'size-4 shrink-0 text-foreground/30 transition-transform duration-200',
+              'size-3.5 shrink-0 transition-transform duration-200',
               expanded && 'rotate-90'
             )}
           />
@@ -377,12 +381,16 @@ function TimelineItem({ node, nodes, depth }: TimelineItemProps) {
 
       <div
         className={cn(
-          'grid transition-[grid-template-rows] duration-200 ease-out',
-          expanded && hasContent ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          'grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out',
+          expanded && hasContent
+            ? 'grid-rows-[1fr] opacity-100 translate-y-0'
+            : 'grid-rows-[0fr] opacity-0 -translate-y-[3px]'
         )}
+        aria-hidden={!expanded || !hasContent}
+        inert={!expanded || !hasContent ? true : undefined}
       >
-        <div className="overflow-hidden">
-          <div className="py-0.5">
+        <div className="overflow-hidden min-h-0">
+          <div className="pt-0.5">
             <NodeContent node={node} />
             {hasChildren && (
               <div className="mt-0.5">
@@ -416,32 +424,32 @@ function NodeContent({ node }: { node: TraceNode }) {
     const showArgs = hasArgs && !hasObservationWithResult
 
     return (
-      <div className="space-y-0.5 pl-3">
+      <div className="ml-6 space-y-2 border-l-2 border-border pl-3">
         {showArgs && (
-          <pre className="max-h-40 overflow-auto font-mono text-[11px] text-foreground/50 whitespace-pre-wrap break-all">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2 font-mono text-xs leading-relaxed text-muted-foreground">
 {JSON.stringify(node.arguments, null, 2)}
           </pre>
         )}
         {!hasArgs && node.argumentsRaw && !hasObservationWithResult && (
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/40">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2 font-mono text-xs leading-relaxed text-muted-foreground">
 {node.argumentsRaw}
           </pre>
         )}
         {node.status === 'running' && (
-          <div className="flex items-center gap-1 text-[12px] text-foreground/40">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
             <span>正在执行...</span>
           </div>
         )}
         {node.status === 'error' && node.errorMessage && (
-          <div className="text-[12px] text-destructive/80">{node.errorMessage}</div>
+          <div className="text-xs text-destructive/80">{node.errorMessage}</div>
         )}
       </div>
     )
   }
 
   if (node.kind === 'error' && node.errorMessage) {
-    return <div className="pl-3 text-[12px] text-destructive/80">{node.errorMessage}</div>
+    return <div className="pl-3 text-xs text-destructive/80">{node.errorMessage}</div>
   }
 
   return null

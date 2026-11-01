@@ -23,6 +23,7 @@ import { AgentStatus } from './ChatStatus'
 // P1：图片放大预览（Portal 全局单例，关闭时渲染 null，不影响布局）
 import { ImageLightbox } from './ImageLightbox'
 import { selectIsHitlPaused, useChatStore } from '../../stores/chatStore'
+import { useAppStore } from '../../stores/useAppStore'
 import { useHitlStore } from '@pioneering/agent-protocol'
 import { useFeatureFlag } from '@/lib/feature-flags'
 import type { Message } from '@shared/types'
@@ -49,6 +50,8 @@ export function ChatArea() {
   const setPlanMode = useChatStore((s) => s.setPlanMode)
   const error = useChatStore((s) => s.error)
   const sendMessage = useChatStore((s) => s.sendMessage)
+  const editMessage = useChatStore((s) => s.editMessage)
+  const defaultModel = useAppStore((s) => s.defaultModel)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearError = useChatStore((s) => s.clearError)
   const loadSessions = useChatStore((s) => s.loadSessions)
@@ -70,6 +73,47 @@ export function ChatArea() {
   // T09：dev-only 压测开关
   const devStress = useFeatureFlag('devStressMessages')
   const devStressCount = useFeatureFlag('devStressCount')
+
+  // ===== 用户消息行内编辑（对齐 web useUserMessageEdit）=====
+  // 同一时刻仅一条处于编辑态；会话切换即清空，流式 / HITL 暂停时禁止编辑。
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [submittingEdit, setSubmittingEdit] = useState(false)
+  useEffect(() => {
+    setEditingMessageId(null)
+    setSubmittingEdit(false)
+  }, [currentSessionId])
+
+  // 本地（离线）会话：主进程 Agent 的对话状态由 LangGraph checkpoint 承载，
+  // 无法在编辑时回滚历史上下文；为避免"旧上下文仍在"的错乱，仅云端会话开放编辑。
+  const currentSessionIsLocal = useChatStore((s) =>
+    s.currentSessionId
+      ? s.sessions.find((x) => x.id === s.currentSessionId)?.runtime === 'local'
+      : false
+  )
+
+  const canEditUserMessage =
+    !!currentSessionId &&
+    !currentSessionIsLocal &&
+    !isStreaming &&
+    !isHitlPaused &&
+    !(import.meta.env.DEV && devStress)
+
+  const handleStartEdit = useCallback((messageId: string) => setEditingMessageId(messageId), [])
+  const handleCancelEdit = useCallback(() => setEditingMessageId(null), [])
+  const handleSubmitEdit = useCallback(
+    async (messageId: string, nextText: string) => {
+      setSubmittingEdit(true)
+      try {
+        const ok = await editMessage(messageId, nextText, {
+          model: defaultModel && defaultModel !== 'Auto' ? defaultModel : undefined
+        })
+        if (ok) setEditingMessageId(null)
+      } finally {
+        setSubmittingEdit(false)
+      }
+    },
+    [editMessage, defaultModel]
+  )
 
   // 消息区容器 ref：用于定位滚动容器，驱动顶部栏下边框显隐
   const messagesPaneRef = useRef<HTMLDivElement>(null)
@@ -327,6 +371,12 @@ export function ChatArea() {
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMoreMessages}
+            canEditUserMessage={canEditUserMessage}
+            editingMessageId={editingMessageId}
+            submittingEdit={submittingEdit}
+            onStartEdit={handleStartEdit}
+            onCancelEdit={handleCancelEdit}
+            onSubmitEdit={handleSubmitEdit}
           />
         </div>
       </div>

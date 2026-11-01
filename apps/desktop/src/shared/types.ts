@@ -121,6 +121,11 @@ export interface SendMessageRequest {
   parentMessageId?: string
   messageId?: string
   /**
+   * 编辑重发（对齐 web 方案 B / 云端 AgentChatRequestSchema）：
+   * 携带 messageId 时，后端在同一事务内更新该消息正文，并截断其后消息。
+   */
+  truncateAfter?: boolean
+  /**
    * 本次 run 的外层图模式（对齐云端 AgentChatRequestSchema）：
    * 'plan_execute' 启用 Plan-Execute 图；缺省/'react_agent' 走 ReAct。
    * 云端由 zod 校验，本地由 agent-runtime 白名单归一化。
